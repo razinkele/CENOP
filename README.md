@@ -1,6 +1,6 @@
 # CENOP
 
-<img src="CENOP_logo.png" alt="CENOP Logo" height="80">
+<img src="static/CENOP_logo.png" alt="CENOP Logo" height="80">
 
 **CETacean Noise-Population Model**
 
@@ -10,6 +10,7 @@ CENOP is a Python translation of the DEPONS (Disturbance Effects of POrpoises in
 
 - 🐬 Agent-based simulation of harbour porpoise populations
 - 🗺️ Realistic North Sea landscape with bathymetry and food distribution
+- 🌊 Realistic Central Baltic landscape with bathymetry and food distribution
 - 🔊 Noise disturbance modeling (pile-driving and ship noise)
 - 📊 Interactive Shiny web interface
 - 📈 Real-time visualization of population dynamics

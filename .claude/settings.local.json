@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(cd:*)",
-      "Bash(dir /s:*)"
+      "Bash(dir /s:*)",
+      "Bash(cat:*)",
+      "Bash(find:*)"
     ]
   }
 }

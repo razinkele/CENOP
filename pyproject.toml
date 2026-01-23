@@ -1,0 +1,70 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cenop"
+version = "0.1.0"
+description = "CENOP - CETacean Noise-Population Model: Python implementation of DEPONS porpoise population model with Shiny UI"
+readme = "README.md"
+license = "GPL-2.0-only"
+requires-python = ">=3.10"
+authors = [
+    { name = "AI4WIND Project Team" }
+]
+keywords = ["porpoise", "agent-based-model", "simulation", "marine-ecology", "wind-farms"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+]
+
+dependencies = [
+    "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    "pandas>=2.0.0",
+    "numba>=0.57.0",
+    "rasterio>=1.3.0",
+    "geopandas>=0.13.0",
+    "shapely>=2.0.0",
+    "plotly>=5.15.0",
+    "matplotlib>=3.7.0",
+    "shiny>=0.10.0",
+    "shinyswatch>=0.4.0",
+    "shinywidgets>=0.2.0",
+    "htmltools>=0.5.0",
+    "pydantic>=2.0.0",
+    "tqdm>=4.65.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.5.0",
+]
+
+[project.scripts]
+cenop = "cenop.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cenop"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311", "py312"]
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "W", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_ignores = true

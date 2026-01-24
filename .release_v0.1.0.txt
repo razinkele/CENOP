@@ -1,0 +1,7 @@
+v0.1.0 - Data Preview refactor & bug fixes
+
+Changelog (2026-01-24):
+- Reworked Data Preview to avoid inline script injection and reactive loops
+- Added preview_data_source, preview_map_updater, preview_stats_text
+- Added caching and adaptive downsampling
+- Added CHANGELOG and updated README contact (Arturas Razinkovas-Baziukas)

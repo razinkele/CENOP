@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd:*)",
+      "Bash(dir /s:*)",
+      "Bash(cat:*)",
+      "Bash(find:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(findstr:*)",
+      "Bash(python -c:*)",
+      "Bash(deploy.cmd)",
+      "Bash(cmd.exe /c \"cd /d \"\"C:\\\\Users\\\\DELL\\\\OneDrive - ku.lt\\\\HORIZON_EUROPE\\\\AI4WIND\\\\CENOP\\\\cenop\"\" && deploy.cmd\")",
+      "Bash(cmd //c deploy.cmd)",
+      "Bash(cmd //c:*)",
+      "Bash(ssh:*)",
+      "Bash(scp:*)",
+      "Bash(cmd.exe /c \"C:\\\\Users\\\\DELL\\\\OneDrive - ku.lt\\\\HORIZON_EUROPE\\\\AI4WIND\\\\CENOP\\\\cenop\\\\deploy.cmd\")",
+      "Bash(powershell.exe -Command \"Set-Location ''C:\\\\Users\\\\DELL\\\\OneDrive - ku.lt\\\\HORIZON_EUROPE\\\\AI4WIND\\\\CENOP\\\\cenop''; cmd /c deploy.cmd 2>&1\")",
+      "Bash(powershell.exe -Command \"& ''C:\\\\Users\\\\DELL\\\\OneDrive - ku.lt\\\\HORIZON_EUROPE\\\\AI4WIND\\\\CENOP\\\\cenop\\\\deploy.cmd'' 2>&1\")",
+      "Bash(powershell.exe -Command \"& ''C:\\\\Users\\\\DELL\\\\OneDrive - ku.lt\\\\HORIZON_EUROPE\\\\AI4WIND\\\\CENOP\\\\cenop\\\\deploy.cmd'' --sync-only 2>&1\")",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)",
+      "Bash(rsync:*)",
+      "Bash(\"C:\\\\Program Files\\\\Git\\\\usr\\\\bin\\\\rsync.exe\" -avz --progress --exclude \"__pycache__\" --exclude \"*.pyc\" --exclude \".git\" --exclude \".pytest_cache\" --exclude \"output\" --exclude \".venv\" --exclude \"*.egg-info\" --exclude \".claude\" --exclude \"*.log\" -e \"ssh -o BatchMode=yes -o ConnectTimeout=10\" \"C:\\\\Users\\\\DELL\\\\OneDrive - ku.lt\\\\HORIZON_EUROPE\\\\AI4WIND\\\\CENOP\\\\cenop\\\\.\" razinka@laguna.ku.lt:/srv/shiny-server/cenop/)"
+    ]
+  }
+}

@@ -1,0 +1,163 @@
+2026-01-24 19:28:32,726 ERROR DISCREPANCY at tick 9: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,726 ERROR DISCREPANCY at tick 9: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,733 ERROR DISCREPANCY at tick 10: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,734 ERROR DISCREPANCY at tick 10: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,739 ERROR DISCREPANCY at tick 11: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,740 ERROR DISCREPANCY at tick 11: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,746 ERROR DISCREPANCY at tick 12: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,746 ERROR DISCREPANCY at tick 12: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,753 ERROR DISCREPANCY at tick 13: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,753 ERROR DISCREPANCY at tick 13: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,760 ERROR DISCREPANCY at tick 14: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,760 ERROR DISCREPANCY at tick 14: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,767 ERROR DISCREPANCY at tick 15: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,768 ERROR DISCREPANCY at tick 15: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,773 ERROR DISCREPANCY at tick 16: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,773 ERROR DISCREPANCY at tick 16: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,779 ERROR DISCREPANCY at tick 17: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,780 ERROR DISCREPANCY at tick 17: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,786 ERROR DISCREPANCY at tick 18: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,787 ERROR DISCREPANCY at tick 18: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,792 ERROR DISCREPANCY at tick 19: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,793 ERROR DISCREPANCY at tick 19: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,799 ERROR DISCREPANCY at tick 20: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,799 ERROR DISCREPANCY at tick 20: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,805 ERROR DISCREPANCY at tick 21: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,805 ERROR DISCREPANCY at tick 21: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,811 ERROR DISCREPANCY at tick 22: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,811 ERROR DISCREPANCY at tick 22: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,818 ERROR DISCREPANCY at tick 23: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,818 ERROR DISCREPANCY at tick 23: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,824 ERROR DISCREPANCY at tick 24: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,824 ERROR DISCREPANCY at tick 24: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,831 ERROR DISCREPANCY at tick 25: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,831 ERROR DISCREPANCY at tick 25: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,837 ERROR DISCREPANCY at tick 26: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,838 ERROR DISCREPANCY at tick 26: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,844 ERROR DISCREPANCY at tick 27: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,844 ERROR DISCREPANCY at tick 27: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,851 ERROR DISCREPANCY at tick 28: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,851 ERROR DISCREPANCY at tick 28: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,858 ERROR DISCREPANCY at tick 29: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,858 ERROR DISCREPANCY at tick 29: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,865 ERROR DISCREPANCY at tick 30: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,866 ERROR DISCREPANCY at tick 30: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,872 ERROR DISCREPANCY at tick 31: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,872 ERROR DISCREPANCY at tick 31: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,880 ERROR DISCREPANCY at tick 32: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,880 ERROR DISCREPANCY at tick 32: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,886 ERROR DISCREPANCY at tick 33: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,887 ERROR DISCREPANCY at tick 33: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,893 ERROR DISCREPANCY at tick 34: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,893 ERROR DISCREPANCY at tick 34: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,900 ERROR DISCREPANCY at tick 35: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,901 ERROR DISCREPANCY at tick 35: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,908 ERROR DISCREPANCY at tick 36: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,909 ERROR DISCREPANCY at tick 36: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,916 ERROR DISCREPANCY at tick 37: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,916 ERROR DISCREPANCY at tick 37: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,922 ERROR DISCREPANCY at tick 38: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,923 ERROR DISCREPANCY at tick 38: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,928 ERROR DISCREPANCY at tick 39: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,928 ERROR DISCREPANCY at tick 39: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,935 ERROR DISCREPANCY at tick 40: pop=999, births=0, deaths=0, net=0, net_pop=-1 state_b=0 state_d=1 last_history=[]
+2026-01-24 19:28:32,936 ERROR DISCREPANCY at tick 40: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:28:32,941 ERROR DISCREPANCY at tick 41: pop=998, births=0, deaths=0, net=0, net_pop=-2 state_b=0 state_d=2 last_history=[]
+2026-01-24 19:28:32,941 ERROR DISCREPANCY at tick 41: pop=998, births=0, deaths=0, net=0, net_pop=-2
+2026-01-24 19:28:32,947 ERROR DISCREPANCY at tick 42: pop=998, births=0, deaths=0, net=0, net_pop=-2 state_b=0 state_d=2 last_history=[]
+2026-01-24 19:28:32,948 ERROR DISCREPANCY at tick 42: pop=998, births=0, deaths=0, net=0, net_pop=-2
+2026-01-24 19:28:32,954 ERROR DISCREPANCY at tick 43: pop=998, births=0, deaths=0, net=0, net_pop=-2 state_b=0 state_d=2 last_history=[]
+2026-01-24 19:28:32,954 ERROR DISCREPANCY at tick 43: pop=998, births=0, deaths=0, net=0, net_pop=-2
+2026-01-24 19:28:32,960 ERROR DISCREPANCY at tick 44: pop=998, births=0, deaths=0, net=0, net_pop=-2 state_b=0 state_d=2 last_history=[]
+2026-01-24 19:28:32,960 ERROR DISCREPANCY at tick 44: pop=998, births=0, deaths=0, net=0, net_pop=-2
+2026-01-24 19:28:32,967 ERROR DISCREPANCY at tick 45: pop=998, births=0, deaths=0, net=0, net_pop=-2 state_b=0 state_d=2 last_history=[]
+2026-01-24 19:28:32,967 ERROR DISCREPANCY at tick 45: pop=998, births=0, deaths=0, net=0, net_pop=-2
+2026-01-24 19:28:32,973 ERROR DISCREPANCY at tick 46: pop=998, births=0, deaths=0, net=0, net_pop=-2 state_b=0 state_d=2 last_history=[]
+2026-01-24 19:28:32,973 ERROR DISCREPANCY at tick 46: pop=998, births=0, deaths=0, net=0, net_pop=-2
+2026-01-24 19:28:32,978 ERROR DISCREPANCY at tick 47: pop=998, births=0, deaths=0, net=0, net_pop=-2 state_b=0 state_d=2 last_history=[]
+2026-01-24 19:28:32,978 ERROR DISCREPANCY at tick 47: pop=998, births=0, deaths=0, net=0, net_pop=-2
+2026-01-24 19:28:32,997 INFO tick=   50 pop= 998 births=      0 deaths=      2 net=     -2 net_pop=     -2 bΔ=0 dΔ=0 state_b=0 state_d=0
+2026-01-24 19:28:33,027 ERROR DISCREPANCY at tick 55: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,027 ERROR DISCREPANCY at tick 55: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,034 ERROR DISCREPANCY at tick 56: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,035 ERROR DISCREPANCY at tick 56: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,040 ERROR DISCREPANCY at tick 57: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,041 ERROR DISCREPANCY at tick 57: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,048 ERROR DISCREPANCY at tick 58: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,048 ERROR DISCREPANCY at tick 58: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,054 ERROR DISCREPANCY at tick 59: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,054 ERROR DISCREPANCY at tick 59: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,061 ERROR DISCREPANCY at tick 60: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,061 ERROR DISCREPANCY at tick 60: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,067 ERROR DISCREPANCY at tick 61: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,067 ERROR DISCREPANCY at tick 61: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,073 ERROR DISCREPANCY at tick 62: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,073 ERROR DISCREPANCY at tick 62: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,079 ERROR DISCREPANCY at tick 63: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,079 ERROR DISCREPANCY at tick 63: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,085 ERROR DISCREPANCY at tick 64: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,085 ERROR DISCREPANCY at tick 64: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,091 ERROR DISCREPANCY at tick 65: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,091 ERROR DISCREPANCY at tick 65: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,097 ERROR DISCREPANCY at tick 66: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,097 ERROR DISCREPANCY at tick 66: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,103 ERROR DISCREPANCY at tick 67: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,103 ERROR DISCREPANCY at tick 67: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,109 ERROR DISCREPANCY at tick 68: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,109 ERROR DISCREPANCY at tick 68: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,115 ERROR DISCREPANCY at tick 69: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,115 ERROR DISCREPANCY at tick 69: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,122 ERROR DISCREPANCY at tick 70: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,122 ERROR DISCREPANCY at tick 70: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,128 ERROR DISCREPANCY at tick 71: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,128 ERROR DISCREPANCY at tick 71: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,135 ERROR DISCREPANCY at tick 72: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,136 ERROR DISCREPANCY at tick 72: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,141 ERROR DISCREPANCY at tick 73: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,142 ERROR DISCREPANCY at tick 73: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,148 ERROR DISCREPANCY at tick 74: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,148 ERROR DISCREPANCY at tick 74: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,154 ERROR DISCREPANCY at tick 75: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,155 ERROR DISCREPANCY at tick 75: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,160 ERROR DISCREPANCY at tick 76: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,161 ERROR DISCREPANCY at tick 76: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,168 ERROR DISCREPANCY at tick 77: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,168 ERROR DISCREPANCY at tick 77: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,174 ERROR DISCREPANCY at tick 78: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,174 ERROR DISCREPANCY at tick 78: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,180 ERROR DISCREPANCY at tick 79: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,180 ERROR DISCREPANCY at tick 79: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,186 ERROR DISCREPANCY at tick 80: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,186 ERROR DISCREPANCY at tick 80: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,192 ERROR DISCREPANCY at tick 81: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,192 ERROR DISCREPANCY at tick 81: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,198 ERROR DISCREPANCY at tick 82: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,198 ERROR DISCREPANCY at tick 82: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,204 ERROR DISCREPANCY at tick 83: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,205 ERROR DISCREPANCY at tick 83: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,210 ERROR DISCREPANCY at tick 84: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,210 ERROR DISCREPANCY at tick 84: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,216 ERROR DISCREPANCY at tick 85: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,216 ERROR DISCREPANCY at tick 85: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,222 ERROR DISCREPANCY at tick 86: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,222 ERROR DISCREPANCY at tick 86: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,228 ERROR DISCREPANCY at tick 87: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,228 ERROR DISCREPANCY at tick 87: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,234 ERROR DISCREPANCY at tick 88: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,235 ERROR DISCREPANCY at tick 88: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,240 ERROR DISCREPANCY at tick 89: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,241 ERROR DISCREPANCY at tick 89: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,246 ERROR DISCREPANCY at tick 90: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,247 ERROR DISCREPANCY at tick 90: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,253 ERROR DISCREPANCY at tick 91: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,253 ERROR DISCREPANCY at tick 91: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,259 ERROR DISCREPANCY at tick 92: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,259 ERROR DISCREPANCY at tick 92: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,266 ERROR DISCREPANCY at tick 93: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,266 ERROR DISCREPANCY at tick 93: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,272 ERROR DISCREPANCY at tick 94: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,272 ERROR DISCREPANCY at tick 94: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,277 ERROR DISCREPANCY at tick 95: pop=997, births=0, deaths=2, net=-2, net_pop=-3 state_b=0 state_d=1 last_history=[{'tick': 48, 'day': 1, 'year': 1, 'population': np.int64(998), 'births': 0, 'deaths': 2}]
+2026-01-24 19:28:33,278 ERROR DISCREPANCY at tick 95: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:28:33,308 INFO tick=  100 pop= 997 births=      0 deaths=      3 net=     -3 net_pop=     -3 bΔ=0 dΔ=0 state_b=0 state_d=0
+2026-01-24 19:28:33,429 INFO Finished 120 ticks in 0.76s - final pop=997, births=0, deaths=3

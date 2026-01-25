@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>CENOP Performance Dashboard</title>
+  <style>body { font-family: Arial, sans-serif; margin: 24px; max-width: 900px; }</style>
+</head>
+<body>
+  <h1>CENOP Performance Dashboard</h1>
+  <p>This directory contains the nightly performance artifacts: <code>perf_history.csv</code>, <code>perf_plot.png</code>, and <code>perf_history.html</code>. The plot shows elapsed run time for short representative runs over time and a rolling median for trend smoothing.</p>
+
+  <h2>Quick guide</h2>
+  <ul>
+    <li><strong>Elapsed</strong>: wall-clock seconds for the short run (default: 500 ticks, 500 porpoise).</li>
+    <li><strong>Baseline</strong>: the reference value used to detect regressions in CI.</li>
+    <li><strong>CI threshold</strong>: PRs fail when elapsed &gt; baseline * 1.25 + 2s (25% slower + 2s tolerance).</li>
+  </ul>
+
+  <h2>Baseline update</h2>
+  <p>Nightly aggregator updates baseline only when the median of the last 7 successful runs improves by at least 3% (conservative policy). Updates appear as PRs for review.</p>
+
+  <h2>Visual</h2>
+  <p><a href="perf_history.html">View plot</a></p>
+
+  <hr>
+  <p>See <a href="/docs/PERFORMANCE.md">/docs/PERFORMANCE.md</a> for details.</p>
+  <p><strong>Contact:</strong> Arturas Razinkovas-Baziukas, Marine Research Institute, Klaipeda University — <a href="mailto:arturas.razinkovas-baziukas@ku.lt">arturas.razinkovas-baziukas@ku.lt</a> — ORCID: <a href="https://orcid.org/0000-0001-5060-5532" target="_blank">0000-0001-5060-5532</a></p>
+</body>
+</html>

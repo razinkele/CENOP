@@ -71,6 +71,8 @@ class PorpoisePopulation:
         self._energy_history = np.zeros((count, 5), dtype=np.float32)  # Last 5 daily averages
         self._energy_ticks_today = np.zeros(count, dtype=np.float32)   # Energy sum for current day
         self._tick_counter = 0  # Track ticks for daily updates
+        # Guard to prevent double-updating energy within the same tick
+        self._last_energy_update_tick = -1  # last global tick when energy was accumulated
         
         # Dispersal state
         self.is_dispersing = np.zeros(count, dtype=bool)
@@ -986,26 +988,7 @@ class PorpoisePopulation:
                     # If per-instance update fails, ignore but continue
                     pass
 
-        # Accumulate energy for current day
-        self._energy_ticks_today[mask] += self.energy[mask]
-        self._tick_counter += 1
-        
-        # At end of day (48 ticks), update history
-        if self._tick_counter >= 48:
-            self._tick_counter = 0
-            
-            # Calculate daily average
-            daily_avg = self._energy_ticks_today / 48.0
-            
-            # Shift history and add new day
-            self._energy_history[:, 1:] = self._energy_history[:, :-1]
-            self._energy_history[:, 0] = daily_avg
-            
-            # Reset daily accumulator
-            self._energy_ticks_today[:] = 0.0
-            
-            # Check for declining energy trend (5 consecutive days)
-            self._check_dispersal_trigger(mask)
+        # Energy accumulation moved to _update_energy_history(mask) to centralize logic and avoid duplication
             
     def _check_dispersal_trigger(self, mask: np.ndarray) -> None:
         """
@@ -1083,7 +1066,38 @@ class PorpoisePopulation:
         # In _update_energy_history: self._energy_history[:, 0] = daily_avg (newest at 0)
         # So "declining" means today (0) < yesterday (1) < day before (2)...
         
-# (moved into _check_dispersal_trigger implementation)
+    def _update_energy_history(self, mask: np.ndarray) -> None:
+        """
+        Accumulate per-tick energy into daily totals and update 5-day history when a day completes.
+        Safe to call multiple times per tick: each tick is only recorded once using _last_energy_update_tick.
+        """
+        # Prevent double-update within the same tick
+        if getattr(self, '_last_energy_update_tick', -1) == self._global_tick:
+            return
+
+        # Accumulate energy for current day
+        self._energy_ticks_today[mask] += self.energy[mask]
+        self._tick_counter += 1
+
+        # At end of day (48 ticks), update history
+        if self._tick_counter >= 48:
+            self._tick_counter = 0
+
+            # Calculate daily average
+            daily_avg = self._energy_ticks_today / 48.0
+
+            # Shift history and add new day (newest at index 0)
+            self._energy_history[:, 1:] = self._energy_history[:, :-1]
+            self._energy_history[:, 0] = daily_avg
+
+            # Reset daily accumulator
+            self._energy_ticks_today[:] = 0.0
+
+            # Check for declining energy trend (t_disp consecutive days)
+            self._check_dispersal_trigger(mask)
+
+        # Record this tick as updated
+        self._last_energy_update_tick = self._global_tick
                     
     def _start_dispersal(self, idx: int) -> None:
         """

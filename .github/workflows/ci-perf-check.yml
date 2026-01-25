@@ -58,7 +58,6 @@ jobs:
               const body = `**Perf check**\n- ticks: ${data.ticks}\n- porpoise: ${data.porpoise}\n- elapsed: ${data.elapsed.toFixed(2)}s\n- baseline: ${data.baseline_elapsed || 'n/a'}\n- threshold: ${data.threshold || 'n/a'}\n- regression: ${data.regression ? 'YES' : 'NO'}`
               github.rest.issues.createComment({owner: context.repo.owner, repo: context.repo.repo, issue_number: context.payload.pull_request.number, body})
             }
-            ci/perf/perf_history.csv
 
       - name: Print results
         if: always()

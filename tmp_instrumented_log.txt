@@ -1,0 +1,5 @@
+2026-01-24 19:21:46,828 INFO tick=   50 pop= 200 births=      0 deaths=      0 net=      0 net_pop=      0 bΔ=0 dΔ=0
+2026-01-24 19:21:47,161 INFO tick=  100 pop= 200 births=      0 deaths=      0 net=      0 net_pop=      0 bΔ=0 dΔ=0
+2026-01-24 19:21:47,479 INFO tick=  150 pop= 200 births=      0 deaths=      0 net=      0 net_pop=      0 bΔ=0 dΔ=0
+2026-01-24 19:21:47,945 INFO tick=  200 pop= 200 births=      0 deaths=      0 net=      0 net_pop=      0 bΔ=0 dΔ=0
+2026-01-24 19:21:47,946 INFO Finished 200 ticks in 1.48s - final pop=200, births=0, deaths=0

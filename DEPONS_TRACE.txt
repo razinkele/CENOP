@@ -1,0 +1,3398 @@
+--- Page 1 ---
+TRACE document: DEPONS 3.0 
+ 
+1 
+ 
+TRACE document 
+ 
+This is a TRACE document (“TRAnsparent and Comprehensive model Evaluation”), 
+which provides supporting evidence that our model: 
+DEPONS 3.0  
+was thoughtfully designed, correctly implemented, thoroughly tested, well understood, 
+and appropriately used for its intended purpose.  
+ 
+Release date: 2023-05-30 
+ 
+The rationale of this document follows:  
+Schmolke A., Thorbek P., DeAngelis D.L., Grimm V. (2010). Ecological 
+modelling supporting environmental decision making: a strategy for the future. 
+Trends Ecol. Evol. 25, 479-486. 
+and uses the updated standard terminology and document structure in: 
+Grimm V., Augusiak J., Focks A., Frank B., Gabsi F., Johnston A.S.A., Liu C., 
+Martin B.T., Meli M., Radchuk V., Thorbek P., Railsback S.F. (2014). Towards 
+better modelling and decision support: documenting model development, 
+testing, and analysis using TRACE. Ecol. Modell. 280, 129–139. 
+and 
+Augusiak J., Van den Brink P.J., Grimm V. (2014). Merging validation and 
+evaluation of ecological models to ‘evaludation’: a review of terminology and 
+a practical approach. Ecol. Modell. 280, 117–128.  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Text updates reflecting changes implemented in DEPONS 2.1 and 2.2 are highlighted 
+in green. Updates corresponding to changes in DEPONS 2.3 and 3.0 (DEPONS with 
+ships) are shown in orange.  
+See change log for details. 
+ 
+
+--- Page 2 ---
+TRACE document: DEPONS 3.0 
+ 
+2 
+ 
+ 
+Contents 
+ 
+1 
+Problem formulation ............................................................................................. 3 
+2 
+Model description .................................................................................................. 4 
+2.1 Purpose ............................................................................................................... 6 
+2.2 Entities, state variables, and scales .................................................................... 6 
+2.3 Process overview and scheduling....................................................................... 6 
+2.4 Design concepts ................................................................................................. 8 
+2.5 Initialization ....................................................................................................... 9 
+2.6 Input data .......................................................................................................... 11 
+2.7 Submodels ........................................................................................................ 14 
+3 
+Data evaluation .................................................................................................... 27 
+3.1 Parameters and data related to animal life history and energetics ................... 27 
+3.2 Parameters and data related to animal movements and response to noise ....... 30 
+3.3 Parameters controlling general model behavior ............................................... 45 
+4 
+Conceptual model evaluation .............................................................................. 49 
+4.1 Assumptions regarding fine-scale movements ................................................. 49 
+4.2 Assumptions regarding effects of noise ........................................................... 49 
+4.3 Use of constant vital rates ................................................................................ 50 
+4.4 Assumptions regarding energetics ................................................................... 50 
+4.5 Assumptions regarding large-scale movements ............................................... 51 
+5 
+Implementation verification ............................................................................... 51 
+5.1 Testing the fine-scale movement model and reactions to noise ....................... 52 
+5.2 Testing the large-scale movement model ......................................................... 53 
+5.3 Testing population dynamics ........................................................................... 53 
+6 
+Model output verification .................................................................................... 55 
+6.1 Types of model output ..................................................................................... 55 
+6.2 Comparison of model output and observations ................................................ 56 
+7 
+Model analysis ...................................................................................................... 56 
+7.1 Sensitivity analysis ........................................................................................... 57 
+7.2 Tests of emergence ........................................................................................... 60 
+8 
+Model output corroboration ............................................................................... 61 
+9 
+Literature cited .................................................................................................... 63 
+List of figures .............................................................................................................. 69 
+Changes in DEPONS version 2.0, 2.1, 2.2, 2.3 and 3.0............................................ 70 
+ 
+ 
+ 
+
+--- Page 3 ---
+TRACE document: DEPONS 3.0 
+ 
+3 
+ 
+1 Problem formulation 
+ 
+This TRACE element provides supporting information on: The decision-making context in which 
+the model will be used; a precise specification of the question(s) that should be answered with the 
+model, including a specification of necessary model outputs; and a statement of the domain of 
+applicability of the model, including the extent of acceptable extrapolations.  
+ 
+Summary: 
+Anthropogenic noise can induce behavioral responses in marine mammals, 
+which may influence the individual animals’ foraging success and, 
+ultimately, the dynamics of the population. Pile-driving noise associated 
+with construction of offshore wind farms and noise from shipping can have 
+pervasive effects on the harbor porpoise (Phocoena phocoena). In this study 
+we present version 3.0 of an agent-based model, the DEPONS model, and 
+demonstrate how it can be used for assessing population consequences of 
+pile-driving noise and ship noise on the porpoise population in the North 
+Sea and the inner Danish waters. Population dynamics emerge from the 
+individuals’ competition for a dynamically replenishing food resource and 
+from altered movements in the presence of noise. Model predictions are 
+influenced by the exact timing and spatial location of individual pile-
+driving events and other noise sources. 
+ 
+Marine populations experience increasing levels of noise from offshore renewable 
+energy developments, seismic surveys, military sonars and ship traffic (Tyack 2008; 
+Slabbekoorn et al. 2010; Nowacek et al. 2015). A comprehensive assessment of the 
+effects of anthropogenic disturbances on marine populations is therefore increasingly 
+demanded for management of marine ecosystems in Europe and the U.S. (EU Marine 
+Strategy Framework Directive 2008; White House Executive Order 2010). Many 
+types of offshore activities, including wind farm construction, also require an 
+environmental impact assessment (EIA) to be conducted prior to development. EIAs 
+are particularly focused at fragile and protected populations, and in European waters 
+the species mentioned on the Habitats Directive (EU 1992) are of concern. Critically, 
+they often require a cumulative assessment of the population level impacts of the 
+primary development in combination with other human activities in the region. The 
+model we present here can be used for conducting such EIAs of the cumulative 
+impacts of human activities and for spatial planning to ensure that offshore activities 
+affect populations as little as possible. 
+The model, termed DEPONS, links the dynamics of marine populations directly to the 
+individuals’ response to noise. Noise travels over long distances in marine 
+environments and induce behavioral responses of affected individuals (DeRuiter et al. 
+2013; Miller et al. 2015). This can lead to disruption of natural foraging behavior and 
+habitat displacement, with potential consequences for individual survival and 
+population dynamics. In the model, population dynamics emerge from the 
+
+--- Page 4 ---
+TRACE document: DEPONS 3.0 
+ 
+4 
+individuals’ competition for a dynamically replenishing food resource and from 
+altered movements and reduced foraging success when noise is present. The model 
+was calibrated to assess the impacts of noise from pile-driving of wind turbine 
+foundations on harbor porpoises (Phocoena phocoena) in the North Sea. The species 
+is listed on the EU Habitats Directive Annexes II and IV, and as pile-driving noise has 
+been observed to affect porpoises at distances >20 km (Tougaard et al. 2009; Brandt 
+et al. 2011) it is critical to understand this type of noise will influence the population. 
+Population densities and the time it takes the population to recover after pile-driving 
+ends can be measured either locally or for the entire population. 
+The model takes a data-driven, mechanistic approach to management of marine 
+populations. Although it is currently parameterized for assessing effects of wind farm 
+construction on the North Sea harbor porpoise  population it is based on general 
+principles of population regulation and resource availability (Sinclair 2003; Goss-
+Custard et al. 2006). This is likely to cause the model to generate robust predictions 
+for a wide range of environmental conditions (Grimm & Railsback 2005; Stillman et 
+al. 2015), and to make it suitable for other populations and species. 
+Although the model is likely to be robust to variations in environmental conditions, it 
+should be noted that it was parameterized for the North Sea harbor porpoise 
+population. As population dynamics are tightly linked to animal foraging behavior 
+and space use (home ranges), the model can only be extrapolated to areas outside the 
+North Sea if there are empirical data available for re-calibrating the movement 
+patterns. 
+DEPONS version 2.3 differs from version 1.1 (used by Nabe-Nielsen et al. 2018) in 
+several ways: (1) fine-scale movement patterns are calibrated based on harbor 
+porpoise tracking data collected in the North Sea, (2) the animals’ response to pile-
+driving noise were re-calibrated after updating their fine-scale movements, and (3) 
+their large-scale movement behavior was re-calibrated to ensure that home ranges and 
+movement tracks still resembled those of real animals. It differs from version 2.0 by 
+(4) re-enabling the Kattegat landscape and the special large-scale movement behavior 
+previously used in this landscape (Nabe-Nielsen et al. 2014), (5) the modelling of 
+sound propagation from pile-driving events was made more flexible (no longer 
+restricted do spherical spreading), (6) simulation of ships was enabled, and (7) prey 
+availability and salinity now update monthly instead of every three months. Version 
+2.2 differs from version 2.1 mainly by allowing users to use blocks files for counting 
+animals in specific regions when simulating population dynamics in the inner Danish 
+waters (see change log). Version 2.3 introduces a new way of calculating sound 
+source levels for ships (MacGillivray & de Jong 2021) and propagation loss and for 
+defining ship routes. Version 3.0 Introduces (1) a new way of modelling sound 
+propagation from ships and (2) the animals’ response to noise from ships (Frankish et 
+al. In prep).  
+2 Model description 
+ 
+This TRACE element provides supporting information on: The model. Provides a detailed written 
+model description. For individual/agent-based and other simulation models, the ODD protocol is 
+
+--- Page 5 ---
+TRACE document: DEPONS 3.0 
+ 
+5 
+recommended as standard format. For complex submodels it should include concise explanations of the 
+underlying rationale. Model users should learn what the model is, how it works, and what guided its 
+design. 
+ 
+ 
+Summary: 
+Here we present the complete description of DEPONS 3.0. The model 
+extends previous models for simulating impacts of anthropogenic 
+disturbances on harbor porpoise populations (Nabe-Nielsen et al. 2014, 
+2018). The model description follows the updated ODD (Overview, Design 
+concepts, Details) protocol (Grimm et al. 2010). It includes an overview of 
+the underlying fine-scale movement model, a description of how simulated 
+animals respond to noise and a description of the mechanisms that control 
+their large-scale movements. The model, which was implemented in Repast 
+Simphony 2.10.0 (http://repast.sourceforge.net), is open-source and 
+published under the GNU General Public License v2. It can be downloaded 
+from https://doi.org/10.5281/zenodo.2544525. 
+ 
+Section contents 
+2.1 Purpose ............................................................................................................... 6 
+2.2 Entities, state variables, and scales .................................................................... 6 
+2.3 Process overview and scheduling....................................................................... 6 
+2.4 Design concepts ................................................................................................. 8 
+2.4.1 
+Basic principles ......................................................................................... 8 
+2.4.2 
+Emergence ................................................................................................. 8 
+2.4.3 
+Adaptation ................................................................................................. 8 
+2.4.4 
+Objectives .................................................................................................. 8 
+2.4.5 
+Learning .................................................................................................... 9 
+2.4.6 
+Prediction .................................................................................................. 9 
+2.4.7 
+Sensing ...................................................................................................... 9 
+2.4.8 
+Interaction ................................................................................................. 9 
+2.4.9 
+Stochasticity .............................................................................................. 9 
+2.4.10 Collectives ................................................................................................. 9 
+2.4.11 Observation ............................................................................................... 9 
+2.5 Initialization ....................................................................................................... 9 
+2.6 Input data .......................................................................................................... 11 
+2.7 Submodels ........................................................................................................ 14 
+2.7.1 
+Porpoises detect noise ............................................................................. 14 
+2.7.2 
+Large-scale movements ........................................................................... 19 
+2.7.3 
+Fine-scale movements ............................................................................. 23 
+2.7.4 
+Update energy level and mortality .......................................................... 25 
+2.7.5 
+Update food distribution map ................................................................. 25 
+2.7.6 
+Update salinity map ................................................................................ 25 
+2.7.7 
+Update patch energy level ....................................................................... 25 
+2.7.8 
+Calculate mating dates ............................................................................ 26 
+2.7.9 
+Daily tasks ............................................................................................... 26 
+2.7.10 Update residual deterrence ...................................................................... 26 
+
+--- Page 6 ---
+TRACE document: DEPONS 3.0 
+ 
+6 
+ 
+2.1 
+Purpose 
+The model simulates how harbor porpoise population dynamics are affected by pile-
+driving noise emitted during construction of offshore wind farms and by noise emitted 
+from ships. The animals’ survival is directly related to their energy levels, and the 
+population dynamics are affected by noise through its impact on the animals’ foraging 
+behavior. By ensuring that the animals’ movement patterns, space use and reactions to 
+noise are realistic, the population dynamics should have the same causal drivers in the 
+model as in nature. 
+2.2 
+Entities, state variables, and scales 
+The model includes six kinds of entities: porpoises, wind turbines, ships, 
+hydrophones, landscape grid cells and cell groups. The porpoise agents are 
+characterized by their location, speed, movement direction, age, age of maturity, 
+energy level, pregnancy status, lactation status and movement mode. Each porpoise 
+agent is a ‘super individual’ (Scheffer et al. 1995) representing several real-world 
+female porpoises. Ship agents are characterized by their location, speed, length, type, 
+and noise source level. Hydrophones are characterized by their location. Wind turbine 
+agents are characterized by their location, noise source level, start time and end time 
+for their construction.  
+Simulations are by default based on a 835.2 km × 870 km landscape covering the 
+North Sea. The landscape is divided into 2088 × 2175 grid cells, each covering 400 m 
+× 400 m, and into cell groups covering 2 km × 2 km. The choice of cell sizes was 
+arbitrary. Cell groups do not have state variables but are characterized exclusively by 
+their location. They enable porpoises to navigate back to areas where they have been 
+before when using large-scale movements. Grid cells are characterized by their 
+coordinates, water depth, sea surface salinity, food level, maximum food level, 
+distance to land, sediment grain size, and by whether they are used as food patches or 
+not. The default landscape includes land and bodies of water with unknown food 
+levels (northern part of the North Sea; Figure 1), i.e., areas that are not used by 
+simulated porpoises (42.0% of the grid cells), food patches (0.67%) and water without 
+food (57.3%). Each of the 30549 food patches covers one grid cell. The food level is 
+always zero for grid cells that are not used as food patches. The distribution of the 
+food patches is identical to the one used by Nabe-Nielsen et al. (2013b, 2014), i.e. it 
+included on average 1000 food patches per 100 km × 100 km. The number of food 
+patches is arbitrary, but sufficiently large to enable simulated porpoises to develop 
+realistic movement patterns. The only other environmental parameter in the model is 
+the time of year. 
+2.3 
+Process overview and scheduling 
+The model proceeds in half-hour time steps and simulations typically cover 50 years. 
+At the beginning of each time step porpoises detect noise originating from active pile-
+driving operations and ships. This permits animals within a certain radius from the 
+noise source to know where the noise comes from and the received sound level. The 
+radius depends on the sound source level, propagation loss and a threshold sound level 
+below which they do not react to noise. 
+
+--- Page 7 ---
+TRACE document: DEPONS 3.0 
+ 
+7 
+The animals’ fine-scale movements are controlled by a combination of correlated 
+random walk (CRW) behavior (Turchin 1998), their ability to move towards known 
+food patches (directed by a spatial memory) and the extent to which they are deterred 
+by noise. CRW movements predominate as long as energy intake is high, else animals 
+gradually become more directed towards patches where they have previously found 
+food (Nabe-Nielsen et al. 2013b). The animals turn and slow down if there is land 
+ahead. Animals are deterred by noise, and the strength of the bias away from the noise 
+source depends on the received sound level. Deterrence from ships also depends on 
+the distance to the ships and the period of the day (day or night). The noise level does 
+not affect the length of their fine-scale moves. Animals can remain deterred for some 
+time after exposure to noise from piling stops, although to a decreasing extent (by 
+default this behavior is turned off). The updating of this ‘residual deterrence’ takes 
+place at the end of each time step. 
+The animals’ energy levels and mortality are tightly coupled in the model. An 
+animal’s energy level (scaled to lie in the range 0–20) increases when it encounters 
+food in a food patch but decreases with every move. Animals consume a decreasing 
+fraction of the food as their energy levels increase from 10 to 20, assuming that there 
+is a limit to how much energy they can store. Consumption of food causes their 
+energy levels to increase equivalently. Their energy expenditure per time step depends 
+on the season and whether they are lactating. The lower their energy levels, the higher 
+their risk of dying. Animals with lactating calves do not die but abandon their calves 
+instead. Individual energy budgets were constructed following established principles 
+of physiological ecology (Sibly et al. 2013). The animals move one at a time in an 
+order that is randomized after each half-hour time step. Animals whose energy levels 
+have been decreasing for some time stop using fine-scale movements and start using 
+large-scale movements to move towards more profitable areas (cell groups). 
+Food is only found in the food patches, which are randomly distributed across the 
+landscape. The maximum amount of food (energy) varies among patches and seasons. 
+It is derived from seasonal maps of the relative porpoise densities in the North Sea 
+(Figure 1; Gilles et al. 2016), assuming that porpoises are only observed in areas with 
+sufficient food. Updating of the food distribution map takes place four times per year. 
+The actual amount of food in the patches changes dynamically: When a porpoise 
+visits a patch, it consumes all or part of the food found there, but afterwards the food 
+level increases logistically until reaching the maximum level. The updating of patch 
+energy levels, i.e. replenishment of food, takes place at the end of every simulation 
+day, after porpoises have moved and consumed the food they encountered. 
+At the end of each day a number of life-history processes take place: Porpoises die if 
+they reach their maximum age. They may mate, depending on the time of the year and 
+their age. If they are already pregnant, they may give birth. If accompanied by a 
+lactating calf they may wean the calf, which results in the creation of a new, 
+independent individual in the model (if the calf is a female). Independent male 
+porpoises are not included in the model, as the number of males was not considered a 
+limiting factor for reproduction. The number of males is therefore not expected to 
+affect population dynamics. Once every year, new mating dates are calculated. 
+The food distribution map (Figure 1) is updated at the end of each month, i.e., on day 
+30, 60, …, and 330 (the model assumes 30 days per month). 
+
+--- Page 8 ---
+TRACE document: DEPONS 3.0 
+ 
+8 
+The different variables in the model are updated asynchronously, i.e., immediately 
+after a process has been executed. 
+2.4 
+Design concepts 
+2.4.1 Basic principles: The model builds on the assumption that the porpoise 
+population is food limited. Noise acts by scaring porpoises away and by 
+causing habitat fragmentation, thereby reducing the animals’ foraging 
+efficiency. The animals’ foraging efficiency is also influenced by their ability 
+to return to high quality areas they have previously visited, which assumes that 
+they have a spatial memory (Nabe-Nielsen et al. 2013b). The animals’ energy 
+budgets are represented using the model presented by Sibly et al. (2013). 
+2.4.2 Emergence: The equilibrium population size (carrying capacity) emerges from 
+a balance between mortality and reproduction, where mortality is linked to the 
+energy levels of individual animals (i.e., porpoise agents). The energy levels, 
+in turn, emerge from a balance between energy expenditure and food intake. 
+Animals adapt their fine-scale movement behavior to increase food intake and 
+fitness when they have not found food in the recent past. The size of the 
+animals’ home ranges emerges from their experience of the profitability of 
+different parts of the landscape, which guides their large-scale movements. 
+The animals’ spatial distribution emerges from their tendency to move towards 
+more profitable parts of the landscape when using large-scale movements and 
+from elevated mortality in unprofitable areas. Their age class distribution 
+emerges from their starvation-related mortality. 
+The rate at which local porpoise densities recover after a pile-driving operations end 
+emerge from the animals’ decision to either return to previously visited food patches 
+close to the pile-driving area, to utilize food patches in the area they were displaced 
+to, or to start using large-scale movements. Their choice between these three 
+alternatives depends on their energetic state and their success finding food in the area 
+they were displaced to. 
+2.4.3 Adaptation: Animals react to decreasing food levels in particular patches by 
+being less attracted to them. They react to decreasing energy levels by moving 
+towards parts of the landscape (i.e., cell groups) where they have previously 
+experienced a high energy intake rate. 
+2.4.4 Objectives: Animals attempt to optimize their foraging behavior, and hence 
+maximize their fitness, by returning to previously visited food patches when 
+correlated random walk movements result in a low food acquisition rate. They 
+also attempt to optimize foraging by moving towards more profitable areas 
+using large-scale movements when the fine-scale movements do not enable 
+them to sustain their energy levels. 
+
+--- Page 9 ---
+TRACE document: DEPONS 3.0 
+ 
+9 
+2.4.5 Learning: Animals do not learn from what other individuals have experienced. 
+They do remember the location of previously visited food patches for some 
+days (Nabe-Nielsen et al. 2013b), which enables them to adapt their fine-scale 
+movements. They also have a persistent memory of the energy intake rate 
+experienced in all cell groups they have visited since they were born, so they 
+gradually learn about the profitability of different parts of the landscape. This 
+guides their large-scale movement behavior. The animals learn/inherit a map 
+of the profitability and location of previously visited cell groups from their 
+mother before entering the model as independent individuals. 
+2.4.6 Prediction: Animals base their prediction of how much food they can gather in 
+different areas on their previous visits to those areas. 
+2.4.8 Sensing: Animals can sense if there is land in the direction they are about to 
+move, which permits them to turn towards deeper water to avoid the coast. 
+They also sense noise, which causes them to turn away from the noise emitting 
+object(s). The animals sense when their energy levels decrease, which causes 
+them to start using large-scale movements and to be more likely to abandon 
+their lactating calves or die. 
+2.4.9 Interaction: The modeled animals only interact indirectly via competition for 
+food. 
+2.4.10 Stochasticity: Fine-scale movement, mating date and mortality involve 
+stochastic events. The probability of surviving increases with increasing 
+energy levels. 
+2.4.11 Collectives: Social structure is not included in the model, but each porpoise 
+agent represents several real animals. 
+2.4.12 Observation: The number of animals, their energy levels, and the total amount 
+of food in the landscape are recorded daily. The number of animals in different 
+parts of the landscape can be counted (corresponding to areas defined in the 
+‘blocks file’), and the movement tracks of a specified number of animals can 
+be recorded to analyze for variations in home range sizes etc. Noise 
+propagating from ships can be measured using hydrophone agents placed at 
+fixed locations, and the extent to which animals react to noise can be recorded 
+for each half-hourly position. The age-class distribution and age specific 
+mortalities are recorded yearly. 
+2.5 
+Initialization 
+The model is by default initialized by creating 10,000 randomly distributed porpoise 
+agents. Their age-class distribution corresponds to that of stranded and by-caught 
+animals (Lockyer & Kinze 2003), and 68% of the adults in the model are pregnant 
+(parameter h in Table 1). The initial values for the animals’ energy levels, Ep, are 
+drawn from a normal distribution with mean 10 and standard deviation one (parameter 
+Einit). Mating date (tmating) is a random normal variable with mean 225 and standard 
+deviation 20. The scenarios presented by Nabe-Nielsen et al. (2018) assume that 
+simulations start on 1 January 1981. The North Sea wind-farm construction scenarios 
+include 3900 piling operations distributed on 65 wind farms that were planned to be 
+
+--- Page 10 ---
+TRACE document: DEPONS 3.0 
+ 
+10 
+built in the period 2011–2020 as part of the European Union 2020 goals (Directive 
+2009/28/EC, http://eur-lex.europa.eu/legal-
+content/EN/ALL/?uri=CELEX%3A32009L0028, summarized in 
+http://www.ewea.org/fileadmin/ewea_documents/documents/publications/reports/Sea
+nergy_2020.pdf). The food levels in the patches are initially set to the location 
+specific maximum food levels for 1 January.  
+Model simulations can be initialized and executed through a Graphical User Interface 
+(GUI) or through a batch procedure. The GUI allows for one simulation run at a time 
+and enables the user to view the porpoise movements and distribution across the 
+landscape, the location and construction period of wind farms, the movements of 
+ships, the location of hydrophone agents, the population size, energy levels of 
+porpoise agents, energy levels in food patches distributed across the landscape, as 
+well as the age class distribution of the population. During a simulation the porpoise 
+agents change color depending on their energy level, from green (optimal, associated 
+with low mortality) to orange, yellow and red as the energy level decreases. Porpoise 
+agents change color to purple when deterred by noise. In the batch procedure the user 
+can initialize multiple simulations that run simultaneously, but the simulations are not 
+visualized on the screen, and no information on age class distribution is provided. 
+Batch simulations are defined using batch parameters stored in .xml files. These can 
+be generated from within the DEPONS program. The default parameter file is 
+batch_params.xml, which is distributed with DEPONS. In the batch simulations, 
+multiple values can be specified for parameters. Each value can be specified as either 
+a constant (single value), a number range with from, to and step values or as a list of 
+values. When the batch simulation is started, a simulation is created for each possible 
+combination of parameter values (this is called parameter unrolling to cover the 
+parameter space). Multiple simulations can be run simultaneously depending on the 
+configuration in the "Hosts" tab. The default is to run two concurrent simulations 
+(instances) on the local machine (the <user>@localhost of the left). It is possible to 
+distribute the simulation runs to multiple hosts via the Secure Shell (SSH) protocol. 
+Once all the simulations have completed, the individual output files are collected and 
+combined into output files containing the values across all the simulation runs. An 
+additional column is added to distinguish the individual runs. Once the simulation(s) 
+has completed, the model output is automatically written out for both the GUI and 
+batch procedure. 
+ 
+Figure 1. Food distribution maps derived from seasonal maps of porpoise densities in the North Sea for 
+(a) spring, (b) summer, and (c) autumn (Gilles et al. 2016). Green shows areas with high porpoise 
+
+--- Page 11 ---
+TRACE document: DEPONS 3.0 
+ 
+11 
+densities, grey shows land and white indicates missing data. No porpoise density map was available for 
+the winter, so the map from the autumn was used instead. 
+2.6 
+Input data 
+Seven different kinds of background maps are used in the model. The maximum 
+amount of food in each food patch was derived from maps of the porpoise densities in 
+the different parts of the North Sea (see Gilles et al. 2016 for details). These are 
+included as twelve raster files with a spatial resolution of 400 m × 400 m, one for 
+each month. The spring estimate (Figure 1a) was used for the months March–May, 
+summer was used for June–August, and autumn estimate was used for September–
+February (there is no winter estimate). There is no food outside the food patches. The 
+raster file for January is read in from the file ‘prey0000_01.asc’ at the start of 
+simulations. When running multi-year simulations, there is an option to provide 
+separate files for different years by replacing the ‘0000’ in the file name with the year, 
+and it is also possible to use the same file for all months by changing the month 
+number to ‘XX’. The ETRS89 projection (EPSG:3035) is used in North Sea 
+simulations (including DanTysk and Gemini landscapes) and UTM 32 N 
+(EPSG:32632) is used in the inner Danish waters (the Kattegat landscape). In 
+simulations based on UserDefined landscapes any coordinate reference system can be 
+used. The raster maps were standardized to have a mean value of 0.3914, 
+corresponding to the mean food level previously used in simulations of the inner 
+Danish waters population (Nabe-Nielsen et al. 2014). Six additional types of raster 
+data with the same extent and resolution are used: a ‘patches’ file describing the 
+location of the food patches, a ‘bathymetry’ file that allows animals to avoid water 
+depths <wmin (see parameter list), a ‘distance-to-coast’ file (allowing animals to turn 
+when approaching land), a ‘sediment grain size’ file that is used to model ship noise 
+propagation, a ‘blocks’ file that makes it possible to count the number of porpoises in 
+user defined areas, and twelve different ‘salinity’ files, one for each month (labeled 
+the same way as the ‘prey’ files). Blocks files can be generated using the 
+make.blocksraster function in the DEPONS2R package for R (https://CRAN.R-
+project.org/package=DEPONS2R). Salinity data were downloaded from the 
+Copernicus Marine Environment Monitoring Service (http://marine.copernicus.eu) 
+and derived from the Forecasting Ocean Assimilation Model 7 km Atlantic Margin 
+model (FOAM AMM7) for the North Sea and the Baltic Sea Physics Reanalysis 
+product (BALTICSEA_REANALYSIS_PHY_003_011) for the Kattegat landscape 
+(monthly data from 2021; accessed in March 2023). Median sediment grain size data 
+were derived from an extension of Bockelmann et al. (2018)'s map which was created 
+by establishing a relationship between median grain size and the Folk classification 
+scheme (Folk 1954; see appendix 1 for details).  
+Simulations include details about pile-driving events. These are provided in a tab 
+separated ‘wind-farms’ text file with columns id (identifier; missing values allowed), 
+x, y (coordinates), impact (sound source level, dB SEL @1m), start and end (timing 
+of pile-driving, measured in number of half-hour time steps since the beginning of the 
+simulation; only integer values accepted). Noise is emitted during both the start and 
+the end time step. Note that each year consists of 360 × 48 = 17,280 ticks. The sound 
+source level is 234 dB SEL in the default North Sea pile-driving scenarios, 
+corresponding to the value calculated for the Gemini wind farm (see the Submodels 
+
+--- Page 12 ---
+TRACE document: DEPONS 3.0 
+ 
+12 
+section for details on calculation of noise source levels and how noise from wind 
+turbine agents was represented in the model).  
+ 
+Figure 2. Positions of wind turbines in the three pile-driving scenarios used in this study. The red 
+square on (a) indicates the 50 km × 50 km area shown in greater detail in (b). 
+Three different scenarios are included to allow users to investigate population effects 
+of wind farm construction in the North Sea. These were the scenarios used by Nabe-
+Nielsen et al. (2018). All scenarios include 65 wind farms with the same spatial 
+distribution (Figure 2). The number of wind farms per country is the same in all 
+scenarios (Denmark: 1 wind farm; Germany: 21; Netherlands: 14; Belgium: 5; UK: 
+24), which is the number of wind farms that would enable the individual countries to 
+meet the EU 2020 target for renewable energy development (EU 2009). Wind farms 
+were selected in areas with water depths between 15–40 m and >4 km from any 
+neighboring wind farm. Aside from these rules, wind farms were placed at random, at 
+the same locations in all North Sea scenarios. Each wind farm includes 60 wind 
+turbines distributed in a regular 1078 m x 1078 m grid. 6 MW turbines constructed 
+with monopile foundations was assumed throughout. Turbines are installed using pile-
+driving, and installation of a single foundation takes two hours. No noise mitigation or 
+soft start is included in the scenarios. The turbines are constructed in the 10-year 
+period starting 1 January 2011, with 6–7 farms being built per year. In Scenario 1 
+(called “Random, slow” in Nabe-Nielsen et al. 2018), the parks are constructed in 
+random order, in Scenario 2 (“Ordered, slow”) the parks in the eastern North Sea are 
+built first, followed by the ones in the western North Sea (starting in the north in each 
+area). In Scenario 3 (“Random, fast”) parks are constructed in the same order as in 
+Scenario 1, but the time between individual pilings within the wind farms is halved 
+(from 48 hours to 24 hours). The start time of the first pilings in the different wind 
+farms is the same in scenarios 1 and 3.  
+
+--- Page 13 ---
+TRACE document: DEPONS 3.0 
+ 
+13 
+ 
+Figure 3. Data from the Gemini wind farm construction site used for calibration of the porpoises’ 
+response to noise. (a) Virtual landscape including wind turbine construction sites (black dots) and 
+CPODs (red dots). The black line shows the border to Germany. (b) Received sound levels recorded 
+using hydrophones at different distances [m] from two pilings. Sound source levels (SL) and sound 
+transmissions were calculated assuming spherical spreading of sound. 
+A different landscape, combined with a different set of simulated pile-driving events, 
+was used for calibration of the parameters c and T (see parameter list). The landscape 
+was a 400 × 400 cell subset of the North Sea landscape covering the area around the 
+Gemini wind farm construction site in the Netherlands (Figure 3). The landscape 
+included a number of virtual CPODs (i.e., acoustic monitoring stations that detect the 
+presence of porpoises based on the clicks they emit while foraging and navigating) 
+whose positions corresponded to those of real CPODs deployed during wind farm 
+construction. The 160 pile-driving events had the exact same positions as those of the 
+real pile-driving events. Their sound source levels (‘impact’; 234 dB SEL @1m) were 
+calculated based on data from four hydrophones placed near two of the pile-driving 
+locations (Figure 3b). SEL provides a measure of the energy transmitted by one single 
+blow expressed as a level. The energy is normalized to a time of one second. See 
+details on calibration of the porpoises’ response to noise in the section ‘Data 
+evaluation’. 
+In DEPONS 2.1 and later it is possible to simulate ships that move along pre-defined 
+routes. These are defined using virtual ‘buoys’ that also specify the speed ships should 
+move at until encountering another buoy and the number of ticks that ships should 
+pause by the buoy before moving further. The required input data are stored in files 
+named ‘ships.json’ in the directory for the selected landscape. Ships are characterized 
+by their name, speed, type and length, and the route they should move along. Speeds 
+are measured in knots. Data on ships and routes are read into DEPONS from a file 
+named ‘ships.json’ which can be created using the DEPONS2R package for R 
+(https://CRAN.R-project.org/package=DEPONS2R). In DEPONS 2.3 and later this 
+file no longer includes information on the level of the sound emitted by individual 
+ships, which is instead calculated within DEPONS. An example file is provided for 
+the Kattegat landscape. Ship routes are defined using the same coordinate reference 
+system as the underlying landscape.  
+
+--- Page 14 ---
+TRACE document: DEPONS 3.0 
+ 
+14 
+In DEPONS 2.3 and later, the positions of hydrophones are defined in files named 
+‘hydrophones.csv’. Each row contains the x and y coordinates of one hydrophone. 
+In DEPONS 3.0 and later, sound propagation loss for ship noise is modelled using the 
+Weston flux integral method (Weston 1959). Ships are assumed to produce a 
+negligible amount of noise (source level (SL) = 0) if they are on land. Simulated 
+porpoises react to ship noise by being deterred and the deterrence in part depends on 
+the period of the day (see section 2.7.1 for details). The period of the day, ‘day’ vs. 
+‘night’ is defined by the timing of sunrise and sunset on a given day in a csv file 
+named ‘suntimes.csv’, which is stored in the directory of all available landscapes. If 
+no ‘suntimes.csv’ file is available, then the default is for the simulation to run during 
+daytime. 
+2.7 
+Submodels 
+The different submodels are executed in the order they are listed below (see overview 
+in ‘Process overview and scheduling’). Names of variables and parameters are 
+retained from Nabe-Nielsen et al. (2013b, 2014, 2018). 
+2.7.1 Porpoises detect noise 
+At the beginning of each time step, porpoises register the noise from active pile-
+driving operations and nearby ships. This is done by letting the wind turbine and ship 
+agents emit noise, thus producing a dynamic soundscape. Noise source levels (SL) and 
+positions of turbines and timings of pile-driving events are provided as input data. 
+Noise source levels of ships are calculated based on ship length, size, speed and 
+frequency of interest following MacGillivray & de Jong (2021). Source and received 
+sound pressure levels are calculated for the decidecade band centered at 16 kHz. 
+Animals react to noise only up to a certain distance from the sound source. For pile-
+driving noise, this distance is determined by the response threshold (T) and the extent 
+to which sound is transmitted in water. T was determined based on data from the 
+Gemini wind farm using pattern-oriented modeling. For ships, porpoises react from a 
+minimum distance defined by dmin_deter_ships up to 10 km from a given ship (Table 3). 
+The sound level received by the animals (Rpiling) from pile-driving events was 
+modeled assuming spherical spreading during calibration of T (Figure 4a; Urick 
+1983). When  
+Rpiling = SL – 𝛽̂log10(dist(p,k)) – 𝛼̂(dist(p,k)) 
+Eqn. A1 
+where dist(p,k) is the distance from the porpoise p to the pile-driving event k, 
+spherical spreading occurs when the spreading loss factor 𝛽̂ is 20 and the absorption 
+coefficient 𝛼̂ is zero. Noise emitted by a pile-driving operation only influences 
+animals out to a certain distance, distmax, where Rpiling = T. By rearranging Eqn. 1 and 
+setting for 𝛽̂=20 and 𝛼̂=0 we get  
+distmax = 10(SL – T) / 20  
+Eqn. A2 
+Each pile-driving event equips all porpoises within the distance distmax with a 
+deterrence vector that points directly away from the noise source (Figure 4). The 
+length of the deterrence vector VD is determined by  
+|VD| = c(Rpiling – T) 
+Eqn. A3 
+
+--- Page 15 ---
+TRACE document: DEPONS 3.0 
+ 
+15 
+assuming a linear relationship between the received sound level and the strength of 
+reaction. Here c is the deterrence coefficient. Each animal’s fine-scale movements are 
+only influenced by the sound source that yields the largest deterrence vector.  
+Animals can be assumed to sense the distance to anthropogenic noise sources, (as 
+demonstrated by DeRuiter et al. 2013) and to stop being deterred when they are 
+further away from the noise than a certain distance. When dist(p,k) > dmax_deter the 
+length of the deterrence vector is therefore set to 0. When using the default value of 
+dmax_deter (Table 2), this parameter does not affect population dynamics. The parameter 
+is only included to make it possible to assume a maximum deterrence distance in 
+other studies. 
+ 
+Figure 4. Relationship between received sound level (R) and deterrence behavior in response to pile-
+driving sounds. (a) Decrease in Rpiling with distance assuming spherical spreading of pile-driving noise 
+and source levels as observed in Gemini (wind farm constructed without noise mitigation; 
+SEL@1m=234 dB = SL in eqn. A1). The green bar shows the length of the deterrence vector for a 
+porpoise located 4 km from the pile-driving, |VD|, i.e. the bias away from the noise. VD can also 
+represent deterrence from ship noise depending on which noise source causes the largest impact, i.e., 
+largest |VD| (see Eqn. A35).  Here distmax= 11350 m. (b) Vector VS represents the correlated random 
+walk during one 30-min time step, VM represents the spatial memory move and VD represents the 
+deterrence from noise. V is the standardized resultant vector, i.e. the actual move in the presence of 
+noise, here shown for c=10 (deterrence coefficient; arbitrary value) and Threshold (T)=152.9 dB.  
+The sound pressure level received by porpoises from ships (Rship; dB re 1 Pa) is 
+calculated as follows: 
+𝑅ship = 𝐿𝑠,ship −𝑁𝑃𝐿 
+Eqn. A4 
+where Ls,ship is a ship’s underwater radiated noise source level (in dB re 1 Pa m), 
+calculated as a function of ship type, speed and length following the JOMOPANS-
+ECHO source model (MacGillivray & de Jong 2021), and for the decidecade band 
+centred on 16 kHz (f). NPL is propagation loss (dB re 1 m) and is based on the Weston 
+flux integral method (Weston 1959):  
+
+--- Page 16 ---
+TRACE document: DEPONS 3.0 
+ 
+16 
+𝑁PL = −10 ⋅log10(𝐹P) 
+Eqn. A5 
+where FP is the propagation factor (Harrison 2003), for which the following formula 
+holds: 
+𝐹𝑃= √
+π
+𝜂𝑊ship(𝐷ship/1000)3 ⋅erf (√
+𝜂(𝐷ship/1000)
+𝑊𝑠ℎ𝑖𝑝
+ ⋅𝜃𝑐𝑟𝑖𝑡) ⋅exp(−2𝛼𝑤𝐷𝑠ℎ𝑖𝑝/1000) Eqn. A6 
+where Dship is the range between a ship and a porpoise agent (km), Wship is water depth 
+(m) at the ship location (and is extracted from the bathymetry layer available in the 
+different DEPONS landscapes), 𝜂 (Np/rad) is the seabed’s reflection loss gradient, 𝛼𝑊 
+(Np/m) is attenuation of sound by water, erf(x) is the error function, and 𝜃𝑐𝑟𝑖𝑡 (rad) is 
+the critical propagation grazing angle:  
+𝜃𝑐𝑟𝑖𝑡= acos (
+1
+𝑣)                
+Eqn. A7 
+where 𝑣 is the ratio of sound speed in sediment (m/s) to sound speed in water (m/s). 
+The seabed’s reflection loss gradient 𝜂 is calculated following Ainslie (2010) as: 
+𝜂= 2𝑤𝜀
+𝑣
+(𝜈2−1)3/2   if 𝜈> 1 
+Eqn. A8 
+𝜂=  2𝑤
+𝑣
+(1−𝑣2)1/2    if 𝜈< 1 
+Eqn. A9 
+𝜂=  0                     if 𝜈= 1 
+Eqn. A10 
+where 𝑤 is the ratio of sediment density (kg/m3) to density of water (kg/m3). These 
+parameters were assumed to be constant between the source (ship) and receiver 
+(porpoise); with v =1700/1500 m/s and w = 1500/1000 kg/m3. 𝜀 is related to the 
+sediment attenuation coefficient s (dB/; and found in Table 4.17 of Ainslie 2010) by  
+𝜀= 𝛽𝑠⋅ 
+log𝑒(10)
+40𝜋                
+Eqn. A11 
+Finally, attenuation of sound in water (𝛼𝑊; dB/m) is based on Van Moll’s absorption 
+formula (Van Moll et al. 2009), which estimates this parameter as a function of 
+frequency (Hz), pH (measured on the NBS scale), salinity (S; g/kg or ppt), 
+temperature (𝜉; degrees Celsius) and water depth (z; m):  
+𝛼𝑊= (𝛾1 + 𝛾2 + 𝛾3)/1000        
+Eqn. A12 
+𝛾1 =  0.101 ⋅  
+𝑓1(
+𝑓
+1000)2
+𝑓12+(
+𝑓
+1000)2 ⋅exp (
+pH−8
+0.57 )           
+Eqn. A13 
+𝑓1 =  0.91 ⋅(
+𝑆
+35)
+0.5
+⋅exp (
+𝜉
+33)             
+Eqn. A14 
+𝛾2 =  0.56 ⋅(1 + 
+𝜉
+76) (
+𝑆
+35) (
+𝑓2(
+𝑓
+1000)2
+𝑓22+(
+𝑓
+1000)2) ⋅exp (−
+𝑧
+4900)            
+Eqn. A15 
+
+--- Page 17 ---
+TRACE document: DEPONS 3.0 
+ 
+17 
+𝑓2 =  46.6 ⋅exp (
+𝜉
+18)           
+Eqn. A17 
+𝛾3 = 𝐴3𝑃3(
+𝑓
+1000)2           
+Eqn. A18 
+𝐴3 =  4.937 ⋅10−4 −2.59 ⋅10−5𝜉+ 9.11 ⋅10−7𝜉
+2 −1.50 ⋅10−8𝜉
+3    if 𝜉 ≤20° C       Eqn. 
+A19 
+𝐴3 =  3.964 ⋅10−4 −1.146 ⋅10−5𝜉+ 1.45 ⋅10−7𝜉
+2 −6.5 ⋅10−10𝜉
+3    if 𝜉> 20° C       Eqn. 
+A20 
+𝑃3 =  1 −3.83 ⋅10−5𝑧+ 4.9 ⋅10−4 (
+𝑧
+1000)
+2
+           
+Eqn. A21 
+To reduce computational load, 𝜉 and pH are kept constant using typical values for the 
+Baltic (𝜉 = 10 degrees Celsius and pH = 8) and since depth dependence is negligible 
+for depths smaller than 500 m, z = 0 m. Salinity values are extracted from monthly 
+layers available in the different DEPONS landscapes. Water attenuation (𝛼𝑤) is 
+usually given in dB/m and can be converted to Np/m using:  
+𝛼𝑤[
+Np
+m ] = 𝛼𝑤[
+dB
+m] .
+log𝑒(10)
+20
+           
+Eqn. A22 
+Deterrence from this disturbance (VD) is calculated for every 1-minute ‘micro-tick’ 
+(VD_ship_microtick) within a tick (30 micro-ticks per tick, see Figure 5): 
+𝑉𝐷= Σ𝑉𝐷_𝑠ℎ𝑖𝑝_𝑚𝑖𝑐𝑟𝑜𝑡𝑖𝑐𝑘  
+Eqn. A23 
+𝑉𝐷_𝑠ℎ𝑖𝑝_𝑚𝑖𝑐𝑟𝑜𝑡𝑖𝑐𝑘= Ω𝑉𝐷_𝑠ℎ𝑖𝑝_𝑢𝑛𝑖𝑡𝑦𝑐𝑠ℎ𝑖𝑝  
+Eqn. A24 
+where Ω determines whether a deterrence occurs or not according to ω, a random 
+number in the range [0; 1] and pship, the probability of a porpoise reacting to a given 
+ship in each micro-tick:  
+Ω = {1, 𝜔< 𝑝𝑠ℎ𝑖𝑝
+0, 𝜔≥𝑝𝑠ℎ𝑖𝑝 
+Eqn. A25 
+Furthermore, cship determines the magnitude of deterrence and VD_ship_unity  is a unity 
+vector pointing directly away from the ship. Here, pship and cship are determined by the 
+noise received from the loudest ship (Rship), the distance between an animal and the 
+loudest ship (dship), and the period of the day (‘𝜎’- day vs. night; Figure 6) according 
+to:  
+𝑝𝑠ℎ𝑖𝑝= inv. logit(𝑝𝑠ℎ𝑖𝑝_𝑖𝑛𝑡_𝜎+ 𝑝𝑠ℎ𝑖𝑝_𝑛𝑜𝑖𝑠𝑒_𝜎𝑅𝑠ℎ𝑖𝑝_𝑚𝑎𝑥+ 𝑝𝑠ℎ𝑖𝑝_𝑑𝑖𝑠𝑡_𝜎𝑑𝑠ℎ𝑖𝑝+
+ 𝑝𝑠ℎ𝑖𝑝_𝑛𝑜𝑖𝑠𝑒_𝑥_𝑑𝑖𝑠𝑡_𝜎𝑅𝑠ℎ𝑖𝑝_𝑚𝑎𝑥𝑑𝑠ℎ𝑖𝑝) 
+Eqn. A26 
+𝑐𝑠ℎ𝑖𝑝= exp(𝑐𝑠ℎ𝑖𝑝_𝑖𝑛𝑡_𝜎+ 𝑝𝑠ℎ𝑖𝑝_𝑛𝑜𝑖𝑠𝑒_𝜎𝑅𝑠ℎ𝑖𝑝_𝑚𝑎𝑥+ 𝑝𝑠ℎ𝑖𝑝_𝑑𝑖𝑠𝑡_𝜎𝑑𝑠ℎ𝑖𝑝+
+ 𝑝𝑠ℎ𝑖𝑝_𝑛𝑜𝑖𝑠𝑒_𝑥_𝑑𝑖𝑠𝑡_𝜎𝑅𝑠ℎ𝑖𝑝_𝑚𝑎𝑥𝑑𝑠ℎ𝑖𝑝) 
+Eqn. A27 
+where pship_int_, pship_noise_, pship_dist_, pship_noise_x_dist_, cship_int_, cship_noise_, cship_dist_, 
+c ship_noise_x_dist_  are coefficients (see Table 3 for standard values) linking pship and cship 
+
+--- Page 18 ---
+TRACE document: DEPONS 3.0 
+ 
+18 
+to noise, distance and period of the day following Frankish et al. (In prep). pship and 
+cship are obtained by back-transforming from the logit and log scales, respectively, and 
+Rship_max and dship are scaled versions of noise and distance values measured in 
+Frankish et al. (In prep).  
+ 
+ 
+Figure 5. Within a tick, ship tracks are broken down into 30 micro-ticks. Deterrence at the tick-level 
+(VD) is the sum of deterrence vectors estimated at the micro-tick level (VD_ship_microtick). VD_ship_microtick is a 
+movement vector pointing directly away from a ship at a given micro-tick.  
+
+--- Page 19 ---
+TRACE document: DEPONS 3.0 
+ 
+19 
+ 
+Figure 6: The probability of a porpoise being deterred (pship) by noise from a ship and the magnitude of 
+deterrence (cship; meters moved per minute away from the ship) at the end of a tick depends on the 
+noise received from a ship (Rship), the distance between the porpoise and the ship (Dship) from which 
+Rship originates, and the period of the day (: day vs. night).  
+Frankish et al. (In prep) used a range-dependent approach for modelling Rship, which 
+considers change in water depth between a source (ship) and receiver (porpoise). 
+However, in DEPONS, a range-independent approach was used (i.e., assuming 
+constant depth) to reduce computational load. This substitution was deemed suitable 
+as mean differences in Rship using both approaches for the decidecade band centered 
+on 16 kHz was negligible for the range of ship and porpoise locations considered in 
+Frankish et al. (In prep; mean difference of 0.23 +/- 1.23 dB re 1 Pa2). Furthermore, 
+relationships between pship, cship, Rship and Dship were the same using both approaches 
+(Figure 5 and see Figure 4 in Frankish et al. In prep).  
+2.7.2 Large-scale movements 
+We distinguish large-scale movements from the fine-scale movements described in 
+section 2.7.3. In each time step porpoises take either a large-scale movement step or a 
+
+--- Page 20 ---
+TRACE document: DEPONS 3.0 
+ 
+20 
+fine-scale movement step depending on their movement mode (updated in the 
+submodel ‘Life history processes’). 
+ 
+Figure 7. Tracks of 34 free-ranging porpoises equipped with ARGOS satellite tags. Six animals were 
+tagged by Rømø (southern Denmark), the rest were tagged by Skagen (northern Denmark). Tracks 
+were interpolated to one position per day using a state-space model. Each track includes100 positions. 
+Animals that use large-scale movements are guided by a persistent spatial memory 
+(PSM) of the energy intake rates they have achieved in each of the different parts (cell 
+groups) of the landscape they have visited since they were born. Fine-scale 
+movements, in contrast, are guided by a gradually decreasing memory of the foraging 
+success in recently visited food patches. The rationale for introducing PSM to guide 
+large-scale movements is that satellite tagged animals tend to return to the same 
+general part of the landscape after having been elsewhere for several weeks or months 
+(Figure 7). Such behavior must be guided by a spatial memory. Often such large-scale 
+movements gradually switch from being relatively directed to becoming increasingly 
+exploratory, which would enable animals to search for new foraging grounds in the 
+vicinity of areas where they previously experienced a high food intake rate. 
+ 
+
+--- Page 21 ---
+TRACE document: DEPONS 3.0 
+ 
+21 
+ 
+Figure 8. Memory-based large-scale movement behavior used in DEPONS 2.0, 2.1 and 2.2. (A) When 
+starting to use this behavior, porpoises move towards the most profitable 2 km × 2 km cell group (B) in 
+the preferred distance (PSM_dist). The distance from A to B is dtarget. All large-scale moves have the 
+length ddisp and the total distance moved in a particular large-scale movement event is dcum. After each 
+large-scale move, the porpoise makes a random turn . The turning angle increases the further the 
+porpoise has moved from the starting point. The animal switches to using fine-scale moves when 
+dcum=0.95  dtarget (at point C), but it may start using large-scale movements again at a later point (D). 
+2.7.2.1 PSM-Type2 
+The PSM large-scale movement behavior used in DEPONS 1.1, 2.0 to 2.3 is labeled 
+PSM-Type2. Animals switch from using fine-scale to large-scale movements when 
+their energy levels have been decreasing for ttodisp days (following Nabe-Nielsen et al. 
+2014). All large-scale moves have the length ddisp (Figure 8). 
+To enable animals to use PSM movements, the entire landscape is divided into 2 km × 
+2 km cell groups. When animals start using PSM-Type2 large-scale movements, they 
+turn towards the center of the most profitable cell group at the preferred distance 
+(PSM_dist ± PSM_tol, see Table 2), i.e. the group where they have previously 
+obtained the highest energy intake rates (calculated as total amount of food eaten 
+divided time spent in each cell group). The distance to the center of this cell group is 
+dtarget. Initially, PSM_dist is drawn from a normal distribution for each animal, but 
+calves subsequently inherit the preferred distance from their mothers. Animals that 
+have visited <50 cell groups move towards a random cell group at the preferred 
+distance (burn-in behavior). Turning angles  between consecutive steps increase 
+logistically,  
+ = PSM_angle 2/(1+e–z/PSM_log) 
+Eqn. A28 
+
+--- Page 22 ---
+TRACE document: DEPONS 3.0 
+ 
+22 
+where 𝜔2 is a random number in the range [–1; 1] and z is determined by  
+z = (3 × dcum / dtarget) – 1.5 
+Eqn. A29 
+Here dcum is the cumulated distance moved using in the current large-scale movement 
+event, and PSM_log is >0 (see Table 2). Turning angles gradually increase from a 
+value close to 0 (depending on the choice of PSM_log) to a maximum of PSM_angle 
+(see Figure 9). 
+Animals stop using large-scale movements (a) once the cumulated distance moved is 
+0.95 × dtarget, (b) if the next step would have caused them to move to an area with 
+water depth<wdisp or (c) across the border of the landscape, or (d) if their daily average 
+energy levels increase to a level that is higher than any of the daily energy levels they 
+have experienced over the previous seven days, or (e) if they move into an area with 
+high noise levels (where R>T). 
+New independent calves inherit their mothers’ preferred large-scale movement 
+distances (PSM_dist), as well as the knowledge about the relative profitability of 
+different parts of the landscape. See Section 3.2.4 for details regarding calibration of 
+parameters. 
+ 
+ 
+Figure 9. Simulated change in turning angle distribution as porpoise agents approach the target cell 
+group while using PSM-Type2 large-scale movements. In this example, PSM_angle was set to 40 and 
+PSM_log to 0.5. Each dot represents a large-scale move (1987 steps within 26 distinct large-scale 
+movement events). Angles are larger for animals that have moved a larger proportion of the initial 
+distance to their targets. 
+2.7.2.2 Undirected movements 
+DEPONS 2.0 and later also include a simple large-scale movement behavior, where 
+each step is of length ddisp and turning angles between subsequent steps are drawn at 
+random in the range [–PSM_angle/2; PSM_angle/2]. The first step is taken in a 
+
+--- Page 23 ---
+TRACE document: DEPONS 3.0 
+ 
+23 
+random direction. This movement behavior cannot be calibrated to produce home 
+ranges that resemble those of North Sea animals, but has been included as a simple 
+null model. Conditions for turning this behavior on and off are the same as for PSM-
+Type2. 
+2.7.2.3 Inner Danish waters movements 
+DEPONS 2.1 and 2.2 include a large-scale movement behavior which enables animals 
+to navigate through the narrow straits in the inner Danish waters without being 
+trapped in bays etc. This behavior, which is called InnerDanishWaters movements, 
+was described as dispersal behavior by Nabe-Nielsen et al. (2014). Animals that use 
+this behavior picks a random 40km  40 km grid cell among the twelve grid cells with 
+the highest potential food level. After turning towards the centre of this grid cell, the 
+animal turns 0°, 10° or 20° towards the place with deepest water in every step, 
+provided that there is no land 8  ddisp away in that direction (see definition of ddisp in  
+Table 2). Then it turns 0°, 10°, 20° or 30° away from land if there is land 2  ddisp 
+away. If this does not ensure that the animal stays at a depth ≥ wdisp, the animal turns 
+180° away from the position visited exactly one day ago, and turns up to 80° and 
+move at a constant distance (1–4 km) from land. Every step has the length ddisp.  
+The InnerDanishWaters movement behavior has only been tested for the Kattegat 
+landscape. The triggers for turning this behavior on and off are the same as for the 
+other large-scale movement behaviors.  
+2.7.3 Fine-scale movements 
+All animals that are not using large-scale movements take a fine-scale move in each 
+time step. This usually causes animals to move straight through the food patches they 
+encounter. 
+The length and direction of a fine-scale move is determined by the sum of three 
+vectors: VS, which describes a correlated random walk (CRW) move (Turchin 1998), 
+VM, which describes a spatial memory move, and VD, which describes the deterrence 
+from noise (Figure 4b). The CRW behavior introduces a positive correlation between 
+the lengths of consecutive steps and a negative correlation between consecutive 
+turning angles. Here the CRW component of the fine-scale move is 
+VS = x(k + E) 
+Eqn. A30 
+where x is a vector defining an unweighted CRW move and k is an ‘inertia constant’ 
+(see list of parameters related to movement, Table 2). E is a measure of the benefit of 
+using an undirected search for food, which is determined by how much food the 
+animal remembers that it has found in the recent past. This is controlled by the actual 
+amount of food encountered and the satiation memory decay rate rS (Nabe-Nielsen et 
+al. 2013b). As k is small, the length of VS is mostly related to E, which is used as a 
+proxy for how much food the animal should expect to find if taking an undirected 
+CRW step. The length of vector x depends on the length of the previous step, water 
+depth, and salinity,  
+δt = R1 + a0 δt-1 + a1 wt-1 + a2 st-1  
+Eqn. A31 
+
+--- Page 24 ---
+TRACE document: DEPONS 3.0 
+ 
+24 
+where the length of x = 10010 and R1 is a random normal variable, following Nabe-
+Nielsen et al. (2013b), and wt-1 and st-1 are water depth and sea surface salinity at the 
+end of the previous time step, respectively. The dependence of  on salinity and water 
+depth was introduced in DEPONS 2.0 to reproduce the fine-scale movements 
+observed for free-ranging animals in the North Sea (van Beest et al. 2018a).  
+The vector x also allows turning angles to depend on the turning angle at the end of 
+the previous step, bathymetry and salinity. This is done in two steps, where the 
+autocorrelation in turning angles  is calculated first  
+t* = R2 + b0 t-1  
+Eqn. A32 
+and their dependence on bathymetry and salinity is calculated in a second step, 
+t = t* (b1 wt-1 + b2 st-1 + b3) 
+Eqn. A33 
+The parameters a0, a1, a2, b0, b1, b2 and b3 are new to DEPONS 2.0 (see Table 2). 
+Fine-scale movements, in contrast to large-scale movements, are guided by a 
+gradually decreasing memory of the foraging success in recently visited food patches. 
+The animals’ tendency to move towards previously visited food patches is determined 
+by their memory of where they have found food in the past, and how much. This 
+spatial memory move, VM, is determined by 
+VM = ΣM[c] i[c] 
+Eqn. A34 
+where M is a measure of the amount of food that an animal remembers that it has 
+found in patch c, weighed by the costs of going there (i.e. a measure of the benefit of 
+returning to patch c). The animals’ memory of previously visited patches decrease 
+logistically with time. The shape of the logistic function is controlled by the reference 
+memory decay rate rR. i is a unity vector pointing in the direction of patch c (Nabe-
+Nielsen et al. 2013b).  
+Separate deterrence vectors are calculated for responses to noise from pile-driving and 
+ships at every tick and the vector with the strongest impact (i.e., largest value of |VD|) 
+is the one that influences an animal’s subsequent movement vector (V)). The 
+standardized resultant vector, i.e., the fine-scale move taken in the presence of noise, 
+is then determined by  
+ 
+Eqn. A35 
+This equation is equivalent to Eqn. A2 of Nabe-Nielsen et al. (2014). In Eqn. A35 V* 
+has been standardized to have the same length as VS, so the length of the step is not 
+affected by the noise level. 
+If the move defined by V* would cause the porpoise to move to an area with too 
+shallow water (<wmin) it turns in the direction with deepest water (40°, 70°, 120° or 
+180° as needed). 
+
+--- Page 25 ---
+TRACE document: DEPONS 3.0 
+ 
+25 
+2.7.4 Update energy level and mortality 
+Porpoises increase their energy levels Ep when moving through food patches and 
+reduce the amount of food (energy) in the patches equivalently. They never eat more 
+than 99% of the food they encounter in a patch, and always leave at least Umin food 
+units (see Table 1) to allow food levels to replenish (see section 2.7.6). Their energy 
+levels are scaled to lie in the range 0–20. The animals consume a smaller proportion 
+of the food as their energy levels increase from 10–20, and animals with an energy 
+level of 20 do not consume any of the food they encounter (Nabe-Nielsen et al. 2014).  
+Porpoises use a season-dependent amount of energy Euse in every step. They spend 
+more energy during the summer (Euse×Ewarm in the months May–September and 
+Euse×(0.5×(1–Ewarm)+1) in April and October) and when they are lactating (Euse×Elact).  
+The porpoises’ risk of dying increases as their energy levels decrease. The yearly 
+survival probability sy (Figure 10) is calculated as 
+ 
+Eqn. A36 
+which is subsequently converted to a per-step survival probability 
+ 
+Eqn. A37 
+If ω1 is a random number in the range 0–1 and the animal is lactating, the calf is 
+abandoned if ω1 > ss (lactating calves do not appear as independent individuals in the 
+model). If ω1 > ss and the animal is not lactating, it dies (Sibly et al. 2013). 
+These processes take place in every time step. 
+2.7.5 Update food distribution map 
+Every month (on simulation day 0, 30, 60, 90, … , and 330), a new food distribution 
+map is loaded. The map is used for determining the maximum amount of food that 
+can be present in food patches in different parts of the landscape (Figure 1). This is 
+derived from season-specific maps of porpoise densities in the North Sea (Gilles et al. 
+2016) for North Sea simulations and values provided by Edrén et al. (2010) for 
+simulations using the Kattegat landscape. The spatial distribution of food patches 
+remains constant.  
+2.7.6 Update salinity map 
+Every month a new sea surface salinity map is loaded. The map enables fine-scale 
+movements to depend on local salinity conditions (Figure 1). 
+2.7.7 Update patch energy level 
+Takes place every day. 
+Ec[t+1] = Ec[t] + rU × Ec[t] (1– Ec[t] / Mc[t]) 
+Eqn. A38 
+where rU is the food replenishment rate, Ec[t] is the food level in patch c at time t and 
+Mc[t] is the maximum amount of food in each patch. The equation is equivalent to 
+Eqn. 3 of Nabe-Nielsen et al. (2013). 
+
+--- Page 26 ---
+TRACE document: DEPONS 3.0 
+ 
+26 
+ 
+Figure 10. Relationship between energy level and yearly mortality for =0.4. 
+2.7.8 Calculate mating dates 
+Takes place every year, on 1 January. Each porpoise’s mating date, tmating, is drawn 
+from a normal distribution. 
+2.7.9 Daily tasks 
+This submodel is executed at the end of every day, i.e. every 48th time step. 
+Update each animal’s movement mode based on its daily average energy level. 
+Animals start using large-scale movements when their energy levels have decreased 
+for ttodisp consecutive days. 
+Die of old age: Animals older than tmaxage years are removed from the simulation. 
+Mate and become pregnant: If the simulation date is tmating the animals that are not 
+already pregnant mate and become pregnant with a probability h.  
+Give birth: Animals that have been pregnant for tgest days give birth to a calf and start 
+lactating. 
+Wean calf: Lactating animals stop nursing their calves after tnurs days. This results in 
+the creation of a new independent individual in the model with probability 0.5 
+(assuming equal sex ratios). From the time of weaning male porpoises are omitted 
+from the model. 
+See Table 1 for list of parameters related to animal life history. 
+2.7.10 Update residual deterrence 
+Animals may keep being deterred by a noise source for some time after the noise 
+stops. This is termed ‘residual deterrence’. At the end of each step their movements 
+become less biased by these noises that they are no longer exposed to. The decrease in 
+residual deterrence is controlled by ψdeter, so 
+ |VD|t+1 = |VD|t (100–ψdeter)/100 
+Eqn. A39 
+After tdeter time steps animals are assumed to stop being deterred by noise sources that 
+no longer emit noise. By default tdeter is set to 0 (see Table 2). 
+(Go back to process overview). 
+
+--- Page 27 ---
+TRACE document: DEPONS 3.0 
+ 
+27 
+ 
+3 Data evaluation 
+ 
+This TRACE element provides supporting information on: The quality and sources of numerical 
+and qualitative data used to parameterize the model, both directly and inversely via calibration, and of 
+the observed patterns that were used to design the overall model structure. This critical evaluation will 
+allow model users to assess the scope and the uncertainty of the data and knowledge on which the 
+model is based.                                                                                         
+ 
+Summary: 
+There are 70 parameters in version 3.0 of DEPONS, all of which can be 
+specified by the user. Thirteen are related to animal life history and 
+energetics, 45 are related to animal movement and reactions to noise, and 
+10 are related to general model behavior (specification of input and 
+output files etc.). Three of the parameters related to animal movement 
+and reactions to noise are not used by default, but maintained to increase 
+model flexibility and facilitate easy re-parameterization for other 
+applications. Many of the 41 parameters related to animal life history, 
+energetics and movement are region-specific. Values are obtained from 
+the literature for six parameters; four parameters controlling the 
+animals’ response to noise and large-scale movements were calibrated 
+following a pattern-oriented modeling approach.  
+ 
+ 
+Section contents 
+ 
+3.1 Parameters and data related to animal life history and energetics ................... 27 
+3.2 Parameters and data related to animal movements and response to noise ....... 30 
+3.2.1 Parameters related to fine-scale movements ............................................ 30 
+3.2.2 CRW component of fine-scale movements ............................................. 33 
+3.2.3 Spatial memory component of fine-scale movements ............................. 37 
+3.2.4 Parameters related to large-scale movements .......................................... 39 
+3.2.5 Parameters related to response to noise ................................................... 43 
+3.3 Parameters controlling general model behavior ............................................... 45 
+ 
+ 
+3.1 
+Parameters and data related to animal life history and energetics 
+The processes and parameters related to birth and death of animals and to how animal 
+survival is determined by energetic status are identical to the ones in the models 
+described in Nabe-Nielsen et al. (2014, 2018). 
+Seven of the 13 parameters related to life history and energetics were obtained from 
+the literature (Table 1). The parameter values for h and tmature were based on data 
+collected in the northwest Atlantic, off the coast of Maine (United States). The 
+parameters are inherently hard to estimate due to difficulties studying harbor 
+
+--- Page 28 ---
+TRACE document: DEPONS 3.0 
+ 
+28 
+porpoises in the wild, and may vary among regions and among years. The parameters 
+tgest and tnurs are based on a Danish study of captive animals and on studies of harbor 
+porpoises in Danish waters. There are no data on how much the parameters vary 
+among populations. The parameter tmaxage is an upper limit for how old porpoises are 
+likely to get, based on records of stranded animals in Denmark. The parameter tmating 
+may vary among populations and years, but again this is difficult to assess due to the 
+limited number of studies of porpoises in the wild. The parameter Ewarm was obtained 
+from a study of captive animals, based on their food consumption. It is difficult to 
+assess to what extent the parameter varies among animals and whether it depends on 
+the size and health of the animals. 
+Six parameters related to energetics were either obtained from unpublished studies or 
+calibrated based on general considerations regarding animal energetics (Sibly et al. 
+2013). The parameter Elact was obtained from a study of Danish captive animals. This 
+is unlikely to vary much among populations due to energetic constraints related to 
+animal energy consumption, but is likely to vary depending on the age of the lactating 
+calf. The parameter Umin is the minimum amount of food in a patch. The unit is 
+scalable to kJ and other measures of energy content (hence we use the term ‘relative 
+unit’ for energy-related variables). Umin influences how fast food recovers in a patch 
+after being nearly depleted. Euse was calibrated to ensure that the population reached a 
+dynamic equilibrium size, assuming that food recovered after approximately 2 days. 
+This is based on the observation that satellite tagged porpoises in the inner Danish 
+waters often return to the same area after approximately two days (J Nabe-Nielsen, 
+unpubl. Data). As porpoises have a high energetic demand (Wisniewska et al. 2016), 
+we take such repeated returns to the same area as an indication that food has 
+recovered. Details of the calibration procedure are provided in the appendix of Nabe-
+Nielsen et al. (2014). When letting the maximum amount of food in a patch be 1 
+during winter in the inner Danish waters simulations, the average food level in the 
+patches was 0.3914 (Nabe-Nielsen et al. 2014). In the current study, the average food 
+level in the patches was scaled to be the same (see input data), i.e. the average food 
+level was assumed to be the same in the North Sea and the inner Danish waters. One 
+unit of food in a patch is equivalent to one unit of energy available for the porpoise 
+agents, and it is assumed that no energy is lost when food is consumed. The value of β 
+determines the relationship between the animals’ energetic status and their risk of 
+dying (Eqn. A36). The value used in this study was obtained through calibration (see 
+details in Nabe-Nielsen et al. 2014). The relationship between the animals’ energetic 
+status and mortality is likely to vary among populations, but the use of a slightly 
+different value of β has a very small impact on population dynamics and carrying 
+capacity (appendix of Nabe-Nielsen et al. 2014). The value of rU was calibrated to 
+ensure that the population reached a stable size (Nabe-Nielsen et al. 2013a, 2014). 
+Unfortunately, there are no field studies that allow us to determine how rU varies 
+among geographic regions.  
+ 
+
+--- Page 29 ---
+TRACE document: DEPONS 3.0 
+ 
+29 
+Parameter 
+Standard value 
+Code name 
+Description [units] (reference) 
+h 
+0.68 
+h 
+Probability that adult females 
+become pregnant (Read & Hohn 
+1995). 
+Tgest 
+300 
+tgest 
+Gestation time [days] (Lockyer 
+et al. 2003). 
+Tnurs 
+240 
+tnurs 
+Nursing time [days] (Lockyer 
+2003; Lockyer & Kinze 2003). 
+Tmaxage 
+30 
+tmaxage 
+Maximum age of porpoises 
+[years] (Lockyer & Kinze 2003). 
+Tmature 
+3.44 
+tmature 
+Age of maturity [years] (Read 
+1990). 
+Tmating   
+N(225, 20) 
+tmating 
+Mating day [day of year] 
+(Lockyer 2003). 
+Elact 
+1.4 
+Elact 
+Energy use multiplier for 
+lactating mammals [unitless] 
+(Magnus Wahlberg, unpubl. 
+Data). 
+Ewarm 
+1.3 
+Ewarm 
+Energy use multiplier in warm 
+water [unitless] (Lockyer 2003). 
+Euse 
+4.5 
+Euse 
+Energy use per half-hour step in 
+May–September [relative unit] 
+(calibrated, Nabe-Nielsen et al. 
+2014). 
+Einit 
+N(10, 1) 
+Einit 
+Initial energy level for porpoises 
+[relative unit] (arbitrary). 
+RU 
+0.1 
+rU 
+Food replenishment rate; the rate 
+that food recovers after being 
+eaten [unitless] (calibrated, 
+Nabe-Nielsen et al. 2014). 
+Umin 
+0.001 
+Umin 
+Minimum food level in a patch; 
+the starting value for logistic 
+replenishment of the food 
+[relative unit] (arbitrary). 
+Β 
+0.4 
+beta 
+Survival probability constant 
+[unitless] (calibrated, Nabe-
+Nielsen et al. 2014). 
+Table 1. Model parameters related to life history and energetics. The parameter names and parameter 
+values are the same as used in Nabe-Nielsen et al. (2013b, 2014). The ‘code names’ are the names used 
+in the Repast Java code in the current version of the model. Standard values of parameters written as 
+N(x,y) indicate random values drawn from a Gaussian distribution with mean x and standard deviation 
+y. In the input parameter files x and y are separated by ‘;’. The units of the parameters Euse, Einit and 
+Umin are scaled by the same factor relative to Joule, hence the term ‘relative unit’. 
+
+--- Page 30 ---
+TRACE document: DEPONS 3.0 
+ 
+30 
+3.2 
+Parameters and data related to animal movements and response to noise 
+3.2.1 Parameters related to fine-scale movements 
+The parts of DEPONS 2.0 related to simulation of fine-scale movements extend the 
+model described by Nabe-Nielsen et al. (2013b, 2014, 2018) by allowing turning 
+angles and step lengths to depend on bathymetry and salinity, which are the main 
+environmental drivers of fine scale movements of porpoises in the North Sea (van 
+Beest et al 2018a; see Section 2.7.3 for details). Fine-scale movements are influenced 
+by the first 13 parameters in Table 2.  
+ 
+Parameter 
+Standard 
+value 
+Code 
+name 
+Description [units] (reference) 
+rS 
+0.04 
+rS 
+Satiation memory decay rate [unitless] (defined in Nabe-
+Nielsen et al. 2013b; re-calibrated in this study). When 
+using the Kattegat landscape, the parameter should be set 
+to 0.2 for consistency with Nabe-Nielsen et al. (2014) 
+rR 
+0.04 
+rR 
+Reference memory decay rate [unitless] (defined in Nabe-
+Nielsen et al. 2013b; re-calibrated in this study). When 
+using the Kattegat landscape, the parameter should be set 
+to 0.1 for consistency with Nabe-Nielsen et al. (2014) 
+k 
+0.001 
+k 
+Inertia constant; the animal’s tendency to keep moving 
+using CRW irrespective of foraging success [unitless] 
+(arbitrary). 
+A0 
+0.35 
+a 
+Autoregressive coefficient for log10(d/100), where d is 
+distance per CRW move [unitless] (calibrated based on 
+van Beest et al. 2018a). 
+a1 
+0.0005 
+ 
+Coefficient indicating effect of water depth on 
+log10(d/100) [unitless] (van Beest et al. 2018a). 
+a2 
+-0.02 
+ 
+Coefficient indicating effect of salinity on log10(d/100) 
+[unitless] (van Beest et al. 2018a). 
+b0 
+-0.024 
+b 
+Autoregressive coefficient for turning angles in CRW 
+[unitless] (van Beest et al. 2018a). 
+b1 
+-0.008 
+ 
+Coefficient indicating effect of water depth on turning 
+angles in CRW [unitless] (van Beest et al. 2018a). 
+b2 
+0.93 
+ 
+Coefficient indicating effect of salinity on turning angles 
+in CRW [unitless] (van Beest et al. 2018a). 
+b3 
+-14 
+ 
+Intercept from regression of turning angle on salinity and 
+bathymetry [unitless] (van Beest et al. 2018a). 
+R1 
+N(1.25, 
+0.15) 
+R1 
+Mean and standard deviation in log10(d/100), where d is 
+distance moved per time step [m] (van Beest et al. 
+2018a). 
+R2 
+N(0, 4) 
+R2 
+Variation in turning angle between steps [degrees] (van 
+Beest et al. 2018a). 
+dmaxmove 
+1.73 
+dmax_mov 
+Maximum value of log10(d/100) while using fine-scale 
+moves. Here d is distance moved per time step [m] (van 
+Beest et al. 2018a). 
+
+--- Page 31 ---
+TRACE document: DEPONS 3.0 
+ 
+31 
+Parameter 
+Standard 
+value 
+Code 
+name 
+Description [units] (reference) 
+ddisp 
+1.05 
+ddisp 
+Distance moved per time step while using large-scale 
+movements [km] (from Argos data; this study). When 
+using the Kattegat landscape, the parameter should be set 
+to 1.6 for consistency with Nabe-Nielsen et al. (2014) 
+ttodisp 
+3 
+tdisp 
+Time before onset of large-scale movement [days]. 
+Standard value based on the observations that captive 
+porpoises appear to starve after not eating for three days 
+(Magnus Wahlberg, unpubl. Data). 
+PSM_angle 
+20 
+PSM_angle 
+Maximum absolute turning angle after each persistent 
+spatial memory (PSM) large-scale move [degrees] 
+(calibrated as part of this TRACE document). 
+PSM_dist 
+N(300, 
+100) 
+PSM_dist  
+Distance to target when initiating PSM moves [km] 
+(calibrated in Nabe-Nielsen et al. 2018).  
+PSM_log  
+0.6 
+PSM_log 
+Parameter controlling logistic increase in turning angle 
+during large-scale movement [unitless] (arbitrary). 
+PSM_tol 
+5 
+PSM_tol 
+Tolerance band within which the target cell group is 
+selected (PSM_dist±PSM_tol) [km] when initializing 
+PSM behavior (Nabe-Nielsen et al. 2018). 
+Wdisp 
+4 
+wdisp 
+Minimum water depth while using large-scale movement 
+[m] (Nabe-Nielsen et al. 2014). 
+Wmin 
+1 
+wmin 
+Minimum water depth [m] required by porpoises (J. 
+Tougaard, pers. obs). 
+T 
+152.9 
+RT 
+Response threshold: received sound level above which 
+porpoises start getting deterred by piling noise [dB SEL; 
+sound exposure level] (calibrated for DEPONS 2.0). 
+c 
+0.07 
+c 
+Deterrence coefficient [unitless] (calibrated in current 
+study). 
+𝛽̂ 
+20 
+betaHat 
+Spreading loss factor for sound. The parameters   𝛽̂ and 𝛼̂ 
+determine the sound transmission loss. Spherical 
+spreading occurs when 𝛽̂=20 and 𝛼̂=0, see Eqn. A1. Used 
+for sound propagation from pile-driving only. 
+𝛼̂ 
+0 
+alphaHat 
+Absorption coefficient for sound, see Eqn. A1. Used for 
+sound propagation from pile-driving only. 
+Dmax_deter 
+1000 
+dmax_deter 
+Maximum deterrence distance [km]. Enables user to 
+introduce distance limit for response to noise. 
+Tdeter  
+0 
+tdeter 
+Residual deterrence time; number of time steps the 
+deterrence effect lasts when the animal is no longer 
+exposed to noise [time steps] (arbitrary).  
+Ψdeter  
+50 
+Psi_deter 
+Deterrence decay constant; decrease in deterrence per 
+time step after noise has stopped [percent] (arbitrary). 
+ 
+Table 2. Model parameters related to animal movements and response to noise from pile-driving events. 
+Parameter names and parameter values are the same as used in Nabe-Nielsen et al. (2013b, 2014, 
+2018), except for parameters that were introduced and calibrated in the current study. The ‘code 
+
+--- Page 32 ---
+TRACE document: DEPONS 3.0 
+ 
+32 
+names’ are the names used in the Repast computer code. Standard values of parameters written as 
+N(x,y) indicate random values drawn from a Gaussian distribution with mean x and standard 
+deviation y. In the input parameter files x and y are separated by ‘;’. The three last parameters do not 
+influence simulations when default values are used. 
+Parameter 
+Standard 
+value 
+Code name 
+Description [units] (reference) 
+dmin_deter_ships 
+0.1 
+dmin_deter_ships 
+Minimum deterrence distance [km], 
+minimum distance at which 
+porpoises get deterred by ships. 
+Pship_int_day 
+-3.0569351 
+p_ship_intercept_day 
+Intercept of ship noise and distance 
+on probability of deterrence during 
+day [unitless] (Frankish et al. in 
+prep) 
+pship_noise_day 
+0.2172813 
+p_ship_noise_day 
+Coefficient of ship noise on 
+probability of deterrence during day 
+[unitless] (Frankish et al. in prep) 
+pship_dist_day 
+-0.1303880 
+p_ship_dist_day 
+Coefficient of ship distance on 
+probability of deterrence during day 
+[unitless] (Frankish et al. in prep) 
+pship_noise_x_dist_day 
+0.0293443 
+p_ship_noise_x_dist_day 
+Interaction of ship noise and 
+distance on probability of deterrence 
+during day [unitless] (Frankish et al. 
+in prep) 
+pship_int_night 
+-3.233771 
+p_ship_intercept_night 
+Intercept of ship noise and distance 
+on probability of deterrence during 
+night [unitless] (Frankish et al. in 
+prep) 
+pship_noise_night 
+0 
+p_ship_noise_night 
+Coefficient of ship noise on 
+probability of deterrence during 
+night [unitless] (Frankish et al. in 
+prep) 
+pship_dist_night 
+0.085242 
+p_ship_dist_night 
+Coefficient of ship distance on 
+probability of deterrence during 
+night [unitless] (Frankish et al. in 
+prep) 
+pship_noise_x_dist_night 
+0 
+p_ship_noise_x_dist_night 
+Interaction of ship noise and 
+distance on probability of deterrence 
+during night [unitless] (Frankish et 
+al. in prep) 
+cship_int_day 
+2.9647996 
+c_ship_intercept_day 
+Intercept of ship noise and distance 
+on magnitude of deterrence during 
+day [unitless] (Frankish et al. in 
+prep) 
+cship_noise_day 
+0.0472709 
+c_ship_noise_day 
+Coefficient of ship noise on 
+magnitude of deterrence during day 
+[unitless] (Frankish et al. in prep) 
+
+--- Page 33 ---
+TRACE document: DEPONS 3.0 
+ 
+33 
+Parameter 
+Standard 
+value 
+Code name 
+Description [units] (reference) 
+cship_dist_day 
+-0.0355541 
+c_ship_dist_day 
+Coefficient of ship distance on 
+magnitude of deterrence during day 
+[unitless] (Frankish et al. in prep 
+2023) 
+cship_noise_x_dist_day 
+0 
+c_ship_noise_x_dist_day 
+Interaction of ship noise and 
+distance on magnitude of deter 
+during day [unitless] (Frankish et al. 
+in prep) 
+cship_int_night 
+2.7543376 
+c_ship_intercept_night 
+Intercept of ship noise and distance 
+on magnitude of deterrence during 
+night [unitless] (Frankish et al. in 
+prep) 
+cship_noise_night 
+0 
+c_ship_noise_night 
+Coefficient of ship noise on 
+magnitude of deterrence during 
+night [unitless] (Frankish et al. in 
+prep) 
+cship_dist_night 
+0.0284629 
+c_ship_dist_night 
+Coefficient of ship distance on 
+magnitude of deterrence during 
+night [unitless] (Frankish et al. in 
+prep) 
+cship_noise_x_dist_night 
+0 
+c_ship_noise_x_dist_night 
+Interaction of ship noise and 
+distance on magnitude of deterrence 
+during night [unitless] (Frankish et 
+al. in prep) 
+ 
+Table 3. Model parameters related to animal movements and response to noise from ships. Values for the last 
+16 parameters are from Frankish et al. (in prep). The ‘code names’ are the names used in the Repast 
+computer code. 
+Fine-scale movements are simulated using a mixture of correlated random walk 
+(CRW) behavior and spatial memory moves. The parameterization of the fine-scale 
+movement model was done after log10 transforming the distance moved per 30-
+minutes step, as step lengths were approximately log-normally distributed in the 
+movement data that was used for parameterization (van Beest et al. 2018a). The CRW 
+is specified using the parameters ax, bx, R1, and R2, where Rx provide mean and 
+standard deviation in distance moved per step and in turning angles. The spatial 
+memory behavior is controlled by the parameters rS, rR, and k. All parameters were 
+calibrated to ensure realistic fine-scale movement behavior in the North Sea 
+landscape. 
+3.2.2 CRW component of fine-scale movements 
+Real porpoises’ tendency to zig-zag and their speed while doing so can be influenced 
+by local environmental conditions. In DEPONS this behavior is simulated using CRW 
+movements. In DEPONS 2.0 to 2.3 the animals’ CRW movements have been 
+calibrated based on data from a six animals equipped with V-tags in two areas of the 
+Danish North Sea (van Beest et al. 2018a). The animals were observed in a wide 
+range of environments, spanning from shallow near-shore areas to some of the 
+
+--- Page 34 ---
+TRACE document: DEPONS 3.0 
+ 
+34 
+deepest parts of the North Sea (Figure 11a). Their movements are therefore likely to 
+be representative for animals in other parts of the North Sea as well, although a larger 
+sample size is needed to fully understand how porpoise movements are related to 
+environmental conditions in different parts of the North Sea. The CRW movements 
+may not be representative for animals in the inner Danish waters. 
+ 
+Figure 11. Movement tracks of 2 weeks used for calibration of fine-scale movements (a) from six 
+animals equipped with V-tags and (b) tracks from six simulated animals released in the areas where the 
+real animals were tagged. Differences in background color indicate water depth [m].  
+Speed and absolute turning angles between consecutive 30-minute steps are mostly 
+related to variations in salinity and bathymetry for real porpoises in the eastern part of 
+the North Sea (van Beest et al. 2018a). The CRW movements of the simulated 
+animals were therefore allowed to be influenced by these two variables in DEPONS 
+2.x to ensure that simulated animals could respond to environmental variation in the 
+same way as North Sea animals (Eqns. A31–A33). To do so we used pattern-oriented 
+modeling (POM; Grimm et al. 2005; Kramer-Schadt et al. 2007; Hartig et al. 2011) to 
+calibrate CRW movements to reproduce the speed and turning angle distributions 
+observed for real porpoises (Figure 12), as well as the dependence of these variables 
+on salinity and bathymetry (Figures 13–14). During the POM process we simulated 
+multiple movement tracks where parameters controlling fine-scale movements (a0, a1, 
+a2, b0, b1, b2, b3, R2) were changed step-by-step and iteratively until we found the 
+optimal parameter value combination. Fine-scale movement parameters R1 and 
+dmaxmove were not calibrated but taken directly from van Beest et al. (2018a). All 
+simulations were run in the North Sea landscape using a population size of 100 and a 
+simulation period of one year. In each simulation we tracked the movements of six 
+simulated animals that had the same starting positions as the real animals. Simulated 
+animals were only allowed to use CRW behavior (large-scale movements and spatial 
+memory behavior were turned off; the latter was done by setting rS to 0.02 and rR to 
+1). For each simulated movement dataset, we calculated speed and absolute turning 
+angles between consecutive locations using the R-package adehabitatLT (Calenge 
+2006). Simulated movement data were analyzed exactly as in van Beest et al (2018a) 
+using generalized least square linear regression (GLS) models constructed in the R 
+
+--- Page 35 ---
+TRACE document: DEPONS 3.0 
+ 
+35 
+package “nlme” (Pinheiro et al. 2015). The beta coefficients and autoregressive 
+coefficients from each GLS on simulated data were compared to those obtained from 
+GLS analyses on empirical data. We iteratively adjusted the parameter values until the 
+simulated movement tracks (Figure 11), frequency distributions (Figure 12), and all 
+GLS coefficients and autocorrelation values for both speed and turning angle analyses 
+(Figures 13 and 14) were nearly identical to the corresponding values for wild animals 
+(up to 2 decimals behind the comma).  
+ 
+ 
+Figure 12. Histograms of log10(speed m s-1) and turning angles () between consecutive locations taken 
+at 30-minute intervals for six real and six simulated animals. Histograms for simulated animals were 
+produced after calibration of the CRW movement parameters, with spatial memory turned off. 
+
+--- Page 36 ---
+TRACE document: DEPONS 3.0 
+ 
+36 
+ 
+Figure 13. Effects of salinity and bathymetry on movement speed (m s-1) between consecutive locations 
+taken at 30-minute intervals for real and simulated animals. Black lines show the back-transformed 
+(from log10 scale) marginal (population-level) effects as predicted by generalized least square linear 
+regressions; shaded areas indicate 95% Cis. 
+ 
+ 
+Figure 14. Effects of salinity and bathymetry on absolute turning angles () between consecutive 
+locations taken at 30-minute intervals for real and simulated animals. Black lines show the marginal 
+(population-level) effect as predicted by generalized least square linear regression; shaded areas 
+indicate 95% Cis. 
+
+--- Page 37 ---
+TRACE document: DEPONS 3.0 
+ 
+37 
+3.2.3 Spatial memory component of fine-scale movements 
+Real animals tend to stay in the same area for several days or weeks. To enable 
+simulated animals to produce similar area-concentrated fine-scale movements, they 
+were equipped with a spatial memory of where they have found food in the past. The 
+behavior is controlled by the parameters rS (satiation memory decay rate, controlling 
+whether animals keep using a correlated random walk), rR (reference memory decay 
+rate, controlling animals’ ability to navigate back to previously visited patches), k and 
+wmin. Here k is a constant that only influences animal movements in the rare cases 
+where they do not have any memory of previously visited food patches (e.g. in the 
+beginning of simulations). Wmin, which determines the minimum water depth required 
+by porpoises, influences animal movements in the vicinity of the coast only. 
+In DEPONS 2.0 the parameters rS and rR were re-calibrated using POM to ensure that 
+simulated animals developed movement tracks that resembled those of 34 satellite-
+tracked porpoises from Skagerrak and the North Sea (Figure 7) and that they had the 
+same home range size, net squared displacement and residence times (Figure 15). The 
+V-tag data that were used for calibration of fine-scale movements could not be used 
+for calibrating rS and rR as V-tags are unable to store data from a sufficient number of 
+days to enable spatial memory movements to emerge. Movement data for the satellite-
+tagged porpoises included one location per day for 30 days, and the parts of the track 
+that could be characterized as large-scale movements were removed prior to analyses. 
+To do so, large scale-movements were identified using a Bayesian state-space 
+switching model (SSM) specifically developed to detect switches in movement modes 
+(i.e. fine vs. large-scale movements, also termed area-restricted search and transient 
+behaviour) while accounting for uncertainty in the Argos positional estimates (sensu 
+Jonsen et al. 2005). We fitted the Bayesian SSM using the R package “bsam” (Jonsen 
+2016). With this approach two chains (movement modes) are fitted in parallel and 
+estimated jointly for all individuals based on variation in speed and turning angles. 
+We allowed a burn-in of 60 000 samples per chain and generated 40 000 samples 
+thinned by every 20th sample to remove autocorrelation. Using only fine-scale 
+movement data as identified through the SSM, i.e. the parts of the tracks where 
+animals did not use large-scale movements, we calculated the kernel home range size 
+(km2) for each 30-day satellite-track using the href smoothing method in the R 
+package adehabitatHR (Calenge 2006). The net squared displacement was calculated 
+by taking the mean of the squared distance moved between each location and its 
+starting location (km2), and residence time (days) was calculated by taking the mean 
+time spent in a circle with radius of 5 km across all locations in a 30 day period 
+(Barraquand & Benhamou 2008; Nabe-Nielsen et al. 2013b).  
+
+--- Page 38 ---
+TRACE document: DEPONS 3.0 
+ 
+38 
+ 
+Figure 15. Parameterization of spatial memory component of fine-scale movements, i.e. the parameters 
+rS and rR. The y-axis shows home range size (HR; km2 / 1000), net squared displacement (NSD; km2 / 
+10) and residence times (RT; days) for real and simulated animals (N = 34 for each group). The panel 
+outlined in green highlights the combination of rS and rR values (both 0.04) that produced patterns 
+(mean and variance) that best resembled those based on real animals. 
+To calibrate the animals’ spatial memory parameters, we simulated multiple 
+movement tracks using a range of values for rS and rR to find the parameter value 
+combination that caused home range size, net squared displacement and residence 
+times to simultaneously resemble those of real animals. All simulations were run in 
+the North Sea landscape, with a population size of 10 000 and for a 6-year period, 
+using the first 5 years as a burn in period to allow simulated animals to develop a 
+spatial memory of profitable patches and to aggregate in areas with sufficient food. 
+We tracked the movements of 34 simulated animals that had the same starting 
+positions as the real animals tracked in the North Sea. Large-scale movements for 
+simulated animals were allowed (using default large-scale movement from DEPONS 
+1.1) and the parameters controlling CRW movements were set to their default values 
+as calibrated based on North Sea animals (Table 2). Each simulated movement track 
+was subsampled to have one location per day (at noon) for 30 days (as for the 
+satellite-tracked porpoises), and we removed all locations where agents were in large-
+scale movement mode. We then calculated home range size, net squared displacement 
+and residence times exactly as we did for the real animals, based on the parts of the 
+tracks where animals did not use large-scale movements. Visual inspection of the 
+results revealed that a value of 0.04 for both rS and rR resulted in home range sizes, 
+
+--- Page 39 ---
+TRACE document: DEPONS 3.0 
+ 
+39 
+net squared displacement and residence times that corresponded most closely to those 
+observed for real animals (Figure 15). 
+The animals’ fine-scale movements are not only influenced by the movement-related 
+parameters but also by the spatial distribution of food patches and the amount of food 
+in these patches. In the current study the maximum amount of food in the patches was 
+modeled based on porpoise survey data from the North Sea (Gilles et al. 2016), which 
+suggested high food availability in the western-central part of the North Sea (see 
+Figure 1). The spatial distribution of the patches, i.e. the size of the patches and the 
+distance between them, was random (following Nabe-Nielsen et al. 2013b, 2018). 
+Further refinements of these maps can be expected to make fine-scale movements 
+even more realistic for North Sea conditions. In order to use the model in other 
+regions of the world the fine scale movements should be calibrated based on realistic 
+food distribution maps to enable realistic variations in the simulated animals’ fine 
+scale movements. 
+3.2.4 Parameters related to large-scale movements 
+Large-scale movements are by default modeled based on a persistent spatial memory 
+(PSM) behavior that enables animals to navigate back to the 2 km × 2 km cell group 
+where they have previously obtained the highest energy intake rate and that is located 
+at their preferred large-scale movement distance. The six parameters used for 
+controlling large-scale movements are listed in Table 2. In DEPONS 2.0, large-scale 
+movements have been re-calibrated after calibrating the animals’ fine-scale 
+movements to resemble those of North Sea animals. In the Kattegat landscape the 
+large-scale movements should be simulated with large-scale movement developed 
+specifically for this area (InnerDanishWaters movements) to enable animals to 
+navigate realistically through the Danish straits. 
+The value of the parameter ddisp (distance moved per large-scale move) has been 
+obtained directly from the movements of the 34 satellite-tracked porpoises that were 
+also used for calibrating the spatial memory component of fine-scale movements (see 
+section 3.2.3). After classifying different portions of these tracks as either fine-scale 
+or large-scale movements using an SSM, ddisp was obtained as the average distance 
+moved per 30 min for animals using large-scale moves. To find the optimal values of 
+the parameters PSM_angle (maximum turning angle after each large-scale move) and 
+PSM_dist (preferred large-scale movement distance) we simulated animal movements 
+based on a range of parameter values. The aim was to make simulated tracks resemble 
+those of the satellite-tracked porpoises as closely as possible, after resampling both 
+datasets to one position per day for 100 days. For PSM_angle we evaluated the 
+resemblance for the values 20°, 40° and 60°, and for PSM_dist we considered mean 
+values in the range 150–350 km (in increments of 50 km). For standard deviation in 
+PSM_dist a random value of 100 was selected (arbitrary value). All possible 
+combinations of PSM_angle and PSM_dist were tested. For each combination we 
+recorded the movements of 34 porpoise agents over an 11-year period. All 
+simulations were run in the North Sea landscape, with a population size of 10 000 and 
+for a 11-year period, using the first 10 years as a burn in period to allow simulated 
+animals to develop a spatial memory of profitable cell groups. All agents were 
+initialized at Skagen (northern Denmark), which was where the satellite-tracked 
+animals were tagged.  
+
+--- Page 40 ---
+TRACE document: DEPONS 3.0 
+ 
+40 
+ 
+Figure 16. Parameterization of PSM_dist and PSM_angle in the PSM-Type2 long-distance movement 
+behavior. Track statistics calculated based on satellite-tracked animals are labeled ‘ref’. PSM_dist is 
+composed of a mean and a standard deviation that jointly determine the distance that animals prefer to 
+move when using PSM_Type2; the figure is based on tracks simulated with PSM_dist standard 
+deviation set to 100. NSD means net squared displacement. The best correspondence between tracks of 
+simulated and wild animals was obtained for a PSM_dist of 300 km and SPM_angle of 20°. 
+We compared the tracks of simulated animals with those of satellite-tracked animals 
+based on three statistics: home range sizes, maximum net squared displacement 
+(Max(NSD)) and track tortuosity (as measured using the sinuosity index; Benhamou 
+2004). The three statistics were calculated based on the first 100 daily positions for 
+each track, irrespective of the animals’ movement mode. We calculated the kernel 
+home range size (km2) for each 100-day satellite-track based on both fine-scale and 
+large-scale movement data, using the href smoothing method in the R package 
+adehabitatHR (Calenge 2006). Max(NSD) was calculated as the maximum distance 
+between the different positions in the track and the start of the track, squared. For 
+each track statistic the median values for the 34 satellite-tracked animals were 
+compared to the corresponding median values for 34 simulated animals. 
+The track statistics of simulated animals’ corresponded closely to those of satellite-
+tracked porpoises for a PSM_dist value of 300 km, combined with a PSM_angle value 
+of 20° (Figure 16). The movement tracks of simulated animals (Figure 17) also 
+resemble those of satellite-tracked porpoises (Figure 7) relatively closely, although 
+the satellite-tracked animals appear to occasionally disperse very far, into areas that 
+are not included in the simulation landscape. 
+
+--- Page 41 ---
+TRACE document: DEPONS 3.0 
+ 
+41 
+ 
+Figure 17. Daily movements of 34 simulated porpoises using the values of PSM_dist and PSM_angle 
+that best enabled them to produce home range sizes, track tortuosity and net squared displacements that 
+best resembled real animals. 
+The parameter PSM_tol, which defines the tolerance band within which a porpoise 
+agent should find the most profitable PSM-cell when starting to use large-scale 
+movements, was calibrated visually to make the simulated tracks resemble those of 
+satellite-tracked animals as closely as possible. This was done both before and after 
+calibrating PSM_angle and PSM_dist. For PSM_log, a simple one-parameter logistic 
+function (Eqn. A28) was used to enable animals to gradually become less directed the 
+closer they were to their target. For this parameter an arbitrary value was used, but 
+visual inspection of the tracks suggested that these were not strongly influenced by 
+the choice of PSM_log. The movement statistics were also relatively insensitive to the 
+choice of PSM_log.  
+The parameter ttodisp determines the number of days with decreasing average energy 
+levels before the animal starts using large-scale movements. The default value is 
+based on the observations that captive porpoises lose weight after not eating for three 
+days, which in nature would probably cause them to move towards more profitable 
+foraging areas. The parameter wdisp determines the minimum depth at which porpoises 
+
+--- Page 42 ---
+TRACE document: DEPONS 3.0 
+ 
+42 
+were allowed to use large-scale movements. The value was visually assessed based on 
+satellite-tracking data. 
+The parameters used for defining large-scale movements in this study are not 
+necessarily suitable for other geographic regions. Two of the parameters were 
+obtained through inverse parameterization (using POM) based on animal tracks 
+observed in the north-eastern part of the North Sea. The shapes of these tracks are 
+influenced by the food distribution (defined as background maps; see Input data) and 
+by proximity to land. As many of the simulated animals moved into the central part of 
+the North Sea, their movements were less constrained by land than those of the 
+satellite-tracked animals tagged by Skagen. This enabled them to develop more 
+rounded home ranges than the ones observed for free-ranging animals. Animals may 
+also be influenced by other environmental conditions than proximity to land, which 
+could cause them to move differently in other parts of the North Sea and elsewhere 
+(other prey species, presence of predators etc.). Unpublished data for satellite-tracked 
+porpoises reveal that porpoises move over larger distances in South Greenland waters 
+(N. Nielsen, pers. comm.), suggesting that it may be important to re-parameterize the 
+model based on local movement data when using it for populations outside the North 
+Sea. The differences between the tracks of simulated and free-ranging animals are 
+discussed further in the section ‘Assumptions regarding large-scale movements’. 
+ 
+Figure 18. Recovery of porpoise densities after end of pile-driving. Black lines show changes in 
+porpoise densities (mean % porpoise positive minutes±1SE) at different distances from closest pile-
+driving in the Gemini wind farm. The red lines show the corresponding relative number of porpoises in 
+simulations based on c=0.07 and T=152.9 dB. 
+
+--- Page 43 ---
+TRACE document: DEPONS 3.0 
+ 
+43 
+3.2.5 Parameters related to response to noise 
+The porpoise agents’ response to noise is controlled by the parameters T, c,, 𝛽̂, 
+𝛼̂, dmax_deter, tdeter, ψdeter, dmin_deter_ships, pship_int_, pship_noise_, pship_dist_, pship_noise_x_dist_, 
+cship_int_, cship_noise_, cship_dist_ and c ship_noise_x_dist_  ( 
+Table 2 and 3). The first two and the last eight parameters are used for calculating the 
+length of the deterrence vector (VD in Figure 4) in response to pile-driving events and 
+ship noise, respectively. T determines the maximum distance at which porpoise 
+movements are influenced by noise for a given pile-driving event, whereas c 
+determines the strength of their response at close ranges. For ship noise, values of 
+pship_int_, pship_noise_, pship_dist_, pship_noise_x_dist_, cship_int_, cship_noise_, cship_dist_ and c 
+ship_noise_x_dist_  determine the relationships between ship noise (Rship), proximity 
+(Dship), and the probability (pship) and magnitude (cship) of porpoise deterrence in day 
+and night (). 𝛽̂ and 𝛼̂ determine the transmission loss for sound from pile-driving 
+events (see Eqn. A1). Dmax_deter determines the maximum distance at which porpoises 
+can be influenced by noise (irrespective of noise level), dmin_deter_ships the minimum 
+distance at which porpoises can be influenced by noise from ships, while tdeter and 
+ψdeter jointly determine the ‘residual deterrence’, i.e., the animals’ tendency to move 
+away from an area for some time after the noise has stopped. 
+The parameters T and c were calibrated to make recovery of simulated porpoise 
+densities resemble those observed during construction of the Gemini wind farm 
+(Figure 18; Luuk Folkerts, unpubl. Data) assuming spherical spreading of sound (i.e., 
+𝛽̂=20 and 𝛼̂=0). In the field, the relative porpoise densities were measured using 
+CPODS that recorded the clicks emitted by echo-locating porpoises. Sound source 
+levels were calculated based on noise data collected at different distances from two of 
+the pile-driving sites using hydrophones (Figure 3). This was done using linear 
+regressions, assuming spherical spreading of noise (Eqn. A1). Simulations were based 
+on a landscape that included virtual CPODs (each covering 2  2 cells) placed in the 
+exact same positions as those used in the field. The simulations included pile-driving 
+events with the same timings and sound source levels as the real ones (Figure 3). Due 
+to the limited size of the landscape, large-scale movements were turned off. We ran 
+simulations using a range of parameter combinations (c in the range 0.00–0.15 and T 
+in the range 151–156 dB SEL). The simulated porpoise densities were standardized to 
+obtain the same overall mean and variance as observed around Gemini. The aim was 
+to find the values of c and T that minimized the sum of the squared differences 
+between field and simulated data across a range of different distances from the nearest 
+pile-driving. The optimal values of c and T were therefore the ones that yielded the 
+smallest value of  in  
+ 
+Eqn. A40 
+where n is the number of simulated porpoises observed at a particular distance 
+interval d from a virtual CPOD and p is the number of porpoises observed at the same 
+distance interval from a pile-driving at Gemini and t is time since end of pile-driving. 
+We used the distance intervals d shown in Figure 18. 
+The smallest value of  was obtained for T=152.9 dB SEL and c=0.07 (Figure 19). In 
+Figure 19,  is referred to as ‘Sum of Squares Deviation’. 
+
+--- Page 44 ---
+TRACE document: DEPONS 3.0 
+ 
+44 
+The parameter dmax_deter defines an upper boundary for the distance at which porpoises 
+can react to noise. It is only influencing model behavior if sound source levels (SL) 
+are so high that they would otherwise have caused animals to react at very long 
+distances. The reason for introducing the parameter dmax_deter is that a study of 
+Cuvier’s beaked whale suggests that the way cetaceans respond to noise may depend 
+on the distance to the noise source rather than on the received sound level (DeRuiter 
+et al. 2013), at least for relatively low received levels. The parameter dmax_deter makes 
+it possible to ensure that simulated animals are only deterred out to a certain distance, 
+irrespective of the noise level. When dmax_deter is set to 1000 km (default), the 
+parameter has no impact on the simulated animals’ response to noise, as this is far 
+beyond the area where R>T (see Figure 4). 
+ 
+ 
+Figure 19. Calibration of c and T using pattern-oriented modeling. The target was to find values of c 
+and T that enabled the model to produce porpoise recovery rates that resembled those observed at 
+different distances from real pile-driving. This was obtained for c=0.07 and T=152.9 (red dotted line). 
+The parameters tdeter and ψdeter determine how long porpoises keep moving away after 
+the sound that deterred them has stopped, i.e. their ‘residual deterrence’ behavior. 
+Tdeter determines the number of 30-minute time steps that porpoises remain deterred 
+and ψdeter determines the reduction in deterrence after each time step (in percent, i.e. a 
+reduction relative to the deterrence that remained prior to the step). Our knowledge of 
+how free-ranging porpoises respond to loud noises is limited to one study (van Beest 
+et al. 2018b). Here some porpoises appeared to remain slightly deterred up to ca. 10 
+hours after being exposed to loud impulsive noises, whereas others did not respond. 
+As there is limited evidence that animals remain deterred when they are no longer 
+exposed to noise, we use a default value of tdeter=0 (i.e. no residual deterrence). 
+
+--- Page 45 ---
+TRACE document: DEPONS 3.0 
+ 
+45 
+The parameters related to the animals’ response to noise are likely to be site-specific. 
+The way porpoises and other cetaceans respond to noise may depend on their 
+condition, on whether the area where the disturbance takes place is an important 
+foraging ground and on whether they have become habituated to noise (Richardson & 
+Würsig 1997; Bejder et al. 2006). These factors are likely to cause the optimal values 
+of c and T to vary among different wind farm construction sites. In Gemini, porpoises 
+only respond to noise out to a distance of 6–12 km (Figure 18), which is less than 
+reported in most studies. Diederichs et al. (2009) found reduced porpoise numbers at 
+14–18 km from active pilings during construction of the Alpha Ventus wind farm, and 
+Tougaard et al. found animals to respond at distances >20 km from Horns Reef I 
+(Tougaard et al. 2009) in the eastern North Sea. Brandt et al. (Brandt et al. 2011) 
+reported negative effects out to a distance of 17.8 km from the Horns Reef II wind 
+farm, but no effect at 22 km. This suggests that T values that would cause animals to 
+respond approximately 20 from the piling zone might be more representative for 
+simulating population effects of pile-driving in the North Sea. 
+Simulated porpoises’ response to noise from ships is derived from a study 
+investigating the response of wild porpoises to ship noise. This was done using GPS 
+tagged animals around Denmark (Frankish et al. In prep). Dose-response curves 
+suggest that tagged individuals responded to passing vessels by being deterred, and 
+with increasing likelihood the louder and closer these ships were. The response 
+probability varied diurnally, and response is thus modelled differently for daylight vs. 
+darkness periods (Figure 6). The parameter dmin_deter_ships defines a lower boundary for 
+the distance at which porpoises react to ship noise. 
+3.3 
+Parameters controlling general model behavior 
+The DEPONS model can run simulations using any landscape provided by the user, or 
+one of the four built-in landscapes (parameter: ‘landscape’). It requires eight different 
+background maps to run simulations with any given landscape (see input data). The 
+default landscape is the North Sea (Figure 1). This landscape was used for assessing 
+the impact of pile-driving noise on the porpoise population. The Gemini landscape 
+was created for parameterizing the animals’ response to pile-driving noise (see section 
+Parameters related to response to noise). Simulations can also be run in the DanTysk 
+landscape, or using a Homogeneous landscape, which has no land/coast line and 
+where habitat quality and bathymetry are constant, or in a user-defined landscape. 
+Although DEPONS simulations use realistic landscapes, agents that hit the edge of a 
+landscape are unable to exit or disappear. It is sometimes (e.g., during model 
+development and testing) useful to allow the landscape to wrap (i.e., using a non-
+bounded landscape). Wrapping of landscape borders is only possible in the 
+Homogeneous landscape (parameter: ‘wrapBorderHomo’).  
+The DEPONS model can run a wide variety of wind farm construction scenarios 
+(parameter: ‘turbines’), including the three North Sea scenarios used in this study 
+(Figure 2), the Gemini scenario (Figure 3) and the DanTysk scenario (not shown). It is 
+possible to run simulations with alternative scenarios by selecting the ‘User-def’ 
+turbines file after modifying the accompanying file (see input data). The default 
+option is to run simulations without construction (with ‘turbines’ set to ‘off’).  
+The number of simulation years is set with the parameter “simYears”. The default 
+value is 50 simulation years, which allows for a 20 year burn in period, a 10 year 
+
+--- Page 46 ---
+TRACE document: DEPONS 3.0 
+ 
+46 
+period at carrying capacity prior to wind farm construction, a 10 year period with pile-
+driving noise, and a 10 year recovery period post wind-farm construction. 
+The number of porpoise agents to be created at the start of a simulation is set with the 
+parameter ‘porpoiseCount’. The default value of 10 000 will produce a stable 
+population size in the North Sea landscape within the first 10 years of simulation. 
+Movement data of porpoise agents and the sound pressure levels (SPL) they receive 
+from passing ships (loudest SPL per tick stored in column ‘LoudestShipSPL’) can be 
+recorded by specifying how many porpoises to track using the parameter 
+‘trackedPorpoiseCount’. Two options are available to track movements of porpoise 
+agents. First, the user can record movement data for an unlimited number of agents 
+from the very start of the simulation. To do so, the user must provide the starting 
+position (x, y coordinates), and heading of the first step for each porpoise agent to 
+track in a comma separated text file (trackedporpoise.txt; file without headers) stored 
+in the data/landscape directory. If the file is empty, the tracked porpoise agents will 
+have random starting locations. The second option to track movements of porpoise 
+agents allows the user to set a delay in the start of the recording (i.e. starting from a 
+specified time step during the simulation). This is done by writing a single line, in a 
+comma separated text file (trackedporpoise.txt; file without headers) stored in the 
+data/landscape directory, starting with the text ‘delayedSelection;’ followed by the 
+time step when recording should initiate and the starting position (x, y coordinates). 
+Here only one starting position can be specified, and movements of porpoise agents 
+closest to the specified starting location are recorded. The two options of tracking the 
+movements of porpoise agents cannot be combined.  
+The harbor porpoise population is subject to multiple anthropogenic disturbances and 
+stressors, including by-catch in commercial gillnet fisheries (Read et al. 2006; van 
+Beest et al. 2017). Although by-catch was not considered in the current study, it is 
+possible to assess the impact of by-catch on the population in the DEPONS model 
+(parameter: ‘bycatchProb’). The parameter was first introduced by Nabe-Nielsen et al. 
+(2014) and ported directly into the DEPONS model (as part of the one-to-one 
+conversion from NetLogo to Repast).  
+Two different parameters are used for code testing. The parameter ‘randomSeed’ 
+makes it possible to repeatedly reproduce the exact same simulation (when not set to 
+‘random’). This option should not be selected when investigating population effects of 
+pile-driving noise. A range of built-in testing options were included to test model 
+output under various conditions (parameter ‘debug’, see details in the section 
+‘Implementation verification’).  
+ 
+Parameter 
+Standard value 
+Code name 
+Description [units] 
+Landscape 
+NorthSea 
+landscape 
+The landscape that is used in a 
+simulation. Can take the 
+values "NothSea", 
+"Homogeneous", "Gemini”, 
+"DanTysk", “Kattegat” or 
+"UserDefined". 
+Turbines 
+off 
+turbines 
+The wind farm construction 
+scenario that is used in a 
+simulation. It reads in the 
+
+--- Page 47 ---
+TRACE document: DEPONS 3.0 
+ 
+47 
+Parameter 
+Standard value 
+Code name 
+Description [units] 
+selected text file that defines 
+the turbine locations and 
+period of activity etc. Can take 
+the values “off”, “DanTysk-
+construction”, “Gemini-
+construction”, 
+“NorthSea_scenario1”, 
+“NorthSea_scenario2”, 
+“NorthSea_scenario3”, and 
+“User-def”. 
+Hydrophones 
+off 
+hydrophones 
+Enable recording of sound 
+from ships. Requires that the 
+hydrophones.csv file is 
+available for the selected 
+landscape. 
+Large-scale 
+movement type 
+PSM-Type2 
+psmType 
+Controls the type of large-
+scale movements used by 
+porpoises. Can take the values 
+“off”, “PSM-Type2”, 
+“InnerDanishWaters” and 
+“Undirected”  
+Ships enabled 
+false 
+shipsEnabled 
+Whether ships are simulated. 
+simYears 
+50 
+simYears 
+Number of simulation years. 
+porpoiseCount 
+10000 
+porpoiseCount 
+Number of porpoise agents in 
+the simulation when initiated. 
+trackedPorpoise   
+Count 
+1 
+trackedPorpoiseCount 
+Number of porpoise agents for 
+which to track the xy 
+coordinates (to monitor their 
+movements). 
+bycatchProb 
+0 
+bycatchProb 
+Randomly selected proportion 
+of the population to remove 
+each year. Can take any value 
+in range 0–1. [unitless] 
+wrapBorderHomo 
+true 
+wrapBorderHomo 
+Whether the border of the 
+landscape should wrap. Can 
+take the values "false" or 
+"true". The landscape is 
+without borders when 
+“wrapBorderHomo”=“true” 
+and “landscape”= 
+”Homogeneous”. 
+randomSeed 
+random  
+randomSeed 
+Allows the user to reproduce 
+simulation output of earlier 
+model runs by using the same 
+random seed as previously 
+used. Can take any integer 
+value. 
+debug 
+0 
+debug 
+Built-in code testing parameter 
+(values 0–5). When set to 0 no 
+code testing/debugging occurs 
+
+--- Page 48 ---
+TRACE document: DEPONS 3.0 
+ 
+48 
+(see details in section 
+‘Implementation 
+verification’). 
+Table 4. Model parameters controlling general model behavior and output types. The ‘code names’ are 
+the names used in the Repast code in the current version of the model. 
+ 
+
+--- Page 49 ---
+TRACE document: DEPONS 3.0 
+ 
+49 
+4 Conceptual model evaluation 
+ 
+This TRACE element provides supporting information on: The simplifying assumptions underlying 
+a model’s design, both with regard to empirical knowledge and general, basic principles. This critical 
+evaluation allows model users to understand that model design was not ad hoc but based on carefully 
+scrutinized considerations.  
+ 
+Summary: 
+The DEPONS model builds on a model developed for simulating harbor 
+porpoise movements and population dynamics in the inner Danish waters. 
+We discuss the simplifying assumptions underlying the submodels that 
+control animal movement, energetics and responses to noise. We further 
+discuss the assumptions related to large-scale movement behavior and 
+reactions to noise that were introduced when extending the model for 
+simulating effects of pile-driving noise in the North Sea. The rationale for 
+the design and choice of simplifying assumptions are discussed. 
+ 
+4.1 
+Assumptions regarding fine-scale movements 
+The fine-scale movement behavior builds on the assumption that animals attempt to 
+optimize their foraging when not exposed to noise. Fine-scale movements are 
+influenced by the animals’ energetic status and proximity to places where they have 
+previously found food, but they are unaffected by social behavior, animal age and 
+whether animals are nursing or not. The movements were parameterized based on 
+fine-scale movement data collected for six animals in two areas in the North Sea (van 
+Beest et al. 2018a). Van Beest et al. tested whether distance moved per 30-minutes or 
+turning angles between steps were related to a wide range of environmental variables, 
+and found salinity and bathymetry to be most important (Figures 12 and 13). Fine-
+scale movements are therefore assumed only to be influenced by these two kinds of 
+environmental variability in DEPONS 2.x†.  
+The values of rR and rS, which control the animals’ short-term spatial memory, were 
+re-calibrated based on satellite tracking data from 25 animals tagged in the eastern 
+part of the North Sea. These are assumed to be representative for North Sea animals. 
+4.2 
+Assumptions regarding effects of noise 
+Noise from pile-driving operations and shipping is assumed to influence the fine-scale 
+movements of harbor porpoises by introducing a bias to their moves (Figure 4). This 
+type of response to noise enables the model to reproduce the decline in population 
+densities often observed in the vicinity of pile-driving (Brandt et al. 2011, 2018; 
+Dähne et al. 2013) and short-term avoidance of individual ships (Barlow 1988; Palka 
+& Hammond 2001; Oakley et al. 2017), but the only study where wild porpoises were 
+exposed to noise did not indicate that it introduces a consistent bias to their fine-scale 
+movements (van Beest et al. 2018b; Xao et al. in prep). This suggests that there is 
+ 
+† This contrasts with DEPONS 1.1, where fine-scale movements were assumed to be independent of 
+environmental variability. 
+
+--- Page 50 ---
+TRACE document: DEPONS 3.0 
+ 
+50 
+considerable variation in how porpoises respond to noise. For instance, porpoises may 
+react by altering their dive behavior or ceasing foraging with potential implications 
+for individual fitness (Wisniewska et al. 2018; Frankish et al. In prep). DEPONS does 
+not include such variability, which is hence currently assumed to be unimportant for 
+population impacts of noise. 
+In DEPONS the parameters c, T, pship_int_, pship_noise_, pship_dist_, pship_noise_x_dist_, 
+cship_int_, cship_noise_, cship_dist_, c ship_noise_x_dist_ , which control the strength of the 
+animals’ tendency to move away from noise, were assumed to be constant. This may 
+not be the case for wild animals, where habituation to noise may cause these 
+parameters to change over time. Such habituation to noise may be prevalent in 
+cetaceans (Richardson & Würsig 1997; Nowacek et al. 2007). The way wild animals 
+react to noise may also depend on their energetic status and the quality of the area 
+where noise exposure takes place (Bejder et al. 2006). This is to some extent 
+accounted for in DEPONS, as animals that get disturbed in an unfavorable area are 
+more likely to get permanently displaced than animals that get disturbed in a 
+favorable area. This results from the simulated animals’ tendency to return to places 
+where they have previously found food when they have not been able to find food 
+using a random search. 
+4.3 
+Use of constant vital rates 
+The animals’ probability of becoming pregnant, the gestation time, nursing time and 
+mating day are all assumed to be constant. In reality, they may be influenced by the 
+animals’ health, which in turn depends on a number of environmental parameters, and 
+they may also be influenced by the age structure of the population. The choice of 
+using temporally constant parameter values was based on a lack of empirical data 
+indicating otherwise. 
+4.4 
+Assumptions regarding energetics 
+Population dynamics are directly linked to the energetic status of individual animals, 
+which is in turn determined by the individuals’ ability to replenish energy reserves by 
+foraging in patches with high food levels. Assumptions regarding the animals’ energy 
+balance and availability of food in the landscape are therefore crucial to the behavior 
+of the model. 
+The energy balance of individual animals depends on their energy use, which is 
+assumed to be constant (except for increases associated with lactation and during the 
+summer months). This is likely to be realistic, as animals must maintain a fairly 
+constant speed to forage enough to meet their high energy requirements (Kastelein et 
+al. 1997; Wisniewska et al. 2016; Andreasen et al. 2017). 
+The dynamics of the food patches is influenced by how fast food replenishes after 
+being consumed. This is determined by the food growth rate (rU) and by how much 
+food that is left in a patch when it is nearly depleted (Umin). The selected value of rU 
+(which allowed food to replenish after approx. two days with the selected value of 
+Umin) was based on the observation that satellite-tracked animals in the inner Danish 
+waters often returned to the same place several times over a period of a few weeks. As 
+the porpoise depends on a continuously high food intake this was thought to indicate 
+that food had replenished in the areas visited.  
+
+--- Page 51 ---
+TRACE document: DEPONS 3.0 
+ 
+51 
+Both the animals’ food intake rates and the amount of time they spend within a 
+confined area depend on the spatial distribution of the food patches. There is currently 
+no data on the spatial distribution of the fish that porpoises forage on in the North Sea 
+(or in the inner Danish waters). The only indication that the spatial distribution of 
+food patches used in DEPONS is sensible comes from the similarity of the simulated 
+movement tracks and those of satellite-tracked animals (Nabe-Nielsen et al. 2013b). If 
+the patch density had been too low, animals would return to the same area too rarely, 
+causing them to develop larger home ranges than they do in nature. 
+4.5 
+Assumptions regarding large-scale movements 
+The large-scale movement behaviors included in DEPONS assume that animals have 
+a persistent spatial memory (PSM) of places they have previously visited. This is 
+supported by the satellite tracks for animals tagged by Skagen in northern Denmark, 
+that show that porpoises have the ability to navigate back to places they have not 
+visited for weeks or months (Figure 7). This is usually considered an indication of a 
+spatial memory (Berger-Tal & Bar-David 2015). The tracks of the animals tagged by 
+Skagen also suggest that North Sea porpoises move far to forage in particular areas, 
+although it is unclear if this results from an attempt to maximize food intake. The 
+large-scale movements that are implemented in the model assume that animals move 
+towards the area where they have previously obtained the highest energy intake rates 
+and that are not too far away, which could enable them to optimize their foraging 
+behavior. Similar optimal foraging behavior has been demonstrated for several other 
+species (e.g. Austin et al. 2004; Fagan et al. 2013). The large-scale movement 
+behaviors in the model also build on the assumption that animals gradually drift away 
+from the route that would take them straight to the place where they previously 
+experienced the highest energy intake rate. This allows them to gradually become 
+more exploratory when approaching a region with high food availability. 
+The calibration of the large-scale movement behavior assumes that home range sizes 
+are influenced by the same environmental factors for simulated and free-ranging 
+animals. This is, however, not always the case. Some of the satellite-tracked animals 
+moved out of the area used in the simulation model, and as their movements were not 
+constrained by the presence of a landscape border, their home ranges were potentially 
+larger than those of simulated animals (7 vs. 7). 
+5 Implementation verification 
+ 
+This TRACE element provides supporting information on: (1) whether the computer code for 
+implementing the model has been thoroughly tested for programming errors and (2) whether the 
+implemented model performs as indicated by the model description. 
+ 
+Summary: 
+The computer code was continually tested during model development to 
+ensure that each consecutive step in development was only initiated after 
+the model had passed a wide range of visual and statistical tests. Visual 
+inspection of movement tracks was carried out using the NetLogo and 
+Repast graphical user interfaces (GUIs). The majority of the program code 
+
+--- Page 52 ---
+TRACE document: DEPONS 3.0 
+ 
+52 
+was initially developed and tested in NetLogo and subsequently scrutinized 
+and re-implemented in Repast by independent programmers. Only the 
+animals’ response to noise, the CRW component of the fine-scale behavior 
+and the large-scale movement behaviors were not part of the NetLogo 
+version of the model. 
+ 
+5.1 
+Testing the fine-scale movement model and reactions to noise 
+The fine-scale movement model was the first component of the DEPONS model to be 
+developed. The structure of this submodel is described in the section ‘Fine-scale 
+movements’. All aspects of the model were kept exactly as described in the original 
+publication (Nabe-Nielsen et al. 2013b), except that the random-walk component was 
+allowed to be influenced by salinity and bathymetry in DEPONS 2.x (Eqns. A7–A9).  
+During development of the NetLogo version of the fine-scale movement model, 
+dedicated code was used for testing the different submodels (controlled with the 
+parameter ‘debug’ in the NetLogo code, see DOI:10.5281/zenodo.53097). The debug 
+value 1 was used for developing and testing the porpoises’ behavior when 
+approaching land and to develop code that enabled them to back-track in rare 
+situations where they got trapped by land. When setting the debug parameter to 2, the 
+porpoises’ behavior when approaching land was tested to ensure that animals turned 
+as little as possible, while still avoiding land (distance to land, positions and turning 
+angles were written to the console for a subset of the simulated animals). Debug value 
+3 was used for debugging turning angles related to CRW behavior. Debug value 4 
+enabled inspection of the length of the porpoises’ attraction to previously visited food 
+patches by writing the perceived/remembered value of the patch and the direction of 
+the attraction vector to the console. Debug value 5 was used for writing out the 
+position of the porpoise and the length of the contribution of the CRW and spatial 
+memory moves to the console (i.e. the relative contribution of VS [Eqn. A6] and VM 
+[Eqn. A10]), allowing a close inspection of whether turning angles and the direction 
+of the vector that characterized fine-scale movement were related to food availability 
+and proximity to the visited patch as expected. This dedicated debugging code was 
+used in combination with stress tests, where simulations were run with extreme 
+parameter values, to identify errors that would be difficult to detect with the 
+default/realistic parameter values. 
+The updated version of the fine-scale movement model, where turning angles and 
+movement speed were allowed to be influenced by salinity and bathymetry, was 
+tested and calibrated based on the North Sea landscape. Simulated tracks were 
+inspected visually (Figure 11b) and using a wide range of movement statistics 
+(Figures 12–14) to ensure that simulated animals behaved likes real animals. In 
+DEPONS 2.x the part of the code controlling the animals’ spatial memory while using 
+fine-scale movements was kept as in the NetLogo version of the model. 
+The animals’ behavioral reaction to noise was verified by checking that the length of 
+the deterrence vector VD was exactly as specified in Figure 4 and the ODD. We used a 
+visual inspection of the simulation to double-check that simulated porpoises reacted to 
+noise out to the distance specified in Eqn. A1 in the submodel ‘Porpoises detect noise’ 
+(see also Figure 20). 
+The flexible movement model introduced in DEPONS 2.1 (see Eqn. A1) and used in 
+later versions of DEPONS was tested by comparing animals’ deterrence from 
+
+--- Page 53 ---
+TRACE document: DEPONS 3.0 
+ 
+53 
+simulated pile-driving and ship noise to the theoretical deterrence values calculated 
+manually.  
+ 
+Figure 20. Porpoise movement tracks in the presence of continuous pile-driving noise. The yellow 
+circle indicates the area where porpoises react to noise when the model is parameterized based on data 
+from the Gemini wind farm. 
+5.2 
+Testing the large-scale movement model 
+The persistent spatial memory behavior (PSM-Type2), which is the default large-scale 
+movement behavior in DEPONS 1.1 and 2.0, was developed exclusively in 
+Repast/Java. We tested that the model produced the desired output by plotting and 
+analyzing the movement tracks for animals using large-scale movements. This was 
+done using the parameter “trackedPorpoiseCount” and the trackedporpoise.txt file that 
+records movements (coordinates) of random agents after each time step. We plotted 
+how the turning angles following each large-scale movement step changed as the 
+simulated animals approached their targets while using large-scale movements 
+(Figure 9) and by monitoring variations in step lengths and energy levels. We 
+developed a dedicated unit test to ensure that energy intake and amount of time that 
+porpoises spend in different 2  2 km cell groups is correct. Further, we conducted 
+stress tests of PSM-Type2 by analyzing simulated tracks for extreme values of ddisp, 
+PSM_angle, and PSM_log. 
+5.3 
+Testing population dynamics 
+Population dynamics were tested by inspecting how porpoise agent movements and 
+survival were influenced by their energetic status and by analyzing relationships 
+between the average energetic status of porpoises and food patches. The inspection of 
+individual porpoise agents was done using the built-in inspector in NetLogo as well as 
+custom made code for writing out the track, food consumption, energy use and fate of 
+individual porpoises. Population dynamics were inspected using the built-in 
+functionality for creating dynamic plots in NetLogo and by close inspection of 
+generated output. 
+In order to test if population dynamics were fundamentally different in DEPONS 2.0 
+as compared to DEPONS 1.1, we ran the three North Sea wind-farm construction 
+
+--- Page 54 ---
+TRACE document: DEPONS 3.0 
+ 
+54 
+scenarios (see Input data) using DEPONS 2.0. In these simulations we used an 
+unrealistically low response threshold of 127.98 dB SEL, corresponding to a response 
+distance of 200 km, to amplify the impacts of noise and more easily observe the effect 
+of altering the pile-driving schedule. 
+The results of these simulations are very similar to those obtained using DEPONS 1.1 
+(see Figure 3 in Nabe-Nielsen et al. 2018). When simulating the population impact of 
+noise using a response threshold of 152.9 dB, which caused animals to change 
+behavior up to 1.135 km from the pilings, population dynamics were indistinguishable 
+from those in the baseline scenario (results not shown). But when using a response 
+threshold of 127.98 dB, the population size was reduced during the 10-y wind-farm 
+construction period. The results were qualitatively the same as those obtained using 
+DEPONS 1.1, i.e. the impact of noise was smaller in the ‘Random, slow’ scenario 
+than in the two other scenarios, and the population was heavily affected by noise in 
+2014 in the “Ordered, slow” scenario. The impacts of pile-driving were, however, 
+slightly larger in DEPONS 2.0 than in DEPONS 1.1 for all scenarios. For example, 
+the population was reduced by approximately 20 % in the “Random, slow” scenario in 
+2012 when using DEPONS 1.1, but approximately 30 % when using DEPONS 2.0. 
+ 
+Figure 21. Population impacts of alternative wind farm construction schedules in scenarios with a 
+response distance of 200 km, simulated using DEPONS 2.0. The number of simulated porpoises was 
+counted in the entire North Sea landscape. Fast construction means using a short break (1 hour) 
+between consecutive pilings. Colored dots indicate wind farms with 60 turbines each; dark blue 
+indicates areas with high food levels. In simulations with a response distance of 1.135 km (as in the 
+Gemini wind farm), population dynamics were indistinguishable from the baseline scenario. 
+
+--- Page 55 ---
+TRACE document: DEPONS 3.0 
+ 
+55 
+6 Model output verification 
+ 
+This TRACE element provides supporting information on: (1) how well model output matches 
+observations and (2) how much calibration and effects of environmental drivers were involved in 
+obtaining good fits of model output and data.  
+ 
+Summary: 
+DEPONS is able to reproduce the fine-scale and large-scale movement 
+patterns observed for porpoises in nature. It is also able to reproduce the 
+relative animal densities observed at different distances from a wind farm 
+during construction. These three types of output were parameterized using 
+pattern-oriented modeling. Emergent patterns related to landscape-scale 
+variations in population size could not be compared to field observations 
+due to lack of data.  
+ 
+6.1 
+Types of model output 
+The DEPONS model writes out four data files after each simulation. (1) The first file 
+(.csv) reports the change in population size over time. By default, it produces one line 
+of output per 30-min time step, but the reporting interval can be changed in the 
+graphical user interface (GUI). (2) Data on the distribution of porpoise agents (.csv) 
+among ‘blocks’ in the simulation landscape (defined in a raster file, see the section 
+’Input data’), which is by default recorded for each 30-min step. (3) Data on the 
+movements (.csv) of individual porpoise agents during the simulation, measured and 
+recorded for each 30-min step. By default, one porpoise is tracked, but multiple agents 
+can be tracked using the parameter trackedPorpoiseCount. Tracked porpoises also 
+store their energy level, deterrence level, and position in each time step, and tracking 
+can be delayed to omit data from the first simulation years. (4) Life-time reproductive 
+output is saved for each porpoise agent when it dies. The age of the animal is recorded 
+when it dies, along with the tick count at the time of death, number of calves born 
+(both males and females), number of calves weaned (only females; males are removed 
+from the simulation when they are weaned, assuming that 50% are males) and the 
+type of large-scale movement used. 
+In the GUI version of the model an additional data set is written out: Data on number 
+of animals per age class in the population and number of animals that have died in the 
+preceding year in that age class. When running simulations in batch mode only the 
+first three files are produced, but in addition the associated parameter input values 
+used during the simulation are written to a separate file. The data files are written out 
+to the working directory when simulations are run in the GUI while output from the 
+batch procedure is written out to the ‘output’ folder within the working directory. 
+Each output file has a date and time stamp in the title, which reflects when the 
+simulation finished. 
+In DEPONS 2.3 and later, hydrophones record sound from ships whenever enabled. 
+For each tick each hydrophone records sound from the loudest ship at the end of each 
+
+--- Page 56 ---
+TRACE document: DEPONS 3.0 
+ 
+56 
+tick, along with the location, name, speed and source level of the ship that the sound 
+originates from.  
+The output files generated by DEPONS can be imported, manipulated, analyzed and 
+plotted using the DEPONS2R package for R (R Core Team & Team 2021). 
+6.2 
+Comparison of model output and observations 
+Only animal movement patterns and recovery of local population densities after pile-
+driving could be compared to corresponding field data recorded in the North Sea. The 
+emergent population dynamics could not be compared to field data, as the available 
+data on variations in population densities are only available on a relatively rough 
+temporal and spatial resolution for the North Sea (Hammond et al. 2013). In the inner 
+Danish waters the predecessor of the DEPONS model was, however, capable of 
+reproducing the spatial distribution observed for porpoises using acoustic survey data 
+(Figure 7 in Nabe-Nielsen et al. 2011). The age class distribution observed for 
+simulated animals that died each year corresponded to the one observed for stranded 
+animals along the Danish shores (Nabe-Nielsen et al. 2014). 
+The fine-scale movement model enabled animals to develop a range of track 
+characteristics observed for animals in the North Sea (Figures 12–14). In version 2.0 
+of DEPONS, the correlated random walk component of the fine-scale movement 
+model was calibrated to ensure a close match with field data collected in the North 
+Sea (by iteratively calibrating the parameters ax, bx, m, R1 and R2 as described in the 
+section 3.2.1; see Table 2 for description of parameters). Subsequently the parameters 
+rR and rS were calibrated using pattern-oriented modeling (POM) to ensure that 
+animal home range sizes, net squared displacement and residence times closely 
+resembled those observed for satellite-tracked animals (see details on POM). Here 
+residence time is a measure of how long animals have spent in the neighborhood of 
+each position in a track, which is often interpreted as a measure of how suitable the 
+area is for foraging (Barraquand & Benhamou 2008). Fine-scale movements are 
+related to bathymetry and salinity in the North Sea (van Beest et al. 2018a), and these 
+variables were therefore allowed to have a direct impact on the distance animals 
+moved per step and on turning angles in DEPONS 2.0. 
+The recovery of relative porpoise densities after pile-driving ended resembled those 
+observed at different distances from the Gemini wind farm during construction 
+(Figure 18). The recovery resulted from the simulated animals’ tendency to move 
+back to known food patches after deterrence stops.  
+The simulated large-scale movement patterns matched those observed for satellite-
+tracked animals in the north-eastern part of the North Sea after calibrating parameters 
+related to persistent spatial memory (see details on POM for large-scale movements). 
+7 Model analysis 
+ 
+This TRACE element provides supporting information on: (1) how sensitive model output is to 
+changes in model parameters (sensitivity analysis), and (2) how well the emergence of model output 
+has been understood.  
+ 
+
+--- Page 57 ---
+TRACE document: DEPONS 3.0 
+ 
+57 
+Summary: 
+A sensitivity analysis was performed to explore how the equilibrium 
+population size changed in response to variations in each of the parameters 
+in the model. The emergent equilibrium population size was most sensitive 
+to variations in food replenishment rate and to parameters related to 
+animal energetics, but relatively insensitive to changes in the parameters 
+related to animal movements. The analysis was conducted based on 
+DEPONS 1.1, with fine-scale movement parameters calibrated based on 
+data from the inner Danish waters. It is discussed to what extent the 
+realism of the patterns that emerge from the model have been tested 
+against field data. 
+ 
+7.1 
+Sensitivity analysis 
+7.1.1 Sensitivity – parameters related to general porpoise behavior  
+We conducted a sensitivity analysis to explore how the equilibrium population size 
+changed when varying parameters related to life history, energetics, fine-scale 
+movements and large-scale movements in simulations without noise (Figure 22). 
+Parameters were changed one at a time to produce a local sensitivity analysis (cf. Bar 
+Massada & Carmel 2008). In this study parameters were increased or decreased by 
+20% relative to their default values and the corresponding impact on equilibrium 
+population size was calculated as the mean daily population size for 8 replicate 
+simulations. For the sensitivity analyses we used 40-year simulations, but calculated 
+the equilibrium population size based on the last 20 years only (a 20-year burn-in 
+period was always sufficient to ensure that the population had stabilized). The 
+analysis was conducted based on DEPONS 1.1, with fine-scale movement parameters 
+calibrated based on data from the inner Danish waters and PSM-Type2 large-scale 
+movements parameterized based on North Sea animals. The results may therefore not 
+be valid for DEPONS 2.x. 
+The equilibrium population size was most sensitive to variations in parameters related 
+to energetics (2nd group of parameters in Figure 22), and variations in the food 
+replenishment rate rU were particularly important. The default value for this parameter 
+caused food to replenish after approximately 48 hours (see appendix of Nabe-Nielsen 
+et al. 2013b). When increasing rU by 20% relative to its default value (see Table 1) 
+food replenished faster, leading to generally higher food availability and a larger 
+population size. The equilibrium population size is nearly equally sensitive to 
+parameters that influence the individual animals’ energy consumption per time step, 
+Euse, their increased energy use while lactating, Elact, and increased energy use in 
+periods with warm water, Ewarm. It is, however, insensitive to variations in the survival 
+probability constant β, which determines the exact relationship between the animals’ 
+energetic status and their survival probability.  
+
+--- Page 58 ---
+TRACE document: DEPONS 3.0 
+ 
+58 
+ 
+Figure 22. Sensitivity analysis for parameters related to animal life history, energetics, fine-scale 
+movements and large-scale movements. Bars show changes in equilibrium population size when 
+increasing or decreasing each parameter by 20% relative to its default value. Error bars show 
+confidence intervals based on 8 replicate simulations. The analysis was based on DEPONS 1.1, which 
+used fine-scale movements calibrated based on data from the inner Danish waters and a different large-
+scale movement behavior than DEPONS 2.0. 
+Equilibrium population size was less sensitive to variations in parameters related to 
+animal life history (1st group in Figure 22), fine-scale movement (3rd group) and large-
+scale movement (4th group). One exception is the maximum distance moved during a 
+fine-scale move, dmaxmove. When decreasing this parameter by 20% relative to its 
+default value (provided in Table 2) it caused the mean population size to decrease by 
+
+--- Page 59 ---
+TRACE document: DEPONS 3.0 
+ 
+59 
+16.5%, suggesting that the distance animals move while using fine-scale movements 
+is important for their ability to rapidly return to previously visited patches when they 
+do not find much food moving at random. For R1 and R3, which control distance 
+moved and relationship between turning angle and speed during fine-scale 
+movements, respectively (see Nabe-Nielsen et al. 2013b), only the parameter means 
+were varied (standard deviation components were kept constant). The parameter R3 
+was not included in DEPONS 2.0 or later. 
+Only parameters that could potentially influence the behavior of all animals, and 
+where an adjustment of ±20% made sense, were included in the sensitivity analysis. 
+The sensitivity to the life history/energetics parameters tmaxage, Einit, tmating, Umin was 
+not studied. The tmaxage only influenced the few, old animals. Einit was only important 
+during the burn-in period. For tmating it did not make sense adjusting by ±20%. The 
+same was the case for R2 (turning angle between consecutive fine-scale moves), 
+which had a mean of 0. Umin affects the time it takes food in patches to replenish, 
+which could be adequately analyzed by adjusting rU. PSM_tol presumably mostly 
+affected animals while they gathered information about potential areas to move 
+towards using large-scale movements (i.e. during the burn-in phase). The parameters 
+wdisp, wmin influenced only the relatively few animals that were close to land, and 
+varying these parameters by ±20% therefore inevitably has small impact on overall 
+population dynamics. 
+7.1.2 Sensitivity – parameters related to impacts of noise 
+To assess the model’s sensitivity for parameters related to responses to noise, we 
+measured the population size in the year where it was most affected by noise. This 
+happened in the second year of the 10-y wind farm construction period in Scenario 1 
+(i.e. in year 2012 in the ‘Random, slow’ scenario; Figure 3 in Nabe-Nielsen et al. 
+2018). The population effect of noise was measured after increasing or decreasing the 
+noise parameters by 20%, one at a time, and recording the corresponding mean 
+population size in eight replicate simulations. The same was done for the default 
+parameter values, which yielded the ‘reference level’, where animals responded up to 
+8.9 km from the noise source. The results of this analysis are shown in the TRACE 
+document for DEPONS 1.1 (Nabe-Nielsen et al. 2018).  
+7.1.3 Sensitivity – impact of energetics parameters on response to noise 
+To test if the population impact of noise was sensitive to the choice of energetics 
+parameters, which were the parameters with the largest influence on equilibrium 
+population size (Figure 22), we increased or decreased these parameters one at a time 
+in simulations including noise (Supporting Information (SI) for Nabe-Nielsen et al. 
+2018). This is equivalent to testing for interactions between T and each of the 
+energetics parameters. This analysis was conducted based on DEPONS 1.1 and fine-
+scale movements calibrated based on data from the inner Danish waters.  
+The population impact of noise was sensitive to Elact, Ewarm and rU, as changing either 
+of these parameters caused the population size during the second year of the wind 
+farm construction period to differ from the reference population size (i.e. the 
+confidence intervals did not overlap with the reference value; see SI for Nabe-Nielsen 
+et al. 2018). When reducing Elact or Ewarm by 20%, wind farm construction noise no 
+longer had a significant impact on the population, even when letting animals be 
+deterred up to 204 km from the piling. The population impact of noise was not 
+
+--- Page 60 ---
+TRACE document: DEPONS 3.0 
+ 
+60 
+sensitive to changes in Euse or , but a 20% decrease in Euse caused the impact of noise 
+to be non-significant. Only an increase in Ewarm caused noise to have a larger impact 
+on the population, but only slightly so. Although improved estimates of the noise 
+parameters could potentially result in more accurate estimates of the population 
+impacts of noise, it is unlikely that larger population effects would be predicted with 
+moderately altered energetics parameters. 
+7.2 
+Tests of emergence 
+The model produces four different emergent patterns: (1) population size, (2) spatial 
+distribution of animals, (3) their age class distribution, and (4) local recovery of 
+populations after exposure to pile-driving noise (see ‘Design concepts’). All four 
+patterns emerge from ubiquitously valid mechanisms derived from ‘first principles’ 
+(Nathan et al. 2008; Sibly et al. 2013), including use of energy for maintenance and 
+movement and acquisition of food by actively searching for optimal foraging areas. 
+Such models where population and community-level patterns emerge from adaptive 
+traits related to general evolutionary and physiological principles are more likely to 
+maintain their predictive power across a wide range of environmental conditions than 
+other models (Stillman et al. 2015).  
+In order to test which elements of the model were responsible for the observed 
+emergent patterns, we gradually refined the model until reaching the level of 
+complexity present in the current version of the DEPONS model. While increasing 
+model complexity we monitored the changes in population size and spatial 
+distribution of animals and in the animal movement patterns. The simplest model, 
+where animal movements were simulated using a correlated random walk model 
+without spatial memory of previously visited patches did not allow realistic fine scale 
+space-use patterns to emerge. This suggested that the model was too simple to 
+represent real animals (see Table A1 in Nabe-Nielsen et al. 2013b for details on the 
+relationship between animal space use and spatial memory). Inclusion of a mechanism 
+that allowed animals to return to previously visited food patches (see ‘Fine-scale 
+movement’) allowed simulated animals to develop space-use patterns that closely 
+resembled those of satellite-tracked animals by balancing their tendency to move at 
+random (i.e. following a correlated random walk) and their tendency to return to 
+previously visited food patches (Nabe-Nielsen et al. 2013b). This also enabled 
+simulated animals to forage optimally, thereby facilitating fitness-maximization. 
+Although this suggested that the inclusion of spatial memory in the model was 
+required to faithfully simulate the movements and energetics of real animals, it did not 
+permit the simulated animals to develop long-term home ranges that resembled those 
+observed for satellite-tracked animals. It is essential that simulated animals have home 
+ranges of a realistic size to ensure that they have access to the same amount of food 
+resources as real animals have. Only in that case will the decreased food intake that 
+they experience when being scared away from a wind-farm construction site result in 
+a realistic decrease in the population size. The model was only able to simulate home 
+ranges that resembled those of satellite-tracked animals after including a large-scale 
+movement behavior that allowed individuals to return to the area where they had 
+previously experienced the highest energy intake rate. The inclusion of this large-
+scale movement behavior in the model resulted in the emergence of realistic 
+movement patterns at multiple spatial and temporal scales (see Figure 16) and in the 
+emergence of realistic local population densities. This suggests that the mechanisms 
+that control animal foraging and food acquisition in the current version of the 
+
+--- Page 61 ---
+TRACE document: DEPONS 3.0 
+ 
+61 
+DEPONS model are sufficiently realistic for the purpose of the model. It also suggests 
+that the model cannot be simplified without compromising its realism. 
+8 Model output corroboration 
+ 
+This TRACE element provides supporting information on: How model predictions compare to 
+independent data and patterns that were not used, and preferably not even known, while the model was 
+developed, parameterized, and verified. By documenting model output corroboration, model users learn 
+about evidence, which, in addition to model output verification, indicates that the model is structurally 
+realistic so that its predictions can be trusted to some degree.  
+ 
+Summary: 
+The model’s ability to faithfully predict population effects of wind farm 
+construction noise cannot be corroborated using independent data, as 
+harbor porpoise population estimates based on field data are scarce and 
+inherently imprecise. The simulated effects of noise on local population 
+densities could, in principle, be corroborated using independent data, but 
+due to the scarcity of such data from comparable wind farm construction 
+sites this has not been done. 
+ 
+Only some of the model predictions can be directly compared to independent data due 
+to the scarcity of harbor porpoise survey data from the North Sea and due to the large 
+variability associated with such data. Four different patterns emerged from the model: 
+(1) variations in total population size in time; (2) spatial distribution of animals, (3) 
+their age class distribution, and (4) local recovery of populations after exposure to 
+pile-driving noise (see ‘Design concepts’). In the following we discuss to what extent 
+each of these patterns can be corroborated using independent data and which types of 
+independent data that should be collected to further evaluate the realism of the model 
+predictions. 
+A direct comparison of the predicted porpoise population size with population 
+estimates based on survey data (e.g. those collected during SCANS surveys; SCANS 
+II 2008) is unlikely to be informative for two reasons: (i) The North Sea population 
+estimates based on SCANS data are associated with considerable variation, making it 
+relatively easy for the simulation model to produce population estimates within the 
+confidence limits of these estimates. (ii) The SCANS surveys are conducted relatively 
+infrequently, making them unsuited for validation of the fine-scale temporal 
+population dynamics produced by the DEPONS model. The robustness of the model 
+predictions regarding variations in population sizes in space and time is therefore only 
+ensured by the generality of the mechanisms responsible for producing this emergent 
+pattern. 
+The predicted spatial distribution of animals could, in principle, be compared to 
+independent data, but although alternative porpoise distribution maps exist (Reid et al. 
+2003) they are partly based on the same underlying data as the study by Gilles et al. 
+(2016), so they are not truly independent. The spatial distribution patterns produced 
+by the predecessor of the DEPONS model in the inner Danish waters, did, however, 
+
+--- Page 62 ---
+TRACE document: DEPONS 3.0 
+ 
+62 
+closely match those obtained from acoustic survey data that were not used for 
+designing or calibrating the model (see page 23 in Nabe-Nielsen et al. 2011; monthly 
+average densities per 40 km x 40 km block). These simulations of the inner Danish 
+waters population did not include wind-farm construction scenarios. The model’s 
+ability to reproduce the porpoise distributions observed in nature is reassuring, as this 
+causes a realistic proportion of the simulated porpoises to get exposed to noise during 
+wind farm construction scenarios. 
+The age class distribution of the simulated animals can be directly compared to the 
+age class distribution of stranded and by-caught animals. This comparison has already 
+been conducted in the inner Danish waters (Nabe-Nielsen et al. 2014). Here the age 
+class distribution that emerged from the model corresponded closely to that in the 
+field data. 
+Recovery of local population densities following the construction of individual wind 
+turbine foundations was studied in the Gemini wind farm during construction. This 
+data set was the only one available providing both noise measurements and relative 
+porpoise population densities at different distances from the mono-pile pilings, and 
+where no noise mitigation was used. This data set was used for simultaneously 
+calibrating deterrence and local population recovery (Figures 13 and 14). As the only 
+available data set was used for model calibration, there are no data available for 
+model output corroboration. 
+In addition to using already collected data for model output corroboration, the 
+collection of local population densities around other wind farm construction sites 
+would help us obtaining a better understanding of the structural realism of the 
+DEPONS model and of the generality of the model predictions. This would also make 
+it possible to verify that the sound propagation model employed is realistic for the 
+sound frequencies that porpoises react to. In such field studies it is essential to 
+measure how porpoise densities change during and after pile-driving at large distances 
+from the wind farm construction sites in order to determine whether model predictions 
+are realistic at these distances. 
+It is possible that the animals’ tendency to return to areas they have been deterred 
+from depends on the food availability in that area, in nature as well as in the model. 
+Animals are more likely to return to profitable areas. The model’s ability to faithfully 
+simulate local population recovery in areas with different levels of food availability 
+could be corroborated using long-term data collected with CPODs in areas where 
+wind farms are constructed. This would provide an independent measure of local food 
+availability as well as local population recovery. 
+ 
+ 
+
+--- Page 63 ---
+TRACE document: DEPONS 3.0 
+ 
+63 
+9 Literature cited 
+Ainslie, M.A. (2010). Principles of sonar performance modelling. Vol. 707. Berlin: 
+Springer. 
+Andreasen, H., Ross, S.D., Siebert, U., Andersen, N.G., Ronnenberg, K. & Gilles, A. 
+(2017). Diet composition and food consumption rate of harbor porpoises 
+(Phocoena phocoena) in the western Baltic Sea. Marine Mammal Science, 33, 
+1053–1079. 
+Austin, D., Bowen, W.D. & McMillan, J.I. (2004). Intraspecific variation in 
+movement patterns: modeling individual behaviour in a large marine predator. 
+Oikos, 105, 15–30. 
+Bar Massada, A. & Carmel, Y. (2008). Incorporating output variance in local 
+sensitivity analysis for stochastic models. Ecological Modelling, 213, 463–
+467. 
+Barlow, J. (1988). Harbor porpoise, Phocoena phocoena, abundance estimation for 
+California, Oregon, and Washington: I. Ship surveys. Fisheries Bulletin, 86, 
+417–432. 
+Barraquand, F. & Benhamou, S. (2008). Animal movements in heterogeneous 
+landscapes: identifying profitable places and homogeneous movement bouts. 
+Ecology, 89, 3336–48. 
+van Beest, F.M., Kindt-Larsen, L., Bastardie, F., Bartolino, V. & Nabe-Nielsen, J. 
+(2017). Predicting the population-level impact of mitigating harbor porpoise 
+bycatch with pingers and time-area fishing closures. Ecosphere, 8, e01785. 
+van Beest, F.M., Teilmann, J., Dietz, R., Galatius, A., Mikkelsen, L., Stalder, D., et al. 
+(2018a). Environmental drivers of harbour porpoise fine-scale movements. 
+Marine Biology, 165, 95. 
+van Beest, F.M., Teilmann, J., Hermannsen, L., Galatius, A., Mikkelsen, L., 
+Sveegaard, S., et al. (2018b). Fine-scale movement responses of free-ranging 
+harbour porpoises to capture, tagging and short-term noise pulses from a 
+single airgun. Royal Society Open Science, 5, 170110. 
+Bejder, L., Samuels, A., Whitehead, H., Gales, N., Mann, J., Connor, R., et al. (2006). 
+Decline in relative abundance of bottlenose dolphins exposed to long-term 
+disturbance. Conservation Biology, 20, 1791–1798. 
+Benhamou, S. (2004). How to reliably estimate the tortuosity of an animal’s path: 
+Straightness, sinuosity, or fractal dimension? Journal of Theoretical Biology, 
+229, 209–220. 
+Berger-Tal, O. & Bar-David, S. (2015). Recursive movement patterns: review and 
+synthesis across species. Ecosphere, 6, art149. 
+Bockelmann, F.-D., Puls, W., Kleeberg, U., Müller, D. & Emeis, K.-C. (2018). 
+Mapping mud content and median grain-size of North Sea sediments – A 
+geostatistical approach. Marine Geology, 397, 60–71. 
+Brandt, M.J., Diederichs, A., Betke, K. & Nehls, G. (2011). Responses of harbour 
+porpoises to pile driving at the Horns Rev II offshore wind farm in the Danish 
+North Sea. Marine Ecology Progress Series, 421, 205–216. 
+
+--- Page 64 ---
+TRACE document: DEPONS 3.0 
+ 
+64 
+Brandt, M.J., Dragon, A.-C., Diederichs, A., Bellmann, M.A., Wahl, V., Piper, W., et 
+al. (2018). Disturbance of harbour porpoises during construction of the first 
+seven offshore wind farms in Germany. Marine Ecology Progress Series, 596. 
+Calenge, C. (2006). The package “adehabitat” for the R software: A tool for the 
+analysis of space and habitat use by animals. Ecological Modelling, 197, 516–
+519. 
+Dähne, M., Gilles, A., Lucke, K., Peschko, V., Adler, S., Krügel, K., et al. (2013). 
+Effects of pile-driving on harbour porpoises (Phocoena phocoena) at the first 
+offshore wind farm in Germany. Environmental Research Letters, 8, 025002. 
+DeRuiter, S.L., Southall, B.L., Calambokidis, J., Zimmer, W.M.X., Sadykova, D., 
+Falcone, E.A., et al. (2013). First direct measurements of behavioural 
+responses by Cuvier’s beaked whales to mid-frequency active sonar. Biology 
+Letters, 9, 20130223. 
+Diederichs, A., Brandt, M.J. & Nehls, G. (2009). Auswirkungen des Baus des 
+Umspannwerks am Offshore-Testfeld „alpha ventus“ auf Schweinswale - 
+Untersuchungen zu Schweinswalen mit T-PODs. BioConsult SH, Husum. 
+Edrén, S.M.C., Wisz, M.S., Teilmann, J., Dietz, R. & Söderkvist, J. (2010). Modelling 
+spatial patterns in harbour porpoise satellite telemetry data using maximum 
+entropy. Ecography, 33, 698–708. 
+EU. (1992). Council Directive 92/43/EEC on the Conservation of natural habitats 
+and of wild fauna and flora. 
+EU. (2009). Directive 2009/28/EC of the European Parliament and of the Council of 
+23 April 2009 on the promotion of the use of energy from renewable sources 
+and amending and subsequently repealing Directives 2001/77/EC and 
+2003/30/EC (Text with EEA relevance). 
+EU Marine Strategy Framework Directive. (2008). Directive 2008/56/EC of the 
+European Parliament and of the Council of 17 June 2008 establishing a 
+framework for community action in the field of marine environmental policy 
+(Marine Strategy Framework Directive). Official Journal of the European 
+Union L 16. 
+Fagan, W.F., Lewis, M.A., Auger-Méthé, M., Avgar, T., Benhamou, S., Breed, G.A., 
+et al. (2013). Spatial memory and animal movement. Ecology Letters, 16, 
+1316–1329. 
+Folk, R.L. (1954). The Distinction between Grain Size and Mineral Composition in 
+Sedimentary-Rock Nomenclature. The Journal of Geology, 62, 344–359. 
+Frankish, C.K., von Benda-Beckmann, A.M., Teilmann, J., Tougaard, J., Dietz, R., 
+Sveegaard, S., et al. (In prep). Ship noise and proximity induce behavioural 
+changes in marine animals – the harbour porpoise example. 
+Gilles, A., Viquerat, S., Becker, E.A., Forney, K.A., Geelhoed, S.C.V., Haelters, J., et 
+al. (2016). Seasonal habitat-based density models for a marine top predator, 
+the harbor porpoise, in a dynamic environment. Ecosphere, 7, e01367. 
+Goss-Custard, J.D., Burton, N.H.K., Clark, N.A., Ferns, P.N., McGrorty, S., Reading, 
+C.J., et al. (2006). Test of a behavior-based individual-based model: response 
+of shorebird mortality to habitat loss. Ecological Applications, 16, 2215–22. 
+
+--- Page 65 ---
+TRACE document: DEPONS 3.0 
+ 
+65 
+Grimm, V., Berger, U., DeAngelis, D.L., Polhill, G., Giske, J. & Railsback, S.F. 
+(2010). The ODD protocol: A review and first update. Ecological Modelling, 
+221, 2760–2768. 
+Grimm, V. & Railsback, S.F. (2005). Individual-based modeling and ecology. 
+Princeton University Press. 
+Grimm, V., Revilla, E., Berger, U., Jeltsch, F., Mooij, W.M., Railsback, S.F., et al. 
+(2005). Pattern-oriented modeling of agent-based complex systems: lessons 
+from ecology. Science, 310, 987–91. 
+Hammond, P.S., Macleod, K., Berggren, P., Borchers, D.L., Burt, L., Cañadas, A., et 
+al. (2013). Cetacean abundance and distribution in European Atlantic shelf 
+waters to inform conservation and management. Biological Conservation, 164, 
+107–122. 
+Harrison, C.H. (2003). Closed-form expressions for ocean reverberation and signal 
+excess with mode stripping and Lambert’s law. J. Acoust. Soc. Am., 114, 2744. 
+Hartig, F., Calabrese, J.M., Reineking, B., Wiegand, T. & Huth, A. (2011). Statistical 
+inference for stochastic simulation models - theory and application. Ecology 
+Letters, 14. 
+Jonsen, I.D. (2016). Joint estimation over multiple individuals improves behavioural 
+state inference from animal movement data. Scientific Reports, 6, 1–9. 
+Jonsen, I.D., Flemming, J.M. & Myers, R.A. (2005). Robust state-space modeling of 
+animal movement data. Ecology, 86, 2874–2880. 
+Kastelein, R.A., van der Sijs, S.J., Staal, C. & Nieuwstraten, S.H. (1997). Blubber 
+thickness in harbour porpoises (Phocoena phocoena). In: The biology of the 
+harbour porpoise (eds. Read, A.J., Wiepkema, P.R. & Nachtigall, P.E.). De 
+Spil Publishers. Learmonth, Woerden, The Netherlands, pp. 179–199. 
+Kramer-Schadt, S., Revilla, E., Wiegand, T. & Grimm, V. (2007). Patterns for 
+parameters in simulation models. Ecological Modelling, 204, 553–556. 
+Lockyer, C. (2003). Harbour porpoises (Phocoena phocoena) in the North Atlantic: 
+biological parameters. Harbour porpoises in the North Atlantic, 5, 71–91. 
+Lockyer, C., Desportes, G., Hansen, K., Labberté, S. & Siebert, U. (2003). Monitoring 
+growth and energy utilization of the harbour porpoise (Phocoena phocoena) in 
+human care. Harbour porpoises in the North Atlantic, 5, 107–120. 
+Lockyer, C. & Kinze, C.C. (2003). Status, ecology and life history of harbour 
+porpoise (Phocoena phocoena), in Danish waters. In: Harbour porpoises in 
+the North Atlantic (eds. Haug, T., Desportes, G., Víkingsson, G.A. & Witting, 
+L.). The North Atlantic Marine Mammal Commission, Tromsø, pp. 143–175. 
+MacGillivray, A. & de Jong, C. (2021). A Reference Spectrum Model for Estimating 
+Source Levels of Marine Shipping Based on Automated Identification System 
+Data. Journal of Marine Science and Engineering, 9, 369. 
+Miller, P.J.O., Kvadsheim, P.H., Lam, F.P.A., Tyack, P.L., Cure, C., DeRuiter, S.L., 
+et al. (2015). First indications that northern bottlenose whales are sensitive to 
+behavioural disturbance from anthropogenic noise. Royal Society Open 
+Science, 2, 140484–140484. 
+
+--- Page 66 ---
+TRACE document: DEPONS 3.0 
+ 
+66 
+Nabe-Nielsen, J., van Beest, F.M., Grimm, V., Sibly, R.M., Teilmann, J. & 
+Thompson, P.M. (2018). Predicting the impacts of anthropogenic disturbances 
+on marine populations. Conservation Letters, 11, e12563. 
+Nabe-Nielsen, J., Sibly, R.M., Tougaard, J., Teilmann, J. & Sveegaard, S. (2014). 
+Effects of noise and by-catch on a Danish harbour porpoise population. 
+Ecological Modelling, 272, 242–251. 
+Nabe-Nielsen, J., Teilmann, J. & Tougaard, J. (2013a). Effects of wind farms on 
+porpoise population dynamics. In: Danish Offshore Wind. Key Environmental 
+Issues – a Follow-up. The Environmental Group: The Danish Energy Agency, 
+The Danish Nature Agency, DONG Energy and Vattenfall, Copenhagen, 
+Denmark, pp. 61–68. 
+Nabe-Nielsen, J., Tougaard, J., Teilmann, J., Lucke, K. & Forchhammer, M.C. 
+(2013b). How a simple adaptive foraging strategy can lead to emergent home 
+ranges and increased food intake. Oikos, 122, 1307–1316. 
+Nabe-Nielsen, J., Tougaard, J., Teilmann, J. & Sveegaard, S. (2011). Effects of wind 
+farms on harbour porpoise behavior and population dynamics. Scientific 
+Report from Danish Centre for Environment and Energy. 
+Nathan, R., Getz, W.M., Revilla, E., Holyoak, M., Kadmon, R., Saltz, D., et al. 
+(2008). A movement ecology paradigm for unifying organismal movement 
+research. Proceedings of the National Academy of Sciences, 105, 19052–
+19059. 
+Nowacek, D.P., Clark, C.W., Mann, D., Miller, P.J.O., Rosenbaum, H.C., Golden, 
+J.S., et al. (2015). Marine seismic surveys and ocean noise: time for 
+coordinated and prudent planning. Frontiers in Ecology and the Environment, 
+13, 378–386. 
+Nowacek, D.P., Thorne, L.H., Johnston, D.W. & Tyack, P.L. (2007). Responses of 
+cetaceans to anthropogenic noise. Mammal Review, 37, 81–115. 
+Oakley, J.A., Williams, A.T. & Thomas, T. (2017). Reactions of harbour porpoise 
+(Phocoena phocoena) to vessel traffic in the coastal waters of South West 
+Wales, UK. Ocean & Coastal Management, 138, 158–169. 
+Palka, D.L. & Hammond, P.S. (2001). Accounting for responsive movement in line 
+transect estimates of abundance. Canadian Journal of Fisheries and Aquatic 
+Sciences, 58, 777–787. 
+Pinheiro, J., Bates, D., DebRoy, S., Sarkar, D. & R Development Core Team, R. 
+(2015). nlme: linear and nonlinear mixed effects models. R package version 
+3.1-122, R package, 1–3. 
+R Core Team & Team, R.D.C. (2021). R: A language and environment for statistical 
+computing. R Foundation for Statistical Computing, R Foundation for 
+Statistical Computing. 
+Read, A.J. (1990). Age at sexual maturity and pregnancy rates of harbour porpoises, 
+Phocoena phocoena, from the Bay of Fundy. Canadian Journal of Fisheries 
+and Aquatic Sciences, 47, 561–565. 
+Read, A.J., Drinker, P. & Northridge, S.P. (2006). Bycatch of Marine Mammals in 
+U.S. and Global Fisheries. Conservation Biology, 20, 163–169. 
+
+--- Page 67 ---
+TRACE document: DEPONS 3.0 
+ 
+67 
+Read, A.J. & Hohn, A.A. (1995). Life in the fast lane: The life history of harbor 
+porpoises from the Gulf of Maine. Marine Mammal Science, 11, 423–440. 
+Reid, J.B., Evans, P.G.H. & Northridge, S.P. (2003). Atlas of cetacean distribution in 
+North-West European waters. Joint Nature Conservation Committee, 
+Peterborough. 
+Richardson, W.J. & Würsig, B. (1997). Influences of man-made noise and other 
+human actions on cetacean behaviour. Marine and Freshwater Behaviour and 
+Physiology, 29, 183–209. 
+SCANS II. (2008). Small cetaceans in the European Atlantic and North Sea (SCANS-
+II). Final report to the European Commission under project 
+LIFE04NAT/GB/000245. University of St Andrews, Fife, Scotland, U.K. 
+Scheffer, M., Baveco, J.M., DeAngelis, D.L., Rose, K.A. & van Nes, E.H. (1995). 
+Super-individuals a simple solution for modelling large populations on an 
+individual basis. Ecological Modelling, 80, 161–170. 
+Sibly, R.M., Grimm, V., Martin, B.T., Johnston, A.S.A., Kułakowska, K., Topping, 
+C.J., et al. (2013). Representing the acquisition and use of energy by 
+individuals in agent-based models of animal populations. Methods in Ecology 
+and Evolution, 4, 151–161. 
+Sinclair, A.R.E. (2003). Mammal population regulation, keystone processes and 
+ecosystem dynamics. Philosophical Transactions of the Royal Society of 
+London. Series B: Biological Sciences, 358, 1729–1740. 
+Slabbekoorn, H., Bouton, N., van Opzeeland, I., Coers, A., ten Cate, C. & Popper, 
+A.N. (2010). A noisy spring: the impact of globally rising underwater sound 
+levels on fish. Trends in Ecology & Evolution, 25, 419–427. 
+Stillman, R.A., Railsback, S.F., Giske, J., Berger, U. & Grimm, V. (2015). Making 
+predictions in a changing world: The benefits of individual-based ecology. 
+BioScience, 65, 140–150. 
+Tougaard, J., Carstensen, J., Teilmann, J., Skov, H. & Rasmussen, P. (2009). Pile 
+driving zone of responsiveness extends beyond 20 km for harbor porpoises 
+(Phocoena phocoena (L.)) (L). Journal of the Acoustical Society of America, 
+126, 11–14. 
+Turchin, P. (1998). Quantitative analysis of movement. Sinauer Associates, Inc., 
+Sunderland, MA. 
+Tyack, P.L. (2008). Implications for marine mammals of large-scale changes in the 
+marine acoustic environment. Journal of Mammalogy, 89, 549–558. 
+Urick, R.J. (1983). Principles of underwater sound. McGraw-Hill, New York. 
+Van Moll, C., Ainslie, M.A. & Van Vossen, R. (2009). A Simple and Accurate 
+Formula for the Absorption of Sound in Seawater. IEEE Journal of 
+Oceanographic Engineering, 34, 610–616. 
+Weston, D. (1959). Guided Propagation in a slowly varying Medium. Proceedings of 
+the Physical Society (1958-1967), 73, 365. 
+White House Executive Order. (2010). U.S. national policy for the stewardship of the 
+ocean, our coasts, and the Great Lakes. Executive order 13547 (19 July). 
+
+--- Page 68 ---
+TRACE document: DEPONS 3.0 
+ 
+68 
+Wisniewska, D.M., Johnson, M., Teilmann, J., Rojano-Doñate, L., Shearer, J., 
+Sveegaard, S., et al. (2016). Ultra-high foraging rates of harbor porpoises 
+make them vulnerable to anthropogenic disturbance. Current Biology, 26, 
+1441–1446. 
+Wisniewska, D.M., Johnson, M., Teilmann, J., Siebert, U., Galatius, A., Dietz, R., et 
+al. (2018). High rates of vessel noise disrupt foraging in wild harbour 
+porpoises ( Phocoena phocoena ). Proc. R. Soc. B., 285, 20172314. 
+Xao, X., Hamel, H., Grandjean, C.H., Fedutin, I., Wahlberg, M., Frankish, C.K., et al. 
+(n.d.). Impacts of small motorboats on harbour porpoise behaviour. In prep. 
+ 
+ 
+
+--- Page 69 ---
+TRACE document: DEPONS 3.0 
+ 
+69 
+List of figures 
+ 
+Figure 1. Food distribution maps derived from seasonal maps of porpoise 
+densities in the North Sea................................................................................... 10 
+Figure 2. Positions of wind turbines in the three pile-driving scenarios used in 
+this study ............................................................................................................ 12 
+Figure 3. Data from the Gemini wind farm construction site used for calibration 
+of the porpoises’ response to noise .................................................................... 13 
+Figure 4. Relationship between received sound level (R) and deterrence behavior 
+in response to pile-driving sounds ..................................................................... 15 
+Figure 5. Within a tick, ship tracks are broken down into 30 micro-ticks. 
+Deterrence at the tick-level (VD) is the sum of deterrence vectors estimated 
+at the micro-tick level (VD_ship_microtick). VD_ship_microtick is a movement vector 
+pointing directly away from a ship at a given micro-tick. ................................. 18 
+Figure 6: The probability of a porpoise being deterred (pship) by noise from a ship 
+and the magnitude of deterrence (cship; meters moved per minute away from 
+the ship) at the end of a tick depends on the noise received from a ship 
+(Rship), the distance between the porpoise and the ship (Dship) from which 
+Rship originates, and the period of the day (: day vs. night). ............................ 19 
+Figure 7. Tracks of 34 free-ranging porpoises equipped with ARGOS satellite 
+tags. .................................................................................................................... 20 
+Figure 8. Memory-based large-scale movement behavior used in DEPONS 2.0, 
+2.1 and 2.2 .......................................................................................................... 21 
+Figure 9. Simulated change in turning angle distribution as porpoise agents 
+approach the target cell group while using PSM-Type2 large-scale 
+movements ......................................................................................................... 22 
+Figure 10. Relationship between energy level and yearly mortality.......................... 26 
+Figure 11. Movement tracks of 2 weeks used for calibration of fine-scale 
+movements ......................................................................................................... 34 
+Figure 12. Histograms of log10(speed m s-1) and turning angles () .......................... 35 
+Figure 13. Effects of salinity and bathymetry on movement speed (m s-1) ............... 36 
+Figure 14. Effects of salinity and bathymetry on absolute turning angles ................. 36 
+Figure 15. Parameterization of spatial memory component of fine-scale 
+movements ......................................................................................................... 38 
+Figure 16. Parameterization of PSM_dist and PSM_angle in the PSM-Type2 
+long-distance movement behavior ..................................................................... 40 
+Figure 17. Daily movements of 34 simulated porpoises ............................................ 41 
+Figure 18. Recovery of porpoise densities after end of pile-driving. ........................ 42 
+Figure 19. Calibration of c and T using pattern-oriented modeling ........................... 44 
+Figure 20. Porpoise movement tracks in the presence of continuous pile-driving 
+noise. .................................................................................................................. 53 
+Figure 21. Population impacts of alternative wind farm construction schedules in 
+scenarios with a response distance of 200 km, simulated using DEPONS 
+2.0. ...................................................................................................................... 54 
+Figure 22. Sensitivity analysis for parameters related to animal life history, 
+energetics, fine-scale movements and large-scale movements. ......................... 58 
+ 
+ 
+
+--- Page 70 ---
+TRACE document: DEPONS 3.0 
+ 
+70 
+Changes in DEPONS version 2.0, 2.1, 2.2, 2.3 and 3.0 
+ 
+The documentation for DEPONS 1.1 was presented in the online Supporting 
+Information for Nabe-Nielsen J., van Beest F.M., Grimm V., Sibly R.M., Teilmann, J. 
+& Thompson, P.M. (2018): Predicting the impacts of anthropogenic disturbances on 
+marine populations. Conservation Letters e12563. Below we outline the changes 
+implemented in code, parameter settings and documentation since then. Text related 
+to changes implemented in versions 2.1 and 2.2 are highlighted in green, those 
+reflecting changes in version 2.3 and later are highlighted in orange. 
+ 
+Problem formulation updated to reflect changes made in 2.0 (released 21 
+January 2019) ............................................................................................................. 3 
+The term "dispersal" has been changed to "large-scale movement" 
+throughout.  
+Grid cells are now also characterized by sea surface salinity .................................... 6 
+In DEPONS 1.1 animals turned less steeply when moving fast. This 
+undocumented aspect of the fine-scale movement behavior has been removed 
+in DEPONS 2.0. 
+Animals now inherit a map of the profitability of different cell groups from 
+their mother (used in PSM-Type2 large-scale movement behavior) ......................... 9 
+Turning angles no longer depend on speed when animals use fine-scale 
+movements, as there was no evidence that this was the case for North Sea 
+animals ..................................................................................................................... 23 
+Fine-scale movements (i.e. both parameters controlling CRW movements and 
+those controlling spatial memory behavior) have now been re-parameterized 
+based on GPS tracking data collected in the North Sea ........................................... 30 
+Fine-scale movements now depend on local salinity and bathymetry ......... 17 and 33 
+The large-scale movement behavior PSM-Type2 has been re-calibrated based 
+on data from 34 satellite-tracked North Sea porpoises after re-calibrating the 
+fine-scale movements based on GPS-tagged North Sea animals. This is now 
+done using a pattern oriented modeling process that resembles to one used for 
+calibrating fine-scale movements............................................................................. 39 
+The parameters controlling animals' response to noise (c and T) were re-
+parameterized after updating fine-scale movement parameters ............................... 43 
+Tracked porpoises now also store information about their energy level, 
+deterrence level, and position in each time step ...................................................... 55 
+Reproductive output for each simulated porpoise is now written to a separate 
+output file ................................................................................................................. 55 
+In the DEPONS 1.1 distribution on GitHub, the file ‘…/wind-
+farms/NorthSea_scenario3.txt’ did not correspond to scenario 3 as described 
+in Nabe-Nielsen et al. (2018). This has been corrected in DEPONS 2.0. 
+
+--- Page 71 ---
+TRACE document: DEPONS 3.0 
+ 
+71 
+The input data files for salinity and prey are now updated every month, and 
+they are named differently than in previous versions of DEPONS  ........................ 11 
+Sound modelling has been made more flexible (see Eqn. A1), allowing the 
+user to specify the spreading loss factor and absorption coefficient for sound  ...... 30 
+It is now possible to do simulations using the Kattegat landscape, assuming 
+that the fine-scale movement behaviour calibrated for animals in the North 
+Sea is also suitable for this landscape. ..................................................................... 46 
+The large-scale movement behaviour previously used in the Kattegat 
+landscape (Nabe-Nielsen et al. 2014) has been introduced to DEPONS................. 23 
+Simulation of noise-emitting ships has been enabled. As the porpoises’ 
+response to ship noise is not fully understood, the feature is only included to 
+facilitate further studies ............................................................................................ 13 
+As of DEPONS 2.2 ship routes are defined using the same coordinate 
+reference system as the underlying landscape, rather than grid coordinates. 
+As of DEPONS 2.2 blocks-files can be used for counting animals within 
+specific regions when running simulations for the Kattegat-landscape ................... 23 
+As of DEPONS 2.2 small values of 𝛼̂ are no longer rounded to zero when 
+using the GUI ........................................................................................................... 31 
+DEPONS 2.2 has been tested using Java 8 and Repast Simphony 2.7. Minor 
+rounding errors are known to occur when using Java 11. 
+DEPONS 2.1 introduced a bug which caused animals to respond to noise 
+from the very start of the simulations rather than starting at the tick specified 
+in the ‘wind-farms’ text file. This bug was removed in DEPONS 2.2. 
+In DEPONS 2.3 the way ship movements are controlled and calculation of 
+sound source levels for ships have been updated ..................................................... 14 
+DEPONS 2.3 has been tested using Java 11 and Repast Simphony 2.9.1. 
+System tests have been used to ensure that the update did not affect 
+simulation outputs. 
+DEPONS 2.3 allows the user to record sound from ships whenever 
+hydrophones are enabled. ......................................................................................... 14 
+In DEPONS 3.0 ship noise now propagates according to the Aquarius v3 
+range-dependent shallow-water sound propagation model. ..................................... 14 
+In DEPONS 3.0 response of porpoises to ship noise has now been updated .......... 14 
+ 
+ 
+
+--- Page 72 ---
+TRACE document: DEPONS 3.0 
+ 
+72 
+Appendix 1: Methodology for geoacoustic parameter selection for the 
+generation of North Sea sound maps 
+Timo Constantin Gaida, Bas Binnerts, and Christ de Jong, 
+ 
+Geoacoustic parameters, such as the density, sound speed, and attenuation coefficients 
+of the seabed are input parameters for underwater sound modelling. Since these 
+parameters are difficult to measure in-situ over large areas, they are often derived 
+from surrogate variables. Two commonly used seabed classification descriptors 
+connected to sound speed and attenuation of the seabed surface layer are (i) the 
+median grain size (d50) and (ii) the Folk classification scheme (Folk 1954). Median 
+grain size is considered to be the most robust predictor of seabed acoustic parameters 
+(Ainslie, 2010). While a full-coverage Folk classification map is available for a large 
+part of the Northern European Waters on the EMODnet portal, a median grain size 
+map only exists for part of the North Sea (Figure S1) but not for Kattegat and inner 
+Danish waters (to the knowledge of the authors). 
+ 
+ 
+Figure S1 (Left) Folk map displaying 7 substrate classes. The map is generated by 
+reclassifying the diverse national data using the modified Folk classification scheme 
+(EMODnet Geology, 2021). (Right) d50 (median grain size) map of the North Sea 
+(Bockelmann et al., 2018).  
+Overlapping areas between the two maps in the North Sea were considered to 
+evaluate and statistically quantify how median grain size (continuous variable) relates 
+to different Folk classes (categorical variable). In areas where the different sediment 
+maps overlapped, we extracted values of median grain size data which fell within 
+polygons of different Folk class categories. This allowed for the calculation of a 
+distribution of grain size M (logarithmic scale; ϕ) per Folk class with a median, mean 
+and standard deviation (Table S1). 
+
+--- Page 73 ---
+TRACE document: DEPONS 3.0 
+ 
+73 
+Table S1 Statistical properties of the median grain size 𝑀(𝜙) per Folk class obtained 
+from the described methodology. 
+ 
+Median 𝑀(𝜙) 
+Mean 𝑀(𝜙) 
+STD 𝑀(𝜙) 
+Mud 
+6.68 
+6.50 
+2.27 
+Mud mod. 
+7.14 
+7.16 
+1.76 
+sandy Mud 
+4.12 
+4.00 
+1.29 
+Sandy Mud mod. 
+4.40 
+4.67 
+0.88 
+muddy Sand 
+3.16 
+3.15 
+0.60 
+Sand 
+2.28 
+2.2 
+0.62 
+mixed Sed. 
+1.50 
+1.55 
+1.40 
+coarse Sed. 
+1.22 
+0.98 
+1.25 
+Rock & Boulders 
+-8 (based on ISO-standards) 
+ 
+Finally, the median grain size map of Bockelmann et al., 2018 was extended with the 
+Folk class map, where each polygon was assigned to a median grain size using the 
+established relationship with the Folk class (Figure S2). 
+ 
+ 
+Figure S2 (left) Extended median grain size map using the approach presented in this 
+paper.  
+
+--- Page 74 ---
+TRACE document: DEPONS 3.0 
+ 
+74 
+References: 
+ 
+Ainslie, M. (2010). "Principles of Sonar Performance Modelling" (Springer-Verlag 
+Berlin, Heidelberg). 
+Bockelmann, F.D., W. Puls, U. Kleeberg, D. Müller, and K.C. Emeis (2018). 
+"Mapping mud content and median grain-size of North Sea sediments – A 
+geostatiscal approach," Marine Geology, 60-71. 
+EMODnet (2016). "EMODnet Thematic Lot n° 2 Geology - Final Report," European 
+marine observation and data network. 
+EMODnet, Geology (2021). https://www.emodnet-geology.eu/. Accessed July 2021. 
+Folk, R.L. (1954). "The Distinction between Grain Size and Mineral Composition in 
+Sedimentary-Rock Nomenclature," The Journal of Geology 62, 344-359. 
+ 
+ 

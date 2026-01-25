@@ -1,0 +1,6 @@
+{
+  "ticks": 500,
+  "porpoise": 500,
+  "elapsed": 10.0,
+  "note": "Initial conservative baseline; adjust after observing CI runs. Threshold = baseline*2 + 5s (fail if exceeded)."
+}

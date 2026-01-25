@@ -1,0 +1,342 @@
+2026-01-24 19:27:23,881 ERROR DISCREPANCY at tick 9: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:23,887 ERROR DISCREPANCY at tick 10: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:23,894 ERROR DISCREPANCY at tick 11: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:23,900 ERROR DISCREPANCY at tick 12: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:23,906 ERROR DISCREPANCY at tick 13: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:23,913 ERROR DISCREPANCY at tick 14: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:23,918 ERROR DISCREPANCY at tick 15: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:23,924 ERROR DISCREPANCY at tick 16: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:23,931 ERROR DISCREPANCY at tick 17: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:23,937 ERROR DISCREPANCY at tick 18: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:23,943 ERROR DISCREPANCY at tick 19: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:23,948 ERROR DISCREPANCY at tick 20: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:23,954 ERROR DISCREPANCY at tick 21: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:23,961 ERROR DISCREPANCY at tick 22: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:23,967 ERROR DISCREPANCY at tick 23: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:23,973 ERROR DISCREPANCY at tick 24: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:23,980 ERROR DISCREPANCY at tick 25: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:23,986 ERROR DISCREPANCY at tick 26: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:23,993 ERROR DISCREPANCY at tick 27: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:24,000 ERROR DISCREPANCY at tick 28: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:24,006 ERROR DISCREPANCY at tick 29: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:24,012 ERROR DISCREPANCY at tick 30: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:24,019 ERROR DISCREPANCY at tick 31: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:24,026 ERROR DISCREPANCY at tick 32: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:24,032 ERROR DISCREPANCY at tick 33: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:24,038 ERROR DISCREPANCY at tick 34: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:24,046 ERROR DISCREPANCY at tick 35: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:24,052 ERROR DISCREPANCY at tick 36: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:24,059 ERROR DISCREPANCY at tick 37: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:24,066 ERROR DISCREPANCY at tick 38: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:24,072 ERROR DISCREPANCY at tick 39: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:24,078 ERROR DISCREPANCY at tick 40: pop=999, births=0, deaths=0, net=0, net_pop=-1
+2026-01-24 19:27:24,086 ERROR DISCREPANCY at tick 41: pop=998, births=0, deaths=0, net=0, net_pop=-2
+2026-01-24 19:27:24,092 ERROR DISCREPANCY at tick 42: pop=998, births=0, deaths=0, net=0, net_pop=-2
+2026-01-24 19:27:24,099 ERROR DISCREPANCY at tick 43: pop=998, births=0, deaths=0, net=0, net_pop=-2
+2026-01-24 19:27:24,106 ERROR DISCREPANCY at tick 44: pop=998, births=0, deaths=0, net=0, net_pop=-2
+2026-01-24 19:27:24,114 ERROR DISCREPANCY at tick 45: pop=998, births=0, deaths=0, net=0, net_pop=-2
+2026-01-24 19:27:24,120 ERROR DISCREPANCY at tick 46: pop=998, births=0, deaths=0, net=0, net_pop=-2
+2026-01-24 19:27:24,127 ERROR DISCREPANCY at tick 47: pop=998, births=0, deaths=0, net=0, net_pop=-2
+2026-01-24 19:27:24,146 INFO tick=   50 pop= 998 births=      0 deaths=      2 net=     -2 net_pop=     -2 bΔ=0 dΔ=0
+2026-01-24 19:27:24,176 ERROR DISCREPANCY at tick 55: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,182 ERROR DISCREPANCY at tick 56: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,187 ERROR DISCREPANCY at tick 57: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,195 ERROR DISCREPANCY at tick 58: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,202 ERROR DISCREPANCY at tick 59: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,207 ERROR DISCREPANCY at tick 60: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,214 ERROR DISCREPANCY at tick 61: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,219 ERROR DISCREPANCY at tick 62: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,226 ERROR DISCREPANCY at tick 63: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,232 ERROR DISCREPANCY at tick 64: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,238 ERROR DISCREPANCY at tick 65: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,243 ERROR DISCREPANCY at tick 66: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,249 ERROR DISCREPANCY at tick 67: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,255 ERROR DISCREPANCY at tick 68: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,261 ERROR DISCREPANCY at tick 69: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,267 ERROR DISCREPANCY at tick 70: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,273 ERROR DISCREPANCY at tick 71: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,278 ERROR DISCREPANCY at tick 72: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,284 ERROR DISCREPANCY at tick 73: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,289 ERROR DISCREPANCY at tick 74: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,295 ERROR DISCREPANCY at tick 75: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,301 ERROR DISCREPANCY at tick 76: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,307 ERROR DISCREPANCY at tick 77: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,313 ERROR DISCREPANCY at tick 78: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,318 ERROR DISCREPANCY at tick 79: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,324 ERROR DISCREPANCY at tick 80: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,330 ERROR DISCREPANCY at tick 81: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,336 ERROR DISCREPANCY at tick 82: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,342 ERROR DISCREPANCY at tick 83: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,348 ERROR DISCREPANCY at tick 84: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,353 ERROR DISCREPANCY at tick 85: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,360 ERROR DISCREPANCY at tick 86: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,366 ERROR DISCREPANCY at tick 87: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,371 ERROR DISCREPANCY at tick 88: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,378 ERROR DISCREPANCY at tick 89: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,383 ERROR DISCREPANCY at tick 90: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,389 ERROR DISCREPANCY at tick 91: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,397 ERROR DISCREPANCY at tick 92: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,402 ERROR DISCREPANCY at tick 93: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,409 ERROR DISCREPANCY at tick 94: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,414 ERROR DISCREPANCY at tick 95: pop=997, births=0, deaths=2, net=-2, net_pop=-3
+2026-01-24 19:27:24,443 INFO tick=  100 pop= 997 births=      0 deaths=      3 net=     -3 net_pop=     -3 bΔ=0 dΔ=0
+2026-01-24 19:27:24,751 INFO tick=  150 pop= 997 births=      0 deaths=      3 net=     -3 net_pop=     -3 bΔ=0 dΔ=0
+2026-01-24 19:27:25,039 INFO tick=  200 pop= 997 births=      0 deaths=      3 net=     -3 net_pop=     -3 bΔ=0 dΔ=0
+2026-01-24 19:27:25,234 ERROR DISCREPANCY at tick 231: pop=996, births=0, deaths=3, net=-3, net_pop=-4
+2026-01-24 19:27:25,239 ERROR DISCREPANCY at tick 232: pop=996, births=0, deaths=3, net=-3, net_pop=-4
+2026-01-24 19:27:25,244 ERROR DISCREPANCY at tick 233: pop=996, births=0, deaths=3, net=-3, net_pop=-4
+2026-01-24 19:27:25,249 ERROR DISCREPANCY at tick 234: pop=996, births=0, deaths=3, net=-3, net_pop=-4
+2026-01-24 19:27:25,254 ERROR DISCREPANCY at tick 235: pop=996, births=0, deaths=3, net=-3, net_pop=-4
+2026-01-24 19:27:25,260 ERROR DISCREPANCY at tick 236: pop=996, births=0, deaths=3, net=-3, net_pop=-4
+2026-01-24 19:27:25,265 ERROR DISCREPANCY at tick 237: pop=996, births=0, deaths=3, net=-3, net_pop=-4
+2026-01-24 19:27:25,271 ERROR DISCREPANCY at tick 238: pop=996, births=0, deaths=3, net=-3, net_pop=-4
+2026-01-24 19:27:25,276 ERROR DISCREPANCY at tick 239: pop=996, births=0, deaths=3, net=-3, net_pop=-4
+2026-01-24 19:27:25,355 INFO tick=  250 pop= 996 births=      0 deaths=      4 net=     -4 net_pop=     -4 bΔ=0 dΔ=0
+2026-01-24 19:27:25,596 INFO tick=  300 pop= 996 births=      0 deaths=      4 net=     -4 net_pop=     -4 bΔ=0 dΔ=0
+2026-01-24 19:27:25,836 INFO tick=  350 pop= 996 births=      0 deaths=      4 net=     -4 net_pop=     -4 bΔ=0 dΔ=0
+2026-01-24 19:27:26,077 INFO tick=  400 pop= 996 births=      0 deaths=      4 net=     -4 net_pop=     -4 bΔ=0 dΔ=0
+2026-01-24 19:27:26,313 INFO tick=  450 pop= 996 births=      0 deaths=      4 net=     -4 net_pop=     -4 bΔ=0 dΔ=0
+2026-01-24 19:27:26,575 INFO tick=  500 pop= 996 births=      0 deaths=      4 net=     -4 net_pop=     -4 bΔ=0 dΔ=0
+2026-01-24 19:27:26,870 INFO tick=  550 pop= 996 births=      0 deaths=      4 net=     -4 net_pop=     -4 bΔ=0 dΔ=0
+2026-01-24 19:27:27,105 INFO tick=  600 pop= 996 births=      0 deaths=      4 net=     -4 net_pop=     -4 bΔ=0 dΔ=0
+2026-01-24 19:27:27,290 ERROR DISCREPANCY at tick 638: pop=995, births=0, deaths=4, net=-4, net_pop=-5
+2026-01-24 19:27:27,296 ERROR DISCREPANCY at tick 639: pop=995, births=0, deaths=4, net=-4, net_pop=-5
+2026-01-24 19:27:27,301 ERROR DISCREPANCY at tick 640: pop=995, births=0, deaths=4, net=-4, net_pop=-5
+2026-01-24 19:27:27,308 ERROR DISCREPANCY at tick 641: pop=995, births=0, deaths=4, net=-4, net_pop=-5
+2026-01-24 19:27:27,313 ERROR DISCREPANCY at tick 642: pop=995, births=0, deaths=4, net=-4, net_pop=-5
+2026-01-24 19:27:27,318 ERROR DISCREPANCY at tick 643: pop=995, births=0, deaths=4, net=-4, net_pop=-5
+2026-01-24 19:27:27,324 ERROR DISCREPANCY at tick 644: pop=995, births=0, deaths=4, net=-4, net_pop=-5
+2026-01-24 19:27:27,330 ERROR DISCREPANCY at tick 645: pop=995, births=0, deaths=4, net=-4, net_pop=-5
+2026-01-24 19:27:27,334 ERROR DISCREPANCY at tick 646: pop=995, births=0, deaths=4, net=-4, net_pop=-5
+2026-01-24 19:27:27,339 ERROR DISCREPANCY at tick 647: pop=995, births=0, deaths=4, net=-4, net_pop=-5
+2026-01-24 19:27:27,344 ERROR DISCREPANCY at tick 648: pop=995, births=0, deaths=4, net=-4, net_pop=-5
+2026-01-24 19:27:27,349 ERROR DISCREPANCY at tick 649: pop=995, births=0, deaths=4, net=-4, net_pop=-5
+2026-01-24 19:27:27,355 INFO tick=  650 pop= 995 births=      0 deaths=      4 net=     -4 net_pop=     -5 bΔ=0 dΔ=0
+2026-01-24 19:27:27,355 ERROR DISCREPANCY at tick 650: pop=995, births=0, deaths=4, net=-4, net_pop=-5
+2026-01-24 19:27:27,361 ERROR DISCREPANCY at tick 651: pop=995, births=0, deaths=4, net=-4, net_pop=-5
+2026-01-24 19:27:27,366 ERROR DISCREPANCY at tick 652: pop=995, births=0, deaths=4, net=-4, net_pop=-5
+2026-01-24 19:27:27,372 ERROR DISCREPANCY at tick 653: pop=995, births=0, deaths=4, net=-4, net_pop=-5
+2026-01-24 19:27:27,376 ERROR DISCREPANCY at tick 654: pop=995, births=0, deaths=4, net=-4, net_pop=-5
+2026-01-24 19:27:27,381 ERROR DISCREPANCY at tick 655: pop=995, births=0, deaths=4, net=-4, net_pop=-5
+2026-01-24 19:27:27,386 ERROR DISCREPANCY at tick 656: pop=995, births=0, deaths=4, net=-4, net_pop=-5
+2026-01-24 19:27:27,391 ERROR DISCREPANCY at tick 657: pop=995, births=0, deaths=4, net=-4, net_pop=-5
+2026-01-24 19:27:27,397 ERROR DISCREPANCY at tick 658: pop=995, births=0, deaths=4, net=-4, net_pop=-5
+2026-01-24 19:27:27,402 ERROR DISCREPANCY at tick 659: pop=994, births=0, deaths=4, net=-4, net_pop=-6
+2026-01-24 19:27:27,409 ERROR DISCREPANCY at tick 660: pop=994, births=0, deaths=4, net=-4, net_pop=-6
+2026-01-24 19:27:27,414 ERROR DISCREPANCY at tick 661: pop=994, births=0, deaths=4, net=-4, net_pop=-6
+2026-01-24 19:27:27,419 ERROR DISCREPANCY at tick 662: pop=994, births=0, deaths=4, net=-4, net_pop=-6
+2026-01-24 19:27:27,424 ERROR DISCREPANCY at tick 663: pop=994, births=0, deaths=4, net=-4, net_pop=-6
+2026-01-24 19:27:27,429 ERROR DISCREPANCY at tick 664: pop=994, births=0, deaths=4, net=-4, net_pop=-6
+2026-01-24 19:27:27,434 ERROR DISCREPANCY at tick 665: pop=994, births=0, deaths=4, net=-4, net_pop=-6
+2026-01-24 19:27:27,440 ERROR DISCREPANCY at tick 666: pop=994, births=0, deaths=4, net=-4, net_pop=-6
+2026-01-24 19:27:27,445 ERROR DISCREPANCY at tick 667: pop=994, births=0, deaths=4, net=-4, net_pop=-6
+2026-01-24 19:27:27,450 ERROR DISCREPANCY at tick 668: pop=994, births=0, deaths=4, net=-4, net_pop=-6
+2026-01-24 19:27:27,455 ERROR DISCREPANCY at tick 669: pop=994, births=0, deaths=4, net=-4, net_pop=-6
+2026-01-24 19:27:27,460 ERROR DISCREPANCY at tick 670: pop=994, births=0, deaths=4, net=-4, net_pop=-6
+2026-01-24 19:27:27,465 ERROR DISCREPANCY at tick 671: pop=994, births=0, deaths=4, net=-4, net_pop=-6
+2026-01-24 19:27:27,610 INFO tick=  700 pop= 994 births=      0 deaths=      6 net=     -6 net_pop=     -6 bΔ=0 dΔ=0
+2026-01-24 19:27:27,844 INFO tick=  750 pop= 994 births=      0 deaths=      6 net=     -6 net_pop=     -6 bΔ=0 dΔ=0
+2026-01-24 19:27:28,104 INFO tick=  800 pop= 994 births=      0 deaths=      6 net=     -6 net_pop=     -6 bΔ=0 dΔ=0
+2026-01-24 19:27:28,337 INFO tick=  850 pop= 994 births=      0 deaths=      6 net=     -6 net_pop=     -6 bΔ=0 dΔ=0
+2026-01-24 19:27:28,560 INFO tick=  900 pop= 994 births=      0 deaths=      6 net=     -6 net_pop=     -6 bΔ=0 dΔ=0
+2026-01-24 19:27:28,816 INFO tick=  950 pop= 994 births=      0 deaths=      6 net=     -6 net_pop=     -6 bΔ=0 dΔ=0
+2026-01-24 19:27:29,061 INFO tick= 1000 pop= 994 births=      0 deaths=      6 net=     -6 net_pop=     -6 bΔ=0 dΔ=0
+2026-01-24 19:27:29,071 ERROR DISCREPANCY at tick 1002: pop=993, births=0, deaths=6, net=-6, net_pop=-7
+2026-01-24 19:27:29,076 ERROR DISCREPANCY at tick 1003: pop=993, births=0, deaths=6, net=-6, net_pop=-7
+2026-01-24 19:27:29,081 ERROR DISCREPANCY at tick 1004: pop=993, births=0, deaths=6, net=-6, net_pop=-7
+2026-01-24 19:27:29,086 ERROR DISCREPANCY at tick 1005: pop=993, births=0, deaths=6, net=-6, net_pop=-7
+2026-01-24 19:27:29,091 ERROR DISCREPANCY at tick 1006: pop=993, births=0, deaths=6, net=-6, net_pop=-7
+2026-01-24 19:27:29,097 ERROR DISCREPANCY at tick 1007: pop=993, births=0, deaths=6, net=-6, net_pop=-7
+2026-01-24 19:27:29,315 INFO tick= 1050 pop= 993 births=      0 deaths=      7 net=     -7 net_pop=     -7 bΔ=0 dΔ=0
+2026-01-24 19:27:29,364 ERROR DISCREPANCY at tick 1060: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,369 ERROR DISCREPANCY at tick 1061: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,374 ERROR DISCREPANCY at tick 1062: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,379 ERROR DISCREPANCY at tick 1063: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,384 ERROR DISCREPANCY at tick 1064: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,389 ERROR DISCREPANCY at tick 1065: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,395 ERROR DISCREPANCY at tick 1066: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,400 ERROR DISCREPANCY at tick 1067: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,406 ERROR DISCREPANCY at tick 1068: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,411 ERROR DISCREPANCY at tick 1069: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,416 ERROR DISCREPANCY at tick 1070: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,422 ERROR DISCREPANCY at tick 1071: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,428 ERROR DISCREPANCY at tick 1072: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,434 ERROR DISCREPANCY at tick 1073: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,439 ERROR DISCREPANCY at tick 1074: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,445 ERROR DISCREPANCY at tick 1075: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,450 ERROR DISCREPANCY at tick 1076: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,456 ERROR DISCREPANCY at tick 1077: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,461 ERROR DISCREPANCY at tick 1078: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,466 ERROR DISCREPANCY at tick 1079: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,472 ERROR DISCREPANCY at tick 1080: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,477 ERROR DISCREPANCY at tick 1081: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,483 ERROR DISCREPANCY at tick 1082: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,489 ERROR DISCREPANCY at tick 1083: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,494 ERROR DISCREPANCY at tick 1084: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,499 ERROR DISCREPANCY at tick 1085: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,505 ERROR DISCREPANCY at tick 1086: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,510 ERROR DISCREPANCY at tick 1087: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,517 ERROR DISCREPANCY at tick 1088: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,560 ERROR DISCREPANCY at tick 1089: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,566 ERROR DISCREPANCY at tick 1090: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,574 ERROR DISCREPANCY at tick 1091: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,580 ERROR DISCREPANCY at tick 1092: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,586 ERROR DISCREPANCY at tick 1093: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,591 ERROR DISCREPANCY at tick 1094: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,596 ERROR DISCREPANCY at tick 1095: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,601 ERROR DISCREPANCY at tick 1096: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,607 ERROR DISCREPANCY at tick 1097: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,612 ERROR DISCREPANCY at tick 1098: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,618 ERROR DISCREPANCY at tick 1099: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,625 INFO tick= 1100 pop= 992 births=      0 deaths=      7 net=     -7 net_pop=     -8 bΔ=0 dΔ=0
+2026-01-24 19:27:29,625 ERROR DISCREPANCY at tick 1100: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,630 ERROR DISCREPANCY at tick 1101: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,635 ERROR DISCREPANCY at tick 1102: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,640 ERROR DISCREPANCY at tick 1103: pop=992, births=0, deaths=7, net=-7, net_pop=-8
+2026-01-24 19:27:29,764 ERROR DISCREPANCY at tick 1129: pop=991, births=0, deaths=8, net=-8, net_pop=-9
+2026-01-24 19:27:29,770 ERROR DISCREPANCY at tick 1130: pop=991, births=0, deaths=8, net=-8, net_pop=-9
+2026-01-24 19:27:29,777 ERROR DISCREPANCY at tick 1131: pop=991, births=0, deaths=8, net=-8, net_pop=-9
+2026-01-24 19:27:29,782 ERROR DISCREPANCY at tick 1132: pop=991, births=0, deaths=8, net=-8, net_pop=-9
+2026-01-24 19:27:29,789 ERROR DISCREPANCY at tick 1133: pop=991, births=0, deaths=8, net=-8, net_pop=-9
+2026-01-24 19:27:29,794 ERROR DISCREPANCY at tick 1134: pop=991, births=0, deaths=8, net=-8, net_pop=-9
+2026-01-24 19:27:29,800 ERROR DISCREPANCY at tick 1135: pop=991, births=0, deaths=8, net=-8, net_pop=-9
+2026-01-24 19:27:29,805 ERROR DISCREPANCY at tick 1136: pop=991, births=0, deaths=8, net=-8, net_pop=-9
+2026-01-24 19:27:29,810 ERROR DISCREPANCY at tick 1137: pop=991, births=0, deaths=8, net=-8, net_pop=-9
+2026-01-24 19:27:29,815 ERROR DISCREPANCY at tick 1138: pop=991, births=0, deaths=8, net=-8, net_pop=-9
+2026-01-24 19:27:29,821 ERROR DISCREPANCY at tick 1139: pop=991, births=0, deaths=8, net=-8, net_pop=-9
+2026-01-24 19:27:29,827 ERROR DISCREPANCY at tick 1140: pop=991, births=0, deaths=8, net=-8, net_pop=-9
+2026-01-24 19:27:29,832 ERROR DISCREPANCY at tick 1141: pop=991, births=0, deaths=8, net=-8, net_pop=-9
+2026-01-24 19:27:29,838 ERROR DISCREPANCY at tick 1142: pop=991, births=0, deaths=8, net=-8, net_pop=-9
+2026-01-24 19:27:29,843 ERROR DISCREPANCY at tick 1143: pop=991, births=0, deaths=8, net=-8, net_pop=-9
+2026-01-24 19:27:29,848 ERROR DISCREPANCY at tick 1144: pop=991, births=0, deaths=8, net=-8, net_pop=-9
+2026-01-24 19:27:29,852 ERROR DISCREPANCY at tick 1145: pop=991, births=0, deaths=8, net=-8, net_pop=-9
+2026-01-24 19:27:29,857 ERROR DISCREPANCY at tick 1146: pop=991, births=0, deaths=8, net=-8, net_pop=-9
+2026-01-24 19:27:29,863 ERROR DISCREPANCY at tick 1147: pop=991, births=0, deaths=8, net=-8, net_pop=-9
+2026-01-24 19:27:29,868 ERROR DISCREPANCY at tick 1148: pop=991, births=0, deaths=8, net=-8, net_pop=-9
+2026-01-24 19:27:29,874 ERROR DISCREPANCY at tick 1149: pop=991, births=0, deaths=8, net=-8, net_pop=-9
+2026-01-24 19:27:29,879 INFO tick= 1150 pop= 990 births=      0 deaths=      8 net=     -8 net_pop=    -10 bΔ=0 dΔ=0
+2026-01-24 19:27:29,880 ERROR DISCREPANCY at tick 1150: pop=990, births=0, deaths=8, net=-8, net_pop=-10
+2026-01-24 19:27:29,886 ERROR DISCREPANCY at tick 1151: pop=990, births=0, deaths=8, net=-8, net_pop=-10
+2026-01-24 19:27:30,064 ERROR DISCREPANCY at tick 1185: pop=989, births=0, deaths=10, net=-10, net_pop=-11
+2026-01-24 19:27:30,069 ERROR DISCREPANCY at tick 1186: pop=989, births=0, deaths=10, net=-10, net_pop=-11
+2026-01-24 19:27:30,076 ERROR DISCREPANCY at tick 1187: pop=989, births=0, deaths=10, net=-10, net_pop=-11
+2026-01-24 19:27:30,082 ERROR DISCREPANCY at tick 1188: pop=989, births=0, deaths=10, net=-10, net_pop=-11
+2026-01-24 19:27:30,087 ERROR DISCREPANCY at tick 1189: pop=989, births=0, deaths=10, net=-10, net_pop=-11
+2026-01-24 19:27:30,092 ERROR DISCREPANCY at tick 1190: pop=989, births=0, deaths=10, net=-10, net_pop=-11
+2026-01-24 19:27:30,098 ERROR DISCREPANCY at tick 1191: pop=989, births=0, deaths=10, net=-10, net_pop=-11
+2026-01-24 19:27:30,105 ERROR DISCREPANCY at tick 1192: pop=989, births=0, deaths=10, net=-10, net_pop=-11
+2026-01-24 19:27:30,110 ERROR DISCREPANCY at tick 1193: pop=989, births=0, deaths=10, net=-10, net_pop=-11
+2026-01-24 19:27:30,115 ERROR DISCREPANCY at tick 1194: pop=989, births=0, deaths=10, net=-10, net_pop=-11
+2026-01-24 19:27:30,121 ERROR DISCREPANCY at tick 1195: pop=989, births=0, deaths=10, net=-10, net_pop=-11
+2026-01-24 19:27:30,126 ERROR DISCREPANCY at tick 1196: pop=989, births=0, deaths=10, net=-10, net_pop=-11
+2026-01-24 19:27:30,131 ERROR DISCREPANCY at tick 1197: pop=989, births=0, deaths=10, net=-10, net_pop=-11
+2026-01-24 19:27:30,137 ERROR DISCREPANCY at tick 1198: pop=989, births=0, deaths=10, net=-10, net_pop=-11
+2026-01-24 19:27:30,142 ERROR DISCREPANCY at tick 1199: pop=989, births=0, deaths=10, net=-10, net_pop=-11
+2026-01-24 19:27:30,148 INFO tick= 1200 pop= 989 births=      0 deaths=     11 net=    -11 net_pop=    -11 bΔ=0 dΔ=1
+2026-01-24 19:27:30,383 INFO tick= 1250 pop= 989 births=      0 deaths=     11 net=    -11 net_pop=    -11 bΔ=0 dΔ=0
+2026-01-24 19:27:30,623 INFO tick= 1300 pop= 989 births=      0 deaths=     11 net=    -11 net_pop=    -11 bΔ=0 dΔ=0
+2026-01-24 19:27:30,868 INFO tick= 1350 pop= 989 births=      0 deaths=     11 net=    -11 net_pop=    -11 bΔ=0 dΔ=0
+2026-01-24 19:27:31,104 INFO tick= 1400 pop= 989 births=      0 deaths=     11 net=    -11 net_pop=    -11 bΔ=0 dΔ=0
+2026-01-24 19:27:31,311 ERROR DISCREPANCY at tick 1444: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,317 ERROR DISCREPANCY at tick 1445: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,322 ERROR DISCREPANCY at tick 1446: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,328 ERROR DISCREPANCY at tick 1447: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,333 ERROR DISCREPANCY at tick 1448: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,339 ERROR DISCREPANCY at tick 1449: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,345 INFO tick= 1450 pop= 988 births=      0 deaths=     11 net=    -11 net_pop=    -12 bΔ=0 dΔ=0
+2026-01-24 19:27:31,345 ERROR DISCREPANCY at tick 1450: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,351 ERROR DISCREPANCY at tick 1451: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,356 ERROR DISCREPANCY at tick 1452: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,361 ERROR DISCREPANCY at tick 1453: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,365 ERROR DISCREPANCY at tick 1454: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,371 ERROR DISCREPANCY at tick 1455: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,375 ERROR DISCREPANCY at tick 1456: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,380 ERROR DISCREPANCY at tick 1457: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,386 ERROR DISCREPANCY at tick 1458: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,391 ERROR DISCREPANCY at tick 1459: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,396 ERROR DISCREPANCY at tick 1460: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,402 ERROR DISCREPANCY at tick 1461: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,407 ERROR DISCREPANCY at tick 1462: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,412 ERROR DISCREPANCY at tick 1463: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,417 ERROR DISCREPANCY at tick 1464: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,422 ERROR DISCREPANCY at tick 1465: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,427 ERROR DISCREPANCY at tick 1466: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,431 ERROR DISCREPANCY at tick 1467: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,437 ERROR DISCREPANCY at tick 1468: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,442 ERROR DISCREPANCY at tick 1469: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,447 ERROR DISCREPANCY at tick 1470: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,454 ERROR DISCREPANCY at tick 1471: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,459 ERROR DISCREPANCY at tick 1472: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,464 ERROR DISCREPANCY at tick 1473: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,469 ERROR DISCREPANCY at tick 1474: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,476 ERROR DISCREPANCY at tick 1475: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,481 ERROR DISCREPANCY at tick 1476: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,487 ERROR DISCREPANCY at tick 1477: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,492 ERROR DISCREPANCY at tick 1478: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,496 ERROR DISCREPANCY at tick 1479: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,503 ERROR DISCREPANCY at tick 1480: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,508 ERROR DISCREPANCY at tick 1481: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,513 ERROR DISCREPANCY at tick 1482: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,521 ERROR DISCREPANCY at tick 1483: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,526 ERROR DISCREPANCY at tick 1484: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,531 ERROR DISCREPANCY at tick 1485: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,537 ERROR DISCREPANCY at tick 1486: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,542 ERROR DISCREPANCY at tick 1487: pop=988, births=0, deaths=11, net=-11, net_pop=-12
+2026-01-24 19:27:31,610 INFO tick= 1500 pop= 988 births=      0 deaths=     12 net=    -12 net_pop=    -12 bΔ=0 dΔ=0
+2026-01-24 19:27:31,851 INFO tick= 1550 pop= 988 births=      0 deaths=     12 net=    -12 net_pop=    -12 bΔ=0 dΔ=0
+2026-01-24 19:27:32,064 ERROR DISCREPANCY at tick 1595: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,070 ERROR DISCREPANCY at tick 1596: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,076 ERROR DISCREPANCY at tick 1597: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,082 ERROR DISCREPANCY at tick 1598: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,091 ERROR DISCREPANCY at tick 1599: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,097 INFO tick= 1600 pop= 987 births=      0 deaths=     12 net=    -12 net_pop=    -13 bΔ=0 dΔ=0
+2026-01-24 19:27:32,097 ERROR DISCREPANCY at tick 1600: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,102 ERROR DISCREPANCY at tick 1601: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,107 ERROR DISCREPANCY at tick 1602: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,111 ERROR DISCREPANCY at tick 1603: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,118 ERROR DISCREPANCY at tick 1604: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,124 ERROR DISCREPANCY at tick 1605: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,129 ERROR DISCREPANCY at tick 1606: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,135 ERROR DISCREPANCY at tick 1607: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,141 ERROR DISCREPANCY at tick 1608: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,146 ERROR DISCREPANCY at tick 1609: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,150 ERROR DISCREPANCY at tick 1610: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,155 ERROR DISCREPANCY at tick 1611: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,160 ERROR DISCREPANCY at tick 1612: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,166 ERROR DISCREPANCY at tick 1613: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,171 ERROR DISCREPANCY at tick 1614: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,176 ERROR DISCREPANCY at tick 1615: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,182 ERROR DISCREPANCY at tick 1616: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,188 ERROR DISCREPANCY at tick 1617: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,192 ERROR DISCREPANCY at tick 1618: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,197 ERROR DISCREPANCY at tick 1619: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,203 ERROR DISCREPANCY at tick 1620: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,208 ERROR DISCREPANCY at tick 1621: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,215 ERROR DISCREPANCY at tick 1622: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,221 ERROR DISCREPANCY at tick 1623: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,227 ERROR DISCREPANCY at tick 1624: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,232 ERROR DISCREPANCY at tick 1625: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,237 ERROR DISCREPANCY at tick 1626: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,241 ERROR DISCREPANCY at tick 1627: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,246 ERROR DISCREPANCY at tick 1628: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,251 ERROR DISCREPANCY at tick 1629: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,257 ERROR DISCREPANCY at tick 1630: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,262 ERROR DISCREPANCY at tick 1631: pop=987, births=0, deaths=12, net=-12, net_pop=-13
+2026-01-24 19:27:32,351 INFO tick= 1650 pop= 986 births=      0 deaths=     14 net=    -14 net_pop=    -14 bΔ=0 dΔ=0
+2026-01-24 19:27:32,592 INFO tick= 1700 pop= 986 births=      0 deaths=     14 net=    -14 net_pop=    -14 bΔ=0 dΔ=0
+2026-01-24 19:27:32,826 INFO tick= 1750 pop= 986 births=      0 deaths=     14 net=    -14 net_pop=    -14 bΔ=0 dΔ=0
+2026-01-24 19:27:33,076 INFO tick= 1800 pop= 986 births=      0 deaths=     14 net=    -14 net_pop=    -14 bΔ=0 dΔ=0
+2026-01-24 19:27:33,308 INFO tick= 1850 pop= 986 births=      0 deaths=     14 net=    -14 net_pop=    -14 bΔ=0 dΔ=0
+2026-01-24 19:27:33,370 ERROR DISCREPANCY at tick 1863: pop=985, births=0, deaths=14, net=-14, net_pop=-15
+2026-01-24 19:27:33,374 ERROR DISCREPANCY at tick 1864: pop=985, births=0, deaths=14, net=-14, net_pop=-15
+2026-01-24 19:27:33,379 ERROR DISCREPANCY at tick 1865: pop=985, births=0, deaths=14, net=-14, net_pop=-15
+2026-01-24 19:27:33,384 ERROR DISCREPANCY at tick 1866: pop=985, births=0, deaths=14, net=-14, net_pop=-15
+2026-01-24 19:27:33,390 ERROR DISCREPANCY at tick 1867: pop=985, births=0, deaths=14, net=-14, net_pop=-15
+2026-01-24 19:27:33,396 ERROR DISCREPANCY at tick 1868: pop=985, births=0, deaths=14, net=-14, net_pop=-15
+2026-01-24 19:27:33,402 ERROR DISCREPANCY at tick 1869: pop=985, births=0, deaths=14, net=-14, net_pop=-15
+2026-01-24 19:27:33,408 ERROR DISCREPANCY at tick 1870: pop=985, births=0, deaths=14, net=-14, net_pop=-15
+2026-01-24 19:27:33,414 ERROR DISCREPANCY at tick 1871: pop=985, births=0, deaths=14, net=-14, net_pop=-15
+2026-01-24 19:27:33,554 INFO tick= 1900 pop= 985 births=      0 deaths=     15 net=    -15 net_pop=    -15 bΔ=0 dΔ=0
+2026-01-24 19:27:33,796 INFO tick= 1950 pop= 985 births=      0 deaths=     15 net=    -15 net_pop=    -15 bΔ=0 dΔ=0
+2026-01-24 19:27:34,039 INFO tick= 2000 pop= 985 births=      0 deaths=     15 net=    -15 net_pop=    -15 bΔ=0 dΔ=0
+2026-01-24 19:27:34,039 INFO Finished 2000 ticks in 10.21s - final pop=985, births=0, deaths=15

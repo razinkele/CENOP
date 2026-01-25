@@ -25,6 +25,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r cenop/requirements.txt
+          python -m pip install -e ./cenop
 
       - name: Warmup Numba (pre-compile)
         run: |

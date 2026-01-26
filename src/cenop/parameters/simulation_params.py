@@ -78,7 +78,34 @@ class SimulationParameters:
     deter_time: int = 5                # tdeter: deterrence duration (steps) - Java default
     deter_max_distance: float = 50.0   # Max deterrence distance (km) - Java default 50*1000m
     deter_min_distance_ships: float = 0.1  # Min deterrence distance for ships (km)
-    
+
+    # Probabilistic deterrence response
+    deter_probabilistic: bool = True  # Use sigmoid-based probability instead of binary threshold
+    deter_response_slope: float = 0.2  # Steepness (per dB) of logistic response function
+
+    # === Social communication (new feature) ===
+    communication_enabled: bool = True          # Enable social calling and cohesion
+    communication_range_km: float = 10.0        # Communication detection range (km)
+    communication_source_level: float = 160.0   # Source level (dB re 1 µPa) of porpoise calls
+    communication_threshold: float = 120.0      # RL for 50% detection probability (dB)
+    communication_response_slope: float = 0.2   # Steepness of detection logistic
+    social_weight: float = 0.3                  # Weight [0-1] of social attraction influence
+
+    # How often (in ticks) to recompute neighbor topology for social calls. Reusing
+    # the neighbor pairs for a few ticks can reduce per-tick overhead when agents
+    # move slowly. Set to 1 to recompute every tick (default behavior).
+    communication_recompute_interval: int = 4
+
+    # Adaptive recompute options
+    communication_recompute_adaptive: bool = True
+    communication_recompute_min_interval: int = 1
+    communication_recompute_max_interval: int = 16
+    # Threshold (meters per tick) below which we consider agents "stationary" enough to
+    # safely increase the recompute interval. Default: 50 meters per tick.
+    communication_recompute_disp_threshold_m: float = 50.0
+    # EMA smoothing factor for displacement (0-1). Larger values track recent motion closely.
+    communication_recompute_ema_alpha: float = 0.3
+
     # === Ship Deterrence Coefficients ===
     pship_int_day: float = -3.0569351
     pship_int_night: float = -3.233771
@@ -111,14 +138,22 @@ class SimulationParameters:
     
     # === Life History ===
     max_age: float = 30.0              # Maximum age (years)
-    maturity_age: float = 3.44         # Age of maturity (years)
-    
+    maturity_age: float = 3.44         # Age of maturity (years) - DEPONS default
+    max_breeding_age: float = 20.0     # Maximum breeding age (years)
+
     # === Environment ===
     min_depth: float = 1.0             # wmin: minimum water depth (m)
     min_depth_dispersal: float = 4.0   # wdisp: minimum depth when dispersing (m)
-    
-    # === Survival ===
-    beta: float = 0.4                  # Survival probability constant
+
+    # === Survival/Mortality ===
+    # Starvation mortality formula: yearlySurvProb = 1 - (m_mort_prob_const * exp(-energy * x_survival_const))
+    m_mort_prob_const: float = 0.5     # M_MORT_PROB_CONST in DEPONS
+    x_survival_const: float = 0.15     # xSurvivalProbConst in DEPONS
+    # Age-dependent annual mortality rates
+    mortality_juvenile: float = 0.15   # Annual mortality for age < 1 year
+    mortality_adult: float = 0.05      # Annual mortality for 1 <= age <= 20
+    mortality_elderly: float = 0.15    # Annual mortality for age > 20
+    # Bycatch
     bycatch_prob: float = 0.0          # Annual bycatch probability
     
     # === Food ===

@@ -17,6 +17,11 @@ from cenop.parameters.demography import AGE_DISTRIBUTION_FREQUENCY
 from cenop.behavior.psm import PersistentSpatialMemory
 from cenop.behavior.sound import calculate_received_level, response_probability_from_rl
 
+# Optional movement module support
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from cenop.movement.base import MovementModule
+
 import logging
 import os
 
@@ -47,10 +52,17 @@ class PorpoisePopulation:
     Replaces the list of individual Porpoise objects for performance.
     """
     
-    def __init__(self, count: int, params: SimulationParameters, landscape: Optional[CellData] = None):
+    def __init__(
+        self,
+        count: int,
+        params: SimulationParameters,
+        landscape: Optional[CellData] = None,
+        movement_module: Optional['MovementModule'] = None,
+    ):
         self.params = params
         self.landscape = landscape
         self.count = count # Initial count capacity
+        self._movement_module = movement_module  # Optional modular movement
         
         # === Arrays (Structure of Arrays) ===
         # Use a dictionary of arrays or direct attributes? Direct attributes are faster.
@@ -567,6 +579,11 @@ class PorpoisePopulation:
         - Deterrence vector application
         - Social cohesion vectors
         """
+        # === Use modular movement if provided ===
+        if self._movement_module is not None:
+            self._update_movement_modular(mask, deterrence_vectors, ambient_rl)
+            return
+
         # === Get environmental variables from landscape ===
         # DEPONS CRW uses depth and salinity to modulate movement
         if self.landscape is not None:
@@ -676,6 +693,78 @@ class PorpoisePopulation:
         self.heading[dispersing] -= self._pres_angle[dispersing]  # Remove normal turn
         self.heading[dispersing] += dampened_angle[dispersing]  # Add dampened
         self.heading[dispersing] %= 360.0
+
+    def _update_movement_modular(
+        self,
+        mask: np.ndarray,
+        deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]],
+        ambient_rl: Optional[np.ndarray],
+    ) -> None:
+        """
+        Update movement using the modular movement system.
+
+        Creates MovementState and EnvironmentContext, calls the movement module,
+        and applies results to the population arrays.
+        """
+        from cenop.movement.base import MovementState, EnvironmentContext
+
+        # Create movement state from population state
+        state = MovementState(
+            prev_heading=self.heading.copy(),
+            prev_log_mov=self.prev_log_mov.copy(),
+            prev_angle=self.prev_angle.copy(),
+            heading=self.heading.copy(),
+            step_distance=np.zeros(self.count, dtype=np.float32),
+            dx=np.zeros(self.count, dtype=np.float32),
+            dy=np.zeros(self.count, dtype=np.float32),
+            is_dispersing=self.is_dispersing.copy(),
+            dispersal_heading=np.degrees(np.arctan2(
+                self.dispersal_target_x - self.x,
+                self.dispersal_target_y - self.y
+            )).astype(np.float32) % 360.0,
+        )
+
+        # Create environment context
+        if self.landscape is not None:
+            positions = np.column_stack((self.x, self.y))
+            depth = self.landscape.get_depths_vectorized(positions)
+            salinity = self.landscape.get_salinities_vectorized(positions)
+        else:
+            depth = np.full(self.count, 30.0, dtype=np.float32)
+            salinity = np.full(self.count, 30.0, dtype=np.float32)
+
+        environment = EnvironmentContext(depth=depth, salinity=salinity)
+
+        # Prepare deterrence vectors
+        deter_dx = None
+        deter_dy = None
+        if deterrence_vectors is not None:
+            deter_dx, deter_dy = deterrence_vectors
+
+        # Compute movement step
+        result = self._movement_module.compute_step(
+            self.x, self.y, state, environment, mask, deter_dx, deter_dy
+        )
+
+        # Apply results to population arrays
+        self._dx[:] = result.dx
+        self._dy[:] = result.dy
+        self.heading[mask] = result.new_heading[mask]
+        self.prev_angle[mask] = result.turning_angle[mask]
+        self.prev_log_mov[mask] = np.log10(result.step_distance[mask] * 4.0 + 1e-10)
+
+        # Update deter_strength
+        if deterrence_vectors is not None:
+            d_dx, d_dy = deterrence_vectors
+            self.deter_strength[mask] = np.abs(d_dx[mask]) + np.abs(d_dy[mask])
+        else:
+            self.deter_strength[mask] = 0.0
+
+        # Social communication (still handled by population for now)
+        if getattr(self.params, 'communication_enabled', False):
+            soc_dx, soc_dy = self._compute_social_vectors(mask, ambient_rl)
+            self._dx[mask] += soc_dx[mask]
+            self._dy[mask] += soc_dy[mask]
 
     def _handle_land_avoidance(self, mask: np.ndarray) -> None:
         """

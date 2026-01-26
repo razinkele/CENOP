@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from cenop.parameters.simulation_params import SimulationParameters
     from cenop.landscape.cell_data import CellData
     from cenop.agents.porpoise import Porpoise
+    from cenop.movement.base import MovementModule
 
 
 @dataclass
@@ -90,7 +91,8 @@ class Simulation:
         cell_data: Optional[CellData] = None,
         seed: Optional[int] = None,
         time_manager: Optional[TimeManager] = None,
-        time_mode: TimeMode = TimeMode.DEPONS
+        time_mode: TimeMode = TimeMode.DEPONS,
+        movement_module: Optional['MovementModule'] = None,
     ):
         """
         Initialize the simulation.
@@ -101,6 +103,7 @@ class Simulation:
             seed: Random seed for reproducibility
             time_manager: Pre-configured TimeManager (optional)
             time_mode: Time mode if creating new TimeManager (default: DEPONS)
+            movement_module: Optional movement module for modular movement system
         """
         self.params = params
         self.state = SimulationState()
@@ -143,7 +146,10 @@ class Simulation:
         # Running state
         self._is_running = False
         self._is_initialized = False
-        
+
+        # Movement module (Phase 2: JASMINE integration)
+        self._movement_module = movement_module
+
         # Auto-initialize if cell_data provided or using homogeneous landscape
         if cell_data is not None or params.landscape == "Homogeneous":
             self.initialize()
@@ -179,12 +185,13 @@ class Simulation:
         
         # Create initial porpoise population (Vectorized - Phase 3)
         from cenop.agents.population import PorpoisePopulation
-        
+
         # Initialize vectorized population manager
         self.population_manager = PorpoisePopulation(
             count=self.params.porpoise_count,
             params=self.params,
-            landscape=self._cell_data
+            landscape=self._cell_data,
+            movement_module=self._movement_module,
         )
         
         # Legacy list for backward compatibility (lazy loaded if accessed via property)

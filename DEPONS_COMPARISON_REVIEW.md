@@ -103,13 +103,15 @@ step_dist = (10 ** log_mov) / 4.0  # Convert to grid cells
 | R2 sd | 4.0 | 4.0 | Yes |
 | max_mov | 1.73 | 1.73 | Yes |
 
-*Note: Environmental modulation (b1, b2, a1, a2) parameters exist but effect is simplified in vectorized version.
+*Note: Environmental modulation (b1, b2, a1, a2) is now fully implemented (fixed Jan 2026).
 
 ### Discrepancies
 
-1. **Environmental Modulation:** The depth/salinity modulation on turning angle and step length is parameterized but the current vectorized implementation uses a simplified constant environment approach. The parameters exist for future enhancement.
+1. **Speed-Dependent Angle Adjustment (m parameter):** DEPONS iteratively adjusts turning angle when `presAngle >= 180` using formula `angle + rnd - (rnd * prevMov / m)`. CENOP clips to [-180, 180] instead. The `m` parameter (5.495) exists but is not used in population.py. **Impact:** Minor - extreme angles are rare.
 
-2. **Vectorization:** CENOP processes all 10,000+ agents in parallel using NumPy arrays, while DEPONS iterates sequentially. This provides ~100x speedup but may have minor floating-point differences.
+2. **Inertia Constant (k):** DEPONS uses `k = 0.001` in PSM memory vector combination: `crw_contrib = k + |VS| * VE`. CENOP adds deterrence/social vectors directly without this weighting. The parameter exists but is not used in population.py. **Impact:** Minor - affects memory-guided movement.
+
+3. **Vectorization:** CENOP processes all 10,000+ agents in parallel using NumPy arrays, while DEPONS iterates sequentially. This provides ~100x speedup but may have minor floating-point differences.
 
 ---
 

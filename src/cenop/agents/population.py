@@ -17,10 +17,11 @@ from cenop.parameters.demography import AGE_DISTRIBUTION_FREQUENCY
 from cenop.behavior.psm import PersistentSpatialMemory
 from cenop.behavior.sound import calculate_received_level, response_probability_from_rl
 
-# Optional movement module support
+# Optional movement module and FSM support
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from cenop.movement.base import MovementModule
+    from cenop.behavior.hybrid_fsm import HybridBehaviorFSM
 
 import logging
 import os
@@ -58,11 +59,13 @@ class PorpoisePopulation:
         params: SimulationParameters,
         landscape: Optional[CellData] = None,
         movement_module: Optional['MovementModule'] = None,
+        behavior_fsm: Optional['HybridBehaviorFSM'] = None,
     ):
         self.params = params
         self.landscape = landscape
         self.count = count # Initial count capacity
         self._movement_module = movement_module  # Optional modular movement
+        self._behavior_fsm = behavior_fsm  # Optional behavioral FSM
         
         # === Arrays (Structure of Arrays) ===
         # Use a dictionary of arrays or direct attributes? Direct attributes are faster.
@@ -112,7 +115,17 @@ class PorpoisePopulation:
         self.dispersal_distance_traveled = np.zeros(count, dtype=np.float32)
         self.dispersal_start_x = np.zeros(count, dtype=np.float32)
         self.dispersal_start_y = np.zeros(count, dtype=np.float32)
-        
+
+        # === Behavioral State (Phase 3: FSM Integration) ===
+        # Initialize behavioral state vector if FSM is provided
+        self._behavior_state = None
+        if self._behavior_fsm is not None:
+            from cenop.behavior.states import BehaviorStateVector
+            self._behavior_state = BehaviorStateVector.create(count)
+
+        # Time since last disturbance (for FSM recovery tracking)
+        self.time_since_disturbance = np.full(count, 9999, dtype=np.int32)
+
         # PSM instances - one per porpoise (list for object storage)
         world_w = self.params.world_width
         world_h = self.params.world_height
@@ -1064,25 +1077,28 @@ class PorpoisePopulation:
         active_before = int(np.sum(self.active_mask))
         self._global_tick += 1
 
-        # 1. Movement calculations
+        # 1. Update behavioral state (if FSM enabled)
+        self._update_behavioral_state(mask, deterrence_vectors)
+
+        # 2. Movement calculations
         self._update_movement(mask, deterrence_vectors, ambient_rl)
 
-        # 2. Land avoidance
+        # 3. Land avoidance
         self._handle_land_avoidance(mask)
 
-        # 3. Apply positions
+        # 4. Apply positions
         self._apply_positions(mask)
 
-        # 4. Energy dynamics
+        # 5. Energy dynamics
         self._update_energy_dynamics(mask)
 
-        # 5. Mortality
+        # 6. Mortality
         self._check_mortality(mask, active_before)
 
-        # 6. Aging
+        # 7. Aging
         self._update_aging(mask)
 
-        # 7. Reproduction
+        # 8. Reproduction
         self._handle_reproduction(mask)
 
     def to_dataframe(self) -> pd.DataFrame:
@@ -1098,6 +1114,84 @@ class PorpoisePopulation:
             'energy': self.energy[mask],
             'alive': np.ones(n_active, dtype=bool)
         })
+
+    # === Behavioral State Methods (Phase 3: FSM Integration) ===
+
+    def _update_behavioral_state(
+        self,
+        mask: np.ndarray,
+        deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]],
+    ) -> None:
+        """
+        Update behavioral states using the FSM (if enabled).
+
+        Creates a BehaviorContext from current population state and
+        passes it to the FSM for state transitions.
+
+        Args:
+            mask: Active agent mask
+            deterrence_vectors: Current deterrence vectors (dx, dy)
+        """
+        if self._behavior_fsm is None or self._behavior_state is None:
+            return
+
+        from cenop.behavior.states import BehaviorContext
+
+        # Calculate deterrence magnitude
+        if deterrence_vectors is not None:
+            deter_dx, deter_dy = deterrence_vectors
+            deter_mag = np.sqrt(deter_dx**2 + deter_dy**2)
+        else:
+            deter_mag = np.zeros(self.count, dtype=np.float32)
+
+        # Update time since disturbance
+        has_disturbance = deter_mag > 0.01
+        self.time_since_disturbance[has_disturbance] = 0
+        self.time_since_disturbance[~has_disturbance & mask] += 1
+
+        # Calculate current speed from last movement
+        current_speed = np.sqrt(self._dx**2 + self._dy**2)
+
+        # Get PSM memory cell count per agent
+        memory_cell_count = np.zeros(self.count, dtype=np.int32)
+        for i in range(self.count):
+            if mask[i]:
+                memory_cell_count[i] = len(self._psm_instances[i]._mem_cells)
+
+        # Check dispersal completion
+        dispersal_complete = self.is_dispersing & (
+            self.dispersal_distance_traveled >= self.dispersal_target_distance * 0.95
+        )
+
+        # Create behavior context
+        context = BehaviorContext(
+            deterrence_magnitude=deter_mag,
+            time_since_disturbance=self.time_since_disturbance,
+            current_energy=self.energy,
+            energy_declining_days=self.days_declining_energy,
+            current_speed=current_speed,
+            memory_cell_count=memory_cell_count,
+            is_dispersing=self.is_dispersing,
+            dispersal_complete=dispersal_complete,
+            t_disp=getattr(self.params, 't_disp', 3),
+            min_memory_cells=getattr(self.params, 'min_memory_cells', 50),
+        )
+
+        # Update states via FSM
+        self._behavior_fsm.update_states(self._behavior_state, context, mask)
+
+    def get_behavioral_state(self, idx: int) -> Optional['BehaviorState']:
+        """Get behavioral state for a single agent."""
+        if self._behavior_state is None:
+            return None
+        from cenop.behavior.states import BehaviorState
+        return BehaviorState(self._behavior_state.state[idx])
+
+    def get_behavioral_statistics(self) -> Optional[Dict[str, Any]]:
+        """Get behavioral state statistics."""
+        if self._behavior_state is None:
+            return None
+        return self._behavior_state.get_statistics()
 
     # === PSM and Dispersal Methods (Phase 2) ===
     

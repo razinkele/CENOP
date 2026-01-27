@@ -7,32 +7,22 @@ from shiny import ui
 
 
 # Landscape-turbine compatibility mapping
-# Note: Landscapes are auto-discovered from data directory, but turbine compatibility is defined here
+# Note: Only landscapes with available bathymetry data are included
+# Kattegat, InnerDanishWaters, DanTysk, Gemini data files are not available in this distribution
 LANDSCAPE_TURBINE_COMPATIBILITY = {
     "Homogeneous": ["off"],  # Synthetic uniform landscape for testing
     "NorthSea": ["off", "NorthSea_scenario1", "NorthSea_scenario2", "NorthSea_scenario3"],  # Uses UserDefined data
     "UserDefined": ["off", "User-def"],  # DEPONS default 400x400 North Sea grid
     "CentralBaltic": ["off"],  # Central Baltic Sea (Lithuania to Sweden) - 400x400 at 1km resolution
-    "Kattegat": ["off"],      # Kattegat strait - 600x1000 grid at 400m (UTM32N)
-    "DanTysk": ["off"],       # German North Sea - 400x400 grid at 400m (EPSG:3035)
-    "Gemini": ["off"],        # Dutch North Sea - 400x400 grid at 400m (EPSG:3035)
 }
 
 # Geographic bounds for each landscape (lat_min, lat_max, lon_min, lon_max)
 # Used for map centering and coordinate transformations
-# Bounds are calculated from ASC file metadata (xllcorner, yllcorner, cellsize, ncols, nrows)
-# and converted from their native CRS to WGS84
 LANDSCAPE_BOUNDS = {
     "Homogeneous": (53.27, 54.79, 4.83, 7.13),  # Default North Sea bounds
     "NorthSea": (53.27, 54.79, 4.83, 7.13),     # DEPONS North Sea area
     "UserDefined": (53.27, 54.79, 4.83, 7.13),  # Same as NorthSea
     "CentralBaltic": (53.9, 59.5, 13.0, 22.0),  # Central Baltic Sea - 450x460 grid (covers Oder mouth)
-    # Kattegat: UTM32N (EPSG:25832), 600x1000 grid at 400m = 240km x 400km
-    "Kattegat": (53.85, 57.45, 9.5, 13.5),      # Kattegat strait (Denmark-Sweden)
-    # DanTysk: EPSG:3035, 400x400 grid at 400m = 160km x 160km, centered on DanTysk wind farm
-    "DanTysk": (54.0, 56.0, 6.0, 9.0),          # German North Sea (west of Sylt)
-    # Gemini: EPSG:3035, 400x400 grid at 400m = 160km x 160km, centered on Gemini wind farm
-    "Gemini": (53.0, 55.0, 4.5, 7.0),           # Dutch North Sea
 }
 
 # Tooltips for sidebar parameters
@@ -42,6 +32,7 @@ SIDEBAR_TOOLTIPS = {
     "landscape": "Geographic area for the simulation. Each landscape has specific bathymetry, food availability, and compatible turbine scenarios.",
     "turbines": "Wind turbine scenario to simulate. Construction scenarios include pile-driving noise that deters porpoises.",
     "sim_speed": "Controls simulation speed. 1% = slow (0.3s per day), 100% = maximum speed (no delay between steps).",
+    "simulation_mode": "DEPONS = regulatory-compatible empirical models (validated against DEPONS 3.0). JASMINE = research-grade physics and DEB models with learned behaviors.",
 }
 
 
@@ -65,7 +56,7 @@ def create_sidebar():
             ui.div(
                 ui.tags.label(
                     "Simulation Years ",
-                    ui.tags.span("ⓘ", title=SIDEBAR_TOOLTIPS["sim_years"], 
+                    ui.tags.span("ⓘ", title=SIDEBAR_TOOLTIPS["sim_years"],
                                  style="cursor: help; color: #0d6efd;"),
                     **{"for": "sim_years"}
                 ),
@@ -74,18 +65,27 @@ def create_sidebar():
             ),
             ui.div(
                 ui.tags.label(
+                    "Simulation Mode ",
+                    ui.tags.span("ⓘ", title=SIDEBAR_TOOLTIPS["simulation_mode"],
+                                 style="cursor: help; color: #0d6efd;"),
+                    **{"for": "simulation_mode"}
+                ),
+                ui.input_select("simulation_mode", None,
+                    choices={"DEPONS": "DEPONS (Regulatory)", "JASMINE": "JASMINE (Research)"},
+                    selected="DEPONS"),
+                class_="mb-2"
+            ),
+            ui.div(
+                ui.tags.label(
                     "Landscape ",
-                    ui.tags.span("ⓘ", title=SIDEBAR_TOOLTIPS["landscape"], 
+                    ui.tags.span("ⓘ", title=SIDEBAR_TOOLTIPS["landscape"],
                                  style="cursor: help; color: #0d6efd;"),
                     **{"for": "landscape"}
                 ),
-                # Landscape choices are scanned from the data directory so new landscapes appear automatically
-                # Landscape selector is rendered server-side so it can be refreshed on demand
-                ui.output_ui("landscape_selector"),
-                ui.div(
-                    ui.input_action_button("refresh_landscapes", "🔄 Refresh", class_="btn-sm btn-outline-secondary"),
-                    class_="mt-1 mb-2"
-                ),
+                ui.input_select("landscape", None,
+                    choices=["Homogeneous", "NorthSea", "CentralBaltic", "UserDefined"],
+                    selected="NorthSea"),
+                class_="mb-2"
             ),
             ui.input_action_button("load_landscape", "🗺️ Load Landscape", class_="btn-outline-secondary w-100 mt-1 mb-1"),
             ui.output_text("landscape_status"),
@@ -125,7 +125,7 @@ def create_sidebar():
                 None,
                 min=1, 
                 max=100, 
-                value=100,
+                value=50,
                 step=1,
                 post=" %"
             ),
@@ -133,29 +133,9 @@ def create_sidebar():
             class_="mb-3"
         ),
         
-        # Map update frequency control
-        ui.div(
-            ui.tags.label(
-                "🗺️ Map Update Frequency ",
-                ui.tags.span("ⓘ", title="How often to update the porpoise map. 1 = every tick (slowest, smoothest), 48 = daily (fastest, less detail).", 
-                             style="cursor: help; color: #0d6efd;"),
-            ),
-            ui.input_slider(
-                "ticks_per_update", 
-                None,
-                min=1, 
-                max=48, 
-                value=1,
-                step=1,
-                post=" ticks"
-            ),
-            ui.p("1 = every tick, 48 = daily", class_="text-muted small mb-0"),
-            class_="mb-3"
-        ),
-        
         ui.tags.hr(),
         
-        ui.p("Advanced parameters in 'Model Settings' tab.", class_="text-muted small"),
+        ui.p("Advanced parameters in 'Model Settings' tab. JASMINE-specific settings available when JASMINE mode is selected.", class_="text-muted small"),
         
         width=280,
         bg="#f8f9fa"

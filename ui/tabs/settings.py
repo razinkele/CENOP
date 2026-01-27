@@ -37,6 +37,29 @@ TOOLTIPS = {
     "param_rS": "Satiation memory decay rate. Higher = faster forgetting of food satisfaction. DEPONS default: 0.04",
     "param_rR": "Reference memory decay rate. Higher = faster forgetting of remembered food locations. DEPONS default: 0.04",
     "param_rU": "Food replenishment rate. How fast depleted food patches recover. DEPONS default: 0.1",
+
+    # JASMINE Mode settings
+    "time_mode_override": "Override time subsystem: None = follow main mode, DEPONS = fixed 30-min ticks, JASMINE = variable timesteps with events.",
+    "movement_mode_override": "Override movement subsystem: None = follow main mode, DEPONS = empirical CRW, JASMINE = physics-based with velocity.",
+    "fsm_mode_override": "Override behavior FSM: None = follow main mode, DEPONS = simple state machine, JASMINE = utility-based decisions.",
+    "energy_mode_override": "Override energy subsystem: None = follow main mode, DEPONS = simple tracking, JASMINE = full DEB model.",
+    "memory_mode_override": "Override memory subsystem: None = follow main mode, DEPONS = no disturbance memory, JASMINE = learned avoidance.",
+
+    # JASMINE Physics parameters
+    "jasmine_mass_kg": "Body mass in kg for physics calculations. Affects inertia and acceleration. Default: 50 kg (adult porpoise).",
+    "jasmine_drag_coeff": "Hydrodynamic drag coefficient. Higher = more resistance. Default: 0.01",
+    "jasmine_max_thrust": "Maximum thrust force in Newtons. Limits acceleration. Default: 100 N",
+    "jasmine_current_weight": "Weight of ocean current advection (0-1). 0 = ignore currents, 1 = fully advected. Default: 0.5",
+
+    # JASMINE DEB parameters
+    "jasmine_bmr_scale": "Basal metabolic rate scale factor. 1.0 = standard, >1 = higher base costs. Default: 1.0",
+    "jasmine_activity_cost": "Activity cost multiplier. Higher = more energy used during active movement. Default: 2.0",
+    "jasmine_disturbance_cost": "Extra energy cost during disturbance. Multiplier on base costs. Default: 1.5",
+
+    # JASMINE Memory parameters
+    "jasmine_memory_decay_rate": "Memory decay rate per tick. Lower = longer memory retention. Default: 0.001",
+    "jasmine_avoidance_strength": "Maximum learned avoidance strength (0-1). Higher = stronger aversion. Default: 0.8",
+    "jasmine_avoidance_radius": "Avoidance influence radius in grid cells. Larger = wider effect. Default: 20 cells",
 }
 
 
@@ -126,7 +149,8 @@ def settings_tab():
             _basic_settings_panel(),
             _movement_settings_panel(),
             _dispersal_settings_panel(),
-            _energy_settings_panel()
+            _energy_settings_panel(),
+            _jasmine_settings_panel()
         )
     )
 
@@ -341,28 +365,28 @@ def _energy_settings_panel():
         "Energy",
         ui.card(
             ui.card_header("⚡ Energy & Memory Parameters"),
-            ui.p("Memory decay rates and food replenishment control how porpoises remember food locations.", 
+            ui.p("Memory decay rates and food replenishment control how porpoises remember food locations.",
                  class_="text-muted mb-3"),
             ui.layout_column_wrap(
                 ui.div(
-                    ui.tags.label("rS - Satiation memory decay ", 
-                                  ui.tags.span("ⓘ", title=TOOLTIPS["param_rS"], 
+                    ui.tags.label("rS - Satiation memory decay ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["param_rS"],
                                                style="cursor: help; color: #0d6efd;"),
                                   **{"for": "param_rS"}),
                     ui.input_numeric("param_rS", None, value=0.04, step=0.01),
                     class_="mb-2"
                 ),
                 ui.div(
-                    ui.tags.label("rR - Reference memory decay ", 
-                                  ui.tags.span("ⓘ", title=TOOLTIPS["param_rR"], 
+                    ui.tags.label("rR - Reference memory decay ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["param_rR"],
                                                style="cursor: help; color: #0d6efd;"),
                                   **{"for": "param_rR"}),
                     ui.input_numeric("param_rR", None, value=0.04, step=0.01),
                     class_="mb-2"
                 ),
                 ui.div(
-                    ui.tags.label("rU - Food replenishment rate ", 
-                                  ui.tags.span("ⓘ", title=TOOLTIPS["param_rU"], 
+                    ui.tags.label("rU - Food replenishment rate ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["param_rU"],
                                                style="cursor: help; color: #0d6efd;"),
                                   **{"for": "param_rU"}),
                     ui.input_numeric("param_rU", None, value=0.1, step=0.01),
@@ -370,5 +394,181 @@ def _energy_settings_panel():
                 ),
                 width=1/3
             )
+        )
+    )
+
+
+def _jasmine_settings_panel():
+    """JASMINE-specific settings panel."""
+    return ui.nav_panel(
+        "JASMINE",
+        ui.div(
+            ui.p(
+                ui.tags.strong("JASMINE Mode Settings"),
+                " - These parameters are only active when JASMINE mode is selected in the sidebar. "
+                "JASMINE provides physics-based movement, Dynamic Energy Budget (DEB) modeling, "
+                "and learned avoidance behavior.",
+                class_="alert alert-info"
+            ),
+        ),
+        ui.layout_columns(
+            # Subsystem Mode Overrides
+            ui.card(
+                ui.card_header("🔧 Subsystem Mode Overrides"),
+                ui.p("Override individual subsystems independently of the main simulation mode.",
+                     class_="text-muted small mb-3"),
+                ui.div(
+                    ui.tags.label("Time Mode ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["time_mode_override"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "time_mode_override"}),
+                    ui.input_select("time_mode_override", None,
+                        choices={"": "Follow main mode", "DEPONS": "DEPONS", "JASMINE": "JASMINE"},
+                        selected=""),
+                    class_="mb-2"
+                ),
+                ui.div(
+                    ui.tags.label("Movement Mode ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["movement_mode_override"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "movement_mode_override"}),
+                    ui.input_select("movement_mode_override", None,
+                        choices={"": "Follow main mode", "DEPONS": "DEPONS", "JASMINE": "JASMINE"},
+                        selected=""),
+                    class_="mb-2"
+                ),
+                ui.div(
+                    ui.tags.label("Behavior FSM Mode ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["fsm_mode_override"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "fsm_mode_override"}),
+                    ui.input_select("fsm_mode_override", None,
+                        choices={"": "Follow main mode", "DEPONS": "DEPONS", "JASMINE": "JASMINE"},
+                        selected=""),
+                    class_="mb-2"
+                ),
+                ui.div(
+                    ui.tags.label("Energy Mode ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["energy_mode_override"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "energy_mode_override"}),
+                    ui.input_select("energy_mode_override", None,
+                        choices={"": "Follow main mode", "DEPONS": "DEPONS", "JASMINE": "JASMINE"},
+                        selected=""),
+                    class_="mb-2"
+                ),
+                ui.div(
+                    ui.tags.label("Memory Mode ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["memory_mode_override"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "memory_mode_override"}),
+                    ui.input_select("memory_mode_override", None,
+                        choices={"": "Follow main mode", "DEPONS": "DEPONS", "JASMINE": "JASMINE"},
+                        selected=""),
+                    class_="mb-2"
+                ),
+            ),
+            # Physics Parameters
+            ui.card(
+                ui.card_header("🔬 Physics Parameters"),
+                ui.p("Parameters for JASMINE physics-based movement model.",
+                     class_="text-muted small mb-3"),
+                ui.div(
+                    ui.tags.label("Body Mass (kg) ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_mass_kg"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "jasmine_mass_kg"}),
+                    ui.input_numeric("jasmine_mass_kg", None, value=50.0, min=10.0, max=100.0, step=1.0),
+                    class_="mb-2"
+                ),
+                ui.div(
+                    ui.tags.label("Drag Coefficient ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_drag_coeff"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "jasmine_drag_coeff"}),
+                    ui.input_numeric("jasmine_drag_coeff", None, value=0.01, min=0.001, max=0.1, step=0.001),
+                    class_="mb-2"
+                ),
+                ui.div(
+                    ui.tags.label("Max Thrust (N) ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_max_thrust"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "jasmine_max_thrust"}),
+                    ui.input_numeric("jasmine_max_thrust", None, value=100.0, min=10.0, max=500.0, step=10.0),
+                    class_="mb-2"
+                ),
+                ui.div(
+                    ui.tags.label("Current Weight (0-1) ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_current_weight"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "jasmine_current_weight"}),
+                    ui.input_numeric("jasmine_current_weight", None, value=0.5, min=0.0, max=1.0, step=0.1),
+                    class_="mb-2"
+                ),
+            ),
+            col_widths=[6, 6]
+        ),
+        ui.layout_columns(
+            # DEB Parameters
+            ui.card(
+                ui.card_header("⚡ DEB Energy Parameters"),
+                ui.p("Dynamic Energy Budget parameters for JASMINE mode.",
+                     class_="text-muted small mb-3"),
+                ui.div(
+                    ui.tags.label("BMR Scale Factor ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_bmr_scale"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "jasmine_bmr_scale"}),
+                    ui.input_numeric("jasmine_bmr_scale", None, value=1.0, min=0.5, max=2.0, step=0.1),
+                    class_="mb-2"
+                ),
+                ui.div(
+                    ui.tags.label("Activity Cost Multiplier ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_activity_cost"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "jasmine_activity_cost"}),
+                    ui.input_numeric("jasmine_activity_cost", None, value=2.0, min=1.0, max=5.0, step=0.1),
+                    class_="mb-2"
+                ),
+                ui.div(
+                    ui.tags.label("Disturbance Cost Multiplier ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_disturbance_cost"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "jasmine_disturbance_cost"}),
+                    ui.input_numeric("jasmine_disturbance_cost", None, value=1.5, min=1.0, max=3.0, step=0.1),
+                    class_="mb-2"
+                ),
+            ),
+            # Memory Parameters
+            ui.card(
+                ui.card_header("🧠 Learned Avoidance Parameters"),
+                ui.p("Disturbance memory and avoidance behavior parameters.",
+                     class_="text-muted small mb-3"),
+                ui.div(
+                    ui.tags.label("Memory Decay Rate ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_memory_decay_rate"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "jasmine_memory_decay_rate"}),
+                    ui.input_numeric("jasmine_memory_decay_rate", None, value=0.001, min=0.0001, max=0.01, step=0.0001),
+                    class_="mb-2"
+                ),
+                ui.div(
+                    ui.tags.label("Avoidance Strength (0-1) ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_avoidance_strength"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "jasmine_avoidance_strength"}),
+                    ui.input_numeric("jasmine_avoidance_strength", None, value=0.8, min=0.0, max=1.0, step=0.1),
+                    class_="mb-2"
+                ),
+                ui.div(
+                    ui.tags.label("Avoidance Radius (cells) ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_avoidance_radius"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "jasmine_avoidance_radius"}),
+                    ui.input_numeric("jasmine_avoidance_radius", None, value=20.0, min=5.0, max=50.0, step=1.0),
+                    class_="mb-2"
+                ),
+            ),
+            col_widths=[6, 6]
         )
     )

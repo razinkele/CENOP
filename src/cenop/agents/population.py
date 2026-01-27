@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from cenop.movement.base import MovementModule
     from cenop.behavior.hybrid_fsm import HybridBehaviorFSM
+    from cenop.physiology.energy_budget import EnergyModule
 
 import logging
 import os
@@ -60,12 +61,14 @@ class PorpoisePopulation:
         landscape: Optional[CellData] = None,
         movement_module: Optional['MovementModule'] = None,
         behavior_fsm: Optional['HybridBehaviorFSM'] = None,
+        energy_module: Optional['EnergyModule'] = None,
     ):
         self.params = params
         self.landscape = landscape
         self.count = count # Initial count capacity
         self._movement_module = movement_module  # Optional modular movement
         self._behavior_fsm = behavior_fsm  # Optional behavioral FSM
+        self._energy_module = energy_module  # Optional energy module (Phase 4)
         
         # === Arrays (Structure of Arrays) ===
         # Use a dictionary of arrays or direct attributes? Direct attributes are faster.
@@ -125,6 +128,12 @@ class PorpoisePopulation:
 
         # Time since last disturbance (for FSM recovery tracking)
         self.time_since_disturbance = np.full(count, 9999, dtype=np.int32)
+
+        # === Energy State for modular energy system (Phase 4) ===
+        self._energy_state = None
+        if self._energy_module is not None:
+            from cenop.physiology.energy_budget import EnergyState
+            self._energy_state = EnergyState.create(count, initial_energy=10.0)
 
         # PSM instances - one per porpoise (list for object storage)
         world_w = self.params.world_width
@@ -893,10 +902,19 @@ class PorpoisePopulation:
 
     def _update_energy_dynamics(self, mask: np.ndarray) -> None:
         """
-        Update energy dynamics (DEPONS Pattern).
+        Update energy dynamics.
+
+        Uses modular energy system (Phase 4) if available, otherwise falls back
+        to DEPONS inline implementation.
 
         Handles food consumption, BMR, swimming cost, and PSM updates.
         """
+        # === Use modular energy system if provided ===
+        if self._energy_module is not None and self._energy_state is not None:
+            self._update_energy_modular(mask)
+            return
+
+        # === Fallback: Inline DEPONS energy model ===
         # Food consumption - hungry porpoises eat more
         fract_to_eat = np.clip((20.0 - self.energy) / 10.0, 0.0, 0.99)
 
@@ -924,6 +942,67 @@ class PorpoisePopulation:
 
         # Clamp energy
         np.clip(self.energy, 0, 20.0, out=self.energy)
+
+    def _update_energy_modular(self, mask: np.ndarray) -> None:
+        """
+        Update energy using the modular energy system (Phase 4).
+
+        Creates EnergyContext from current population state, calls the energy
+        module, and syncs results back to population arrays.
+        """
+        from cenop.physiology.energy_budget import EnergyContext
+
+        # Sync population energy to energy state
+        self._energy_state.energy[:] = self.energy
+
+        # Get food availability
+        fract_to_eat = np.clip((20.0 - self.energy) / 10.0, 0.0, 0.99)
+        if self.landscape is not None and hasattr(self.landscape, 'eat_food'):
+            food_available = self._eat_food_vectorized(mask, fract_to_eat)
+        else:
+            food_available = fract_to_eat * np.random.uniform(0.1, 0.5, self.count)
+
+        # Calculate current speed from movement
+        current_speed = np.sqrt(self._dx**2 + self._dy**2) * 400.0 / 1800.0  # m/s
+
+        # Get behavioral state (if FSM enabled)
+        if self._behavior_state is not None:
+            behavioral_state = self._behavior_state.state.astype(np.int32)
+        else:
+            behavioral_state = np.ones(self.count, dtype=np.int32)  # FORAGING
+
+        # Detect disturbance from deter_strength
+        is_disturbed = self.deter_strength > 0.1
+
+        # Create energy context
+        context = EnergyContext(
+            food_available=food_available.astype(np.float32),
+            food_quality=np.ones(self.count, dtype=np.float32),
+            current_speed=current_speed.astype(np.float32),
+            behavioral_state=behavioral_state,
+            water_temperature=np.full(self.count, 10.0, dtype=np.float32),
+            current_month=self._get_current_month(),
+            is_disturbed=is_disturbed,
+            deterrence_magnitude=self.deter_strength.astype(np.float32),
+            is_lactating=self.with_calf,
+            is_pregnant=np.zeros(self.count, dtype=bool),
+        )
+
+        # Compute energy update
+        result = self._energy_module.compute_energy_update(
+            self._energy_state, context, mask
+        )
+
+        # Apply result
+        self._energy_module.apply_result(self._energy_state, result, mask)
+
+        # Sync energy state back to population
+        self.energy[:] = self._energy_state.energy
+
+        # Update PSM with food gained
+        self._update_psm(mask, food_available)
+        self._update_energy_history(mask)
+        self._update_dispersal(mask)
 
     def _check_mortality(self, mask: np.ndarray, active_before: int) -> None:
         """
@@ -1630,14 +1709,51 @@ class PorpoisePopulation:
         """Get statistics about population energy levels."""
         active = self.active_mask
         if not np.any(active):
-            return {'mean': 0.0, 'std': 0.0, 'min': 0.0, 'max': 0.0, 'hungry': 0, 'starving': 0}
-            
+            return {'mean': 0.0, 'std': 0.0, 'min': 0.0, 'max': 0.0,
+                    'mean_energy': 0.0, 'min_energy': 0.0, 'max_energy': 0.0, 'std_energy': 0.0,
+                    'hungry': 0, 'starving': 0}
+
         active_energy = self.energy[active]
+
+        # Use modular energy module statistics if available
+        if self._energy_module is not None and self._energy_state is not None:
+            stats = self._energy_module.get_statistics(self._energy_state, active)
+            # Add compatibility aliases
+            stats['mean'] = stats.get('mean_energy', float(np.mean(active_energy)))
+            stats['std'] = stats.get('std_energy', float(np.std(active_energy)))
+            stats['min'] = stats.get('min_energy', float(np.min(active_energy)))
+            stats['max'] = stats.get('max_energy', float(np.max(active_energy)))
+            stats['hungry'] = int(np.sum(active_energy < 10))
+            stats['starving'] = int(np.sum(active_energy < 5))
+            return stats
+
+        # Fallback: basic stats from energy array
         return {
             'mean': float(np.mean(active_energy)),
             'std': float(np.std(active_energy)),
             'min': float(np.min(active_energy)),
             'max': float(np.max(active_energy)),
+            'mean_energy': float(np.mean(active_energy)),
+            'min_energy': float(np.min(active_energy)),
+            'max_energy': float(np.max(active_energy)),
+            'std_energy': float(np.std(active_energy)),
             'hungry': int(np.sum(active_energy < 10)),  # Below neutral
             'starving': int(np.sum(active_energy < 5))  # Critical
         }
+
+    def get_fitness_metrics(self) -> Optional[Dict[str, Any]]:
+        """
+        Get JASMINE fitness metrics (Phase 4).
+
+        Returns detailed fitness information when using JASMINE energy module.
+        """
+        if self._energy_module is None or self._energy_state is None:
+            return None
+
+        # Check if using JASMINE module
+        from cenop.physiology.energy_budget import EnergyMode
+        if self._energy_module.get_mode() == EnergyMode.JASMINE:
+            return self._energy_module.get_fitness_metrics(
+                self._energy_state, self.active_mask
+            )
+        return None

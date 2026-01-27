@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from cenop.agents.porpoise import Porpoise
     from cenop.movement.base import MovementModule
     from cenop.behavior.hybrid_fsm import HybridBehaviorFSM
+    from cenop.physiology.energy_budget import EnergyModule
 
 
 @dataclass
@@ -95,6 +96,7 @@ class Simulation:
         time_mode: TimeMode = TimeMode.DEPONS,
         movement_module: Optional['MovementModule'] = None,
         behavior_fsm: Optional['HybridBehaviorFSM'] = None,
+        energy_module: Optional['EnergyModule'] = None,
     ):
         """
         Initialize the simulation.
@@ -107,6 +109,7 @@ class Simulation:
             time_mode: Time mode if creating new TimeManager (default: DEPONS)
             movement_module: Optional movement module for modular movement system
             behavior_fsm: Optional behavioral FSM for state transitions
+            energy_module: Optional energy module for DEB calculations
         """
         self.params = params
         self.state = SimulationState()
@@ -156,6 +159,9 @@ class Simulation:
         # Behavior FSM (Phase 3: JASMINE integration)
         self._behavior_fsm = behavior_fsm
 
+        # Energy module (Phase 4: JASMINE DEB integration)
+        self._energy_module = energy_module
+
         # Auto-initialize if cell_data provided or using homogeneous landscape
         if cell_data is not None or params.landscape == "Homogeneous":
             self.initialize()
@@ -199,6 +205,7 @@ class Simulation:
             landscape=self._cell_data,
             movement_module=self._movement_module,
             behavior_fsm=self._behavior_fsm,
+            energy_module=self._energy_module,
         )
         
         # Legacy list for backward compatibility (lazy loaded if accessed via property)

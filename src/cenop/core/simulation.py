@@ -3,6 +3,9 @@ Main simulation controller for CENOP.
 
 This module contains the Simulation class which orchestrates the entire
 agent-based model, managing agents, scheduling, and data collection.
+
+Supports both DEPONS mode (fixed timestep, regulatory-compliant) and
+JASMINE mode (flexible timestep, event-driven) via the TimeManager.
 """
 
 from __future__ import annotations
@@ -12,10 +15,16 @@ from typing import TYPE_CHECKING, Optional, List, Dict, Any
 from dataclasses import dataclass, field
 from tqdm import tqdm
 
+from cenop.core.time_manager import TimeManager, TimeMode
+
 if TYPE_CHECKING:
     from cenop.parameters.simulation_params import SimulationParameters
     from cenop.landscape.cell_data import CellData
     from cenop.agents.porpoise import Porpoise
+    from cenop.movement.base import MovementModule
+    from cenop.behavior.hybrid_fsm import HybridBehaviorFSM
+    from cenop.physiology.energy_budget import EnergyModule
+    from cenop.behavior.disturbance_memory import DisturbanceMemoryModule
 
 
 @dataclass
@@ -83,24 +92,49 @@ class Simulation:
         self,
         params: SimulationParameters,
         cell_data: Optional[CellData] = None,
-        seed: Optional[int] = None
+        seed: Optional[int] = None,
+        time_manager: Optional[TimeManager] = None,
+        time_mode: TimeMode = TimeMode.DEPONS,
+        movement_module: Optional['MovementModule'] = None,
+        behavior_fsm: Optional['HybridBehaviorFSM'] = None,
+        energy_module: Optional['EnergyModule'] = None,
+        memory_module: Optional['DisturbanceMemoryModule'] = None,
     ):
         """
         Initialize the simulation.
-        
+
         Args:
             params: Simulation parameters configuration
             cell_data: Pre-loaded landscape data (optional)
             seed: Random seed for reproducibility
+            time_manager: Pre-configured TimeManager (optional)
+            time_mode: Time mode if creating new TimeManager (default: DEPONS)
+            movement_module: Optional movement module for modular movement system
+            behavior_fsm: Optional behavioral FSM for state transitions
+            energy_module: Optional energy module for DEB calculations
+            memory_module: Optional disturbance memory module for learned avoidance
         """
         self.params = params
         self.state = SimulationState()
-        
+
         # Set random seed
         actual_seed = seed if seed is not None else params.random_seed
-        if actual_seed is not None:
-            np.random.seed(actual_seed)
+        if actual_seed is None:
+            actual_seed = 42  # Default seed for reproducibility
         self._seed = actual_seed
+
+        # Initialize TimeManager
+        if time_manager is not None:
+            self.time_manager = time_manager
+        else:
+            self.time_manager = TimeManager(
+                mode=time_mode,
+                base_seed=actual_seed,
+                sim_years=params.sim_years
+            )
+
+        # Set initial random seed (will be updated per-tick)
+        np.random.seed(actual_seed)
         
         # Initialize components (lazy loading or pre-provided)
         self._cell_data: Optional[CellData] = cell_data
@@ -114,14 +148,26 @@ class Simulation:
         
         # History for plotting
         self._history: List[Dict[str, Any]] = []
-        
-        # Calculate max ticks
-        self.max_ticks = params.sim_years * 360 * 48
-        
+
+        # Max ticks from TimeManager (for backward compatibility)
+        self.max_ticks = self.time_manager.max_ticks
+
         # Running state
         self._is_running = False
         self._is_initialized = False
-        
+
+        # Movement module (Phase 2: JASMINE integration)
+        self._movement_module = movement_module
+
+        # Behavior FSM (Phase 3: JASMINE integration)
+        self._behavior_fsm = behavior_fsm
+
+        # Energy module (Phase 4: JASMINE DEB integration)
+        self._energy_module = energy_module
+
+        # Memory module (Phase 5: JASMINE memory/cognition)
+        self._memory_module = memory_module
+
         # Auto-initialize if cell_data provided or using homogeneous landscape
         if cell_data is not None or params.landscape == "Homogeneous":
             self.initialize()
@@ -157,12 +203,16 @@ class Simulation:
         
         # Create initial porpoise population (Vectorized - Phase 3)
         from cenop.agents.population import PorpoisePopulation
-        
+
         # Initialize vectorized population manager
         self.population_manager = PorpoisePopulation(
             count=self.params.porpoise_count,
             params=self.params,
-            landscape=self._cell_data
+            landscape=self._cell_data,
+            movement_module=self._movement_module,
+            behavior_fsm=self._behavior_fsm,
+            energy_module=self._energy_module,
+            memory_module=self._memory_module,
         )
         
         # Legacy list for backward compatibility (lazy loaded if accessed via property)
@@ -385,76 +435,93 @@ class Simulation:
         
     def step(self) -> None:
         """
-        Execute one simulation step (30 minutes).
+        Execute one simulation step (30 minutes in DEPONS mode).
+
+        Uses TimeManager for:
+        - Deterministic per-tick seeding
+        - Boundary detection (day/month/year)
+        - Time advancement
+
         Vectorized implementation (Phase 3).
         """
         if not self._is_initialized:
             self.initialize()
-        
+
+        # 1. Set deterministic seed for this tick (CRITICAL for reproducibility)
+        np.random.seed(self.time_manager.get_seed())
+
         # Debug first few steps
-        if self.state.tick < 5:
-            print(f"[DEBUG] Simulation.step() tick={self.state.tick}, pop={self.state.population}")
-        
-        # Update turbines and ships for current tick
-        self._turbine_manager.update(self.state.tick)
-        self._ship_manager.update(self.state.tick)
-        
-        # Calculate vectorized deterrence
-        # We need active agent positions for efficient calculation
+        if self.time_manager.tick < 5:
+            print(f"[DEBUG] Simulation.step() tick={self.time_manager.tick}, pop={self.state.population}")
+
+        # 2. Process scheduled events (JASMINE mode only, no-op in DEPONS mode)
+        for event in self.time_manager.get_scheduled_events():
+            event()
+
+        # 3. Update turbines and ships for current tick
+        self._turbine_manager.update(self.time_manager.tick)
+        self._ship_manager.update(self.time_manager.tick)
+
+        # 4. Calculate vectorized deterrence
         # Access arrays directly from population manager
         active_mask = self.population_manager.active_mask
         px = self.population_manager.x
         py = self.population_manager.y
-        
+
         # Turbine deterrence (Vectorized)
         turb_dx, turb_dy = self._turbine_manager.calculate_aggregate_deterrence_vectorized(
             px, py, self.params, cell_size=400.0
         )
-        
+
         # Ship deterrence (Vectorized)
         ship_dx, ship_dy = self._ship_manager.calculate_aggregate_deterrence_vectorized(
-            px, py, self.params, is_day=self.state.is_daytime, cell_size=400.0
+            px, py, self.params, is_day=self.time_manager.is_daytime, cell_size=400.0
         )
-        
+
         # Combine
         total_dx = turb_dx + ship_dx
         total_dy = turb_dy + ship_dy
-        
-        # Step population (Vectorized)
+
+        # 5. Step population (Vectorized)
         self.population_manager.step(deterrence_vectors=(total_dx, total_dy))
-        
-        if self.state.tick < 5:
+
+        if self.time_manager.tick < 5:
             print(f"[DEBUG] Simulation.step() after pop_manager.step: active={self.population_manager.population_size}")
-                
-        # Update Statistics
+
+        # 6. Update Statistics
         current_pop = self.population_manager.population_size
         if current_pop != self.state.population:
-            # Simple diff for now, detailed birth/death tracking 
-            # would be added to PopulationManager in full implementation
             diff = current_pop - self.state.population
             if diff < 0:
                 self.state.deaths += abs(diff)
             else:
                 self.state.births += diff
             self.state.population = current_pop
-                
-        # Daily tasks (every 48 ticks)
-        if self.state.tick > 0 and self.state.tick % 48 == 0:
+
+        # 7. Advance time FIRST (so boundary checks work correctly)
+        self.time_manager.advance()
+
+        # 8. Sync legacy SimulationState from TimeManager
+        self.state.tick = self.time_manager.tick
+        self.state.day = self.time_manager.day
+        self.state.month = self.time_manager.month
+        self.state.year = self.time_manager.year
+        self.state.quarter = self.time_manager.quarter
+
+        # 9. Daily tasks (at day boundary)
+        if self.time_manager.is_day_boundary():
             self._daily_tasks()
-            
-        # Monthly tasks (every 30 days)
-        if self.state.day > 0 and self.state.day % 30 == 0 and self.state.tick % 48 == 0:
+
+        # 10. Monthly tasks (at month boundary)
+        if self.time_manager.is_month_boundary():
             self._monthly_tasks()
-            
-        # Yearly tasks (every 360 days)
-        if self.state.day > 0 and self.state.day % 360 == 0 and self.state.tick % 48 == 0:
+
+        # 11. Yearly tasks (at year boundary)
+        if self.time_manager.is_year_boundary():
             self._yearly_tasks()
-            
-        # Advance time
-        self.state.advance_tick()
-        
-        # Record history daily
-        if self.state.tick % 48 == 0:
+
+        # 12. Record history (daily)
+        if self.time_manager.is_day_boundary():
             self._record_history()
             
     def _daily_tasks(self) -> None:
@@ -522,24 +589,26 @@ class Simulation:
     def run(self, progress: bool = True) -> None:
         """
         Run the complete simulation.
-        
+
+        Uses TimeManager.is_finished() to determine completion.
+
         Args:
             progress: Show progress bar
         """
         if not self._is_initialized:
             self.initialize()
-            
+
         self._is_running = True
-        
+
         iterator = range(self.max_ticks)
         if progress:
             iterator = tqdm(iterator, desc="Simulating", unit="ticks")
-            
+
         for _ in iterator:
-            if not self._is_running:
+            if not self._is_running or self.time_manager.is_finished():
                 break
             self.step()
-            
+
         self._is_running = False
         
     def stop(self) -> None:

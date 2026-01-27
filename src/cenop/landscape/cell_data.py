@@ -223,9 +223,57 @@ class CellData:
         # DEPONS Java: if (foodValue < 0.01) foodValue = 0.01
         if self._food_value[i, j] < 0.01:
             self._food_value[i, j] = 0.01
-            
+
         return food_eaten
-        
+
+    def eat_food_vectorized(
+        self,
+        x: np.ndarray,
+        y: np.ndarray,
+        fraction: np.ndarray
+    ) -> np.ndarray:
+        """
+        Eat food from multiple cells (vectorized).
+
+        Args:
+            x: Array of x positions
+            y: Array of y positions
+            fraction: Array of fractions to eat (0-1) for each position
+
+        Returns:
+            Array of food amounts eaten at each position
+        """
+        self._ensure_loaded()
+
+        n = len(x)
+        food_eaten = np.zeros(n, dtype=np.float32)
+
+        if self._food_value is None or self._food_prob is None:
+            return food_eaten
+
+        # Get grid indices for all positions
+        i_arr = np.clip(y.astype(np.int32), 0, self.height - 1)
+        j_arr = np.clip(x.astype(np.int32), 0, self.width - 1)
+
+        # Get current food at each position
+        current_food = self._food_value[i_arr, j_arr]
+
+        # Calculate food to eat
+        food_eaten = current_food * fraction
+
+        # Update food values
+        new_food = np.maximum(0.0, current_food - food_eaten)
+
+        # ADD_ARTIFICIAL_FOOD: minimum 0.01
+        new_food = np.maximum(new_food, 0.01)
+
+        # Write back to food grid
+        # Note: This handles duplicate positions by last-write-wins
+        # For accurate multi-agent eating, would need aggregation
+        self._food_value[i_arr, j_arr] = new_food
+
+        return food_eaten
+
     def replenish_food(self, rate: float) -> None:
         """Replenish food across all cells."""
         self._ensure_loaded()

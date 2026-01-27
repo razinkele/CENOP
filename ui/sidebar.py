@@ -32,6 +32,7 @@ SIDEBAR_TOOLTIPS = {
     "landscape": "Geographic area for the simulation. Each landscape has specific bathymetry, food availability, and compatible turbine scenarios.",
     "turbines": "Wind turbine scenario to simulate. Construction scenarios include pile-driving noise that deters porpoises.",
     "sim_speed": "Controls simulation speed. 1% = slow (0.3s per day), 100% = maximum speed (no delay between steps).",
+    "simulation_mode": "DEPONS = regulatory-compatible empirical models (validated against DEPONS 3.0). JASMINE = research-grade physics and DEB models with learned behaviors.",
 }
 
 
@@ -55,7 +56,7 @@ def create_sidebar():
             ui.div(
                 ui.tags.label(
                     "Simulation Years ",
-                    ui.tags.span("ⓘ", title=SIDEBAR_TOOLTIPS["sim_years"], 
+                    ui.tags.span("ⓘ", title=SIDEBAR_TOOLTIPS["sim_years"],
                                  style="cursor: help; color: #0d6efd;"),
                     **{"for": "sim_years"}
                 ),
@@ -64,13 +65,25 @@ def create_sidebar():
             ),
             ui.div(
                 ui.tags.label(
+                    "Simulation Mode ",
+                    ui.tags.span("ⓘ", title=SIDEBAR_TOOLTIPS["simulation_mode"],
+                                 style="cursor: help; color: #0d6efd;"),
+                    **{"for": "simulation_mode"}
+                ),
+                ui.input_select("simulation_mode", None,
+                    choices={"DEPONS": "DEPONS (Regulatory)", "JASMINE": "JASMINE (Research)"},
+                    selected="DEPONS"),
+                class_="mb-2"
+            ),
+            ui.div(
+                ui.tags.label(
                     "Landscape ",
-                    ui.tags.span("ⓘ", title=SIDEBAR_TOOLTIPS["landscape"], 
+                    ui.tags.span("ⓘ", title=SIDEBAR_TOOLTIPS["landscape"],
                                  style="cursor: help; color: #0d6efd;"),
                     **{"for": "landscape"}
                 ),
-                ui.input_select("landscape", None, 
-                    choices=["Homogeneous", "NorthSea", "CentralBaltic", "UserDefined"], 
+                ui.input_select("landscape", None,
+                    choices=["Homogeneous", "NorthSea", "CentralBaltic", "UserDefined"],
                     selected="NorthSea"),
                 class_="mb-2"
             ),
@@ -122,7 +135,7 @@ def create_sidebar():
         
         ui.tags.hr(),
         
-        ui.p("Advanced parameters in 'Model Settings' tab.", class_="text-muted small"),
+        ui.p("Advanced parameters in 'Model Settings' tab. JASMINE-specific settings available when JASMINE mode is selected.", class_="text-muted small"),
         
         width=280,
         bg="#f8f9fa"

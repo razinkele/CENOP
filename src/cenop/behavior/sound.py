@@ -39,65 +39,74 @@ class SoundPropagationParams:
 
 
 def calculate_transmission_loss(
-    distance_m: float,
+    distance_m: float | np.ndarray,
     alpha_hat: float = 0.0,
     beta_hat: float = 20.0
-) -> float:
+) -> float | np.ndarray:
     """
     Calculate transmission loss (TL) for sound propagation.
-    
+
     Uses the practical spreading model from DEPONS:
     TL = β * log10(r) + α * r
-    
+
     where:
     - β (beta_hat) is the spreading loss factor (20 for spherical, 10 for cylindrical)
     - α (alpha_hat) is the absorption coefficient (dB/m)
     - r is the distance in meters
-    
+
     DEPONS Java (Turbine.java line 225):
     betaHat * Math.log10(distToTurb) + alphaHat * distToTurb
-    
+
     Args:
-        distance_m: Distance from source in meters
+        distance_m: Distance from source in meters (scalar or array)
         alpha_hat: Absorption coefficient (dB/m)
         beta_hat: Spreading loss factor
-        
+
     Returns:
-        Transmission loss in dB
+        Transmission loss in dB (same shape as input)
     """
-    if distance_m <= 0:
-        return 0.0
-    
-    # Avoid log(0) - use 1m as minimum
-    distance_m = max(1.0, distance_m)
-    
+    # Convert to numpy array for uniform handling
+    dist = np.asarray(distance_m)
+    is_scalar = dist.ndim == 0
+
+    # Avoid log(0) - use 1m as minimum, handle zeros
+    dist_safe = np.maximum(dist, 1.0)
+
     # TL = β * log10(r) + α * r
     # DEPONS uses distance in meters directly with alpha in dB/m
-    spreading_loss = beta_hat * np.log10(distance_m)
-    absorption_loss = alpha_hat * distance_m  # No conversion, alpha is dB/m
-    
-    return spreading_loss + absorption_loss
+    spreading_loss = beta_hat * np.log10(dist_safe)
+    absorption_loss = alpha_hat * dist_safe
+
+    result = spreading_loss + absorption_loss
+
+    # For zero/negative distances, return 0
+    result = np.where(dist <= 0, 0.0, result)
+
+    # Return scalar if input was scalar
+    if is_scalar:
+        return float(result)
+    return result
 
 
 def calculate_received_level(
     source_level: float,
-    distance_m: float,
+    distance_m: float | np.ndarray,
     alpha_hat: float = 0.0,
     beta_hat: float = 20.0
-) -> float:
+) -> float | np.ndarray:
     """
     Calculate received sound level at a given distance.
-    
+
     RL = SL - TL
-    
+
     Args:
         source_level: Source level in dB re 1 µPa @ 1m
-        distance_m: Distance from source in meters
+        distance_m: Distance from source in meters (scalar or array)
         alpha_hat: Absorption coefficient
         beta_hat: Spreading loss factor
-        
+
     Returns:
-        Received level in dB re 1 µPa
+        Received level in dB re 1 µPa (same shape as distance_m)
     """
     tl = calculate_transmission_loss(distance_m, alpha_hat, beta_hat)
     return source_level - tl
@@ -351,6 +360,38 @@ class ShipDeterrenceModel:
             )
             
         return max(0.0, magnitude)
+
+
+def response_probability_from_rl(
+    received_level: float | np.ndarray,
+    threshold: float = 152.9,
+    slope: float = 0.5
+) -> float | np.ndarray:
+    """
+    Calculate response probability from received level using logistic function.
+
+    Uses a sigmoid/logistic curve centered at the threshold:
+    P = 1 / (1 + exp(-slope * (RL - threshold)))
+
+    This models the probability that a porpoise will respond to a sound
+    at a given received level.
+
+    Args:
+        received_level: Received sound level in dB (scalar or array)
+        threshold: Threshold level at which P=0.5 (dB)
+        slope: Steepness of the sigmoid curve (dB^-1)
+
+    Returns:
+        Response probability (0-1), same shape as input
+    """
+    # Calculate the linear predictor
+    linear = slope * (received_level - threshold)
+
+    # Apply logistic function with overflow protection
+    linear_clipped = np.clip(linear, -500, 500)
+    prob = 1.0 / (1.0 + np.exp(-linear_clipped))
+
+    return np.clip(prob, 0.0, 1.0)
 
 
 def calculate_deterrence_vector(

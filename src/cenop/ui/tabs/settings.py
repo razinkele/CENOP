@@ -12,12 +12,7 @@ TOOLTIPS = {
     "tracked_porpoise_count": "Number of individual porpoises to track in detail for movement analysis and debugging.",
     "ships_enabled": "Enable/disable ship traffic in the simulation. Ships create underwater noise that can disturb porpoises.",
     "bycatch_prob": "Annual probability (0-1) that a porpoise dies from fishing net entanglement. DEPONS default: 0.018 for Kattegat.",
-    "communication_enabled": "Enable or disable social communication (calls) and cohesion among porpoises.",
-    "communication_range_km": "Communication detection range in km (typical porpoise call detection tens of km depending on source and propagation).",
-    "communication_source_level": "Porpoise call source level (dB re 1 µPa @1m).",
-    "communication_threshold": "Received level at which detection probability is 50% (dB).",
-    "communication_response_slope": "Steepness (per dB) for the logistic detection function.",
-    "social_weight": "Weight (0-1) of social attraction influence on movement.",
+    
     # Movement/CRW parameters
     "param_k": "Inertia constant: controls how much the previous heading influences the next. Higher = straighter paths. DEPONS default: 0.001",
     "param_a0": "Autoregressive parameter for log₁₀(distance/100). Controls step length persistence. DEPONS default: 0.35",
@@ -42,6 +37,29 @@ TOOLTIPS = {
     "param_rS": "Satiation memory decay rate. Higher = faster forgetting of food satisfaction. DEPONS default: 0.04",
     "param_rR": "Reference memory decay rate. Higher = faster forgetting of remembered food locations. DEPONS default: 0.04",
     "param_rU": "Food replenishment rate. How fast depleted food patches recover. DEPONS default: 0.1",
+
+    # JASMINE Mode settings
+    "time_mode_override": "Override time subsystem: None = follow main mode, DEPONS = fixed 30-min ticks, JASMINE = variable timesteps with events.",
+    "movement_mode_override": "Override movement subsystem: None = follow main mode, DEPONS = empirical CRW, JASMINE = physics-based with velocity.",
+    "fsm_mode_override": "Override behavior FSM: None = follow main mode, DEPONS = simple state machine, JASMINE = utility-based decisions.",
+    "energy_mode_override": "Override energy subsystem: None = follow main mode, DEPONS = simple tracking, JASMINE = full DEB model.",
+    "memory_mode_override": "Override memory subsystem: None = follow main mode, DEPONS = no disturbance memory, JASMINE = learned avoidance.",
+
+    # JASMINE Physics parameters
+    "jasmine_mass_kg": "Body mass in kg for physics calculations. Affects inertia and acceleration. Default: 50 kg (adult porpoise).",
+    "jasmine_drag_coeff": "Hydrodynamic drag coefficient. Higher = more resistance. Default: 0.01",
+    "jasmine_max_thrust": "Maximum thrust force in Newtons. Limits acceleration. Default: 100 N",
+    "jasmine_current_weight": "Weight of ocean current advection (0-1). 0 = ignore currents, 1 = fully advected. Default: 0.5",
+
+    # JASMINE DEB parameters
+    "jasmine_bmr_scale": "Basal metabolic rate scale factor. 1.0 = standard, >1 = higher base costs. Default: 1.0",
+    "jasmine_activity_cost": "Activity cost multiplier. Higher = more energy used during active movement. Default: 2.0",
+    "jasmine_disturbance_cost": "Extra energy cost during disturbance. Multiplier on base costs. Default: 1.5",
+
+    # JASMINE Memory parameters
+    "jasmine_memory_decay_rate": "Memory decay rate per tick. Lower = longer memory retention. Default: 0.001",
+    "jasmine_avoidance_strength": "Maximum learned avoidance strength (0-1). Higher = stronger aversion. Default: 0.8",
+    "jasmine_avoidance_radius": "Avoidance influence radius in grid cells. Larger = wider effect. Default: 20 cells",
 }
 
 
@@ -132,7 +150,7 @@ def settings_tab():
             _movement_settings_panel(),
             _dispersal_settings_panel(),
             _energy_settings_panel(),
-            _data_available_panel()
+            _jasmine_settings_panel()
         )
     )
 
@@ -188,66 +206,6 @@ def _basic_settings_panel():
                         **{"for": "bycatch_prob"}
                     ),
                     ui.input_numeric("bycatch_prob", None, value=0.0, step=0.001, min=0.0, max=1.0),
-                    class_="mb-3"
-                ),
-                ui.div(
-                    ui.tags.label(
-                        "Enable Social Communication ",
-                        ui.tags.span("ⓘ", title=TOOLTIPS["communication_enabled"], 
-                                     style="cursor: help; color: #0d6efd;"),
-                        **{"for": "communication_enabled"}
-                    ),
-                    ui.input_switch("communication_enabled", None, value=True),
-                    class_="mb-3"
-                ),
-                ui.div(
-                    ui.tags.label(
-                        "Communication Range (km) ",
-                        ui.tags.span("ⓘ", title=TOOLTIPS["communication_range_km"], 
-                                     style="cursor: help; color: #0d6efd;"),
-                        **{"for": "communication_range_km"}
-                    ),
-                    ui.input_numeric("communication_range_km", None, value=10.0, step=1.0, min=0.1),
-                    class_="mb-3"
-                ),
-                ui.div(
-                    ui.tags.label(
-                        "Social Weight ",
-                        ui.tags.span("ⓘ", title=TOOLTIPS["social_weight"], 
-                                     style="cursor: help; color: #0d6efd;"),
-                        **{"for": "social_weight"}
-                    ),
-                    ui.input_slider("social_weight", None, min=0.0, max=1.0, value=0.3, step=0.05),
-                    class_="mb-3"
-                ),
-                ui.div(
-                    ui.tags.label(
-                        "Call SL (dB) ",
-                        ui.tags.span("ⓘ", title=TOOLTIPS["communication_source_level"], 
-                                     style="cursor: help; color: #0d6efd;"),
-                        **{"for": "communication_source_level"}
-                    ),
-                    ui.input_numeric("communication_source_level", None, value=160.0, step=1.0),
-                    class_="mb-3"
-                ),
-                ui.div(
-                    ui.tags.label(
-                        "Call detect. threshold (dB) ",
-                        ui.tags.span("ⓘ", title=TOOLTIPS["communication_threshold"], 
-                                     style="cursor: help; color: #0d6efd;"),
-                        **{"for": "communication_threshold"}
-                    ),
-                    ui.input_numeric("communication_threshold", None, value=120.0, step=1.0),
-                    class_="mb-3"
-                ),
-                ui.div(
-                    ui.tags.label(
-                        "Call detect. slope ",
-                        ui.tags.span("ⓘ", title=TOOLTIPS["communication_response_slope"], 
-                                     style="cursor: help; color: #0d6efd;"),
-                        **{"for": "communication_response_slope"}
-                    ),
-                    ui.input_numeric("communication_response_slope", None, value=0.2, step=0.01),
                     class_="mb-3"
                 ),
             ),
@@ -401,399 +359,34 @@ def _dispersal_settings_panel():
     )
 
 
-def create_preview_pydeck_map():
-    """
-    Create a static pydeck map for data preview.
-    Reuses the dashboard pattern - map is created once, data updated via JavaScript.
-    """
-    html_content = '''
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <script src="https://unpkg.com/deck.gl@^9.0.0/dist.min.js"></script>
-    <style>
-        html, body {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-        }
-        #deck-container {
-            width: 100%;
-            height: 100%;
-            position: absolute;
-        }
-        .info-box {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: rgba(30, 30, 30, 0.95);
-            padding: 10px 15px;
-            border-radius: 8px;
-            color: white;
-            font-size: 12px;
-            font-family: 'Segoe UI', Arial, sans-serif;
-            z-index: 1000;
-            border: 1px solid #444;
-        }
-        .info-box h4 {
-            margin: 0 0 5px 0;
-            font-size: 13px;
-            color: #4fc3f7;
-        }
-        .stat { margin: 3px 0; }
-        .label { color: #aaa; }
-        .value { font-weight: bold; color: #4fc3f7; }
-    </style>
-</head>
-<body>
-    <div id="deck-container"></div>
-    <div class="info-box">
-        <h4 id="file-name">No data loaded</h4>
-        <div class="stat"><span class="label">Points:</span> <span class="value" id="point-count">0</span></div>
-        <div class="stat"><span class="label">Min:</span> <span class="value" id="data-min">-</span></div>
-        <div class="stat"><span class="label">Max:</span> <span class="value" id="data-max">-</span></div>
-    </div>
-    
-    <script>
-        const {DeckGL, TileLayer, BitmapLayer, ColumnLayer} = deck;
-        
-        // EMODnet Bathymetry tiles - clear coastlines
-        const BATHYMETRY_URL = 'https://tiles.emodnet-bathymetry.eu/2020/baselayer/web_mercator/{z}/{x}/{y}.png';
-        
-        // Default center (updated when data loads)
-        let CENTER_LAT = 54.03;
-        let CENTER_LON = 5.98;
-        
-        // Current preview data
-        let previewData = [];
-        let dataMin = 0;
-        let dataMax = 100;
-        let fileName = 'No data';
-        
-        // Static bathymetry base layer
-        const bathymetryLayer = new TileLayer({
-            id: 'bathymetry-layer',
-            data: BATHYMETRY_URL,
-            minZoom: 0,
-            maxZoom: 12,
-            tileSize: 256,
-            renderSubLayers: props => {
-                const { bbox: {west, south, east, north} } = props.tile;
-                return new BitmapLayer(props, {
-                    data: null,
-                    image: props.data,
-                    bounds: [west, south, east, north]
-                });
-            }
-        });
-        
-        // Color mapping based on data type
-        function getColor(value, min, max, dataType) {
-            if (value === null || value === undefined) return [0, 0, 0, 0];
-            
-            const t = (value - min) / (max - min || 1);
-            
-            // Bathymetry: Blues (negative depths are deeper)
-            if (dataType === 'bathy') {
-                if (value > 0) return [139, 90, 43, 180]; // Land (brown)
-                const depth = Math.abs(value);
-                const depthT = Math.min(1, depth / 50);  // 0-50m range
-                const r = Math.floor(26 + (66 - 26) * depthT);
-                const g = Math.floor(107 + (165 - 107) * depthT);
-                const b = Math.floor(133 + (246 - 133) * depthT);
-                return [r, g, b, 180];
-            }
-            
-            // Salinity: viridis-like
-            if (dataType === 'sal') {
-                let r, g, b;
-                if (t < 0.5) {
-                    const s = t / 0.5;
-                    r = Math.floor(68 + (49 - 68) * s);
-                    g = Math.floor(1 + (104 - 1) * s);
-                    b = Math.floor(84 + (142 - 84) * s);
-                } else {
-                    const s = (t - 0.5) / 0.5;
-                    r = Math.floor(49 + (253 - 49) * s);
-                    g = Math.floor(104 + (231 - 104) * s);
-                    b = Math.floor(142 + (37 - 142) * s);
-                }
-                return [r, g, b, 180];
-            }
-            
-            // Prey/Food: Yellow-Orange-Red
-            if (dataType === 'prey') {
-                const r = Math.floor(255);
-                const g = Math.floor(255 * (1 - t * 0.7));
-                const b = Math.floor(50 * (1 - t));
-                return [r, g, b, 180];
-            }
-            
-            // Temperature: RdYlBu reversed (blue=cold, red=warm)
-            if (dataType === 'temp') {
-                let r, g, b;
-                if (t < 0.5) {
-                    const s = t / 0.5;
-                    r = Math.floor(49 + (255 - 49) * s);
-                    g = Math.floor(130 + (255 - 130) * s);
-                    b = Math.floor(189 + (191 - 189) * s);
-                } else {
-                    const s = (t - 0.5) / 0.5;
-                    r = Math.floor(255);
-                    g = Math.floor(255 * (1 - s * 0.6));
-                    b = Math.floor(191 * (1 - s * 0.9));
-                }
-                return [r, g, b, 180];
-            }
-            
-            // Sediment/Default: terrain-like
-            let r, g, b;
-            if (t < 0.33) {
-                const s = t / 0.33;
-                r = Math.floor(208 + (140 - 208) * s);
-                g = Math.floor(186 + (200 - 186) * s);
-                b = Math.floor(145 + (100 - 145) * s);
-            } else if (t < 0.67) {
-                const s = (t - 0.33) / 0.34;
-                r = Math.floor(140 + (90 - 140) * s);
-                g = Math.floor(200 + (170 - 200) * s);
-                b = Math.floor(100 + (80 - 100) * s);
-            } else {
-                const s = (t - 0.67) / 0.33;
-                r = Math.floor(90 + (50 - 90) * s);
-                g = Math.floor(170 + (120 - 170) * s);
-                b = Math.floor(80 + (60 - 80) * s);
-            }
-            return [r, g, b, 180];
-        }
-        
-        // Create data layer
-        function createDataLayer(data, dataType) {
-            if (!data || data.length === 0) return null;
-            
-            return new ColumnLayer({
-                id: 'preview-data-layer',
-                data: data,
-                diskResolution: 4,
-                radius: 1800,
-                extruded: false,
-                getPosition: d => d.position,
-                getFillColor: d => getColor(d.value, dataMin, dataMax, dataType),
-                pickable: true,
-                opacity: 0.7
-            });
-        }
-        
-        // Build layers
-        function buildLayers(dataType) {
-            const layers = [bathymetryLayer];
-            const dataLayer = createDataLayer(previewData, dataType);
-            if (dataLayer) layers.push(dataLayer);
-            return layers;
-        }
-        
-        // Initialize deck.gl
-        const deckgl = new DeckGL({
-            container: 'deck-container',
-            initialViewState: {
-                latitude: CENTER_LAT,
-                longitude: CENTER_LON,
-                zoom: 8,
-                pitch: 0,
-                bearing: 0
-            },
-            controller: true,
-            layers: buildLayers('bathy'),
-            parameters: {
-                clearColor: [0.05, 0.1, 0.15, 1]
-            }
-        });
-        
-        console.log('[IFRAME DEBUG] Deck.gl initialized successfully');
-        
-        window.deckgl = deckgl;
-        
-        // Add error handler
-        window.addEventListener('error', function(event) {
-            console.error('[IFRAME DEBUG] Window error:', event.error || event.message);
-        });
-        
-        window.addEventListener('unhandledrejection', function(event) {
-            console.error('[IFRAME DEBUG] Unhandled promise rejection:', event.reason);
-        });
-        
-        // Update data function
-        window.setPreviewData = function(data, min, max, name, dataType, centerLat, centerLon) {
-            console.log('[IFRAME DEBUG] setPreviewData called:', {
-                dataPoints: data?.length || 0,
-                min, max, name, dataType, centerLat, centerLon
-            });
-            
-            previewData = data || [];
-            dataMin = min || 0;
-            dataMax = max || 100;
-            fileName = name || 'Unknown';
-            CENTER_LAT = centerLat || CENTER_LAT;
-            CENTER_LON = centerLon || CENTER_LON;
-            
-            // Update info box
-            document.getElementById('file-name').textContent = fileName;
-            document.getElementById('point-count').textContent = previewData.length;
-            document.getElementById('data-min').textContent = min.toFixed(2);
-            document.getElementById('data-max').textContent = max.toFixed(2);
-            
-            console.log('[IFRAME DEBUG] Updating deck.gl layers');
-            
-            // Update layers
-            try {
-                deckgl.setProps({ 
-                    layers: buildLayers(dataType),
-                    initialViewState: {
-                        latitude: CENTER_LAT,
-                        longitude: CENTER_LON,
-                        zoom: 8,
-                        pitch: 0,
-                        bearing: 0
-                    }
-                });
-                console.log('[IFRAME DEBUG] Deck.gl layers updated successfully');
-            } catch (error) {
-                console.error('[IFRAME DEBUG] Error updating deck.gl:', error);
-            }
-            
-            console.log('[IFRAME DEBUG] Preview data update complete:', previewData.length, 'points');
-        };
-        
-        // Listen for messages
-        window.addEventListener('message', function(event) {
-            console.log('[IFRAME DEBUG] Message received:', event.data?.type);
-            
-            if (event.data && event.data.type === 'setPreviewData') {
-                console.log('[IFRAME DEBUG] Processing setPreviewData message');
-                window.setPreviewData(
-                    event.data.data,
-                    event.data.min,
-                    event.data.max,
-                    event.data.name,
-                    event.data.dataType,
-                    event.data.centerLat,
-                    event.data.centerLon
-                );
-            }
-        });
-        
-        console.log('[IFRAME DEBUG] Preview map iframe initialized successfully');
-    </script>
-</body>
-</html>
-'''
-    return ui.tags.iframe(
-        id="preview-map-frame",
-        srcdoc=html_content,
-        style="width: 100%; height: 100%; border: none; border-radius: 8px;",
-    )
-
-
-def _data_available_panel():
-    """Data Available panel: show files available per landscape in data directory.
-
-    This UI is lightweight and reactive content is rendered server-side into
-    `output.data_available_table`. A refresh button triggers re-scan via the
-    server render function so that inspecting landscapes does not happen at
-    module import time.
-    """
-
-    return ui.nav_panel(
-        "Data Available",
-        ui.div(
-            ui.input_action_button("refresh_data_available", "🔄 Refresh", class_="btn-outline-secondary mb-2"),
-            ui.output_text("data_available_refreshed", inline=True),
-            class_="mb-2"
-        ),
-        ui.output_ui("data_available_table"),
-        ui.hr(),
-        ui.card(
-            ui.card_header("🗺️ Data Preview"),
-            ui.div(
-                ui.input_select(
-                    "preview_landscape",
-                    "Landscape:",
-                    choices=["Homogeneous", "CentralBaltic", "DanTysk", "Gemini", "Kattegat", "NorthSea", "UserDefined"],
-                    selected="CentralBaltic",
-                    width="200px"
-                ),
-                ui.output_ui("data_preview_controls"),
-                style="display: flex; gap: 10px; margin-bottom: 10px;"
-            ),
-            create_preview_pydeck_map(),
-            ui.output_ui("preview_stats_text"),
-            # Handler for custom messages from server - cleaner than script injection
-            ui.tags.script("""
-                $(document).ready(function() {
-                    Shiny.addCustomMessageHandler('preview_data_update', function(message) {
-                        console.log('[PREVIEW] Received data update via custom message');
-                        var iframe = document.getElementById('preview-map-frame');
-                        
-                        function sendData() {
-                            if (iframe && iframe.contentWindow) {
-                                iframe.contentWindow.postMessage({
-                                    type: 'setPreviewData',
-                                    data: message.points,
-                                    min: message.min,
-                                    max: message.max,
-                                    name: message.name,
-                                    dataType: message.dataType,
-                                    centerLat: message.centerLat,
-                                    centerLon: message.centerLon
-                                }, '*');
-                                console.log('[PREVIEW] Data sent to iframe');
-                            } else {
-                                // Retry if iframe not ready
-                                setTimeout(sendData, 500);
-                            }
-                        }
-                        
-                        sendData();
-                    });
-                });
-            """),
-            height="700px"
-        )
-    )
-
-
 def _energy_settings_panel():
     """Energy settings."""
     return ui.nav_panel(
         "Energy",
         ui.card(
             ui.card_header("⚡ Energy & Memory Parameters"),
-            ui.p("Memory decay rates and food replenishment control how porpoises remember food locations.", 
+            ui.p("Memory decay rates and food replenishment control how porpoises remember food locations.",
                  class_="text-muted mb-3"),
             ui.layout_column_wrap(
                 ui.div(
-                    ui.tags.label("rS - Satiation memory decay ", 
-                                  ui.tags.span("ⓘ", title=TOOLTIPS["param_rS"], 
+                    ui.tags.label("rS - Satiation memory decay ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["param_rS"],
                                                style="cursor: help; color: #0d6efd;"),
                                   **{"for": "param_rS"}),
                     ui.input_numeric("param_rS", None, value=0.04, step=0.01),
                     class_="mb-2"
                 ),
                 ui.div(
-                    ui.tags.label("rR - Reference memory decay ", 
-                                  ui.tags.span("ⓘ", title=TOOLTIPS["param_rR"], 
+                    ui.tags.label("rR - Reference memory decay ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["param_rR"],
                                                style="cursor: help; color: #0d6efd;"),
                                   **{"for": "param_rR"}),
                     ui.input_numeric("param_rR", None, value=0.04, step=0.01),
                     class_="mb-2"
                 ),
                 ui.div(
-                    ui.tags.label("rU - Food replenishment rate ", 
-                                  ui.tags.span("ⓘ", title=TOOLTIPS["param_rU"], 
+                    ui.tags.label("rU - Food replenishment rate ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["param_rU"],
                                                style="cursor: help; color: #0d6efd;"),
                                   **{"for": "param_rU"}),
                     ui.input_numeric("param_rU", None, value=0.1, step=0.01),
@@ -801,5 +394,181 @@ def _energy_settings_panel():
                 ),
                 width=1/3
             )
+        )
+    )
+
+
+def _jasmine_settings_panel():
+    """JASMINE-specific settings panel."""
+    return ui.nav_panel(
+        "JASMINE",
+        ui.div(
+            ui.p(
+                ui.tags.strong("JASMINE Mode Settings"),
+                " - These parameters are only active when JASMINE mode is selected in the sidebar. "
+                "JASMINE provides physics-based movement, Dynamic Energy Budget (DEB) modeling, "
+                "and learned avoidance behavior.",
+                class_="alert alert-info"
+            ),
+        ),
+        ui.layout_columns(
+            # Subsystem Mode Overrides
+            ui.card(
+                ui.card_header("🔧 Subsystem Mode Overrides"),
+                ui.p("Override individual subsystems independently of the main simulation mode.",
+                     class_="text-muted small mb-3"),
+                ui.div(
+                    ui.tags.label("Time Mode ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["time_mode_override"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "time_mode_override"}),
+                    ui.input_select("time_mode_override", None,
+                        choices={"": "Follow main mode", "DEPONS": "DEPONS", "JASMINE": "JASMINE"},
+                        selected=""),
+                    class_="mb-2"
+                ),
+                ui.div(
+                    ui.tags.label("Movement Mode ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["movement_mode_override"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "movement_mode_override"}),
+                    ui.input_select("movement_mode_override", None,
+                        choices={"": "Follow main mode", "DEPONS": "DEPONS", "JASMINE": "JASMINE"},
+                        selected=""),
+                    class_="mb-2"
+                ),
+                ui.div(
+                    ui.tags.label("Behavior FSM Mode ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["fsm_mode_override"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "fsm_mode_override"}),
+                    ui.input_select("fsm_mode_override", None,
+                        choices={"": "Follow main mode", "DEPONS": "DEPONS", "JASMINE": "JASMINE"},
+                        selected=""),
+                    class_="mb-2"
+                ),
+                ui.div(
+                    ui.tags.label("Energy Mode ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["energy_mode_override"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "energy_mode_override"}),
+                    ui.input_select("energy_mode_override", None,
+                        choices={"": "Follow main mode", "DEPONS": "DEPONS", "JASMINE": "JASMINE"},
+                        selected=""),
+                    class_="mb-2"
+                ),
+                ui.div(
+                    ui.tags.label("Memory Mode ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["memory_mode_override"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "memory_mode_override"}),
+                    ui.input_select("memory_mode_override", None,
+                        choices={"": "Follow main mode", "DEPONS": "DEPONS", "JASMINE": "JASMINE"},
+                        selected=""),
+                    class_="mb-2"
+                ),
+            ),
+            # Physics Parameters
+            ui.card(
+                ui.card_header("🔬 Physics Parameters"),
+                ui.p("Parameters for JASMINE physics-based movement model.",
+                     class_="text-muted small mb-3"),
+                ui.div(
+                    ui.tags.label("Body Mass (kg) ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_mass_kg"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "jasmine_mass_kg"}),
+                    ui.input_numeric("jasmine_mass_kg", None, value=50.0, min=10.0, max=100.0, step=1.0),
+                    class_="mb-2"
+                ),
+                ui.div(
+                    ui.tags.label("Drag Coefficient ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_drag_coeff"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "jasmine_drag_coeff"}),
+                    ui.input_numeric("jasmine_drag_coeff", None, value=0.01, min=0.001, max=0.1, step=0.001),
+                    class_="mb-2"
+                ),
+                ui.div(
+                    ui.tags.label("Max Thrust (N) ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_max_thrust"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "jasmine_max_thrust"}),
+                    ui.input_numeric("jasmine_max_thrust", None, value=100.0, min=10.0, max=500.0, step=10.0),
+                    class_="mb-2"
+                ),
+                ui.div(
+                    ui.tags.label("Current Weight (0-1) ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_current_weight"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "jasmine_current_weight"}),
+                    ui.input_numeric("jasmine_current_weight", None, value=0.5, min=0.0, max=1.0, step=0.1),
+                    class_="mb-2"
+                ),
+            ),
+            col_widths=[6, 6]
+        ),
+        ui.layout_columns(
+            # DEB Parameters
+            ui.card(
+                ui.card_header("⚡ DEB Energy Parameters"),
+                ui.p("Dynamic Energy Budget parameters for JASMINE mode.",
+                     class_="text-muted small mb-3"),
+                ui.div(
+                    ui.tags.label("BMR Scale Factor ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_bmr_scale"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "jasmine_bmr_scale"}),
+                    ui.input_numeric("jasmine_bmr_scale", None, value=1.0, min=0.5, max=2.0, step=0.1),
+                    class_="mb-2"
+                ),
+                ui.div(
+                    ui.tags.label("Activity Cost Multiplier ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_activity_cost"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "jasmine_activity_cost"}),
+                    ui.input_numeric("jasmine_activity_cost", None, value=2.0, min=1.0, max=5.0, step=0.1),
+                    class_="mb-2"
+                ),
+                ui.div(
+                    ui.tags.label("Disturbance Cost Multiplier ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_disturbance_cost"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "jasmine_disturbance_cost"}),
+                    ui.input_numeric("jasmine_disturbance_cost", None, value=1.5, min=1.0, max=3.0, step=0.1),
+                    class_="mb-2"
+                ),
+            ),
+            # Memory Parameters
+            ui.card(
+                ui.card_header("🧠 Learned Avoidance Parameters"),
+                ui.p("Disturbance memory and avoidance behavior parameters.",
+                     class_="text-muted small mb-3"),
+                ui.div(
+                    ui.tags.label("Memory Decay Rate ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_memory_decay_rate"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "jasmine_memory_decay_rate"}),
+                    ui.input_numeric("jasmine_memory_decay_rate", None, value=0.001, min=0.0001, max=0.01, step=0.0001),
+                    class_="mb-2"
+                ),
+                ui.div(
+                    ui.tags.label("Avoidance Strength (0-1) ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_avoidance_strength"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "jasmine_avoidance_strength"}),
+                    ui.input_numeric("jasmine_avoidance_strength", None, value=0.8, min=0.0, max=1.0, step=0.1),
+                    class_="mb-2"
+                ),
+                ui.div(
+                    ui.tags.label("Avoidance Radius (cells) ",
+                                  ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_avoidance_radius"],
+                                               style="cursor: help; color: #0d6efd;"),
+                                  **{"for": "jasmine_avoidance_radius"}),
+                    ui.input_numeric("jasmine_avoidance_radius", None, value=20.0, min=5.0, max=50.0, step=1.0),
+                    class_="mb-2"
+                ),
+            ),
+            col_widths=[6, 6]
         )
     )

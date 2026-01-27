@@ -17,6 +17,14 @@ from cenop.parameters.demography import AGE_DISTRIBUTION_FREQUENCY
 from cenop.behavior.psm import PersistentSpatialMemory
 from cenop.behavior.sound import calculate_received_level, response_probability_from_rl
 
+# Optional movement module and FSM support
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from cenop.movement.base import MovementModule
+    from cenop.behavior.hybrid_fsm import HybridBehaviorFSM
+    from cenop.physiology.energy_budget import EnergyModule
+    from cenop.behavior.disturbance_memory import DisturbanceMemoryModule
+
 import logging
 import os
 
@@ -47,10 +55,23 @@ class PorpoisePopulation:
     Replaces the list of individual Porpoise objects for performance.
     """
     
-    def __init__(self, count: int, params: SimulationParameters, landscape: Optional[CellData] = None):
+    def __init__(
+        self,
+        count: int,
+        params: SimulationParameters,
+        landscape: Optional[CellData] = None,
+        movement_module: Optional['MovementModule'] = None,
+        behavior_fsm: Optional['HybridBehaviorFSM'] = None,
+        energy_module: Optional['EnergyModule'] = None,
+        memory_module: Optional['DisturbanceMemoryModule'] = None,
+    ):
         self.params = params
         self.landscape = landscape
         self.count = count # Initial count capacity
+        self._movement_module = movement_module  # Optional modular movement
+        self._behavior_fsm = behavior_fsm  # Optional behavioral FSM
+        self._energy_module = energy_module  # Optional energy module (Phase 4)
+        self._memory_module = memory_module  # Optional memory module (Phase 5)
         
         # === Arrays (Structure of Arrays) ===
         # Use a dictionary of arrays or direct attributes? Direct attributes are faster.
@@ -100,7 +121,29 @@ class PorpoisePopulation:
         self.dispersal_distance_traveled = np.zeros(count, dtype=np.float32)
         self.dispersal_start_x = np.zeros(count, dtype=np.float32)
         self.dispersal_start_y = np.zeros(count, dtype=np.float32)
-        
+
+        # === Behavioral State (Phase 3: FSM Integration) ===
+        # Initialize behavioral state vector if FSM is provided
+        self._behavior_state = None
+        if self._behavior_fsm is not None:
+            from cenop.behavior.states import BehaviorStateVector
+            self._behavior_state = BehaviorStateVector.create(count)
+
+        # Time since last disturbance (for FSM recovery tracking)
+        self.time_since_disturbance = np.full(count, 9999, dtype=np.int32)
+
+        # === Energy State for modular energy system (Phase 4) ===
+        self._energy_state = None
+        if self._energy_module is not None:
+            from cenop.physiology.energy_budget import EnergyState
+            self._energy_state = EnergyState.create(count, initial_energy=10.0)
+
+        # === Memory State for disturbance memory (Phase 5) ===
+        self._memory_state = None
+        if self._memory_module is not None:
+            from cenop.behavior.disturbance_memory import DisturbanceMemoryState
+            self._memory_state = DisturbanceMemoryState.create(count)
+
         # PSM instances - one per porpoise (list for object storage)
         world_w = self.params.world_width
         world_h = self.params.world_height
@@ -567,6 +610,11 @@ class PorpoisePopulation:
         - Deterrence vector application
         - Social cohesion vectors
         """
+        # === Use modular movement if provided ===
+        if self._movement_module is not None:
+            self._update_movement_modular(mask, deterrence_vectors, ambient_rl)
+            return
+
         # === Get environmental variables from landscape ===
         # DEPONS CRW uses depth and salinity to modulate movement
         if self.landscape is not None:
@@ -676,6 +724,78 @@ class PorpoisePopulation:
         self.heading[dispersing] -= self._pres_angle[dispersing]  # Remove normal turn
         self.heading[dispersing] += dampened_angle[dispersing]  # Add dampened
         self.heading[dispersing] %= 360.0
+
+    def _update_movement_modular(
+        self,
+        mask: np.ndarray,
+        deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]],
+        ambient_rl: Optional[np.ndarray],
+    ) -> None:
+        """
+        Update movement using the modular movement system.
+
+        Creates MovementState and EnvironmentContext, calls the movement module,
+        and applies results to the population arrays.
+        """
+        from cenop.movement.base import MovementState, EnvironmentContext
+
+        # Create movement state from population state
+        state = MovementState(
+            prev_heading=self.heading.copy(),
+            prev_log_mov=self.prev_log_mov.copy(),
+            prev_angle=self.prev_angle.copy(),
+            heading=self.heading.copy(),
+            step_distance=np.zeros(self.count, dtype=np.float32),
+            dx=np.zeros(self.count, dtype=np.float32),
+            dy=np.zeros(self.count, dtype=np.float32),
+            is_dispersing=self.is_dispersing.copy(),
+            dispersal_heading=np.degrees(np.arctan2(
+                self.dispersal_target_x - self.x,
+                self.dispersal_target_y - self.y
+            )).astype(np.float32) % 360.0,
+        )
+
+        # Create environment context
+        if self.landscape is not None:
+            positions = np.column_stack((self.x, self.y))
+            depth = self.landscape.get_depths_vectorized(positions)
+            salinity = self.landscape.get_salinities_vectorized(positions)
+        else:
+            depth = np.full(self.count, 30.0, dtype=np.float32)
+            salinity = np.full(self.count, 30.0, dtype=np.float32)
+
+        environment = EnvironmentContext(depth=depth, salinity=salinity)
+
+        # Prepare deterrence vectors
+        deter_dx = None
+        deter_dy = None
+        if deterrence_vectors is not None:
+            deter_dx, deter_dy = deterrence_vectors
+
+        # Compute movement step
+        result = self._movement_module.compute_step(
+            self.x, self.y, state, environment, mask, deter_dx, deter_dy
+        )
+
+        # Apply results to population arrays
+        self._dx[:] = result.dx
+        self._dy[:] = result.dy
+        self.heading[mask] = result.new_heading[mask]
+        self.prev_angle[mask] = result.turning_angle[mask]
+        self.prev_log_mov[mask] = np.log10(result.step_distance[mask] * 4.0 + 1e-10)
+
+        # Update deter_strength
+        if deterrence_vectors is not None:
+            d_dx, d_dy = deterrence_vectors
+            self.deter_strength[mask] = np.abs(d_dx[mask]) + np.abs(d_dy[mask])
+        else:
+            self.deter_strength[mask] = 0.0
+
+        # Social communication (still handled by population for now)
+        if getattr(self.params, 'communication_enabled', False):
+            soc_dx, soc_dy = self._compute_social_vectors(mask, ambient_rl)
+            self._dx[mask] += soc_dx[mask]
+            self._dy[mask] += soc_dy[mask]
 
     def _handle_land_avoidance(self, mask: np.ndarray) -> None:
         """
@@ -791,10 +911,19 @@ class PorpoisePopulation:
 
     def _update_energy_dynamics(self, mask: np.ndarray) -> None:
         """
-        Update energy dynamics (DEPONS Pattern).
+        Update energy dynamics.
+
+        Uses modular energy system (Phase 4) if available, otherwise falls back
+        to DEPONS inline implementation.
 
         Handles food consumption, BMR, swimming cost, and PSM updates.
         """
+        # === Use modular energy system if provided ===
+        if self._energy_module is not None and self._energy_state is not None:
+            self._update_energy_modular(mask)
+            return
+
+        # === Fallback: Inline DEPONS energy model ===
         # Food consumption - hungry porpoises eat more
         fract_to_eat = np.clip((20.0 - self.energy) / 10.0, 0.0, 0.99)
 
@@ -822,6 +951,167 @@ class PorpoisePopulation:
 
         # Clamp energy
         np.clip(self.energy, 0, 20.0, out=self.energy)
+
+    def _update_energy_modular(self, mask: np.ndarray) -> None:
+        """
+        Update energy using the modular energy system (Phase 4).
+
+        Creates EnergyContext from current population state, calls the energy
+        module, and syncs results back to population arrays.
+        """
+        from cenop.physiology.energy_budget import EnergyContext
+
+        # Sync population energy to energy state
+        self._energy_state.energy[:] = self.energy
+
+        # Get food availability
+        fract_to_eat = np.clip((20.0 - self.energy) / 10.0, 0.0, 0.99)
+        if self.landscape is not None and hasattr(self.landscape, 'eat_food'):
+            food_available = self._eat_food_vectorized(mask, fract_to_eat)
+        else:
+            food_available = fract_to_eat * np.random.uniform(0.1, 0.5, self.count)
+
+        # Calculate current speed from movement
+        current_speed = np.sqrt(self._dx**2 + self._dy**2) * 400.0 / 1800.0  # m/s
+
+        # Get behavioral state (if FSM enabled)
+        if self._behavior_state is not None:
+            behavioral_state = self._behavior_state.state.astype(np.int32)
+        else:
+            behavioral_state = np.ones(self.count, dtype=np.int32)  # FORAGING
+
+        # Detect disturbance from deter_strength
+        is_disturbed = self.deter_strength > 0.1
+
+        # Create energy context
+        context = EnergyContext(
+            food_available=food_available.astype(np.float32),
+            food_quality=np.ones(self.count, dtype=np.float32),
+            current_speed=current_speed.astype(np.float32),
+            behavioral_state=behavioral_state,
+            water_temperature=np.full(self.count, 10.0, dtype=np.float32),
+            current_month=self._get_current_month(),
+            is_disturbed=is_disturbed,
+            deterrence_magnitude=self.deter_strength.astype(np.float32),
+            is_lactating=self.with_calf,
+            is_pregnant=np.zeros(self.count, dtype=bool),
+        )
+
+        # Compute energy update
+        result = self._energy_module.compute_energy_update(
+            self._energy_state, context, mask
+        )
+
+        # Apply result
+        self._energy_module.apply_result(self._energy_state, result, mask)
+
+        # Sync energy state back to population
+        self.energy[:] = self._energy_state.energy
+
+        # Update PSM with food gained
+        self._update_psm(mask, food_available)
+        self._update_energy_history(mask)
+        self._update_dispersal(mask)
+
+    def _update_disturbance_memory(
+        self,
+        mask: np.ndarray,
+        deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]],
+    ) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+        """
+        Update disturbance memory and compute avoidance (Phase 5).
+
+        Records disturbance events, applies memory decay, and computes
+        avoidance vectors based on remembered disturbances.
+
+        Returns:
+            Avoidance vectors (dx, dy) or None if no memory module
+        """
+        if self._memory_module is None or self._memory_state is None:
+            return None
+
+        from cenop.behavior.disturbance_memory import DisturbanceMemoryContext
+
+        # Determine if agents are disturbed (from deterrence strength)
+        is_disturbed = self.deter_strength > 0.1
+
+        # Create disturbance context
+        # Use turbine/ship positions if available, otherwise use agent positions
+        disturbance_x = self.x.copy()  # Default: disturbance at agent location
+        disturbance_y = self.y.copy()
+
+        context = DisturbanceMemoryContext(
+            is_disturbed=is_disturbed,
+            disturbance_intensity=self.deter_strength.astype(np.float32),
+            disturbance_x=disturbance_x.astype(np.float32),
+            disturbance_y=disturbance_y.astype(np.float32),
+            agent_x=self.x.astype(np.float32),
+            agent_y=self.y.astype(np.float32),
+            current_tick=self._global_tick,
+        )
+
+        # Record disturbances
+        self._memory_module.record_disturbance(self._memory_state, context, mask)
+
+        # Apply memory decay (every 48 ticks = daily)
+        if self._global_tick % 48 == 0:
+            self._memory_module.decay_memory(self._memory_state, mask, ticks_elapsed=48)
+
+        # Compute avoidance
+        result = self._memory_module.compute_avoidance(
+            self._memory_state, self.x, self.y, mask
+        )
+
+        # Update time since disturbance for disturbed agents
+        self.time_since_disturbance[is_disturbed & mask] = 0
+        self.time_since_disturbance[~is_disturbed & mask] += 1
+
+        return (result.avoidance_dx, result.avoidance_dy)
+
+    def _combine_deterrence_avoidance(
+        self,
+        deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]],
+        avoidance_vectors: Optional[Tuple[np.ndarray, np.ndarray]],
+    ) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+        """
+        Combine immediate deterrence with learned avoidance.
+
+        Deterrence is immediate response to current disturbance.
+        Avoidance is memory-based bias away from remembered disturbances.
+        """
+        if deterrence_vectors is None and avoidance_vectors is None:
+            return None
+
+        if deterrence_vectors is None:
+            return avoidance_vectors
+
+        if avoidance_vectors is None:
+            return deterrence_vectors
+
+        # Combine: deterrence has priority, avoidance adds bias
+        d_dx, d_dy = deterrence_vectors
+        a_dx, a_dy = avoidance_vectors
+
+        # Scale avoidance (it's a bias, not a strong force)
+        avoidance_weight = 0.3
+
+        combined_dx = d_dx + avoidance_weight * a_dx
+        combined_dy = d_dy + avoidance_weight * a_dy
+
+        return (combined_dx, combined_dy)
+
+    def get_memory_stats(self) -> Optional[Dict[str, Any]]:
+        """
+        Get disturbance memory statistics (Phase 5).
+
+        Returns memory statistics when using JASMINE memory module.
+        """
+        if self._memory_module is None or self._memory_state is None:
+            return None
+
+        return self._memory_module.get_statistics(
+            self._memory_state, self.active_mask
+        )
 
     def _check_mortality(self, mask: np.ndarray, active_before: int) -> None:
         """
@@ -975,25 +1265,34 @@ class PorpoisePopulation:
         active_before = int(np.sum(self.active_mask))
         self._global_tick += 1
 
-        # 1. Movement calculations
-        self._update_movement(mask, deterrence_vectors, ambient_rl)
+        # 1. Update behavioral state (if FSM enabled)
+        self._update_behavioral_state(mask, deterrence_vectors)
 
-        # 2. Land avoidance
+        # 1.5 Update disturbance memory and compute avoidance (Phase 5)
+        avoidance_vectors = self._update_disturbance_memory(mask, deterrence_vectors)
+
+        # 2. Movement calculations (with avoidance added to deterrence)
+        combined_deterrence = self._combine_deterrence_avoidance(
+            deterrence_vectors, avoidance_vectors
+        )
+        self._update_movement(mask, combined_deterrence, ambient_rl)
+
+        # 3. Land avoidance
         self._handle_land_avoidance(mask)
 
-        # 3. Apply positions
+        # 4. Apply positions
         self._apply_positions(mask)
 
-        # 4. Energy dynamics
+        # 5. Energy dynamics
         self._update_energy_dynamics(mask)
 
-        # 5. Mortality
+        # 6. Mortality
         self._check_mortality(mask, active_before)
 
-        # 6. Aging
+        # 7. Aging
         self._update_aging(mask)
 
-        # 7. Reproduction
+        # 8. Reproduction
         self._handle_reproduction(mask)
 
     def to_dataframe(self) -> pd.DataFrame:
@@ -1009,6 +1308,84 @@ class PorpoisePopulation:
             'energy': self.energy[mask],
             'alive': np.ones(n_active, dtype=bool)
         })
+
+    # === Behavioral State Methods (Phase 3: FSM Integration) ===
+
+    def _update_behavioral_state(
+        self,
+        mask: np.ndarray,
+        deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]],
+    ) -> None:
+        """
+        Update behavioral states using the FSM (if enabled).
+
+        Creates a BehaviorContext from current population state and
+        passes it to the FSM for state transitions.
+
+        Args:
+            mask: Active agent mask
+            deterrence_vectors: Current deterrence vectors (dx, dy)
+        """
+        if self._behavior_fsm is None or self._behavior_state is None:
+            return
+
+        from cenop.behavior.states import BehaviorContext
+
+        # Calculate deterrence magnitude
+        if deterrence_vectors is not None:
+            deter_dx, deter_dy = deterrence_vectors
+            deter_mag = np.sqrt(deter_dx**2 + deter_dy**2)
+        else:
+            deter_mag = np.zeros(self.count, dtype=np.float32)
+
+        # Update time since disturbance
+        has_disturbance = deter_mag > 0.01
+        self.time_since_disturbance[has_disturbance] = 0
+        self.time_since_disturbance[~has_disturbance & mask] += 1
+
+        # Calculate current speed from last movement
+        current_speed = np.sqrt(self._dx**2 + self._dy**2)
+
+        # Get PSM memory cell count per agent
+        memory_cell_count = np.zeros(self.count, dtype=np.int32)
+        for i in range(self.count):
+            if mask[i]:
+                memory_cell_count[i] = len(self._psm_instances[i]._mem_cells)
+
+        # Check dispersal completion
+        dispersal_complete = self.is_dispersing & (
+            self.dispersal_distance_traveled >= self.dispersal_target_distance * 0.95
+        )
+
+        # Create behavior context
+        context = BehaviorContext(
+            deterrence_magnitude=deter_mag,
+            time_since_disturbance=self.time_since_disturbance,
+            current_energy=self.energy,
+            energy_declining_days=self.days_declining_energy,
+            current_speed=current_speed,
+            memory_cell_count=memory_cell_count,
+            is_dispersing=self.is_dispersing,
+            dispersal_complete=dispersal_complete,
+            t_disp=getattr(self.params, 't_disp', 3),
+            min_memory_cells=getattr(self.params, 'min_memory_cells', 50),
+        )
+
+        # Update states via FSM
+        self._behavior_fsm.update_states(self._behavior_state, context, mask)
+
+    def get_behavioral_state(self, idx: int) -> Optional['BehaviorState']:
+        """Get behavioral state for a single agent."""
+        if self._behavior_state is None:
+            return None
+        from cenop.behavior.states import BehaviorState
+        return BehaviorState(self._behavior_state.state[idx])
+
+    def get_behavioral_statistics(self) -> Optional[Dict[str, Any]]:
+        """Get behavioral state statistics."""
+        if self._behavior_state is None:
+            return None
+        return self._behavior_state.get_statistics()
 
     # === PSM and Dispersal Methods (Phase 2) ===
     
@@ -1447,14 +1824,51 @@ class PorpoisePopulation:
         """Get statistics about population energy levels."""
         active = self.active_mask
         if not np.any(active):
-            return {'mean': 0.0, 'std': 0.0, 'min': 0.0, 'max': 0.0, 'hungry': 0, 'starving': 0}
-            
+            return {'mean': 0.0, 'std': 0.0, 'min': 0.0, 'max': 0.0,
+                    'mean_energy': 0.0, 'min_energy': 0.0, 'max_energy': 0.0, 'std_energy': 0.0,
+                    'hungry': 0, 'starving': 0}
+
         active_energy = self.energy[active]
+
+        # Use modular energy module statistics if available
+        if self._energy_module is not None and self._energy_state is not None:
+            stats = self._energy_module.get_statistics(self._energy_state, active)
+            # Add compatibility aliases
+            stats['mean'] = stats.get('mean_energy', float(np.mean(active_energy)))
+            stats['std'] = stats.get('std_energy', float(np.std(active_energy)))
+            stats['min'] = stats.get('min_energy', float(np.min(active_energy)))
+            stats['max'] = stats.get('max_energy', float(np.max(active_energy)))
+            stats['hungry'] = int(np.sum(active_energy < 10))
+            stats['starving'] = int(np.sum(active_energy < 5))
+            return stats
+
+        # Fallback: basic stats from energy array
         return {
             'mean': float(np.mean(active_energy)),
             'std': float(np.std(active_energy)),
             'min': float(np.min(active_energy)),
             'max': float(np.max(active_energy)),
+            'mean_energy': float(np.mean(active_energy)),
+            'min_energy': float(np.min(active_energy)),
+            'max_energy': float(np.max(active_energy)),
+            'std_energy': float(np.std(active_energy)),
             'hungry': int(np.sum(active_energy < 10)),  # Below neutral
             'starving': int(np.sum(active_energy < 5))  # Critical
         }
+
+    def get_fitness_metrics(self) -> Optional[Dict[str, Any]]:
+        """
+        Get JASMINE fitness metrics (Phase 4).
+
+        Returns detailed fitness information when using JASMINE energy module.
+        """
+        if self._energy_module is None or self._energy_state is None:
+            return None
+
+        # Check if using JASMINE module
+        from cenop.physiology.energy_budget import EnergyMode
+        if self._energy_module.get_mode() == EnergyMode.JASMINE:
+            return self._energy_module.get_fitness_metrics(
+                self._energy_state, self.active_mask
+            )
+        return None

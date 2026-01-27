@@ -463,9 +463,12 @@ class TestDeterrenceStrengthLogging:
         sim._turbine_manager.turbines = [turbine]  # Replace all
         
         # Move some porpoises very close to turbine
+        # With SL=210, threshold=158, beta=20, alpha=0:
+        # Deterrence occurs when dist < 10^((210-158)/20) = 10^2.6 = 398m ≈ 1 cell
+        # Place porpoises within 0.5 cells (~200m) to ensure deterrence
         pm = sim.population_manager
-        pm.x[:10] = center_x + np.random.uniform(-2, 2, 10)
-        pm.y[:10] = center_y + np.random.uniform(-2, 2, 10)
+        pm.x[:10] = center_x + np.random.uniform(-0.5, 0.5, 10)
+        pm.y[:10] = center_y + np.random.uniform(-0.5, 0.5, 10)
         
         # Step
         sim.step()
@@ -497,25 +500,27 @@ class TestPSMIntegration:
         """Verify PSM is updated when porpoises move and eat."""
         from cenop.agents.population import PorpoisePopulation
         from cenop.parameters import SimulationParameters
-        
+
         params = SimulationParameters(porpoise_count=10)
         pop = PorpoisePopulation(count=10, params=params)
-        
-        # Record initial PSM state
-        initial_visited = [psm.visited_cell_count for psm in pop._psm_instances]
-        
+
+        # Record initial PSM state from psm_buffer
+        # psm_buffer shape: (count, rows, cols, 2) where [:,:,:,0] is visit count
+        initial_visited = np.count_nonzero(pop.psm_buffer[:, :, :, 0], axis=(1, 2))
+
         # Run several steps
         for _ in range(10):
             pop.step()
-            
-        # PSM should have been updated
-        final_visited = [psm.visited_cell_count for psm in pop._psm_instances]
-        
+
+        # PSM should have been updated (check psm_buffer, not _psm_instances)
+        final_visited = np.count_nonzero(pop.psm_buffer[:, :, :, 0], axis=(1, 2))
+
         # At least some porpoises should have visited cells
-        assert sum(final_visited) > 0, "PSM should record visited cells"
-        
-        # Check total food recorded
-        total_food = sum(psm.total_food for psm in pop._psm_instances)
+        assert np.sum(final_visited) > 0, "PSM should record visited cells"
+
+        # Check total food recorded from psm_buffer
+        # psm_buffer[:,:,:,1] contains food values
+        total_food = np.sum(pop.psm_buffer[:, :, :, 1])
         assert total_food > 0, "PSM should record food obtained"
         
     def test_energy_history_tracked(self):

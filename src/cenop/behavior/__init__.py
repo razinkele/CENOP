@@ -27,6 +27,16 @@ from cenop.behavior.hybrid_fsm import (
     FSMMode,
     create_behavior_fsm,
 )
+from cenop.behavior.disturbance_memory import (
+    MemoryMode,
+    DisturbanceMemoryState,
+    DisturbanceMemoryContext,
+    AvoidanceResult,
+    DisturbanceMemoryModule,
+    DEPONSMemoryModule,
+    JASMINEMemoryModule,
+    create_memory_module,
+)
 
 __all__ = [
     # Memory
@@ -55,4 +65,13 @@ __all__ = [
     "HybridBehaviorFSM",
     "FSMMode",
     "create_behavior_fsm",
+    # Disturbance Memory (Phase 5)
+    "MemoryMode",
+    "DisturbanceMemoryState",
+    "DisturbanceMemoryContext",
+    "AvoidanceResult",
+    "DisturbanceMemoryModule",
+    "DEPONSMemoryModule",
+    "JASMINEMemoryModule",
+    "create_memory_module",
 ]

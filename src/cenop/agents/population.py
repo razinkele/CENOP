@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from cenop.movement.base import MovementModule
     from cenop.behavior.hybrid_fsm import HybridBehaviorFSM
     from cenop.physiology.energy_budget import EnergyModule
+    from cenop.behavior.disturbance_memory import DisturbanceMemoryModule
 
 import logging
 import os
@@ -62,6 +63,7 @@ class PorpoisePopulation:
         movement_module: Optional['MovementModule'] = None,
         behavior_fsm: Optional['HybridBehaviorFSM'] = None,
         energy_module: Optional['EnergyModule'] = None,
+        memory_module: Optional['DisturbanceMemoryModule'] = None,
     ):
         self.params = params
         self.landscape = landscape
@@ -69,6 +71,7 @@ class PorpoisePopulation:
         self._movement_module = movement_module  # Optional modular movement
         self._behavior_fsm = behavior_fsm  # Optional behavioral FSM
         self._energy_module = energy_module  # Optional energy module (Phase 4)
+        self._memory_module = memory_module  # Optional memory module (Phase 5)
         
         # === Arrays (Structure of Arrays) ===
         # Use a dictionary of arrays or direct attributes? Direct attributes are faster.
@@ -134,6 +137,12 @@ class PorpoisePopulation:
         if self._energy_module is not None:
             from cenop.physiology.energy_budget import EnergyState
             self._energy_state = EnergyState.create(count, initial_energy=10.0)
+
+        # === Memory State for disturbance memory (Phase 5) ===
+        self._memory_state = None
+        if self._memory_module is not None:
+            from cenop.behavior.disturbance_memory import DisturbanceMemoryState
+            self._memory_state = DisturbanceMemoryState.create(count)
 
         # PSM instances - one per porpoise (list for object storage)
         world_w = self.params.world_width
@@ -1004,6 +1013,106 @@ class PorpoisePopulation:
         self._update_energy_history(mask)
         self._update_dispersal(mask)
 
+    def _update_disturbance_memory(
+        self,
+        mask: np.ndarray,
+        deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]],
+    ) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+        """
+        Update disturbance memory and compute avoidance (Phase 5).
+
+        Records disturbance events, applies memory decay, and computes
+        avoidance vectors based on remembered disturbances.
+
+        Returns:
+            Avoidance vectors (dx, dy) or None if no memory module
+        """
+        if self._memory_module is None or self._memory_state is None:
+            return None
+
+        from cenop.behavior.disturbance_memory import DisturbanceMemoryContext
+
+        # Determine if agents are disturbed (from deterrence strength)
+        is_disturbed = self.deter_strength > 0.1
+
+        # Create disturbance context
+        # Use turbine/ship positions if available, otherwise use agent positions
+        disturbance_x = self.x.copy()  # Default: disturbance at agent location
+        disturbance_y = self.y.copy()
+
+        context = DisturbanceMemoryContext(
+            is_disturbed=is_disturbed,
+            disturbance_intensity=self.deter_strength.astype(np.float32),
+            disturbance_x=disturbance_x.astype(np.float32),
+            disturbance_y=disturbance_y.astype(np.float32),
+            agent_x=self.x.astype(np.float32),
+            agent_y=self.y.astype(np.float32),
+            current_tick=self._global_tick,
+        )
+
+        # Record disturbances
+        self._memory_module.record_disturbance(self._memory_state, context, mask)
+
+        # Apply memory decay (every 48 ticks = daily)
+        if self._global_tick % 48 == 0:
+            self._memory_module.decay_memory(self._memory_state, mask, ticks_elapsed=48)
+
+        # Compute avoidance
+        result = self._memory_module.compute_avoidance(
+            self._memory_state, self.x, self.y, mask
+        )
+
+        # Update time since disturbance for disturbed agents
+        self.time_since_disturbance[is_disturbed & mask] = 0
+        self.time_since_disturbance[~is_disturbed & mask] += 1
+
+        return (result.avoidance_dx, result.avoidance_dy)
+
+    def _combine_deterrence_avoidance(
+        self,
+        deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]],
+        avoidance_vectors: Optional[Tuple[np.ndarray, np.ndarray]],
+    ) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+        """
+        Combine immediate deterrence with learned avoidance.
+
+        Deterrence is immediate response to current disturbance.
+        Avoidance is memory-based bias away from remembered disturbances.
+        """
+        if deterrence_vectors is None and avoidance_vectors is None:
+            return None
+
+        if deterrence_vectors is None:
+            return avoidance_vectors
+
+        if avoidance_vectors is None:
+            return deterrence_vectors
+
+        # Combine: deterrence has priority, avoidance adds bias
+        d_dx, d_dy = deterrence_vectors
+        a_dx, a_dy = avoidance_vectors
+
+        # Scale avoidance (it's a bias, not a strong force)
+        avoidance_weight = 0.3
+
+        combined_dx = d_dx + avoidance_weight * a_dx
+        combined_dy = d_dy + avoidance_weight * a_dy
+
+        return (combined_dx, combined_dy)
+
+    def get_memory_stats(self) -> Optional[Dict[str, Any]]:
+        """
+        Get disturbance memory statistics (Phase 5).
+
+        Returns memory statistics when using JASMINE memory module.
+        """
+        if self._memory_module is None or self._memory_state is None:
+            return None
+
+        return self._memory_module.get_statistics(
+            self._memory_state, self.active_mask
+        )
+
     def _check_mortality(self, mask: np.ndarray, active_before: int) -> None:
         """
         Check and apply mortality (DEPONS Pattern).
@@ -1159,8 +1268,14 @@ class PorpoisePopulation:
         # 1. Update behavioral state (if FSM enabled)
         self._update_behavioral_state(mask, deterrence_vectors)
 
-        # 2. Movement calculations
-        self._update_movement(mask, deterrence_vectors, ambient_rl)
+        # 1.5 Update disturbance memory and compute avoidance (Phase 5)
+        avoidance_vectors = self._update_disturbance_memory(mask, deterrence_vectors)
+
+        # 2. Movement calculations (with avoidance added to deterrence)
+        combined_deterrence = self._combine_deterrence_avoidance(
+            deterrence_vectors, avoidance_vectors
+        )
+        self._update_movement(mask, combined_deterrence, ambient_rl)
 
         # 3. Land avoidance
         self._handle_land_avoidance(mask)

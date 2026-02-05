@@ -7,18 +7,23 @@ Translates from: Ship.java (417 lines) and related classes
 
 from __future__ import annotations
 
+import json
+import logging
 import numpy as np
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, List, Optional, Tuple
 from enum import Enum
 from pathlib import Path
 
+logger = logging.getLogger("CENOP")
+
 from cenop.agents.base import Agent
 from cenop.behavior.sound import (
     ShipNoise,
     ShipDeterrenceModel,
     calculate_received_level,
-    calculate_deterrence_vector
+    calculate_deterrence_vector,
+    response_probability_from_rl,
 )
 
 if TYPE_CHECKING:
@@ -149,6 +154,8 @@ class Ship(Agent):
             
         # Get current and next buoy
         current_buoy = self.route.get_buoy(self.current_buoy_idx)
+        if self.route.length == 0:
+            return
         next_idx = (self.current_buoy_idx + 1) % self.route.length
         next_buoy = self.route.get_buoy(next_idx)
         
@@ -438,15 +445,34 @@ class ShipManager:
             if not np.any(deter_mask_local):
                 continue
             
+            # Probabilistic scaling
+            if getattr(params, 'deter_probabilistic', False):
+                p = response_probability_from_rl(
+                    rl, params.deter_threshold, getattr(params, 'deter_response_slope', 0.2)
+                )
+            else:
+                p = None
+            
             # 5. Vectors
             full_mask = np.zeros_like(in_range_mask)
             full_mask[in_range_mask] = deter_mask_local
             
-            s = str_val[deter_mask_local] # Strength
-            d = d_masked[deter_mask_local] # Distance
+            # Apply p where appropriate
+            s_final = np.zeros_like(d_masked)
+            s_final[deter_mask_local] = str_val[deter_mask_local]
+            if p is not None:
+                p_full = np.zeros_like(d_masked)
+                p_full[:] = p
+                s_final = s_final * p_full
             
-            # For ships, deter_coeff might be different or same? 
-            # Original uses params.deter_coeff
+            # Map back to full mask arrays
+            # s_final corresponds to positions in d_masked (in_range_mask true positions)
+            # Build array aligned with full_mask
+            strength_full = np.zeros_like(dist_m)
+            strength_full[in_range_mask] = s_final
+            
+            s = strength_full[full_mask]
+            d = dist_m[full_mask]
             
             vec_x = (dx_m[full_mask] / d) * s * params.deter_coeff
             vec_y = (dy_m[full_mask] / d) * s * params.deter_coeff
@@ -455,6 +481,45 @@ class ShipManager:
             total_dy[full_mask] += vec_y
             
         return (total_dx, total_dy)
+
+    def ambient_received_level_at_positions(
+        self,
+        porpoise_x: np.ndarray,
+        porpoise_y: np.ndarray,
+        params: SimulationParameters,
+        is_day: bool = True,
+        cell_size: float = 400.0
+    ) -> np.ndarray:
+        """
+        Compute ambient RL at porpoise positions from active ships.
+        Returns array of RL in dB (same length as porpoise_x) or -999 if none.
+        """
+        if not self.enabled:
+            return np.full(len(porpoise_x), -999.0, dtype=np.float32)
+        active_ships = self.get_active_ships()
+        if not active_ships:
+            return np.full(len(porpoise_x), -999.0, dtype=np.float32)
+
+        lin_power = np.zeros(len(porpoise_x), dtype=np.float64)
+        max_dist_m = params.deter_max_distance * 1000.0
+        for ship in active_ships:
+            dx_m = (porpoise_x - ship.x) * cell_size
+            dy_m = (porpoise_y - ship.y) * cell_size
+            dist_m = np.sqrt(dx_m**2 + dy_m**2)
+            dist_m = np.maximum(dist_m, 1.0)
+            mask = dist_m < max_dist_m
+            if not np.any(mask):
+                continue
+            source_level = ship.noise.get_source_level()
+            dmask = dist_m[mask]
+            tl = params.beta_hat * np.log10(dmask) + params.alpha_hat * dmask
+            rl_mask = source_level - tl
+            lin_power[mask] += 10.0 ** (rl_mask / 10.0)
+
+        rl_combined = np.full(len(porpoise_x), -999.0, dtype=np.float32)
+        nonzero = lin_power > 0
+        rl_combined[nonzero] = 10.0 * np.log10(lin_power[nonzero])
+        return rl_combined
         
     def load_from_file(
         self,
@@ -624,18 +689,16 @@ class ShipManager:
             utm_origin_y: UTM Y origin (YLLCORNER from bathy.asc)
             cell_size: Cell size in meters (default 400m)
         """
-        import json
-        
         path = Path(json_file)
         if not path.exists():
-            print(f"[WARNING] Ships JSON file not found: {json_file}")
+            logger.warning("Ships JSON file not found: %s", json_file)
             return
-            
+
         try:
             with open(path, 'r') as f:
                 data = json.load(f)
         except json.JSONDecodeError as e:
-            print(f"[ERROR] Failed to parse ships JSON: {e}")
+            logger.error("Failed to parse ships JSON: %s", e)
             return
             
         # Parse routes

@@ -7,10 +7,18 @@ agent-based model, managing agents, scheduling, and data collection.
 
 from __future__ import annotations
 
+import os
+import logging
+import warnings
 import numpy as np
+import pandas as pd
+from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Optional, List, Dict, Any
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from tqdm import tqdm
+
+logger = logging.getLogger("CENOP")
 
 if TYPE_CHECKING:
     from cenop.parameters.simulation_params import SimulationParameters
@@ -175,7 +183,21 @@ class Simulation:
         # Set up ships if enabled
         if self.params.ships_enabled:
             self._setup_ships()
-            
+
+        # Warm-up Numba-compiled helpers to avoid JIT compile latency during early ticks
+        try:
+            from cenop.optimizations import warmup_numba
+            warmup_numba()
+        except Exception:
+            # Ignore warm-up errors
+            pass
+
+        # Pre-import SciPy spatial to avoid expensive first-time import during early ticks
+        try:
+            import scipy.spatial  # type: ignore
+        except Exception:
+            pass
+
         self.state.population = self.population_manager.population_size
         self._is_initialized = True
         
@@ -219,8 +241,7 @@ class Simulation:
         Coordinates are in UTM and converted to grid using landscape metadata.
         """
         from cenop.agents.turbine import TurbinePhase, Turbine
-        from pathlib import Path
-        
+
         # Handle "off" case
         if self.params.turbines == "off":
             self._turbine_manager.set_phase(TurbinePhase.OFF)
@@ -317,8 +338,7 @@ class Simulation:
             return
             
         from cenop.agents.ship import Ship, Route, Buoy, VesselClass
-        import os
-        
+
         # Determine landscape size
         if self._cell_data is not None:
             width = self._cell_data.width
@@ -393,15 +413,13 @@ class Simulation:
         
         # Debug first few steps
         if self.state.tick < 5:
-            print(f"[DEBUG] Simulation.step() tick={self.state.tick}, pop={self.state.population}")
+            logger.debug("Simulation.step() tick=%d, pop=%d", self.state.tick, self.state.population)
         
         # Update turbines and ships for current tick
         self._turbine_manager.update(self.state.tick)
         self._ship_manager.update(self.state.tick)
         
         # Calculate vectorized deterrence
-        # We need active agent positions for efficient calculation
-        # Access arrays directly from population manager
         active_mask = self.population_manager.active_mask
         px = self.population_manager.x
         py = self.population_manager.y
@@ -416,15 +434,22 @@ class Simulation:
             px, py, self.params, is_day=self.state.is_daytime, cell_size=400.0
         )
         
-        # Combine
+        # Combine deterrence vectors
         total_dx = turb_dx + ship_dx
         total_dy = turb_dy + ship_dy
-        
-        # Step population (Vectorized)
-        self.population_manager.step(deterrence_vectors=(total_dx, total_dy))
+
+        # --- Ambient noise masking: compute ambient RL experienced at porpoise locations ---
+        turb_rl = self._turbine_manager.ambient_received_level_at_positions(px, py, self.params, cell_size=400.0)
+        ship_rl = self._ship_manager.ambient_received_level_at_positions(px, py, self.params, is_day=self.state.is_daytime, cell_size=400.0)
+        from cenop.behavior.sound import combine_rls  # noqa: E402 — deferred to avoid circular import
+        ambient_rl = combine_rls(turb_rl, ship_rl)
+
+        # Step population (Vectorized), pass ambient RL for masking
+        self.population_manager.step(deterrence_vectors=(total_dx, total_dy), ambient_rl=ambient_rl)
         
         if self.state.tick < 5:
-            print(f"[DEBUG] Simulation.step() after pop_manager.step: active={self.population_manager.population_size}")
+            logger.debug("Simulation.step() after pop_manager.step: active=%d",
+                         self.population_manager.population_size)
                 
         # Update Statistics
         current_pop = self.population_manager.population_size
@@ -484,10 +509,14 @@ class Simulation:
                 next_id += 1
         self._porpoises.extend(new_calves)
                 
-        # Remove dead porpoises
+        # Remove dead porpoises (legacy list only)
         self._porpoises = [p for p in self._porpoises if p.alive]
-        self.state.population = len(self._porpoises)
-        
+        # Update population count using authoritative source (population manager if present)
+        if hasattr(self, 'population_manager'):
+            self.state.population = self.population_manager.population_size
+        else:
+            self.state.population = len(self._porpoises)
+
         # Replenish food across landscape
         if self._cell_data is not None:
             self._cell_data.replenish_food(self.params.r_u)
@@ -509,15 +538,29 @@ class Simulation:
             porpoise.age += 1.0
             
     def _record_history(self) -> None:
-        """Record current state to history."""
+        """Record current state to history.
+
+        Note: `self.state.births` and `self.state.deaths` are per-tick accumulators
+        (they accumulate within the current month). Here we record the *daily*
+        counts and then reset these counters so that history entries contain
+        true daily values (avoids over-counting when summing history).
+        """
+        # Capture daily values
+        daily_births = int(self.state.births)
+        daily_deaths = int(self.state.deaths)
+
         self._history.append({
             "tick": self.state.tick,
             "day": self.state.day,
             "year": self.state.year,
             "population": self.state.population,
-            "births": self.state.births,
-            "deaths": self.state.deaths,
+            "births": daily_births,
+            "deaths": daily_deaths,
         })
+
+        # Reset daily counters
+        self.state.births = 0
+        self.state.deaths = 0
         
     def run(self, progress: bool = True) -> None:
         """
@@ -577,13 +620,17 @@ class Simulation:
         
     def get_statistics(self) -> Dict[str, Any]:
         """Get current simulation statistics."""
+        # Include current in-flight counters (this day's births/deaths) so
+        # statistics are up-to-date during the day before history is recorded.
+        births_total = int(sum(h["births"] for h in self._history) + getattr(self.state, 'births', 0))
+        deaths_total = int(sum(h["deaths"] for h in self._history) + getattr(self.state, 'deaths', 0))
         return {
             "tick": self.state.tick,
             "day": self.state.day,
             "year": self.state.year,
             "population": self.state.population,
-            "births_total": sum(h["births"] for h in self._history),
-            "deaths_total": sum(h["deaths"] for h in self._history),
+            "births_total": births_total,
+            "deaths_total": deaths_total,
         }
         
     @property
@@ -592,21 +639,50 @@ class Simulation:
         return self._cell_data
         
     @property
+    def total_births(self) -> int:
+        """Get total births across all history (including current day)."""
+        return int(sum(h.get("births", 0) for h in self._history) + getattr(self.state, 'births', 0))
+    
+    @property
+    def total_deaths(self) -> int:
+        """Get total deaths across all history (including current day)."""
+        return int(sum(h.get("deaths", 0) for h in self._history) + getattr(self.state, 'deaths', 0))
+    @property
     def porpoises(self) -> List[Any]:
-        """Get list of all porpoises (Legacy compatibility)."""
-        # Warning: This is slow if called repeatedly
-        # Use population_manager or agents_df for performance
+        """Get list of all porpoises (Legacy compatibility).
+
+        .. deprecated::
+            Use `population_manager.to_dataframe()` or `agents_df` instead.
+            This property will be removed in a future version.
+        """
+        warnings.warn(
+            "The 'porpoises' property is deprecated. "
+            "Use 'population_manager.to_dataframe()' or 'agents_df' for better performance.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if hasattr(self, 'population_manager'):
-            # Return list of lightweight objects or named tuples
-            from types import SimpleNamespace
             df = self.population_manager.to_dataframe()
             return [SimpleNamespace(**row) for row in df.to_dict('records')]
         return self._porpoises
-    
+
     @property
     def agents(self) -> List[Any]:
-        """Get list of all agents (alias for porpoises)."""
-        return self.porpoises
+        """Get list of all agents (alias for porpoises).
+
+        .. deprecated::
+            Use `agents_df` property instead for better performance.
+        """
+        warnings.warn(
+            "The 'agents' property is deprecated. Use 'agents_df' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        # Call porpoises without triggering double warning
+        if hasattr(self, 'population_manager'):
+            df = self.population_manager.to_dataframe()
+            return [SimpleNamespace(**row) for row in df.to_dict('records')]
+        return self._porpoises
         
     @property
     def agents_df(self) -> pd.DataFrame:
@@ -624,10 +700,10 @@ class Simulation:
     
     @property
     def total_births(self) -> int:
-        """Get total births across all history."""
-        return sum(h.get("births", 0) for h in self._history)
+        """Get total births across all history (including current day)."""
+        return int(sum(h.get("births", 0) for h in self._history) + getattr(self.state, 'births', 0))
     
     @property
     def total_deaths(self) -> int:
-        """Get total deaths across all history."""
-        return sum(h.get("deaths", 0) for h in self._history)
+        """Get total deaths across all history (including current day)."""
+        return int(sum(h.get("deaths", 0) for h in self._history) + getattr(self.state, 'deaths', 0))

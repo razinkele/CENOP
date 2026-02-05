@@ -181,6 +181,26 @@ class SimulationParameters:
             raise ValueError("max_age must be positive")
         if not 0 <= self.conceive_prob <= 1:
             raise ValueError("conceive_prob must be between 0 and 1")
+        if self.r1_sd < 0:
+            raise ValueError("r1_sd (step length std dev) must be non-negative")
+        if self.r2_sd < 0:
+            raise ValueError("r2_sd (turning angle std dev) must be non-negative")
+        if self.e_use_per_30_min < 0:
+            raise ValueError("e_use_per_30_min must be non-negative")
+        if self.deter_threshold < 0:
+            raise ValueError("deter_threshold must be non-negative")
+        if self.deter_max_distance <= 0:
+            raise ValueError("deter_max_distance must be positive")
+        if not 0 <= self.m_mort_prob_const <= 1:
+            raise ValueError("m_mort_prob_const must be between 0 and 1")
+        if self.x_survival_const < 0:
+            raise ValueError("x_survival_const must be non-negative")
+        if not 0 <= self.bycatch_prob <= 1:
+            raise ValueError("bycatch_prob must be between 0 and 1")
+        if self.maturity_age < 0:
+            raise ValueError("maturity_age must be non-negative")
+        if self.maturity_age >= self.max_age:
+            raise ValueError("maturity_age must be less than max_age")
             
     @classmethod
     def from_dict(cls, params: dict) -> SimulationParameters:

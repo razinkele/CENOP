@@ -839,9 +839,12 @@ class PorpoisePopulation:
             1.0 - (m_mort_prob_const * np.exp(-self.energy * x_survival_const)),
             0.0
         )
+        # Convert yearly survival to per-tick survival: P_tick = P_year^(1/(360*48))
+        # Using np.power instead of exp(log(x)/n) to avoid unnecessary intermediate arrays
+        _RECIP_TICKS_PER_YEAR = 1.0 / (360 * 48)  # 360 days/year * 48 ticks/day, consistent with DEPONS
         step_surv_prob = np.where(
             self.energy > 0,
-            np.exp(np.log(np.maximum(yearly_surv_prob, 1e-10)) / (360 * 48)),
+            np.power(np.maximum(yearly_surv_prob, 1e-10), _RECIP_TICKS_PER_YEAR),
             0.0
         )
 
@@ -858,9 +861,9 @@ class PorpoisePopulation:
         annual_adult_mortality = getattr(self.params, 'mortality_adult', 0.05)        # 1 <= age <= 20
         annual_elderly_mortality = getattr(self.params, 'mortality_elderly', 0.15)    # age > 20
 
-        per_tick_juvenile = annual_juvenile_mortality / 365.0 / 48.0
-        per_tick_adult = annual_adult_mortality / 365.0 / 48.0
-        per_tick_elderly = annual_elderly_mortality / 365.0 / 48.0
+        per_tick_juvenile = annual_juvenile_mortality / 360.0 / 48.0
+        per_tick_adult = annual_adult_mortality / 360.0 / 48.0
+        per_tick_elderly = annual_elderly_mortality / 360.0 / 48.0
 
         daily_mortality_prob = np.where(
             self.age < 1, per_tick_juvenile,
@@ -869,7 +872,7 @@ class PorpoisePopulation:
         natural_death = (np.random.random(self.count) < daily_mortality_prob) & mask
 
         # Bycatch mortality (already parameterized)
-        bycatch_prob = getattr(self.params, 'bycatch_prob', 0.0) / 365.0 / 48.0
+        bycatch_prob = getattr(self.params, 'bycatch_prob', 0.0) / 360.0 / 48.0
         bycatch = (np.random.random(self.count) < bycatch_prob) & mask
 
         # Apply deaths
@@ -890,7 +893,7 @@ class PorpoisePopulation:
 
     def _update_aging(self, mask: np.ndarray) -> None:
         """Update aging for active agents (continuous small increments)."""
-        self.age[mask] += 1.0 / 365.0 / 48.0  # Age in years per tick
+        self.age[mask] += 1.0 / 360.0 / 48.0  # Age in years per tick (360 days/year, consistent with DEPONS)
 
     def _handle_reproduction(self, mask: np.ndarray) -> None:
         """
@@ -900,7 +903,7 @@ class PorpoisePopulation:
         """
         # Update day of year
         if hasattr(self, '_day_of_year'):
-            self._day_of_year = (self._day_of_year + 1) % (365 * 48)
+            self._day_of_year = (self._day_of_year + 1) % (360 * 48)
         else:
             self._day_of_year = 0
 
@@ -1036,7 +1039,7 @@ class PorpoisePopulation:
         np.clip(psm_y, 0, self.psm_rows - 1, out=psm_y)
         
         # Use efficient accumulator (Numba-accelerated when available)
-        from cenop.optimizations import accumulate_psm_updates
+        from cenop.optimizations import accumulate_psm_updates  # noqa: E402 — kept deferred to avoid circular import at module level
 
         idx_arr = active_idx.astype(np.int32)
         ys_arr = psm_y.astype(np.int32)

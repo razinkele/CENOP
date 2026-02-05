@@ -8,8 +8,9 @@ Translates from: Porpoise.java (1686 lines)
 from __future__ import annotations
 
 import numpy as np
+from collections import deque
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Optional, List, Tuple
+from typing import TYPE_CHECKING, Optional, List, Tuple, Deque
 from enum import Enum
 
 from cenop.agents.base import Agent
@@ -28,9 +29,28 @@ class PregnancyStatus(Enum):
     READY_TO_MATE = 2     # Ready to mate
 
 
+# ── DEPONS Model Constants ──────────────────────────────────────────────────
+# These constants match the original Java DEPONS implementation.
+DAYS_PER_YEAR = 360                 # DEPONS uses a 360-day year
+TICKS_PER_DAY = 48                  # 48 half-hour steps per day
+TICKS_PER_YEAR = DAYS_PER_YEAR * TICKS_PER_DAY  # 17,280
+
+MAX_CRW_ATTEMPTS = 200              # Max retries for CRW angle/step sampling
+ANGLE_SENTINEL = 999.0              # Sentinel value indicating "not yet computed"
+STEP_SENTINEL = 999.0               # Sentinel value for step length loop
+NOT_PREGNANT_SENTINEL = -99         # Sentinel for days_since_mating / days_since_giving_birth
+
+LAND_AVOIDANCE_ANGLES = [40, 70, 120]  # Degrees to try when avoiding land
+FALLBACK_ANGLE_MIN = 90             # Fallback angle range if all CRW retries exhausted
+FALLBACK_ANGLE_RANGE = 20           # Random offset added to fallback angle
+
+TRANSITION_MONTH_MULTIPLIER = 1.15  # Energy multiplier for April/October (matches Java)
+CALF_SEX_RATIO = 0.5                # 50% probability of female calf
+
+
 class CauseOfDeath(Enum):
     """Cause of death for mortality tracking."""
-    
+
     STARVATION = "starvation"
     OLD_AGE = "old_age"
     BYCATCH = "bycatch"
@@ -63,8 +83,8 @@ class Porpoise(Agent):
     food_eaten_daily: float = 0.0
     food_eaten_daily_temp: float = 0.0
     
-    # Daily energy buffer (last 10 days)
-    energy_level_daily: List[float] = field(default_factory=lambda: [0.0] * 10)
+    # Daily energy buffer (last 10 days) - use deque for O(1) appendleft
+    energy_level_daily: Deque[float] = field(default_factory=lambda: deque([0.0] * 10, maxlen=10))
     energy_level_sum: float = 0.0
     
     # === Age and life stage ===
@@ -74,8 +94,8 @@ class Porpoise(Agent):
     # === Reproduction ===
     pregnancy_status: PregnancyStatus = PregnancyStatus.UNABLE_YOUNG
     mating_day: int = 225               # Day of year for mating
-    days_since_mating: int = -99        # -99 if not pregnant
-    days_since_giving_birth: int = -99  # -99 if no calf
+    days_since_mating: int = NOT_PREGNANT_SENTINEL   # sentinel if not pregnant
+    days_since_giving_birth: int = NOT_PREGNANT_SENTINEL  # sentinel if no calf
     with_lact_calf: bool = False        # With lactating calf
     calves_born: int = 0                # Counter
     calves_weaned: int = 0              # Counter
@@ -91,9 +111,9 @@ class Porpoise(Agent):
     ve_total: float = 0.0              # Expected food value
     stored_util_list: List[float] = field(default_factory=list)
     
-    # Position history
-    pos_list: List[tuple] = field(default_factory=list)
-    pos_list_daily: List[tuple] = field(default_factory=lambda: [(0, 0)] * 10)
+    # Position history - use deque for O(1) appendleft
+    pos_list: Deque[tuple] = field(default_factory=lambda: deque(maxlen=120))
+    pos_list_daily: Deque[tuple] = field(default_factory=lambda: deque([(0, 0)] * 10, maxlen=10))
     
     # === Dispersal ===
     is_dispersing: bool = False
@@ -116,11 +136,11 @@ class Porpoise(Agent):
         if self.is_female:
             self.mating_day = int(np.random.normal(225, 20))
         else:
-            self.mating_day = -99  # Not applicable for males
+            self.mating_day = NOT_PREGNANT_SENTINEL  # Not applicable for males
         
         # Initialize position list
         if not self.pos_list:
-            self.pos_list = [(self.x, self.y)]
+            self.pos_list.append((self.x, self.y))
             
     def step(
         self,
@@ -147,10 +167,8 @@ class Porpoise(Agent):
         # Reset movement adjustment for new step
         self.tick_move_adjust = 1.0
         
-        # Store current position
-        self.pos_list.insert(0, (self.x, self.y))
-        if len(self.pos_list) > 120:  # MEMORY_MAX
-            self.pos_list.pop()
+        # Store current position (deque with maxlen auto-removes old entries)
+        self.pos_list.appendleft((self.x, self.y))
             
         # Choose movement type
         if self.is_dispersing:
@@ -229,9 +247,9 @@ class Porpoise(Agent):
             salinity = 30.0  # Default salinity
             
         attempts = 0
-        pres_angle = 999.0
-        
-        while abs(pres_angle) > 180 and attempts < 200:
+        pres_angle = ANGLE_SENTINEL
+
+        while abs(pres_angle) > 180 and attempts < MAX_CRW_ATTEMPTS:
             # R2 = N(0, 4) per TRACE Table 2 - turning angle random component
             random_angle = np.random.normal(params.r2_mean, params.r2_sd)
             
@@ -256,7 +274,7 @@ class Porpoise(Agent):
         prev_mov = 10 ** self.prev_log_mov
         
         attempts = 0
-        while pres_angle >= 180 and attempts < 200:
+        while pres_angle >= 180 and attempts < MAX_CRW_ATTEMPTS:
             # N(0, 1) for angle adjustment - hardcoded in DEPONS (R3)
             rnd = np.random.normal(0, 1)
             if prev_mov <= params.m:
@@ -264,7 +282,7 @@ class Porpoise(Agent):
             attempts += 1
             
         if pres_angle >= 180:
-            pres_angle = np.random.uniform(0, 20) + 90
+            pres_angle = np.random.uniform(0, FALLBACK_ANGLE_RANGE) + FALLBACK_ANGLE_MIN
             
         return pres_angle * sign
         
@@ -291,9 +309,9 @@ class Porpoise(Agent):
             salinity = 30.0  # Default salinity
             
         attempts = 0
-        log_mov = 999.0
-        
-        while log_mov > params.max_mov and attempts < 200:
+        log_mov = STEP_SENTINEL
+
+        while log_mov > params.max_mov and attempts < MAX_CRW_ATTEMPTS:
             # R1 random component - TRACE Table 2: R1 = N(1.25, 0.15)
             # This is the mean and SD for log10(d/100) per van Beest et al. 2018a
             random_length = np.random.normal(params.r1_mean, params.r1_sd)
@@ -341,7 +359,7 @@ class Porpoise(Agent):
         pres_mov = 10 ** self.pres_log_mov
         
         # Try turning at increasing angles
-        for angle in [40, 70, 120]:
+        for angle in LAND_AVOIDANCE_ANGLES:
             rand_offset = np.random.uniform(0, 10)
             
             # Check right
@@ -500,7 +518,7 @@ class Porpoise(Agent):
             return params.e_warm  # 1.3
         elif month == 4 or month == 10:  # April, October: transition
             # DEPONS Java uses hardcoded 1.15 for transition months
-            return 1.15
+            return TRANSITION_MONTH_MULTIPLIER
         else:  # November-March: cold water
             return 1.0
     
@@ -571,17 +589,13 @@ class Porpoise(Agent):
         if not self.alive:
             return
             
-        # Update daily energy tracking
-        daily_avg = self.energy_level_sum / 48.0
-        self.energy_level_daily.insert(0, daily_avg)
-        if len(self.energy_level_daily) > 10:
-            self.energy_level_daily.pop()
+        # Update daily energy tracking (deque with maxlen auto-removes old entries)
+        daily_avg = self.energy_level_sum / TICKS_PER_DAY
+        self.energy_level_daily.appendleft(daily_avg)
         self.energy_level_sum = 0.0
-        
-        # Update daily position
-        self.pos_list_daily.insert(0, (self.x, self.y))
-        if len(self.pos_list_daily) > 10:
-            self.pos_list_daily.pop()
+
+        # Update daily position (deque with maxlen auto-removes old entries)
+        self.pos_list_daily.appendleft((self.x, self.y))
             
         # Finalize daily consumption
         self.energy_consumed_daily = self.energy_consumed_daily_temp
@@ -601,8 +615,8 @@ class Porpoise(Agent):
         # Update deterrence decay
         self._update_deterrence(params)
         
-        # Age by 1/360 year
-        self.age += 1.0 / 360.0
+        # Age by 1/DAYS_PER_YEAR year
+        self.age += 1.0 / DAYS_PER_YEAR
         
     def _check_mortality(
         self,
@@ -621,38 +635,44 @@ class Porpoise(Agent):
             return
             
         # Check starvation (DEPONS Porpoise.java lines 741-759)
-        # DEPONS formula: yearlySurvProb = 1 - exp(-energyLevel * beta)
+        # DEPONS formula: yearlySurvProb = 1 - m_mort_prob_const * exp(-energyLevel * x_survival_const)
         # This differs from TRACE logistic formula but matches Java implementation
-        m_mort_prob_const = 1.0
-        yearly_survival = 1.0 - (m_mort_prob_const * np.exp(-self.energy_level * params.beta))
-        
-        # Convert to per-day survival (360 days per year)
+        m_mort_prob_const = getattr(params, 'm_mort_prob_const', 0.5)
+        x_survival_const = getattr(params, 'x_survival_const', 0.15)
+        yearly_survival = 1.0 - (m_mort_prob_const * np.exp(-self.energy_level * x_survival_const))
+
+        # Convert to per-day survival (360 days per year, consistent with DEPONS)
         # DEPONS checks per-tick (48/day) but we check per-day for efficiency
-        daily_survival = yearly_survival ** (1.0 / 360.0) if self.energy_level > 0 else 0.0
+        daily_survival = yearly_survival ** (1.0 / DAYS_PER_YEAR) if self.energy_level > 0 else 0.0
         
         if np.random.random() > daily_survival:
             # DEPONS: Nursing mothers can abandon calf to survive
             if self.with_lact_calf and self.energy_level > 0:
                 # Abandon calf rather than dying
                 self.with_lact_calf = False
-                self.days_since_giving_birth = -99
+                self.days_since_giving_birth = NOT_PREGNANT_SENTINEL
             else:
                 self._die(CauseOfDeath.STARVATION, state)
                 return
             
         # Check bycatch (DEPONS: uses compounded probability, not simple division)
         if params.bycatch_prob > 0:
-            # DEPONS: dailySurvivalProb = exp(log(1 - bycatchProb) / 360)
-            daily_bycatch_survival = np.exp(np.log(1.0 - params.bycatch_prob) / 360.0)
+            # DEPONS: dailySurvivalProb = exp(log(1 - bycatchProb) / DAYS_PER_YEAR)
+            daily_bycatch_survival = np.exp(np.log(1.0 - params.bycatch_prob) / DAYS_PER_YEAR)
             if np.random.random() > daily_bycatch_survival:
                 self._die(CauseOfDeath.BYCATCH, state)
                 return
                 
     def _die(self, cause: CauseOfDeath, state: SimulationState) -> None:
-        """Mark porpoise as dead."""
+        """Mark porpoise as dead.
+
+        Note: do NOT increment `state.deaths` here to avoid double-counting.
+        The simulation detects population decreases and updates total deaths
+        centrally. We still increment cause-specific counters for diagnostics.
+        """
         self.alive = False
-        state.deaths += 1
         
+        # Increment cause-specific counters only
         if cause == CauseOfDeath.STARVATION:
             state.deaths_starvation += 1
         elif cause == CauseOfDeath.OLD_AGE:
@@ -674,7 +694,7 @@ class Porpoise(Agent):
         if not self.is_female:
             return
             
-        day_of_year = state.day % 360
+        day_of_year = state.day % DAYS_PER_YEAR
         
         # Check if ready to mate
         if self.age >= self.age_of_maturity and self.pregnancy_status == PregnancyStatus.UNABLE_YOUNG:
@@ -702,13 +722,15 @@ class Porpoise(Agent):
             # Wean calf
             if self.days_since_giving_birth >= params.nursing_time:
                 self.with_lact_calf = False
-                self.days_since_giving_birth = -99
+                self.days_since_giving_birth = NOT_PREGNANT_SENTINEL
                 
                 # DEPONS: 50% sex ratio - only female calves are tracked
                 # Random check: if > 0.5, calf is female and added to population
                 if np.random.random() > 0.5:
                     self.calves_weaned += 1
-                    state.births += 1  # Count successful female weaning
+                    # Do NOT increment `state.births` here to avoid double-counting.
+                    # The Simulation will account for population increases centrally
+                    # when the active population size grows.
                     self._calf_ready_to_wean = True  # Flag for simulation to create new agent
                 # else: calf is male, not tracked in simulation
                 
@@ -720,7 +742,7 @@ class Porpoise(Agent):
         so the female can mate again while still nursing.
         """
         self.pregnancy_status = PregnancyStatus.READY_TO_MATE  # Can mate while nursing
-        self.days_since_mating = -99
+        self.days_since_mating = NOT_PREGNANT_SENTINEL
         self.with_lact_calf = True
         self.days_since_giving_birth = 0
         self.calves_born += 1

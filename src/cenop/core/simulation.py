@@ -10,12 +10,15 @@ JASMINE mode (flexible timestep, event-driven) via the TimeManager.
 
 from __future__ import annotations
 
+import logging
 import numpy as np
 from typing import TYPE_CHECKING, Optional, List, Dict, Any
 from dataclasses import dataclass, field
 from tqdm import tqdm
 
 from cenop.core.time_manager import TimeManager, TimeMode
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from cenop.parameters.simulation_params import SimulationParameters
@@ -133,8 +136,8 @@ class Simulation:
                 sim_years=params.sim_years
             )
 
-        # Set initial random seed (will be updated per-tick)
-        np.random.seed(actual_seed)
+        # Per-simulation random Generator (replaces global np.random.seed)
+        self.rng = np.random.default_rng(actual_seed)
         
         # Initialize components (lazy loading or pre-provided)
         self._cell_data: Optional[CellData] = cell_data
@@ -213,6 +216,7 @@ class Simulation:
             behavior_fsm=self._behavior_fsm,
             energy_module=self._energy_module,
             memory_module=self._memory_module,
+            rng=self.rng,
         )
         
         # Legacy list for backward compatibility (lazy loaded if accessed via property)
@@ -233,21 +237,21 @@ class Simulation:
         """Get random initial age from the DEPONS age distribution."""
         # Age distribution moved to external configuration (Fix Phase 1.2)
         from cenop.parameters.demography import AGE_DISTRIBUTION_FREQUENCY
-        return float(np.random.choice(AGE_DISTRIBUTION_FREQUENCY))
+        return float(self.rng.choice(AGE_DISTRIBUTION_FREQUENCY))
         
     def _get_valid_initial_position(self) -> tuple[float, float]:
         """Get a random initial position in valid water."""
         if self._cell_data is None:
             # Fallback for homogeneous landscape
-            x = np.random.uniform(0, self.params.world_width)
-            y = np.random.uniform(0, self.params.world_height)
+            x = self.rng.uniform(0, self.params.world_width)
+            y = self.rng.uniform(0, self.params.world_height)
             return x, y
             
         # Try to find valid position (depth > min_depth)
         max_attempts = 1000
         for _ in range(max_attempts):
-            x = np.random.uniform(0, self._cell_data.width)
-            y = np.random.uniform(0, self._cell_data.height)
+            x = self.rng.uniform(0, self._cell_data.width)
+            y = self.rng.uniform(0, self._cell_data.height)
             
             depth = self._cell_data.get_depth(x, y)
             if depth > self.params.min_depth:
@@ -403,12 +407,12 @@ class Simulation:
                 )
                 if self._ship_manager.count > 0:
                     ships_loaded = True
-                    print(f"[INFO] Loaded {self._ship_manager.count} ships from {ships_path}")
+                    logger.info("Loaded %d ships from %s", self._ship_manager.count, ships_path)
                     break
         
         # Fallback: Create sample ships if no JSON file found
         if not ships_loaded:
-            print("[INFO] No ships.json found, creating sample ship route")
+            logger.info("No ships.json found, creating sample ship route")
             
             # Create a simple route across the landscape
             route = Route(
@@ -448,11 +452,12 @@ class Simulation:
             self.initialize()
 
         # 1. Set deterministic seed for this tick (CRITICAL for reproducibility)
-        np.random.seed(self.time_manager.get_seed())
+        self.rng = np.random.default_rng(self.time_manager.get_seed())
+        self.population_manager.rng = self.rng
 
         # Debug first few steps
         if self.time_manager.tick < 5:
-            print(f"[DEBUG] Simulation.step() tick={self.time_manager.tick}, pop={self.state.population}")
+            logger.debug("Simulation.step() tick=%d, pop=%d", self.time_manager.tick, self.state.population)
 
         # 2. Process scheduled events (JASMINE mode only, no-op in DEPONS mode)
         for event in self.time_manager.get_scheduled_events():
@@ -486,7 +491,7 @@ class Simulation:
         self.population_manager.step(deterrence_vectors=(total_dx, total_dy))
 
         if self.time_manager.tick < 5:
-            print(f"[DEBUG] Simulation.step() after pop_manager.step: active={self.population_manager.population_size}")
+            logger.debug("Simulation.step() after pop_manager.step: active=%d", self.population_manager.population_size)
 
         # 6. Update Statistics
         current_pop = self.population_manager.population_size
@@ -525,36 +530,13 @@ class Simulation:
             self._record_history()
             
     def _daily_tasks(self) -> None:
-        """Execute daily tasks for all porpoises."""
-        for porpoise in self._porpoises:
-            if porpoise.alive:
-                porpoise.daily_step(self._cell_data, self.params, self.state)
-                
-        # Create weaned calves as new agents
-        new_calves = []
-        next_id = max((p.id for p in self._porpoises), default=0) + 1
-        for porpoise in self._porpoises:
-            if hasattr(porpoise, '_calf_ready_to_wean') and porpoise._calf_ready_to_wean:
-                from cenop.agents.porpoise import Porpoise
-                # TRACE: 50% sex ratio for calves
-                is_female = np.random.random() < 0.5
-                calf = Porpoise(
-                    id=next_id,
-                    x=porpoise.x + np.random.uniform(-1, 1),
-                    y=porpoise.y + np.random.uniform(-1, 1),
-                    heading=np.random.uniform(0, 360),
-                    age=0.0,
-                    is_female=is_female
-                )
-                new_calves.append(calf)
-                porpoise._calf_ready_to_wean = False
-                next_id += 1
-        self._porpoises.extend(new_calves)
-                
-        # Remove dead porpoises
-        self._porpoises = [p for p in self._porpoises if p.alive]
-        self.state.population = len(self._porpoises)
-        
+        """Execute daily landscape tasks.
+
+        Note: Per-agent daily steps (weaning, calf creation, mortality) are
+        handled by the vectorized PorpoisePopulation.step() method.  This
+        method only performs landscape-level bookkeeping that runs once per
+        simulated day.
+        """
         # Replenish food across landscape
         if self._cell_data is not None:
             self._cell_data.replenish_food(self.params.r_u)
@@ -570,10 +552,12 @@ class Simulation:
             self._cell_data.set_month(self.state.month)
         
     def _yearly_tasks(self) -> None:
-        """Execute yearly tasks."""
-        # Age all porpoises by 1 year
-        for porpoise in self._porpoises:
-            porpoise.age += 1.0
+        """Execute yearly tasks.
+
+        Note: Per-agent aging is handled continuously by
+        PorpoisePopulation._update_aging() (increments per tick).
+        """
+        pass
             
     def _record_history(self) -> None:
         """Record current state to history."""

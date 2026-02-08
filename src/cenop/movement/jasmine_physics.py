@@ -57,9 +57,9 @@ class JASMINEMovementState(MovementState):
     ay: np.ndarray                 # Y acceleration
 
     @classmethod
-    def create(cls, count: int) -> 'JASMINEMovementState':
+    def create(cls, count: int, rng: Optional[np.random.Generator] = None) -> 'JASMINEMovementState':
         """Create a new JASMINEMovementState for count agents."""
-        base = MovementState.create(count)
+        base = MovementState.create(count, rng=rng)
         return cls(
             # Base state
             prev_heading=base.prev_heading,
@@ -123,14 +123,16 @@ class JASMINEPhysicsMovement(MovementModule):
     ACCELERATION_SCALE = 0.5       # Thrust acceleration scaling
     CURRENT_COUPLING = 1.0         # How strongly currents affect movement
 
-    def __init__(self, params: 'SimulationParameters'):
+    def __init__(self, params: 'SimulationParameters', rng: Optional[np.random.Generator] = None):
         """
         Initialize JASMINE physics movement module.
 
         Args:
             params: Simulation parameters
+            rng: NumPy random Generator for reproducibility
         """
         super().__init__(params)
+        self.rng = rng if rng is not None else np.random.default_rng()
 
         # Physics parameters (could be made configurable)
         self.drag = self.DRAG_COEFFICIENT
@@ -341,7 +343,7 @@ class JASMINEPhysicsMovement(MovementModule):
         new_heading = np.degrees(np.arctan2(dx, dy)) % 360.0
 
         # Apply some random turning for exploration
-        random_turn = np.random.normal(0, 10, count)
+        random_turn = self.rng.normal(0, 10, count)
         new_heading = (new_heading + random_turn) % 360.0
 
         # Turning angle

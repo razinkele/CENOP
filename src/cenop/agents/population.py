@@ -64,6 +64,7 @@ class PorpoisePopulation:
         behavior_fsm: Optional['HybridBehaviorFSM'] = None,
         energy_module: Optional['EnergyModule'] = None,
         memory_module: Optional['DisturbanceMemoryModule'] = None,
+        rng: Optional[np.random.Generator] = None,
     ):
         self.params = params
         self.landscape = landscape
@@ -72,6 +73,7 @@ class PorpoisePopulation:
         self._behavior_fsm = behavior_fsm  # Optional behavioral FSM
         self._energy_module = energy_module  # Optional energy module (Phase 4)
         self._memory_module = memory_module  # Optional memory module (Phase 5)
+        self.rng = rng if rng is not None else np.random.default_rng()
         
         # === Arrays (Structure of Arrays) ===
         # Use a dictionary of arrays or direct attributes? Direct attributes are faster.
@@ -155,7 +157,7 @@ class PorpoisePopulation:
         # We can still use the class for helper methods or just store distances array
         # For full optimization, we replace list of objects with arrays
         self._psm_instances: List[PersistentSpatialMemory] = [
-             PersistentSpatialMemory(world_w, world_h) for _ in range(count)
+             PersistentSpatialMemory(world_w, world_h, rng=self.rng) for _ in range(count)
         ]
         
         # Vectorized PSM Storage (Optimized)
@@ -243,8 +245,8 @@ class PorpoisePopulation:
         
         if self.landscape is None:
             # No landscape - use simple random positions
-            self.x = np.random.uniform(0, world_w, self.count).astype(np.float32)
-            self.y = np.random.uniform(0, world_h, self.count).astype(np.float32)
+            self.x = self.rng.uniform(0, world_w, self.count).astype(np.float32)
+            self.y = self.rng.uniform(0, world_h, self.count).astype(np.float32)
         else:
             # Use landscape - place only in water cells (depth >= min_depth)
             lw = self.landscape.width
@@ -259,25 +261,25 @@ class PorpoisePopulation:
                 
                 if len(valid_x) > 0:
                     # Randomly select from valid positions
-                    indices = np.random.choice(len(valid_x), self.count, replace=True)
-                    self.x = valid_x[indices].astype(np.float32) + np.random.uniform(0, 1, self.count).astype(np.float32)
-                    self.y = valid_y[indices].astype(np.float32) + np.random.uniform(0, 1, self.count).astype(np.float32)
+                    indices = self.rng.choice(len(valid_x), self.count, replace=True)
+                    self.x = valid_x[indices].astype(np.float32) + self.rng.uniform(0, 1, self.count).astype(np.float32)
+                    self.y = valid_y[indices].astype(np.float32) + self.rng.uniform(0, 1, self.count).astype(np.float32)
                 else:
                     # Fallback - no valid water cells (shouldn't happen)
-                    self.x = np.random.uniform(0, lw, self.count).astype(np.float32)
-                    self.y = np.random.uniform(0, lh, self.count).astype(np.float32)
+                    self.x = self.rng.uniform(0, lw, self.count).astype(np.float32)
+                    self.y = self.rng.uniform(0, lh, self.count).astype(np.float32)
             else:
                 # No depth data - use full area
-                self.x = np.random.uniform(0, lw, self.count).astype(np.float32)
-                self.y = np.random.uniform(0, lh, self.count).astype(np.float32)
+                self.x = self.rng.uniform(0, lw, self.count).astype(np.float32)
+                self.y = self.rng.uniform(0, lh, self.count).astype(np.float32)
             
-        self.heading = np.random.uniform(0, 360, self.count).astype(np.float32)
+        self.heading = self.rng.uniform(0, 360, self.count).astype(np.float32)
         
         # Sex ratio 50%
-        self.is_female = np.random.choice([True, False], self.count)
+        self.is_female = self.rng.choice([True, False], self.count)
         
         # Ages from distribution
-        self.age = np.random.choice(
+        self.age = self.rng.choice(
             AGE_DISTRIBUTION_FREQUENCY, 
             size=self.count
         ).astype(np.float32)
@@ -332,8 +334,8 @@ class PorpoisePopulation:
                         # Use query_pairs with output_type='ndarray' for maximum speed
                         # Returns (N, 2) array of indices into pos_active
                         pairs = kd_active.query_pairs(radius, output_type='ndarray')
-                    except Exception:
-                        # Fallback for older scipy versions or errors
+                    except (TypeError, ValueError):
+                        # Fallback for older scipy versions that lack output_type param
                         pairs = np.array([], dtype=np.int32).reshape(0, 2)
                         
                         try:
@@ -457,7 +459,8 @@ class PorpoisePopulation:
                             ux_total, uy_total, sw_total
                         )
                     except Exception:
-                        # Fallback if numba call fails
+                        # Fallback if numba call fails (compilation error, type mismatch)
+                        logger.debug("Numba accumulate_social_totals failed, using bincount fallback", exc_info=True)
                         ux_total = np.bincount(np.concatenate([idx_i, idx_j]), weights=np.concatenate([ux_contrib_i, ux_contrib_j]), minlength=self.count)
                         uy_total = np.bincount(np.concatenate([idx_i, idx_j]), weights=np.concatenate([uy_contrib_i, uy_contrib_j]), minlength=self.count)
                         sw_total = np.bincount(np.concatenate([idx_i, idx_j]), weights=np.concatenate([p_i, p_j]), minlength=self.count)
@@ -588,7 +591,7 @@ class PorpoisePopulation:
         self._day_of_year = 0
 
         # Mating day (females only, N(225, 20))
-        mating_days = np.random.normal(225, 20, self.count).astype(np.int16)
+        mating_days = self.rng.normal(225, 20, self.count).astype(np.int16)
         # Apply only to females, others stay -99
         self.mating_day = np.where(self.is_female, mating_days, -99)
 
@@ -630,7 +633,7 @@ class PorpoisePopulation:
         # === Calculate Turning Angle (Full DEPONS CRW) ===
         # DEPONS formula: angleTmp = b0 * prevAngle + N(0,4)
         #                 presAngle = angleTmp * (b1*depth + b2*salinity + b3)
-        np.copyto(self._rand_angle, np.random.normal(self.params.r2_mean, self.params.r2_sd, self.count))
+        np.copyto(self._rand_angle, self.rng.normal(self.params.r2_mean, self.params.r2_sd, self.count))
 
         # angleTmp = b0 * prevAngle + R2
         np.multiply(self.params.corr_angle_base, self.prev_angle, out=self._pres_angle)
@@ -657,7 +660,7 @@ class PorpoisePopulation:
 
         # === Calculate Step Length (Full DEPONS CRW) ===
         # DEPONS formula: log10_mov = a0 * prev_log_mov + a1*depth + a2*salinity + R1
-        np.copyto(self._rand_len, np.random.normal(self.params.r1_mean, self.params.r1_sd, self.count))
+        np.copyto(self._rand_len, self.rng.normal(self.params.r1_mean, self.params.r1_sd, self.count))
         np.multiply(self.params.corr_logmov_length, self.prev_log_mov, out=self._log_mov)
         self._log_mov += self.params.corr_logmov_bathy * self._depths
         self._log_mov += self.params.corr_logmov_salinity * self._salinity_vals
@@ -903,7 +906,7 @@ class PorpoisePopulation:
                 self._disp_ema_m = alpha * mean_disp + (1.0 - alpha) * self._disp_ema_m
                 self._update_neighbor_recompute_interval(self._disp_ema_m)
         except Exception:
-            pass
+            logger.debug("Adaptive neighbor recompute failed", exc_info=True)
 
         # Save positions for next tick
         self._prev_x[mask] = self.x[mask]
@@ -930,7 +933,7 @@ class PorpoisePopulation:
         if self.landscape is not None and hasattr(self.landscape, 'eat_food'):
             food_gained = self._eat_food_vectorized(mask, fract_to_eat)
         else:
-            food_gained = fract_to_eat * np.random.uniform(0.1, 0.5, self.count)
+            food_gained = fract_to_eat * self.rng.uniform(0.1, 0.5, self.count)
 
         self.energy[mask] += food_gained[mask]
 
@@ -969,7 +972,7 @@ class PorpoisePopulation:
         if self.landscape is not None and hasattr(self.landscape, 'eat_food'):
             food_available = self._eat_food_vectorized(mask, fract_to_eat)
         else:
-            food_available = fract_to_eat * np.random.uniform(0.1, 0.5, self.count)
+            food_available = fract_to_eat * self.rng.uniform(0.1, 0.5, self.count)
 
         # Calculate current speed from movement
         current_speed = np.sqrt(self._dx**2 + self._dy**2) * 400.0 / 1800.0  # m/s
@@ -1135,7 +1138,7 @@ class PorpoisePopulation:
             0.0
         )
 
-        starvation_check = np.random.random(self.count)
+        starvation_check = self.rng.random(self.count)
         starving = (starvation_check > step_surv_prob) & mask
 
         # Lactating mothers abandon calf before dying
@@ -1156,11 +1159,11 @@ class PorpoisePopulation:
             self.age < 1, per_tick_juvenile,
             np.where(self.age > 20, per_tick_elderly, per_tick_adult)
         )
-        natural_death = (np.random.random(self.count) < daily_mortality_prob) & mask
+        natural_death = (self.rng.random(self.count) < daily_mortality_prob) & mask
 
         # Bycatch mortality (already parameterized)
         bycatch_prob = getattr(self.params, 'bycatch_prob', 0.0) / 365.0 / 48.0
-        bycatch = (np.random.random(self.count) < bycatch_prob) & mask
+        bycatch = (self.rng.random(self.count) < bycatch_prob) & mask
 
         # Apply deaths
         all_deaths = starved | natural_death | bycatch
@@ -1207,7 +1210,7 @@ class PorpoisePopulation:
 
         # Per-tick birth probability (~60% over 60-day season)
         birth_prob = 0.0003
-        giving_birth = (np.random.random(self.count) < birth_prob) & eligible
+        giving_birth = (self.rng.random(self.count) < birth_prob) & eligible
 
         if not np.any(giving_birth):
             return
@@ -1229,7 +1232,7 @@ class PorpoisePopulation:
             self.y[new_slots] = self.y[mothers]
             self.heading[new_slots] = self.heading[mothers]
             self.age[new_slots] = 0.0
-            self.is_female[new_slots] = np.random.choice([True, False], size=int(slots_to_use))
+            self.is_female[new_slots] = self.rng.choice([True, False], size=int(slots_to_use))
             self.energy[new_slots] = 10.0
             self.with_calf[mothers] = True
             self.with_calf[new_slots] = False
@@ -1423,7 +1426,8 @@ class PorpoisePopulation:
         try:
             accumulate_psm_updates(self.psm_buffer, idx_arr, ys_arr, xs_arr, food_arr)
         except Exception:
-            # Fallback to np.add.at for safety
+            # Fallback to np.add.at if numba accelerated version fails
+            logger.debug("Numba accumulate_psm_updates failed, using np.add.at fallback", exc_info=True)
             np.add.at(self.psm_buffer[:, :, :, 0], (active_idx, psm_y, psm_x), 1.0)
             np.add.at(self.psm_buffer[:, :, :, 1], (active_idx, psm_y, psm_x), food_gained[active_idx])
 
@@ -1627,7 +1631,7 @@ class PorpoisePopulation:
     def _set_random_dispersal_target(self, idx: int) -> None:
         """Set a random dispersal target at preferred distance."""
         pref_dist_km = self._psm_instances[idx].preferred_distance
-        angle_rad = np.random.uniform(0, 2 * np.pi)
+        angle_rad = self.rng.uniform(0, 2 * np.pi)
         dist_cells = pref_dist_km * 1000 / 400.0
         
         tx = self.x[idx] + np.sin(angle_rad) * dist_cells

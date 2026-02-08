@@ -61,7 +61,8 @@ class PersistentSpatialMemory:
         world_width: int,
         world_height: int,
         preferred_distance: Optional[float] = None,
-        mem_cell_size: int = MEM_CELL_SIZE
+        mem_cell_size: int = MEM_CELL_SIZE,
+        rng: Optional[np.random.Generator] = None,
     ):
         """
         Initialize PSM.
@@ -71,10 +72,12 @@ class PersistentSpatialMemory:
             world_height: World height in grid cells
             preferred_distance: Preferred dispersal distance in km
             mem_cell_size: Size of memory cells in grid units
+            rng: NumPy random Generator for reproducibility
         """
         self.world_width = world_width
         self.world_height = world_height
         self.mem_cell_size = mem_cell_size
+        self.rng = rng if rng is not None else np.random.default_rng()
         
         # Calculate memory grid dimensions
         self.cells_per_row = world_width // mem_cell_size
@@ -85,19 +88,24 @@ class PersistentSpatialMemory:
         
         # Preferred dispersal distance (generated from distribution)
         if preferred_distance is None:
-            self.preferred_distance = self.generate_preferred_distance()
+            self.preferred_distance = self.generate_preferred_distance(rng=self.rng)
         else:
             self.preferred_distance = preferred_distance
             
     @staticmethod
-    def generate_preferred_distance(mean: float = 300.0, sd: float = 100.0) -> float:
+    def generate_preferred_distance(
+        mean: float = 300.0,
+        sd: float = 100.0,
+        rng: Optional[np.random.Generator] = None,
+    ) -> float:
         """
         Generate preferred dispersal distance from normal distribution.
         
         Returns:
             Preferred distance in km (minimum 1.0 km)
         """
-        distance = np.random.normal(mean, sd)
+        _rng = rng if rng is not None else np.random.default_rng()
+        distance = _rng.normal(mean, sd)
         return max(1.0, distance)  # Minimum 1 km
         
     def _position_to_cell_number(self, x: float, y: float) -> int:
@@ -260,7 +268,7 @@ class PersistentSpatialMemory:
             (x, y, heading_to_target)
         """
         # Random direction
-        heading = np.random.uniform(0, 360)
+        heading = self.rng.uniform(0, 360)
         heading_rad = np.radians(heading)
         
         # Distance in grid cells
@@ -284,8 +292,9 @@ class PersistentSpatialMemory:
         new_psm = PersistentSpatialMemory(
             world_width=self.world_width,
             world_height=self.world_height,
-            preferred_distance=self.generate_preferred_distance(),
-            mem_cell_size=self.mem_cell_size
+            preferred_distance=self.generate_preferred_distance(rng=self.rng),
+            mem_cell_size=self.mem_cell_size,
+            rng=self.rng,
         )
         
         # Copy memory cells
@@ -328,7 +337,8 @@ class PSMDispersalType2:
         self,
         psm: PersistentSpatialMemory,
         random_angle: float = 20.0,  # Max random turning angle
-        logistic_param: float = 0.6  # Logistic decrease steepness
+        logistic_param: float = 0.6,  # Logistic decrease steepness
+        rng: Optional[np.random.Generator] = None,
     ):
         """
         Initialize PSM-Type2 dispersal.
@@ -337,10 +347,12 @@ class PSMDispersalType2:
             psm: Persistent spatial memory
             random_angle: Maximum random turning angle during dispersal
             logistic_param: Steepness of logistic decrease function
+            rng: NumPy random Generator for reproducibility
         """
         self.psm = psm
         self.random_angle = random_angle
         self.logistic_param = logistic_param
+        self.rng = rng if rng is not None else np.random.default_rng()
         
         # Dispersal state
         self._is_dispersing = False
@@ -430,7 +442,7 @@ class PSMDispersalType2:
         self._distance_traveled = np.sqrt(dx**2 + dy**2)
         
         # Random angle delta
-        angle_delta = np.random.uniform(-self.random_angle, self.random_angle)
+        angle_delta = self.rng.uniform(-self.random_angle, self.random_angle)
         
         # Apply logistic decrease based on distance progress
         if self._target_distance > 0:

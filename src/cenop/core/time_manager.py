@@ -115,7 +115,7 @@ class TimeManager:
         tm = TimeManager(mode=TimeMode.DEPONS, base_seed=42)
 
         while not tm.is_finished():
-            np.random.seed(tm.get_seed())
+            np.random.seed(tm.get_seed())  # or: rng = np.random.default_rng(tm.get_seed())
             # ... simulation step ...
             tm.advance()
 

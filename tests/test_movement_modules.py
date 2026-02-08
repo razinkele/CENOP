@@ -141,8 +141,7 @@ class TestDEPONSCRWMovement:
         result1 = movement.compute_step(x, y, state, environment, mask)
 
         # Reset state
-        state = MovementState.create(10)
-        np.random.seed(42)  # Same seed
+        state = MovementState.create(10, rng=np.random.default_rng(42))
 
         # With deterrence pushing right
         deter_dx = np.full(10, 5.0, dtype=np.float32)
@@ -181,11 +180,11 @@ class TestDEPONSCRWMovementVectorized:
         params = SimulationParameters(porpoise_count=100)
         vectorized = DEPONSCRWMovementVectorized(params)
 
-        np.random.seed(42)
-        state = MovementState.create(100)
+        rng = np.random.default_rng(42)
+        state = MovementState.create(100, rng=rng)
         env = EnvironmentContext.create_homogeneous(100)
-        x = np.random.uniform(100, 200, 100).astype(np.float32)
-        y = np.random.uniform(100, 200, 100).astype(np.float32)
+        x = rng.uniform(100, 200, 100).astype(np.float32)
+        y = rng.uniform(100, 200, 100).astype(np.float32)
         mask = np.ones(100, dtype=bool)
 
         result = vectorized.compute_step(x, y, state, env, mask)
@@ -359,26 +358,27 @@ class TestMovementReproducibility:
     def test_same_seed_same_results(self):
         """Same seed should produce identical movement."""
         params = SimulationParameters(porpoise_count=50)
-        movement = DEPONSCRWMovementVectorized(params)
 
-        # Create identical states with fixed headings (avoid random consumption)
-        np.random.seed(42)
-        state1 = MovementState.create(50)
-        np.random.seed(42)
-        state2 = MovementState.create(50)
+        # Create two movement modules with the same seed
+        rng1 = np.random.default_rng(42)
+        rng2 = np.random.default_rng(42)
+        movement1 = DEPONSCRWMovementVectorized(params, rng=rng1)
+        movement2 = DEPONSCRWMovementVectorized(params, rng=rng2)
+
+        # Create identical states with fixed headings
+        state1 = MovementState.create(50, rng=np.random.default_rng(99))
+        state2 = MovementState.create(50, rng=np.random.default_rng(99))
 
         env = EnvironmentContext.create_homogeneous(50)
         x = np.full(50, 150.0, dtype=np.float32)
         y = np.full(50, 150.0, dtype=np.float32)
         mask = np.ones(50, dtype=bool)
 
-        # First run with seed 123
-        np.random.seed(123)
-        result1 = movement.compute_step(x, y, state1, env, mask)
+        # First run with seed-42 rng
+        result1 = movement1.compute_step(x, y, state1, env, mask)
 
-        # Second run with same seed 123
-        np.random.seed(123)
-        result2 = movement.compute_step(x, y, state2, env, mask)
+        # Second run with seed-42 rng
+        result2 = movement2.compute_step(x, y, state2, env, mask)
 
         np.testing.assert_array_almost_equal(result1.dx, result2.dx)
         np.testing.assert_array_almost_equal(result1.dy, result2.dy)
@@ -387,20 +387,22 @@ class TestMovementReproducibility:
     def test_different_seeds_different_results(self):
         """Different seeds should produce different movement."""
         params = SimulationParameters(porpoise_count=50)
-        movement = DEPONSCRWMovementVectorized(params)
 
-        state = MovementState.create(50)
+        rng1 = np.random.default_rng(42)
+        movement1 = DEPONSCRWMovementVectorized(params, rng=rng1)
+
+        state = MovementState.create(50, rng=np.random.default_rng(99))
         env = EnvironmentContext.create_homogeneous(50)
         x = np.full(50, 150.0, dtype=np.float32)
         y = np.full(50, 150.0, dtype=np.float32)
         mask = np.ones(50, dtype=bool)
 
-        np.random.seed(42)
-        result1 = movement.compute_step(x, y, state, env, mask)
+        result1 = movement1.compute_step(x, y, state, env, mask)
 
-        state = MovementState.create(50)
-        np.random.seed(123)
-        result2 = movement.compute_step(x, y, state, env, mask)
+        rng2 = np.random.default_rng(123)
+        movement2 = DEPONSCRWMovementVectorized(params, rng=rng2)
+        state = MovementState.create(50, rng=np.random.default_rng(99))
+        result2 = movement2.compute_step(x, y, state, env, mask)
 
         # Results should be different
         assert not np.allclose(result1.dx, result2.dx)

@@ -52,7 +52,7 @@ class DEPONSCRWMovement(MovementModule):
     to produce realistic movement patterns.
     """
 
-    def __init__(self, params: 'SimulationParameters'):
+    def __init__(self, params: 'SimulationParameters', rng: Optional[np.random.Generator] = None):
         """
         Initialize DEPONS CRW movement module.
 
@@ -68,8 +68,10 @@ class DEPONSCRWMovement(MovementModule):
                 - r1_mean, r1_sd: Step length random component
                 - r2_mean, r2_sd: Turning angle random component
                 - max_mov: Maximum log10(movement)
+            rng: NumPy random Generator for reproducibility
         """
         super().__init__(params)
+        self.rng = rng if rng is not None else np.random.default_rng()
 
         # Pre-extract parameters for efficiency
         self.b0 = params.corr_angle_base
@@ -157,7 +159,7 @@ class DEPONSCRWMovement(MovementModule):
         #   presAngle = angleTmp * (b1*depth + b2*salinity + b3)
 
         # Random component R2 ~ N(r2_mean, r2_sd)
-        np.copyto(self._rand_angle, np.random.normal(self.r2_mean, self.r2_sd, count))
+        np.copyto(self._rand_angle, self.rng.normal(self.r2_mean, self.r2_sd, count))
 
         # angleTmp = b0 * prevAngle + R2
         np.multiply(self.b0, state.prev_angle, out=self._angle_tmp)
@@ -187,7 +189,7 @@ class DEPONSCRWMovement(MovementModule):
         #   log10(mov) = a0 * prev_log_mov + a1*depth + a2*salinity + R1
 
         # Random component R1 ~ N(r1_mean, r1_sd)
-        np.copyto(self._rand_len, np.random.normal(self.r1_mean, self.r1_sd, count))
+        np.copyto(self._rand_len, self.rng.normal(self.r1_mean, self.r1_sd, count))
 
         # log_mov = a0 * prev + a1*depth + a2*salinity + R1
         np.multiply(self.a0, state.prev_log_mov, out=self._log_mov)
@@ -319,8 +321,8 @@ class DEPONSCRWMovementVectorized(DEPONSCRWMovement):
         n_active = len(active_idx)
 
         # Random components
-        rand_angle = np.random.normal(self.r2_mean, self.r2_sd, n_active).astype(np.float32)
-        rand_len = np.random.normal(self.r1_mean, self.r1_sd, n_active).astype(np.float32)
+        rand_angle = self.rng.normal(self.r2_mean, self.r2_sd, n_active).astype(np.float32)
+        rand_len = self.rng.normal(self.r1_mean, self.r1_sd, n_active).astype(np.float32)
 
         # Extract active values
         prev_angle_active = state.prev_angle[active_idx]

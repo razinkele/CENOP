@@ -7,10 +7,13 @@ Translates from: CellData.java
 
 from __future__ import annotations
 
+import logging
 import numpy as np
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Tuple, List
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -448,16 +451,16 @@ def create_landscape_from_depons(
                 break
     
     if depons_data_dir is None or not os.path.exists(depons_data_dir):
-        print("DEPONS data directory not found, falling back to homogeneous landscape")
+        logger.warning("DEPONS data directory not found, falling back to homogeneous landscape")
         return create_homogeneous_landscape()
     
     bathy_file = os.path.join(depons_data_dir, "bathy.asc")
     if not os.path.exists(bathy_file):
-        print(f"Bathymetry file not found: {bathy_file}")
+        logger.warning("Bathymetry file not found: %s", bathy_file)
         return create_homogeneous_landscape()
     
     # Load bathymetry
-    print(f"Loading DEPONS bathymetry from {bathy_file}...")
+    logger.info("Loading DEPONS bathymetry from %s...", bathy_file)
     depth_array, metadata = load_bathymetry_from_asc(bathy_file)
     
     # In DEPONS, depth values are positive (meters below sea level)
@@ -471,7 +474,10 @@ def create_landscape_from_depons(
     # For land avoidance, we check if depth > 0 (water)
     # Values of 0 or negative would be land
     
-    print(f"Loaded bathymetry: {metadata.nrows}x{metadata.ncols}, depth range: {depth_array.min():.1f} to {depth_array.max():.1f}m")
+    logger.info(
+        "Loaded bathymetry: %dx%d, depth range: %.1f to %.1fm",
+        metadata.nrows, metadata.ncols, depth_array.min(), depth_array.max()
+    )
     
     cell_data = CellData.__new__(CellData)
     cell_data.landscape_name = "NorthSea_DEPONS"

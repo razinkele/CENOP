@@ -15,9 +15,12 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 from typing import TYPE_CHECKING, Dict, List, Any, Optional, TextIO
 import numpy as np
 
@@ -534,6 +537,6 @@ def run_with_output(
             
             if progress and tick % 1000 == 0:
                 pct = tick / max_ticks * 100
-                print(f"Progress: {pct:.1f}% (tick {tick}/{max_ticks})")
+                logger.info("Progress: %.1f%% (tick %d/%d)", pct, tick, max_ticks)
                 
     return writer

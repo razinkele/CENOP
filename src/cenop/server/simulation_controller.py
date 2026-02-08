@@ -37,8 +37,8 @@ def create_simulation_from_inputs(input) -> Simulation:
             if len(parts) == 2:
                 psm_dist_mean = float(parts[0])
                 psm_dist_sd = float(parts[1])
-    except Exception:
-        pass  # Use defaults
+    except (ValueError, TypeError, AttributeError):
+        pass  # Use defaults for PSM dist parsing
     
     # Read and validate input values with safe defaults
     porpoise_count_val = input.porpoise_count()
@@ -47,20 +47,20 @@ def create_simulation_from_inputs(input) -> Simulation:
     # Handle None or invalid values
     if porpoise_count_val is None or porpoise_count_val < 1:
         porpoise_count_val = 1000  # Default
-        print(f"[WARNING] porpoise_count was None/invalid, using default: {porpoise_count_val}")
+        logger.warning("porpoise_count was None/invalid, using default: %d", porpoise_count_val)
     if sim_years_val is None or sim_years_val < 1:
         sim_years_val = 5  # Default
-        print(f"[WARNING] sim_years was None/invalid, using default: {sim_years_val}")
+        logger.warning("sim_years was None/invalid, using default: %d", sim_years_val)
     
     # Ensure integer types
     porpoise_count_val = int(porpoise_count_val)
     sim_years_val = int(sim_years_val)
     
-    print(f"[DEBUG] create_simulation_from_inputs: porpoise_count={porpoise_count_val}, sim_years={sim_years_val}")
+    logger.debug("create_simulation_from_inputs: porpoise_count=%d, sim_years=%d", porpoise_count_val, sim_years_val)
     
     # Calculate and log max_ticks for verification
     expected_max_ticks = sim_years_val * 360 * 48
-    print(f"[DEBUG] Expected max_ticks = {sim_years_val} years * 360 days * 48 ticks = {expected_max_ticks}")
+    logger.debug("Expected max_ticks = %d years * 360 days * 48 ticks = %d", sim_years_val, expected_max_ticks)
         
     params = SimulationParameters(
         porpoise_count=porpoise_count_val,
@@ -139,7 +139,7 @@ class SimulationRunner:
         self.last_pop = simulation.state.population
         self.update_count = 0
         self.ticks_per_update = 1  # Default to 1 tick per update for smooth animation
-        print(f"[DEBUG] SimulationRunner.__init__: last_pop={self.last_pop}, max_ticks={self.max_ticks}")
+        logger.debug("SimulationRunner.__init__: last_pop=%d, max_ticks=%d", self.last_pop, self.max_ticks)
     
     def set_ticks_per_update(self, ticks: int):
         """Set the number of ticks to advance per update (1-48)."""
@@ -155,7 +155,7 @@ class SimulationRunner:
         ticks_to_step = self.ticks_per_update
         
         if self.update_count < 3:
-            print(f"[DEBUG] step_ticks #{self.update_count}: tick={self.tick}, stepping {ticks_to_step} ticks...")
+            logger.debug("step_ticks #%d: tick=%d, stepping %d ticks...", self.update_count, self.tick, ticks_to_step)
         
         for i in range(ticks_to_step):
             if self.tick >= self.max_ticks:
@@ -167,7 +167,7 @@ class SimulationRunner:
         current_pop = self.sim.state.population
         
         if self.update_count < 3:
-            print(f"[DEBUG] step_ticks #{self.update_count}: after stepping, pop={current_pop}, tick={self.tick}")
+            logger.debug("step_ticks #%d: after stepping, pop=%d, tick=%d", self.update_count, current_pop, self.tick)
         
         # Count lactating porpoises with calves
         lact_calf_count = 0
@@ -186,12 +186,12 @@ class SimulationRunner:
             inc = (self.last_pop - current_pop)
             self.total_deaths += inc
             if inc > max(1000, self.sim.population_size * 2):
-                print(f"[WARNING] Large deaths increment: {inc} at tick {self.tick}, pop={current_pop}")
+                logger.warning("Large deaths increment: %d at tick %d, pop=%d", inc, self.tick, current_pop)
         if current_pop > self.last_pop:
             inc = (current_pop - self.last_pop)
             self.total_births += inc
             if inc > max(1000, self.sim.population_size * 2):
-                print(f"[WARNING] Large births increment: {inc} at tick {self.tick}, pop={current_pop}")
+                logger.warning("Large births increment: %d at tick %d, pop=%d", inc, self.tick, current_pop)
 
         self.last_pop = current_pop
         

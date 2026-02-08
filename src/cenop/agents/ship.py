@@ -7,11 +7,14 @@ Translates from: Ship.java (417 lines) and related classes
 
 from __future__ import annotations
 
+import logging
 import numpy as np
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, List, Optional, Tuple
 from enum import Enum
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from cenop.agents.base import Agent
 from cenop.behavior.sound import (
@@ -273,7 +276,7 @@ class Ship(Agent):
         )
         
         # Probabilistic response
-        should_deter = np.random.random() < prob
+        should_deter = np.random.default_rng().random() < prob
         
         if not should_deter:
             return (False, prob, 0.0, distance_km)
@@ -628,14 +631,14 @@ class ShipManager:
         
         path = Path(json_file)
         if not path.exists():
-            print(f"[WARNING] Ships JSON file not found: {json_file}")
+            logger.warning("Ships JSON file not found: %s", json_file)
             return
             
         try:
             with open(path, 'r') as f:
                 data = json.load(f)
         except json.JSONDecodeError as e:
-            print(f"[ERROR] Failed to parse ships JSON: {e}")
+            logger.error("Failed to parse ships JSON: %s", e)
             return
             
         # Parse routes
@@ -714,4 +717,4 @@ class ShipManager:
             
             self.ships.append(ship)
             
-        print(f"[INFO] Loaded {len(self.ships)} ships with {len(routes_dict)} routes from {json_file}")
+        logger.info("Loaded %d ships with %d routes from %s", len(self.ships), len(routes_dict), json_file)

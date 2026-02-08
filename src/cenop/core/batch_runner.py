@@ -17,7 +17,10 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Callable, Iterator
 from concurrent.futures import ProcessPoolExecutor, as_completed
+import logging
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 from cenop.parameters.simulation_params import SimulationParameters
 from cenop.core.simulation import Simulation
@@ -153,7 +156,7 @@ class BatchRunner:
         
         # Generate seeds if not provided
         if config.seeds is None:
-            base_seed = np.random.randint(0, 100000)
+            base_seed = np.random.default_rng().integers(0, 100000)
             self.seeds = [base_seed + i for i in range(config.replicates)]
         else:
             self.seeds = config.seeds
@@ -175,9 +178,9 @@ class BatchRunner:
         run_id = 0
         
         if progress:
-            print(f"Starting batch run: {total_runs} simulations")
-            print(f"  - {len(combinations)} parameter combinations")
-            print(f"  - {self.config.replicates} replicates each")
+            logger.info("Starting batch run: %d simulations", total_runs)
+            logger.info("  - %d parameter combinations", len(combinations))
+            logger.info("  - %d replicates each", self.config.replicates)
             
         start_time = time.time()
         
@@ -189,8 +192,8 @@ class BatchRunner:
         elapsed = time.time() - start_time
         
         if progress:
-            print(f"\nBatch complete: {len(self.results)} runs in {elapsed:.1f}s")
-            print(f"  - Average time per run: {elapsed/len(self.results):.2f}s")
+            logger.info("Batch complete: %d runs in %.1fs", len(self.results), elapsed)
+            logger.info("  - Average time per run: %.2fs", elapsed / len(self.results))
             
         return self.results
     
@@ -212,7 +215,7 @@ class BatchRunner:
                     pct = (run_id + 1) / total * 100
                     param_str = ", ".join(f"{k}={v}" for k, v in combo.items() 
                                          if k in self.config.variations)
-                    print(f"  [{run_id+1}/{total}] ({pct:.0f}%) {param_str}, rep={rep+1}")
+                    logger.info("  [%d/%d] (%.0f%%) %s, rep=%d", run_id + 1, total, pct, param_str, rep + 1)
                 
                 result = self._run_single(run_id, combo, seed)
                 results.append(result)
@@ -250,7 +253,7 @@ class BatchRunner:
                     results.append(result)
                     
         except Exception as e:
-            print(f"Parallel execution failed: {e}, falling back to sequential")
+            logger.warning("Parallel execution failed: %s, falling back to sequential", e)
             return self._run_sequential(combinations, progress=True)
             
         # Sort by run_id to maintain order
@@ -492,7 +495,7 @@ def run_scenario_comparison(
     all_results = {}
     
     for name, params in scenarios.items():
-        print(f"\n=== Running scenario: {name} ===")
+        logger.info("=== Running scenario: %s ===", name)
         
         config = BatchConfiguration(
             base_params=params,

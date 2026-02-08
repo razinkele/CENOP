@@ -55,13 +55,14 @@ class MovementState:
     dispersal_heading: np.ndarray  # Target heading for dispersal
 
     @classmethod
-    def create(cls, count: int) -> 'MovementState':
+    def create(cls, count: int, rng: Optional[np.random.Generator] = None) -> 'MovementState':
         """Create a new MovementState for count agents."""
+        _rng = rng if rng is not None else np.random.default_rng()
         return cls(
             prev_heading=np.zeros(count, dtype=np.float32),
             prev_log_mov=np.full(count, 1.25, dtype=np.float32),
             prev_angle=np.zeros(count, dtype=np.float32),
-            heading=np.random.uniform(0, 360, count).astype(np.float32),
+            heading=_rng.uniform(0, 360, count).astype(np.float32),
             step_distance=np.zeros(count, dtype=np.float32),
             dx=np.zeros(count, dtype=np.float32),
             dy=np.zeros(count, dtype=np.float32),

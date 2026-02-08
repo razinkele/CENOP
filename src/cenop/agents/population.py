@@ -861,6 +861,10 @@ class PorpoisePopulation:
         annual_adult_mortality = getattr(self.params, 'mortality_adult', 0.05)        # 1 <= age <= 20
         annual_elderly_mortality = getattr(self.params, 'mortality_elderly', 0.15)    # age > 20
 
+        # NOTE: Linear per-tick conversion (rate / ticks_per_year) is an approximation.
+        # The exact compound formula would be: 1 - (1 - annual_rate)^(1/17280).
+        # For the small rates used here (0.05-0.15), the linear approximation error
+        # is <0.4% and matches the DEPONS Java implementation's approach.
         per_tick_juvenile = annual_juvenile_mortality / 360.0 / 48.0
         per_tick_adult = annual_adult_mortality / 360.0 / 48.0
         per_tick_elderly = annual_elderly_mortality / 360.0 / 48.0

@@ -373,12 +373,12 @@ class Simulation:
                 )
                 if self._ship_manager.count > 0:
                     ships_loaded = True
-                    print(f"[INFO] Loaded {self._ship_manager.count} ships from {ships_path}")
+                    logger.info("Loaded %d ships from %s", self._ship_manager.count, ships_path)
                     break
         
         # Fallback: Create sample ships if no JSON file found
         if not ships_loaded:
-            print("[INFO] No ships.json found, creating sample ship route")
+            logger.info("No ships.json found, creating sample ship route")
             
             # Create a simple route across the landscape
             route = Route(
@@ -483,39 +483,16 @@ class Simulation:
             self._record_history()
             
     def _daily_tasks(self) -> None:
-        """Execute daily tasks for all porpoises."""
-        for porpoise in self._porpoises:
-            if porpoise.alive:
-                porpoise.daily_step(self._cell_data, self.params, self.state)
-                
-        # Create weaned calves as new agents
-        new_calves = []
-        next_id = max((p.id for p in self._porpoises), default=0) + 1
-        for porpoise in self._porpoises:
-            if hasattr(porpoise, '_calf_ready_to_wean') and porpoise._calf_ready_to_wean:
-                from cenop.agents.porpoise import Porpoise
-                # TRACE: 50% sex ratio for calves
-                is_female = np.random.random() < 0.5
-                calf = Porpoise(
-                    id=next_id,
-                    x=porpoise.x + np.random.uniform(-1, 1),
-                    y=porpoise.y + np.random.uniform(-1, 1),
-                    heading=np.random.uniform(0, 360),
-                    age=0.0,
-                    is_female=is_female
-                )
-                new_calves.append(calf)
-                porpoise._calf_ready_to_wean = False
-                next_id += 1
-        self._porpoises.extend(new_calves)
-                
-        # Remove dead porpoises (legacy list only)
-        self._porpoises = [p for p in self._porpoises if p.alive]
-        # Update population count using authoritative source (population manager if present)
+        """Execute daily tasks.
+
+        Note: The legacy per-porpoise loop and weaning logic have been removed.
+        All porpoise lifecycle logic (movement, energy, reproduction, mortality)
+        is handled by PorpoisePopulation.step().  This method now only performs
+        landscape-level daily updates.
+        """
+        # Update population count from authoritative source
         if hasattr(self, 'population_manager'):
             self.state.population = self.population_manager.population_size
-        else:
-            self.state.population = len(self._porpoises)
 
         # Replenish food across landscape
         if self._cell_data is not None:
@@ -532,10 +509,12 @@ class Simulation:
             self._cell_data.set_month(self.state.month)
         
     def _yearly_tasks(self) -> None:
-        """Execute yearly tasks."""
-        # Age all porpoises by 1 year
-        for porpoise in self._porpoises:
-            porpoise.age += 1.0
+        """Execute yearly tasks.
+
+        Note: Per-tick aging is handled by PorpoisePopulation._update_aging().
+        The legacy per-porpoise aging loop has been removed.
+        """
+        pass
             
     def _record_history(self) -> None:
         """Record current state to history.
@@ -697,13 +676,3 @@ class Simulation:
         if hasattr(self, 'population_manager'):
             return self.population_manager.population_size
         return len([p for p in self._porpoises if p.alive])
-    
-    @property
-    def total_births(self) -> int:
-        """Get total births across all history (including current day)."""
-        return int(sum(h.get("births", 0) for h in self._history) + getattr(self.state, 'births', 0))
-    
-    @property
-    def total_deaths(self) -> int:
-        """Get total deaths across all history (including current day)."""
-        return int(sum(h.get("deaths", 0) for h in self._history) + getattr(self.state, 'deaths', 0))

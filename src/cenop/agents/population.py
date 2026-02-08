@@ -877,7 +877,7 @@ class PorpoisePopulation:
 
         # Bycatch mortality (already parameterized)
         bycatch_prob = getattr(self.params, 'bycatch_prob', 0.0) / 360.0 / 48.0
-        bycatch = (np.random.random(self.count) < bycatch_prob) & mask
+        bycatch = (self.rng.random(self.count) < bycatch_prob) & mask
 
         # Apply deaths
         all_deaths = starved | natural_death | bycatch

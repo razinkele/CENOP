@@ -3,31 +3,27 @@ Main simulation controller for CENOP.
 
 This module contains the Simulation class which orchestrates the entire
 agent-based model, managing agents, scheduling, and data collection.
-
-Supports both DEPONS mode (fixed timestep, regulatory-compliant) and
-JASMINE mode (flexible timestep, event-driven) via the TimeManager.
 """
 
 from __future__ import annotations
 
+import os
 import logging
+import warnings
 import numpy as np
+import pandas as pd
+from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Optional, List, Dict, Any
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from tqdm import tqdm
 
-from cenop.core.time_manager import TimeManager, TimeMode
-
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("CENOP")
 
 if TYPE_CHECKING:
     from cenop.parameters.simulation_params import SimulationParameters
     from cenop.landscape.cell_data import CellData
     from cenop.agents.porpoise import Porpoise
-    from cenop.movement.base import MovementModule
-    from cenop.behavior.hybrid_fsm import HybridBehaviorFSM
-    from cenop.physiology.energy_budget import EnergyModule
-    from cenop.behavior.disturbance_memory import DisturbanceMemoryModule
 
 
 @dataclass
@@ -95,49 +91,24 @@ class Simulation:
         self,
         params: SimulationParameters,
         cell_data: Optional[CellData] = None,
-        seed: Optional[int] = None,
-        time_manager: Optional[TimeManager] = None,
-        time_mode: TimeMode = TimeMode.DEPONS,
-        movement_module: Optional['MovementModule'] = None,
-        behavior_fsm: Optional['HybridBehaviorFSM'] = None,
-        energy_module: Optional['EnergyModule'] = None,
-        memory_module: Optional['DisturbanceMemoryModule'] = None,
+        seed: Optional[int] = None
     ):
         """
         Initialize the simulation.
-
+        
         Args:
             params: Simulation parameters configuration
             cell_data: Pre-loaded landscape data (optional)
             seed: Random seed for reproducibility
-            time_manager: Pre-configured TimeManager (optional)
-            time_mode: Time mode if creating new TimeManager (default: DEPONS)
-            movement_module: Optional movement module for modular movement system
-            behavior_fsm: Optional behavioral FSM for state transitions
-            energy_module: Optional energy module for DEB calculations
-            memory_module: Optional disturbance memory module for learned avoidance
         """
         self.params = params
         self.state = SimulationState()
-
+        
         # Set random seed
         actual_seed = seed if seed is not None else params.random_seed
-        if actual_seed is None:
-            actual_seed = 42  # Default seed for reproducibility
+        if actual_seed is not None:
+            np.random.seed(actual_seed)
         self._seed = actual_seed
-
-        # Initialize TimeManager
-        if time_manager is not None:
-            self.time_manager = time_manager
-        else:
-            self.time_manager = TimeManager(
-                mode=time_mode,
-                base_seed=actual_seed,
-                sim_years=params.sim_years
-            )
-
-        # Per-simulation random Generator (replaces global np.random.seed)
-        self.rng = np.random.default_rng(actual_seed)
         
         # Initialize components (lazy loading or pre-provided)
         self._cell_data: Optional[CellData] = cell_data
@@ -151,26 +122,14 @@ class Simulation:
         
         # History for plotting
         self._history: List[Dict[str, Any]] = []
-
-        # Max ticks from TimeManager (for backward compatibility)
-        self.max_ticks = self.time_manager.max_ticks
-
+        
+        # Calculate max ticks
+        self.max_ticks = params.sim_years * 360 * 48
+        
         # Running state
         self._is_running = False
         self._is_initialized = False
-
-        # Movement module (Phase 2: JASMINE integration)
-        self._movement_module = movement_module
-
-        # Behavior FSM (Phase 3: JASMINE integration)
-        self._behavior_fsm = behavior_fsm
-
-        # Energy module (Phase 4: JASMINE DEB integration)
-        self._energy_module = energy_module
-
-        # Memory module (Phase 5: JASMINE memory/cognition)
-        self._memory_module = memory_module
-
+        
         # Auto-initialize if cell_data provided or using homogeneous landscape
         if cell_data is not None or params.landscape == "Homogeneous":
             self.initialize()
@@ -206,17 +165,12 @@ class Simulation:
         
         # Create initial porpoise population (Vectorized - Phase 3)
         from cenop.agents.population import PorpoisePopulation
-
+        
         # Initialize vectorized population manager
         self.population_manager = PorpoisePopulation(
             count=self.params.porpoise_count,
             params=self.params,
-            landscape=self._cell_data,
-            movement_module=self._movement_module,
-            behavior_fsm=self._behavior_fsm,
-            energy_module=self._energy_module,
-            memory_module=self._memory_module,
-            rng=self.rng,
+            landscape=self._cell_data
         )
         
         # Legacy list for backward compatibility (lazy loaded if accessed via property)
@@ -229,7 +183,21 @@ class Simulation:
         # Set up ships if enabled
         if self.params.ships_enabled:
             self._setup_ships()
-            
+
+        # Warm-up Numba-compiled helpers to avoid JIT compile latency during early ticks
+        try:
+            from cenop.optimizations import warmup_numba
+            warmup_numba()
+        except Exception:
+            # Ignore warm-up errors
+            pass
+
+        # Pre-import SciPy spatial to avoid expensive first-time import during early ticks
+        try:
+            import scipy.spatial  # type: ignore
+        except Exception:
+            pass
+
         self.state.population = self.population_manager.population_size
         self._is_initialized = True
         
@@ -237,21 +205,21 @@ class Simulation:
         """Get random initial age from the DEPONS age distribution."""
         # Age distribution moved to external configuration (Fix Phase 1.2)
         from cenop.parameters.demography import AGE_DISTRIBUTION_FREQUENCY
-        return float(self.rng.choice(AGE_DISTRIBUTION_FREQUENCY))
+        return float(np.random.choice(AGE_DISTRIBUTION_FREQUENCY))
         
     def _get_valid_initial_position(self) -> tuple[float, float]:
         """Get a random initial position in valid water."""
         if self._cell_data is None:
             # Fallback for homogeneous landscape
-            x = self.rng.uniform(0, self.params.world_width)
-            y = self.rng.uniform(0, self.params.world_height)
+            x = np.random.uniform(0, self.params.world_width)
+            y = np.random.uniform(0, self.params.world_height)
             return x, y
             
         # Try to find valid position (depth > min_depth)
         max_attempts = 1000
         for _ in range(max_attempts):
-            x = self.rng.uniform(0, self._cell_data.width)
-            y = self.rng.uniform(0, self._cell_data.height)
+            x = np.random.uniform(0, self._cell_data.width)
+            y = np.random.uniform(0, self._cell_data.height)
             
             depth = self._cell_data.get_depth(x, y)
             if depth > self.params.min_depth:
@@ -273,8 +241,7 @@ class Simulation:
         Coordinates are in UTM and converted to grid using landscape metadata.
         """
         from cenop.agents.turbine import TurbinePhase, Turbine
-        from pathlib import Path
-        
+
         # Handle "off" case
         if self.params.turbines == "off":
             self._turbine_manager.set_phase(TurbinePhase.OFF)
@@ -371,8 +338,7 @@ class Simulation:
             return
             
         from cenop.agents.ship import Ship, Route, Buoy, VesselClass
-        import os
-        
+
         # Determine landscape size
         if self._cell_data is not None:
             width = self._cell_data.width
@@ -439,104 +405,95 @@ class Simulation:
         
     def step(self) -> None:
         """
-        Execute one simulation step (30 minutes in DEPONS mode).
-
-        Uses TimeManager for:
-        - Deterministic per-tick seeding
-        - Boundary detection (day/month/year)
-        - Time advancement
-
+        Execute one simulation step (30 minutes).
         Vectorized implementation (Phase 3).
         """
         if not self._is_initialized:
             self.initialize()
-
-        # 1. Set deterministic seed for this tick (CRITICAL for reproducibility)
-        self.rng = np.random.default_rng(self.time_manager.get_seed())
-        self.population_manager.rng = self.rng
-
+        
         # Debug first few steps
-        if self.time_manager.tick < 5:
-            logger.debug("Simulation.step() tick=%d, pop=%d", self.time_manager.tick, self.state.population)
-
-        # 2. Process scheduled events (JASMINE mode only, no-op in DEPONS mode)
-        for event in self.time_manager.get_scheduled_events():
-            event()
-
-        # 3. Update turbines and ships for current tick
-        self._turbine_manager.update(self.time_manager.tick)
-        self._ship_manager.update(self.time_manager.tick)
-
-        # 4. Calculate vectorized deterrence
-        # Access arrays directly from population manager
+        if self.state.tick < 5:
+            logger.debug("Simulation.step() tick=%d, pop=%d", self.state.tick, self.state.population)
+        
+        # Update turbines and ships for current tick
+        self._turbine_manager.update(self.state.tick)
+        self._ship_manager.update(self.state.tick)
+        
+        # Calculate vectorized deterrence
         active_mask = self.population_manager.active_mask
         px = self.population_manager.x
         py = self.population_manager.y
-
+        
         # Turbine deterrence (Vectorized)
         turb_dx, turb_dy = self._turbine_manager.calculate_aggregate_deterrence_vectorized(
             px, py, self.params, cell_size=400.0
         )
-
+        
         # Ship deterrence (Vectorized)
         ship_dx, ship_dy = self._ship_manager.calculate_aggregate_deterrence_vectorized(
-            px, py, self.params, is_day=self.time_manager.is_daytime, cell_size=400.0
+            px, py, self.params, is_day=self.state.is_daytime, cell_size=400.0
         )
-
-        # Combine
+        
+        # Combine deterrence vectors
         total_dx = turb_dx + ship_dx
         total_dy = turb_dy + ship_dy
 
-        # 5. Step population (Vectorized)
-        self.population_manager.step(deterrence_vectors=(total_dx, total_dy))
+        # --- Ambient noise masking: compute ambient RL experienced at porpoise locations ---
+        turb_rl = self._turbine_manager.ambient_received_level_at_positions(px, py, self.params, cell_size=400.0)
+        ship_rl = self._ship_manager.ambient_received_level_at_positions(px, py, self.params, is_day=self.state.is_daytime, cell_size=400.0)
+        from cenop.behavior.sound import combine_rls  # noqa: E402 — deferred to avoid circular import
+        ambient_rl = combine_rls(turb_rl, ship_rl)
 
-        if self.time_manager.tick < 5:
-            logger.debug("Simulation.step() after pop_manager.step: active=%d", self.population_manager.population_size)
-
-        # 6. Update Statistics
+        # Step population (Vectorized), pass ambient RL for masking
+        self.population_manager.step(deterrence_vectors=(total_dx, total_dy), ambient_rl=ambient_rl)
+        
+        if self.state.tick < 5:
+            logger.debug("Simulation.step() after pop_manager.step: active=%d",
+                         self.population_manager.population_size)
+                
+        # Update Statistics
         current_pop = self.population_manager.population_size
         if current_pop != self.state.population:
+            # Simple diff for now, detailed birth/death tracking 
+            # would be added to PopulationManager in full implementation
             diff = current_pop - self.state.population
             if diff < 0:
                 self.state.deaths += abs(diff)
             else:
                 self.state.births += diff
             self.state.population = current_pop
-
-        # 7. Advance time FIRST (so boundary checks work correctly)
-        self.time_manager.advance()
-
-        # 8. Sync legacy SimulationState from TimeManager
-        self.state.tick = self.time_manager.tick
-        self.state.day = self.time_manager.day
-        self.state.month = self.time_manager.month
-        self.state.year = self.time_manager.year
-        self.state.quarter = self.time_manager.quarter
-
-        # 9. Daily tasks (at day boundary)
-        if self.time_manager.is_day_boundary():
+                
+        # Daily tasks (every 48 ticks)
+        if self.state.tick > 0 and self.state.tick % 48 == 0:
             self._daily_tasks()
-
-        # 10. Monthly tasks (at month boundary)
-        if self.time_manager.is_month_boundary():
+            
+        # Monthly tasks (every 30 days)
+        if self.state.day > 0 and self.state.day % 30 == 0 and self.state.tick % 48 == 0:
             self._monthly_tasks()
-
-        # 11. Yearly tasks (at year boundary)
-        if self.time_manager.is_year_boundary():
+            
+        # Yearly tasks (every 360 days)
+        if self.state.day > 0 and self.state.day % 360 == 0 and self.state.tick % 48 == 0:
             self._yearly_tasks()
-
-        # 12. Record history (daily)
-        if self.time_manager.is_day_boundary():
+            
+        # Advance time
+        self.state.advance_tick()
+        
+        # Record history daily
+        if self.state.tick % 48 == 0:
             self._record_history()
             
     def _daily_tasks(self) -> None:
-        """Execute daily landscape tasks.
+        """Execute daily tasks.
 
-        Note: Per-agent daily steps (weaning, calf creation, mortality) are
-        handled by the vectorized PorpoisePopulation.step() method.  This
-        method only performs landscape-level bookkeeping that runs once per
-        simulated day.
+        Note: The legacy per-porpoise loop and weaning logic have been removed.
+        All porpoise lifecycle logic (movement, energy, reproduction, mortality)
+        is handled by PorpoisePopulation.step().  This method now only performs
+        landscape-level daily updates.
         """
+        # Update population count from authoritative source
+        if hasattr(self, 'population_manager'):
+            self.state.population = self.population_manager.population_size
+
         # Replenish food across landscape
         if self._cell_data is not None:
             self._cell_data.replenish_food(self.params.r_u)
@@ -554,45 +511,57 @@ class Simulation:
     def _yearly_tasks(self) -> None:
         """Execute yearly tasks.
 
-        Note: Per-agent aging is handled continuously by
-        PorpoisePopulation._update_aging() (increments per tick).
+        Note: Per-tick aging is handled by PorpoisePopulation._update_aging().
+        The legacy per-porpoise aging loop has been removed.
         """
         pass
             
     def _record_history(self) -> None:
-        """Record current state to history."""
+        """Record current state to history.
+
+        Note: `self.state.births` and `self.state.deaths` are per-tick accumulators
+        (they accumulate within the current month). Here we record the *daily*
+        counts and then reset these counters so that history entries contain
+        true daily values (avoids over-counting when summing history).
+        """
+        # Capture daily values
+        daily_births = int(self.state.births)
+        daily_deaths = int(self.state.deaths)
+
         self._history.append({
             "tick": self.state.tick,
             "day": self.state.day,
             "year": self.state.year,
             "population": self.state.population,
-            "births": self.state.births,
-            "deaths": self.state.deaths,
+            "births": daily_births,
+            "deaths": daily_deaths,
         })
+
+        # Reset daily counters
+        self.state.births = 0
+        self.state.deaths = 0
         
     def run(self, progress: bool = True) -> None:
         """
         Run the complete simulation.
-
-        Uses TimeManager.is_finished() to determine completion.
-
+        
         Args:
             progress: Show progress bar
         """
         if not self._is_initialized:
             self.initialize()
-
+            
         self._is_running = True
-
+        
         iterator = range(self.max_ticks)
         if progress:
             iterator = tqdm(iterator, desc="Simulating", unit="ticks")
-
+            
         for _ in iterator:
-            if not self._is_running or self.time_manager.is_finished():
+            if not self._is_running:
                 break
             self.step()
-
+            
         self._is_running = False
         
     def stop(self) -> None:
@@ -630,13 +599,17 @@ class Simulation:
         
     def get_statistics(self) -> Dict[str, Any]:
         """Get current simulation statistics."""
+        # Include current in-flight counters (this day's births/deaths) so
+        # statistics are up-to-date during the day before history is recorded.
+        births_total = int(sum(h["births"] for h in self._history) + getattr(self.state, 'births', 0))
+        deaths_total = int(sum(h["deaths"] for h in self._history) + getattr(self.state, 'deaths', 0))
         return {
             "tick": self.state.tick,
             "day": self.state.day,
             "year": self.state.year,
             "population": self.state.population,
-            "births_total": sum(h["births"] for h in self._history),
-            "deaths_total": sum(h["deaths"] for h in self._history),
+            "births_total": births_total,
+            "deaths_total": deaths_total,
         }
         
     @property
@@ -645,21 +618,50 @@ class Simulation:
         return self._cell_data
         
     @property
+    def total_births(self) -> int:
+        """Get total births across all history (including current day)."""
+        return int(sum(h.get("births", 0) for h in self._history) + getattr(self.state, 'births', 0))
+    
+    @property
+    def total_deaths(self) -> int:
+        """Get total deaths across all history (including current day)."""
+        return int(sum(h.get("deaths", 0) for h in self._history) + getattr(self.state, 'deaths', 0))
+    @property
     def porpoises(self) -> List[Any]:
-        """Get list of all porpoises (Legacy compatibility)."""
-        # Warning: This is slow if called repeatedly
-        # Use population_manager or agents_df for performance
+        """Get list of all porpoises (Legacy compatibility).
+
+        .. deprecated::
+            Use `population_manager.to_dataframe()` or `agents_df` instead.
+            This property will be removed in a future version.
+        """
+        warnings.warn(
+            "The 'porpoises' property is deprecated. "
+            "Use 'population_manager.to_dataframe()' or 'agents_df' for better performance.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if hasattr(self, 'population_manager'):
-            # Return list of lightweight objects or named tuples
-            from types import SimpleNamespace
             df = self.population_manager.to_dataframe()
             return [SimpleNamespace(**row) for row in df.to_dict('records')]
         return self._porpoises
-    
+
     @property
     def agents(self) -> List[Any]:
-        """Get list of all agents (alias for porpoises)."""
-        return self.porpoises
+        """Get list of all agents (alias for porpoises).
+
+        .. deprecated::
+            Use `agents_df` property instead for better performance.
+        """
+        warnings.warn(
+            "The 'agents' property is deprecated. Use 'agents_df' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        # Call porpoises without triggering double warning
+        if hasattr(self, 'population_manager'):
+            df = self.population_manager.to_dataframe()
+            return [SimpleNamespace(**row) for row in df.to_dict('records')]
+        return self._porpoises
         
     @property
     def agents_df(self) -> pd.DataFrame:
@@ -674,13 +676,3 @@ class Simulation:
         if hasattr(self, 'population_manager'):
             return self.population_manager.population_size
         return len([p for p in self._porpoises if p.alive])
-    
-    @property
-    def total_births(self) -> int:
-        """Get total births across all history."""
-        return sum(h.get("births", 0) for h in self._history)
-    
-    @property
-    def total_deaths(self) -> int:
-        """Get total deaths across all history."""
-        return sum(h.get("deaths", 0) for h in self._history)

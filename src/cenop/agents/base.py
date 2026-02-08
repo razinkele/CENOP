@@ -6,6 +6,8 @@ Provides common functionality for position, movement, and grid operations.
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional, Tuple
@@ -44,40 +46,36 @@ class Agent:
         
     def distance_to(self, other: Agent) -> float:
         """Calculate Euclidean distance to another agent."""
-        dx = other.x - self.x
-        dy = other.y - self.y
-        return np.sqrt(dx * dx + dy * dy)
-        
+        return math.hypot(other.x - self.x, other.y - self.y)
+
     def distance_to_point(self, x: float, y: float) -> float:
         """Calculate Euclidean distance to a point."""
-        dx = x - self.x
-        dy = y - self.y
-        return np.sqrt(dx * dx + dy * dy)
-        
+        return math.hypot(x - self.x, y - self.y)
+
     def heading_to(self, other: Agent) -> float:
         """Calculate heading towards another agent in degrees."""
         return self.heading_to_point(other.x, other.y)
-        
+
     def heading_to_point(self, x: float, y: float) -> float:
         """Calculate heading towards a point in degrees."""
         dx = x - self.x
         dy = y - self.y
-        angle_rad = np.arctan2(dx, dy)  # Note: atan2(dx, dy) for North=0
-        return np.degrees(angle_rad)
-        
+        angle_rad = math.atan2(dx, dy)  # Note: atan2(dx, dy) for North=0
+        return math.degrees(angle_rad)
+
     def get_dx(self) -> float:
         """Get x-component of unit vector in heading direction."""
-        return np.sin(np.radians(self.heading))
-        
+        return math.sin(math.radians(self.heading))
+
     def get_dy(self) -> float:
         """Get y-component of unit vector in heading direction."""
-        return np.cos(np.radians(self.heading))
-        
+        return math.cos(math.radians(self.heading))
+
     def forward(self, distance: float) -> None:
         """Move forward in current heading direction."""
-        rad = np.radians(self.heading)
-        self.x += distance * np.sin(rad)
-        self.y += distance * np.cos(rad)
+        rad = math.radians(self.heading)
+        self.x += distance * math.sin(rad)
+        self.y += distance * math.cos(rad)
         
     def move(self, distance: float) -> None:
         """Move forward by given distance. Alias for forward()."""
@@ -110,9 +108,9 @@ class Agent:
         Returns:
             (x, y) tuple of the point
         """
-        rad = np.radians(self.heading + angle_offset)
-        x = self.x + distance * np.sin(rad)
-        y = self.y + distance * np.cos(rad)
+        rad = math.radians(self.heading + angle_offset)
+        x = self.x + distance * math.sin(rad)
+        y = self.y + distance * math.cos(rad)
         return (x, y)
         
     @staticmethod

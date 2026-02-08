@@ -13,11 +13,14 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional, List, Tuple
 from pathlib import Path
 
+from enum import Enum
+
 from cenop.agents.base import Agent
 from cenop.behavior.sound import (
     TurbineNoise,
     calculate_received_level,
-    calculate_deterrence_vector
+    calculate_deterrence_vector,
+    response_probability_from_rl,
 )
 
 if TYPE_CHECKING:
@@ -25,7 +28,7 @@ if TYPE_CHECKING:
     from cenop.core.simulation import SimulationState
 
 
-class TurbinePhase:
+class TurbinePhase(str, Enum):
     """Turbine operational phases."""
     OFF = "off"
     CONSTRUCTION = "construction"
@@ -399,6 +402,16 @@ class TurbineManager:
             if not np.any(deter_mask_local):
                 continue
                 
+            # If probabilistic response enabled, compute probability and scale strength
+            if getattr(params, 'deter_probabilistic', False):
+                # Compute response probability for masked distances
+                p = response_probability_from_rl(
+                    rl, threshold, getattr(params, 'deter_response_slope', 0.2)
+                )
+                # p has same shape as d_masked
+            else:
+                p = None
+            
             # 5. Calculate vectors (DEPONS logic)
             # vector X = ((porpX - turbX) / dist) * strength * coeff
             # We need to map back to original indices
@@ -411,6 +424,14 @@ class TurbineManager:
             # Strength for full mask
             s_final = np.zeros_like(dist_m)
             s_final[in_range_mask] = str_val
+            
+            # Apply probabilistic scaling where appropriate
+            if p is not None:
+                # p corresponds to all in-range distances (d_masked), so we need to mask it
+                p_full = np.zeros_like(dist_m)
+                p_full[in_range_mask] = p
+                s_final = s_final * p_full
+            
             s = s_final[full_mask]
             d = dist_m[full_mask]
             
@@ -419,38 +440,56 @@ class TurbineManager:
             vec_x = (dx_m[full_mask] / d) * s * deter_coeff
             vec_y = (dy_m[full_mask] / d) * s * deter_coeff
             
-            # Accumulate
-            # Converts grid meters back to grid cells? 
-            # calculate_deterrence_vector returns grid cell units usually.
-            # Let's check calculate_deterrence_vector in sound.py
-            # Original code:
-            # return calculate_deterrence_vector(
-            #    porpoise_x, porpoise_y,
-            #    self.x, self.y,
-            #    strength, deter_coeff
-            # )
-            # 
-            # In sound.py (implied):
-            # dx = (target_x - source_x)
-            # dy = (target_y - source_y)
-            # dist = sqrt(dx*dx + dy*dy)
-            # unit_x = dx/dist
-            # unit_y = dy/dist
-            # return unit_x * strength * deter_coeff, unit_y * strength * deter_coeff
-            #
-            # My calc vec_x above uses dx_m (meters). 
-            # dx_m = (px - tx) * cell_size.
-            # dist_m = dist * cell_size.
-            # dx_m / dist_m = dx / dist. Unit vector is identical.
-            # So vec_x is in "strength units".
-            # The movement logic adds this to grid coordinates.
-            # So strength * coeff must result in grid cells.
-            
             total_dx[full_mask] += vec_x
             total_dy[full_mask] += vec_y
             
         return (total_dx, total_dy)
-        
+
+    def ambient_received_level_at_positions(
+        self,
+        porpoise_x: np.ndarray,
+        porpoise_y: np.ndarray,
+        params: SimulationParameters,
+        cell_size: float = 400.0
+    ) -> np.ndarray:
+        """
+        Compute ambient received level (dB) at porpoise positions from all active turbines.
+        Returns an array of RL in dB (same length as porpoise_x). If no sources, returns very low values (-999).
+        """
+        n = len(porpoise_x)
+        if self.phase == TurbinePhase.OFF:
+            return np.full(n, -999.0, dtype=np.float32)
+        active_turbines = self.get_active_turbines()
+        if not active_turbines:
+            return np.full(n, -999.0, dtype=np.float32)
+
+        # Accumulate linear power (10^(RL/10)) per porpoise
+        lin_power = np.zeros(n, dtype=np.float64)
+        max_dist_m = params.deter_max_distance * 1000.0
+        for turbine in active_turbines:
+            dx_m = (porpoise_x - turbine.x) * cell_size
+            dy_m = (porpoise_y - turbine.y) * cell_size
+            dist_m = np.sqrt(dx_m**2 + dy_m**2)
+            # Avoid zero
+            dist_m = np.maximum(dist_m, 1.0)
+            mask = dist_m < max_dist_m
+            if not np.any(mask):
+                continue
+            rl_all = np.full(n, -999.0, dtype=np.float32)
+            dmask = dist_m[mask]
+            tl = params.beta_hat * np.log10(dmask) + params.alpha_hat * dmask
+            rl_mask = turbine.impact - tl
+            rl_all[mask] = rl_mask
+            # Convert dB to linear (power) and accumulate
+            lin_power[mask] += 10.0 ** (rl_mask / 10.0)
+
+        # Convert linear power back to dB, handle zeros
+        rl_combined = np.zeros(n, dtype=np.float32)
+        nonzero = lin_power > 0
+        rl_combined[~nonzero] = -999.0
+        rl_combined[nonzero] = 10.0 * np.log10(lin_power[nonzero])
+        return rl_combined
+
     def load_from_file(
         self,
         filepath: str,

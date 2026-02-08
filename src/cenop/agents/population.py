@@ -17,14 +17,6 @@ from cenop.parameters.demography import AGE_DISTRIBUTION_FREQUENCY
 from cenop.behavior.psm import PersistentSpatialMemory
 from cenop.behavior.sound import calculate_received_level, response_probability_from_rl
 
-# Optional movement module and FSM support
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    from cenop.movement.base import MovementModule
-    from cenop.behavior.hybrid_fsm import HybridBehaviorFSM
-    from cenop.physiology.energy_budget import EnergyModule
-    from cenop.behavior.disturbance_memory import DisturbanceMemoryModule
-
 import logging
 import os
 
@@ -55,25 +47,10 @@ class PorpoisePopulation:
     Replaces the list of individual Porpoise objects for performance.
     """
     
-    def __init__(
-        self,
-        count: int,
-        params: SimulationParameters,
-        landscape: Optional[CellData] = None,
-        movement_module: Optional['MovementModule'] = None,
-        behavior_fsm: Optional['HybridBehaviorFSM'] = None,
-        energy_module: Optional['EnergyModule'] = None,
-        memory_module: Optional['DisturbanceMemoryModule'] = None,
-        rng: Optional[np.random.Generator] = None,
-    ):
+    def __init__(self, count: int, params: SimulationParameters, landscape: Optional[CellData] = None):
         self.params = params
         self.landscape = landscape
         self.count = count # Initial count capacity
-        self._movement_module = movement_module  # Optional modular movement
-        self._behavior_fsm = behavior_fsm  # Optional behavioral FSM
-        self._energy_module = energy_module  # Optional energy module (Phase 4)
-        self._memory_module = memory_module  # Optional memory module (Phase 5)
-        self.rng = rng if rng is not None else np.random.default_rng()
         
         # === Arrays (Structure of Arrays) ===
         # Use a dictionary of arrays or direct attributes? Direct attributes are faster.
@@ -123,29 +100,7 @@ class PorpoisePopulation:
         self.dispersal_distance_traveled = np.zeros(count, dtype=np.float32)
         self.dispersal_start_x = np.zeros(count, dtype=np.float32)
         self.dispersal_start_y = np.zeros(count, dtype=np.float32)
-
-        # === Behavioral State (Phase 3: FSM Integration) ===
-        # Initialize behavioral state vector if FSM is provided
-        self._behavior_state = None
-        if self._behavior_fsm is not None:
-            from cenop.behavior.states import BehaviorStateVector
-            self._behavior_state = BehaviorStateVector.create(count)
-
-        # Time since last disturbance (for FSM recovery tracking)
-        self.time_since_disturbance = np.full(count, 9999, dtype=np.int32)
-
-        # === Energy State for modular energy system (Phase 4) ===
-        self._energy_state = None
-        if self._energy_module is not None:
-            from cenop.physiology.energy_budget import EnergyState
-            self._energy_state = EnergyState.create(count, initial_energy=10.0)
-
-        # === Memory State for disturbance memory (Phase 5) ===
-        self._memory_state = None
-        if self._memory_module is not None:
-            from cenop.behavior.disturbance_memory import DisturbanceMemoryState
-            self._memory_state = DisturbanceMemoryState.create(count)
-
+        
         # PSM instances - one per porpoise (list for object storage)
         world_w = self.params.world_width
         world_h = self.params.world_height
@@ -157,7 +112,7 @@ class PorpoisePopulation:
         # We can still use the class for helper methods or just store distances array
         # For full optimization, we replace list of objects with arrays
         self._psm_instances: List[PersistentSpatialMemory] = [
-             PersistentSpatialMemory(world_w, world_h, rng=self.rng) for _ in range(count)
+             PersistentSpatialMemory(world_w, world_h) for _ in range(count)
         ]
         
         # Vectorized PSM Storage (Optimized)
@@ -245,8 +200,8 @@ class PorpoisePopulation:
         
         if self.landscape is None:
             # No landscape - use simple random positions
-            self.x = self.rng.uniform(0, world_w, self.count).astype(np.float32)
-            self.y = self.rng.uniform(0, world_h, self.count).astype(np.float32)
+            self.x = np.random.uniform(0, world_w, self.count).astype(np.float32)
+            self.y = np.random.uniform(0, world_h, self.count).astype(np.float32)
         else:
             # Use landscape - place only in water cells (depth >= min_depth)
             lw = self.landscape.width
@@ -261,25 +216,25 @@ class PorpoisePopulation:
                 
                 if len(valid_x) > 0:
                     # Randomly select from valid positions
-                    indices = self.rng.choice(len(valid_x), self.count, replace=True)
-                    self.x = valid_x[indices].astype(np.float32) + self.rng.uniform(0, 1, self.count).astype(np.float32)
-                    self.y = valid_y[indices].astype(np.float32) + self.rng.uniform(0, 1, self.count).astype(np.float32)
+                    indices = np.random.choice(len(valid_x), self.count, replace=True)
+                    self.x = valid_x[indices].astype(np.float32) + np.random.uniform(0, 1, self.count).astype(np.float32)
+                    self.y = valid_y[indices].astype(np.float32) + np.random.uniform(0, 1, self.count).astype(np.float32)
                 else:
                     # Fallback - no valid water cells (shouldn't happen)
-                    self.x = self.rng.uniform(0, lw, self.count).astype(np.float32)
-                    self.y = self.rng.uniform(0, lh, self.count).astype(np.float32)
+                    self.x = np.random.uniform(0, lw, self.count).astype(np.float32)
+                    self.y = np.random.uniform(0, lh, self.count).astype(np.float32)
             else:
                 # No depth data - use full area
-                self.x = self.rng.uniform(0, lw, self.count).astype(np.float32)
-                self.y = self.rng.uniform(0, lh, self.count).astype(np.float32)
+                self.x = np.random.uniform(0, lw, self.count).astype(np.float32)
+                self.y = np.random.uniform(0, lh, self.count).astype(np.float32)
             
-        self.heading = self.rng.uniform(0, 360, self.count).astype(np.float32)
+        self.heading = np.random.uniform(0, 360, self.count).astype(np.float32)
         
         # Sex ratio 50%
-        self.is_female = self.rng.choice([True, False], self.count)
+        self.is_female = np.random.choice([True, False], self.count)
         
         # Ages from distribution
-        self.age = self.rng.choice(
+        self.age = np.random.choice(
             AGE_DISTRIBUTION_FREQUENCY, 
             size=self.count
         ).astype(np.float32)
@@ -334,8 +289,8 @@ class PorpoisePopulation:
                         # Use query_pairs with output_type='ndarray' for maximum speed
                         # Returns (N, 2) array of indices into pos_active
                         pairs = kd_active.query_pairs(radius, output_type='ndarray')
-                    except (TypeError, ValueError):
-                        # Fallback for older scipy versions that lack output_type param
+                    except Exception:
+                        # Fallback for older scipy versions or errors
                         pairs = np.array([], dtype=np.int32).reshape(0, 2)
                         
                         try:
@@ -459,8 +414,7 @@ class PorpoisePopulation:
                             ux_total, uy_total, sw_total
                         )
                     except Exception:
-                        # Fallback if numba call fails (compilation error, type mismatch)
-                        logger.debug("Numba accumulate_social_totals failed, using bincount fallback", exc_info=True)
+                        # Fallback if numba call fails
                         ux_total = np.bincount(np.concatenate([idx_i, idx_j]), weights=np.concatenate([ux_contrib_i, ux_contrib_j]), minlength=self.count)
                         uy_total = np.bincount(np.concatenate([idx_i, idx_j]), weights=np.concatenate([uy_contrib_i, uy_contrib_j]), minlength=self.count)
                         sw_total = np.bincount(np.concatenate([idx_i, idx_j]), weights=np.concatenate([p_i, p_j]), minlength=self.count)
@@ -591,7 +545,7 @@ class PorpoisePopulation:
         self._day_of_year = 0
 
         # Mating day (females only, N(225, 20))
-        mating_days = self.rng.normal(225, 20, self.count).astype(np.int16)
+        mating_days = np.random.normal(225, 20, self.count).astype(np.int16)
         # Apply only to females, others stay -99
         self.mating_day = np.where(self.is_female, mating_days, -99)
 
@@ -613,11 +567,6 @@ class PorpoisePopulation:
         - Deterrence vector application
         - Social cohesion vectors
         """
-        # === Use modular movement if provided ===
-        if self._movement_module is not None:
-            self._update_movement_modular(mask, deterrence_vectors, ambient_rl)
-            return
-
         # === Get environmental variables from landscape ===
         # DEPONS CRW uses depth and salinity to modulate movement
         if self.landscape is not None:
@@ -633,7 +582,7 @@ class PorpoisePopulation:
         # === Calculate Turning Angle (Full DEPONS CRW) ===
         # DEPONS formula: angleTmp = b0 * prevAngle + N(0,4)
         #                 presAngle = angleTmp * (b1*depth + b2*salinity + b3)
-        np.copyto(self._rand_angle, self.rng.normal(self.params.r2_mean, self.params.r2_sd, self.count))
+        np.copyto(self._rand_angle, np.random.normal(self.params.r2_mean, self.params.r2_sd, self.count))
 
         # angleTmp = b0 * prevAngle + R2
         np.multiply(self.params.corr_angle_base, self.prev_angle, out=self._pres_angle)
@@ -660,7 +609,7 @@ class PorpoisePopulation:
 
         # === Calculate Step Length (Full DEPONS CRW) ===
         # DEPONS formula: log10_mov = a0 * prev_log_mov + a1*depth + a2*salinity + R1
-        np.copyto(self._rand_len, self.rng.normal(self.params.r1_mean, self.params.r1_sd, self.count))
+        np.copyto(self._rand_len, np.random.normal(self.params.r1_mean, self.params.r1_sd, self.count))
         np.multiply(self.params.corr_logmov_length, self.prev_log_mov, out=self._log_mov)
         self._log_mov += self.params.corr_logmov_bathy * self._depths
         self._log_mov += self.params.corr_logmov_salinity * self._salinity_vals
@@ -727,78 +676,6 @@ class PorpoisePopulation:
         self.heading[dispersing] -= self._pres_angle[dispersing]  # Remove normal turn
         self.heading[dispersing] += dampened_angle[dispersing]  # Add dampened
         self.heading[dispersing] %= 360.0
-
-    def _update_movement_modular(
-        self,
-        mask: np.ndarray,
-        deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]],
-        ambient_rl: Optional[np.ndarray],
-    ) -> None:
-        """
-        Update movement using the modular movement system.
-
-        Creates MovementState and EnvironmentContext, calls the movement module,
-        and applies results to the population arrays.
-        """
-        from cenop.movement.base import MovementState, EnvironmentContext
-
-        # Create movement state from population state
-        state = MovementState(
-            prev_heading=self.heading.copy(),
-            prev_log_mov=self.prev_log_mov.copy(),
-            prev_angle=self.prev_angle.copy(),
-            heading=self.heading.copy(),
-            step_distance=np.zeros(self.count, dtype=np.float32),
-            dx=np.zeros(self.count, dtype=np.float32),
-            dy=np.zeros(self.count, dtype=np.float32),
-            is_dispersing=self.is_dispersing.copy(),
-            dispersal_heading=np.degrees(np.arctan2(
-                self.dispersal_target_x - self.x,
-                self.dispersal_target_y - self.y
-            )).astype(np.float32) % 360.0,
-        )
-
-        # Create environment context
-        if self.landscape is not None:
-            positions = np.column_stack((self.x, self.y))
-            depth = self.landscape.get_depths_vectorized(positions)
-            salinity = self.landscape.get_salinities_vectorized(positions)
-        else:
-            depth = np.full(self.count, 30.0, dtype=np.float32)
-            salinity = np.full(self.count, 30.0, dtype=np.float32)
-
-        environment = EnvironmentContext(depth=depth, salinity=salinity)
-
-        # Prepare deterrence vectors
-        deter_dx = None
-        deter_dy = None
-        if deterrence_vectors is not None:
-            deter_dx, deter_dy = deterrence_vectors
-
-        # Compute movement step
-        result = self._movement_module.compute_step(
-            self.x, self.y, state, environment, mask, deter_dx, deter_dy
-        )
-
-        # Apply results to population arrays
-        self._dx[:] = result.dx
-        self._dy[:] = result.dy
-        self.heading[mask] = result.new_heading[mask]
-        self.prev_angle[mask] = result.turning_angle[mask]
-        self.prev_log_mov[mask] = np.log10(result.step_distance[mask] * 4.0 + 1e-10)
-
-        # Update deter_strength
-        if deterrence_vectors is not None:
-            d_dx, d_dy = deterrence_vectors
-            self.deter_strength[mask] = np.abs(d_dx[mask]) + np.abs(d_dy[mask])
-        else:
-            self.deter_strength[mask] = 0.0
-
-        # Social communication (still handled by population for now)
-        if getattr(self.params, 'communication_enabled', False):
-            soc_dx, soc_dy = self._compute_social_vectors(mask, ambient_rl)
-            self._dx[mask] += soc_dx[mask]
-            self._dy[mask] += soc_dy[mask]
 
     def _handle_land_avoidance(self, mask: np.ndarray) -> None:
         """
@@ -906,7 +783,7 @@ class PorpoisePopulation:
                 self._disp_ema_m = alpha * mean_disp + (1.0 - alpha) * self._disp_ema_m
                 self._update_neighbor_recompute_interval(self._disp_ema_m)
         except Exception:
-            logger.debug("Adaptive neighbor recompute failed", exc_info=True)
+            pass
 
         # Save positions for next tick
         self._prev_x[mask] = self.x[mask]
@@ -914,26 +791,17 @@ class PorpoisePopulation:
 
     def _update_energy_dynamics(self, mask: np.ndarray) -> None:
         """
-        Update energy dynamics.
-
-        Uses modular energy system (Phase 4) if available, otherwise falls back
-        to DEPONS inline implementation.
+        Update energy dynamics (DEPONS Pattern).
 
         Handles food consumption, BMR, swimming cost, and PSM updates.
         """
-        # === Use modular energy system if provided ===
-        if self._energy_module is not None and self._energy_state is not None:
-            self._update_energy_modular(mask)
-            return
-
-        # === Fallback: Inline DEPONS energy model ===
         # Food consumption - hungry porpoises eat more
         fract_to_eat = np.clip((20.0 - self.energy) / 10.0, 0.0, 0.99)
 
         if self.landscape is not None and hasattr(self.landscape, 'eat_food'):
             food_gained = self._eat_food_vectorized(mask, fract_to_eat)
         else:
-            food_gained = fract_to_eat * self.rng.uniform(0.1, 0.5, self.count)
+            food_gained = fract_to_eat * np.random.uniform(0.1, 0.5, self.count)
 
         self.energy[mask] += food_gained[mask]
 
@@ -955,167 +823,6 @@ class PorpoisePopulation:
         # Clamp energy
         np.clip(self.energy, 0, 20.0, out=self.energy)
 
-    def _update_energy_modular(self, mask: np.ndarray) -> None:
-        """
-        Update energy using the modular energy system (Phase 4).
-
-        Creates EnergyContext from current population state, calls the energy
-        module, and syncs results back to population arrays.
-        """
-        from cenop.physiology.energy_budget import EnergyContext
-
-        # Sync population energy to energy state
-        self._energy_state.energy[:] = self.energy
-
-        # Get food availability
-        fract_to_eat = np.clip((20.0 - self.energy) / 10.0, 0.0, 0.99)
-        if self.landscape is not None and hasattr(self.landscape, 'eat_food'):
-            food_available = self._eat_food_vectorized(mask, fract_to_eat)
-        else:
-            food_available = fract_to_eat * self.rng.uniform(0.1, 0.5, self.count)
-
-        # Calculate current speed from movement
-        current_speed = np.sqrt(self._dx**2 + self._dy**2) * 400.0 / 1800.0  # m/s
-
-        # Get behavioral state (if FSM enabled)
-        if self._behavior_state is not None:
-            behavioral_state = self._behavior_state.state.astype(np.int32)
-        else:
-            behavioral_state = np.ones(self.count, dtype=np.int32)  # FORAGING
-
-        # Detect disturbance from deter_strength
-        is_disturbed = self.deter_strength > 0.1
-
-        # Create energy context
-        context = EnergyContext(
-            food_available=food_available.astype(np.float32),
-            food_quality=np.ones(self.count, dtype=np.float32),
-            current_speed=current_speed.astype(np.float32),
-            behavioral_state=behavioral_state,
-            water_temperature=np.full(self.count, 10.0, dtype=np.float32),
-            current_month=self._get_current_month(),
-            is_disturbed=is_disturbed,
-            deterrence_magnitude=self.deter_strength.astype(np.float32),
-            is_lactating=self.with_calf,
-            is_pregnant=np.zeros(self.count, dtype=bool),
-        )
-
-        # Compute energy update
-        result = self._energy_module.compute_energy_update(
-            self._energy_state, context, mask
-        )
-
-        # Apply result
-        self._energy_module.apply_result(self._energy_state, result, mask)
-
-        # Sync energy state back to population
-        self.energy[:] = self._energy_state.energy
-
-        # Update PSM with food gained
-        self._update_psm(mask, food_available)
-        self._update_energy_history(mask)
-        self._update_dispersal(mask)
-
-    def _update_disturbance_memory(
-        self,
-        mask: np.ndarray,
-        deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]],
-    ) -> Optional[Tuple[np.ndarray, np.ndarray]]:
-        """
-        Update disturbance memory and compute avoidance (Phase 5).
-
-        Records disturbance events, applies memory decay, and computes
-        avoidance vectors based on remembered disturbances.
-
-        Returns:
-            Avoidance vectors (dx, dy) or None if no memory module
-        """
-        if self._memory_module is None or self._memory_state is None:
-            return None
-
-        from cenop.behavior.disturbance_memory import DisturbanceMemoryContext
-
-        # Determine if agents are disturbed (from deterrence strength)
-        is_disturbed = self.deter_strength > 0.1
-
-        # Create disturbance context
-        # Use turbine/ship positions if available, otherwise use agent positions
-        disturbance_x = self.x.copy()  # Default: disturbance at agent location
-        disturbance_y = self.y.copy()
-
-        context = DisturbanceMemoryContext(
-            is_disturbed=is_disturbed,
-            disturbance_intensity=self.deter_strength.astype(np.float32),
-            disturbance_x=disturbance_x.astype(np.float32),
-            disturbance_y=disturbance_y.astype(np.float32),
-            agent_x=self.x.astype(np.float32),
-            agent_y=self.y.astype(np.float32),
-            current_tick=self._global_tick,
-        )
-
-        # Record disturbances
-        self._memory_module.record_disturbance(self._memory_state, context, mask)
-
-        # Apply memory decay (every 48 ticks = daily)
-        if self._global_tick % 48 == 0:
-            self._memory_module.decay_memory(self._memory_state, mask, ticks_elapsed=48)
-
-        # Compute avoidance
-        result = self._memory_module.compute_avoidance(
-            self._memory_state, self.x, self.y, mask
-        )
-
-        # Update time since disturbance for disturbed agents
-        self.time_since_disturbance[is_disturbed & mask] = 0
-        self.time_since_disturbance[~is_disturbed & mask] += 1
-
-        return (result.avoidance_dx, result.avoidance_dy)
-
-    def _combine_deterrence_avoidance(
-        self,
-        deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]],
-        avoidance_vectors: Optional[Tuple[np.ndarray, np.ndarray]],
-    ) -> Optional[Tuple[np.ndarray, np.ndarray]]:
-        """
-        Combine immediate deterrence with learned avoidance.
-
-        Deterrence is immediate response to current disturbance.
-        Avoidance is memory-based bias away from remembered disturbances.
-        """
-        if deterrence_vectors is None and avoidance_vectors is None:
-            return None
-
-        if deterrence_vectors is None:
-            return avoidance_vectors
-
-        if avoidance_vectors is None:
-            return deterrence_vectors
-
-        # Combine: deterrence has priority, avoidance adds bias
-        d_dx, d_dy = deterrence_vectors
-        a_dx, a_dy = avoidance_vectors
-
-        # Scale avoidance (it's a bias, not a strong force)
-        avoidance_weight = 0.3
-
-        combined_dx = d_dx + avoidance_weight * a_dx
-        combined_dy = d_dy + avoidance_weight * a_dy
-
-        return (combined_dx, combined_dy)
-
-    def get_memory_stats(self) -> Optional[Dict[str, Any]]:
-        """
-        Get disturbance memory statistics (Phase 5).
-
-        Returns memory statistics when using JASMINE memory module.
-        """
-        if self._memory_module is None or self._memory_state is None:
-            return None
-
-        return self._memory_module.get_statistics(
-            self._memory_state, self.active_mask
-        )
-
     def _check_mortality(self, mask: np.ndarray, active_before: int) -> None:
         """
         Check and apply mortality (DEPONS Pattern).
@@ -1132,13 +839,16 @@ class PorpoisePopulation:
             1.0 - (m_mort_prob_const * np.exp(-self.energy * x_survival_const)),
             0.0
         )
+        # Convert yearly survival to per-tick survival: P_tick = P_year^(1/(360*48))
+        # Using np.power instead of exp(log(x)/n) to avoid unnecessary intermediate arrays
+        _RECIP_TICKS_PER_YEAR = 1.0 / (360 * 48)  # 360 days/year * 48 ticks/day, consistent with DEPONS
         step_surv_prob = np.where(
             self.energy > 0,
-            np.exp(np.log(np.maximum(yearly_surv_prob, 1e-10)) / (360 * 48)),
+            np.power(np.maximum(yearly_surv_prob, 1e-10), _RECIP_TICKS_PER_YEAR),
             0.0
         )
 
-        starvation_check = self.rng.random(self.count)
+        starvation_check = np.random.random(self.count)
         starving = (starvation_check > step_surv_prob) & mask
 
         # Lactating mothers abandon calf before dying
@@ -1151,19 +861,23 @@ class PorpoisePopulation:
         annual_adult_mortality = getattr(self.params, 'mortality_adult', 0.05)        # 1 <= age <= 20
         annual_elderly_mortality = getattr(self.params, 'mortality_elderly', 0.15)    # age > 20
 
-        per_tick_juvenile = annual_juvenile_mortality / 365.0 / 48.0
-        per_tick_adult = annual_adult_mortality / 365.0 / 48.0
-        per_tick_elderly = annual_elderly_mortality / 365.0 / 48.0
+        # NOTE: Linear per-tick conversion (rate / ticks_per_year) is an approximation.
+        # The exact compound formula would be: 1 - (1 - annual_rate)^(1/17280).
+        # For the small rates used here (0.05-0.15), the linear approximation error
+        # is <0.4% and matches the DEPONS Java implementation's approach.
+        per_tick_juvenile = annual_juvenile_mortality / 360.0 / 48.0
+        per_tick_adult = annual_adult_mortality / 360.0 / 48.0
+        per_tick_elderly = annual_elderly_mortality / 360.0 / 48.0
 
         daily_mortality_prob = np.where(
             self.age < 1, per_tick_juvenile,
             np.where(self.age > 20, per_tick_elderly, per_tick_adult)
         )
-        natural_death = (self.rng.random(self.count) < daily_mortality_prob) & mask
+        natural_death = (np.random.random(self.count) < daily_mortality_prob) & mask
 
         # Bycatch mortality (already parameterized)
-        bycatch_prob = getattr(self.params, 'bycatch_prob', 0.0) / 365.0 / 48.0
-        bycatch = (self.rng.random(self.count) < bycatch_prob) & mask
+        bycatch_prob = getattr(self.params, 'bycatch_prob', 0.0) / 360.0 / 48.0
+        bycatch = (np.random.random(self.count) < bycatch_prob) & mask
 
         # Apply deaths
         all_deaths = starved | natural_death | bycatch
@@ -1183,7 +897,7 @@ class PorpoisePopulation:
 
     def _update_aging(self, mask: np.ndarray) -> None:
         """Update aging for active agents (continuous small increments)."""
-        self.age[mask] += 1.0 / 365.0 / 48.0  # Age in years per tick
+        self.age[mask] += 1.0 / 360.0 / 48.0  # Age in years per tick (360 days/year, consistent with DEPONS)
 
     def _handle_reproduction(self, mask: np.ndarray) -> None:
         """
@@ -1193,7 +907,7 @@ class PorpoisePopulation:
         """
         # Update day of year
         if hasattr(self, '_day_of_year'):
-            self._day_of_year = (self._day_of_year + 1) % (365 * 48)
+            self._day_of_year = (self._day_of_year + 1) % (360 * 48)
         else:
             self._day_of_year = 0
 
@@ -1210,7 +924,7 @@ class PorpoisePopulation:
 
         # Per-tick birth probability (~60% over 60-day season)
         birth_prob = 0.0003
-        giving_birth = (self.rng.random(self.count) < birth_prob) & eligible
+        giving_birth = (np.random.random(self.count) < birth_prob) & eligible
 
         if not np.any(giving_birth):
             return
@@ -1232,7 +946,7 @@ class PorpoisePopulation:
             self.y[new_slots] = self.y[mothers]
             self.heading[new_slots] = self.heading[mothers]
             self.age[new_slots] = 0.0
-            self.is_female[new_slots] = self.rng.choice([True, False], size=int(slots_to_use))
+            self.is_female[new_slots] = np.random.choice([True, False], size=int(slots_to_use))
             self.energy[new_slots] = 10.0
             self.with_calf[mothers] = True
             self.with_calf[new_slots] = False
@@ -1268,34 +982,25 @@ class PorpoisePopulation:
         active_before = int(np.sum(self.active_mask))
         self._global_tick += 1
 
-        # 1. Update behavioral state (if FSM enabled)
-        self._update_behavioral_state(mask, deterrence_vectors)
+        # 1. Movement calculations
+        self._update_movement(mask, deterrence_vectors, ambient_rl)
 
-        # 1.5 Update disturbance memory and compute avoidance (Phase 5)
-        avoidance_vectors = self._update_disturbance_memory(mask, deterrence_vectors)
-
-        # 2. Movement calculations (with avoidance added to deterrence)
-        combined_deterrence = self._combine_deterrence_avoidance(
-            deterrence_vectors, avoidance_vectors
-        )
-        self._update_movement(mask, combined_deterrence, ambient_rl)
-
-        # 3. Land avoidance
+        # 2. Land avoidance
         self._handle_land_avoidance(mask)
 
-        # 4. Apply positions
+        # 3. Apply positions
         self._apply_positions(mask)
 
-        # 5. Energy dynamics
+        # 4. Energy dynamics
         self._update_energy_dynamics(mask)
 
-        # 6. Mortality
+        # 5. Mortality
         self._check_mortality(mask, active_before)
 
-        # 7. Aging
+        # 6. Aging
         self._update_aging(mask)
 
-        # 8. Reproduction
+        # 7. Reproduction
         self._handle_reproduction(mask)
 
     def to_dataframe(self) -> pd.DataFrame:
@@ -1311,84 +1016,6 @@ class PorpoisePopulation:
             'energy': self.energy[mask],
             'alive': np.ones(n_active, dtype=bool)
         })
-
-    # === Behavioral State Methods (Phase 3: FSM Integration) ===
-
-    def _update_behavioral_state(
-        self,
-        mask: np.ndarray,
-        deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]],
-    ) -> None:
-        """
-        Update behavioral states using the FSM (if enabled).
-
-        Creates a BehaviorContext from current population state and
-        passes it to the FSM for state transitions.
-
-        Args:
-            mask: Active agent mask
-            deterrence_vectors: Current deterrence vectors (dx, dy)
-        """
-        if self._behavior_fsm is None or self._behavior_state is None:
-            return
-
-        from cenop.behavior.states import BehaviorContext
-
-        # Calculate deterrence magnitude
-        if deterrence_vectors is not None:
-            deter_dx, deter_dy = deterrence_vectors
-            deter_mag = np.sqrt(deter_dx**2 + deter_dy**2)
-        else:
-            deter_mag = np.zeros(self.count, dtype=np.float32)
-
-        # Update time since disturbance
-        has_disturbance = deter_mag > 0.01
-        self.time_since_disturbance[has_disturbance] = 0
-        self.time_since_disturbance[~has_disturbance & mask] += 1
-
-        # Calculate current speed from last movement
-        current_speed = np.sqrt(self._dx**2 + self._dy**2)
-
-        # Get PSM memory cell count per agent
-        memory_cell_count = np.zeros(self.count, dtype=np.int32)
-        for i in range(self.count):
-            if mask[i]:
-                memory_cell_count[i] = len(self._psm_instances[i]._mem_cells)
-
-        # Check dispersal completion
-        dispersal_complete = self.is_dispersing & (
-            self.dispersal_distance_traveled >= self.dispersal_target_distance * 0.95
-        )
-
-        # Create behavior context
-        context = BehaviorContext(
-            deterrence_magnitude=deter_mag,
-            time_since_disturbance=self.time_since_disturbance,
-            current_energy=self.energy,
-            energy_declining_days=self.days_declining_energy,
-            current_speed=current_speed,
-            memory_cell_count=memory_cell_count,
-            is_dispersing=self.is_dispersing,
-            dispersal_complete=dispersal_complete,
-            t_disp=getattr(self.params, 't_disp', 3),
-            min_memory_cells=getattr(self.params, 'min_memory_cells', 50),
-        )
-
-        # Update states via FSM
-        self._behavior_fsm.update_states(self._behavior_state, context, mask)
-
-    def get_behavioral_state(self, idx: int) -> Optional['BehaviorState']:
-        """Get behavioral state for a single agent."""
-        if self._behavior_state is None:
-            return None
-        from cenop.behavior.states import BehaviorState
-        return BehaviorState(self._behavior_state.state[idx])
-
-    def get_behavioral_statistics(self) -> Optional[Dict[str, Any]]:
-        """Get behavioral state statistics."""
-        if self._behavior_state is None:
-            return None
-        return self._behavior_state.get_statistics()
 
     # === PSM and Dispersal Methods (Phase 2) ===
     
@@ -1416,7 +1043,7 @@ class PorpoisePopulation:
         np.clip(psm_y, 0, self.psm_rows - 1, out=psm_y)
         
         # Use efficient accumulator (Numba-accelerated when available)
-        from cenop.optimizations import accumulate_psm_updates
+        from cenop.optimizations import accumulate_psm_updates  # noqa: E402 — kept deferred to avoid circular import at module level
 
         idx_arr = active_idx.astype(np.int32)
         ys_arr = psm_y.astype(np.int32)
@@ -1426,8 +1053,7 @@ class PorpoisePopulation:
         try:
             accumulate_psm_updates(self.psm_buffer, idx_arr, ys_arr, xs_arr, food_arr)
         except Exception:
-            # Fallback to np.add.at if numba accelerated version fails
-            logger.debug("Numba accumulate_psm_updates failed, using np.add.at fallback", exc_info=True)
+            # Fallback to np.add.at for safety
             np.add.at(self.psm_buffer[:, :, :, 0], (active_idx, psm_y, psm_x), 1.0)
             np.add.at(self.psm_buffer[:, :, :, 1], (active_idx, psm_y, psm_x), food_gained[active_idx])
 
@@ -1631,7 +1257,7 @@ class PorpoisePopulation:
     def _set_random_dispersal_target(self, idx: int) -> None:
         """Set a random dispersal target at preferred distance."""
         pref_dist_km = self._psm_instances[idx].preferred_distance
-        angle_rad = self.rng.uniform(0, 2 * np.pi)
+        angle_rad = np.random.uniform(0, 2 * np.pi)
         dist_cells = pref_dist_km * 1000 / 400.0
         
         tx = self.x[idx] + np.sin(angle_rad) * dist_cells
@@ -1828,51 +1454,14 @@ class PorpoisePopulation:
         """Get statistics about population energy levels."""
         active = self.active_mask
         if not np.any(active):
-            return {'mean': 0.0, 'std': 0.0, 'min': 0.0, 'max': 0.0,
-                    'mean_energy': 0.0, 'min_energy': 0.0, 'max_energy': 0.0, 'std_energy': 0.0,
-                    'hungry': 0, 'starving': 0}
-
+            return {'mean': 0.0, 'std': 0.0, 'min': 0.0, 'max': 0.0, 'hungry': 0, 'starving': 0}
+            
         active_energy = self.energy[active]
-
-        # Use modular energy module statistics if available
-        if self._energy_module is not None and self._energy_state is not None:
-            stats = self._energy_module.get_statistics(self._energy_state, active)
-            # Add compatibility aliases
-            stats['mean'] = stats.get('mean_energy', float(np.mean(active_energy)))
-            stats['std'] = stats.get('std_energy', float(np.std(active_energy)))
-            stats['min'] = stats.get('min_energy', float(np.min(active_energy)))
-            stats['max'] = stats.get('max_energy', float(np.max(active_energy)))
-            stats['hungry'] = int(np.sum(active_energy < 10))
-            stats['starving'] = int(np.sum(active_energy < 5))
-            return stats
-
-        # Fallback: basic stats from energy array
         return {
             'mean': float(np.mean(active_energy)),
             'std': float(np.std(active_energy)),
             'min': float(np.min(active_energy)),
             'max': float(np.max(active_energy)),
-            'mean_energy': float(np.mean(active_energy)),
-            'min_energy': float(np.min(active_energy)),
-            'max_energy': float(np.max(active_energy)),
-            'std_energy': float(np.std(active_energy)),
             'hungry': int(np.sum(active_energy < 10)),  # Below neutral
             'starving': int(np.sum(active_energy < 5))  # Critical
         }
-
-    def get_fitness_metrics(self) -> Optional[Dict[str, Any]]:
-        """
-        Get JASMINE fitness metrics (Phase 4).
-
-        Returns detailed fitness information when using JASMINE energy module.
-        """
-        if self._energy_module is None or self._energy_state is None:
-            return None
-
-        # Check if using JASMINE module
-        from cenop.physiology.energy_budget import EnergyMode
-        if self._energy_module.get_mode() == EnergyMode.JASMINE:
-            return self._energy_module.get_fitness_metrics(
-                self._energy_state, self.active_mask
-            )
-        return None

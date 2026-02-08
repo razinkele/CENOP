@@ -429,3 +429,22 @@ def calculate_deterrence_vector(
         strength * dx * deter_coeff,
         strength * dy * deter_coeff
     )
+
+
+# Backwards compatibility helper ------------------------------------------------
+
+def combine_rls(rl_arrays: list | np.ndarray) -> np.ndarray:
+    """Combine multiple received-level arrays into a single received level per
+    porpoise. Uses the maximum (dominant) received level in dB across sources.
+
+    Args:
+        rl_arrays: Iterable of 1-D arrays (shape: (N,)) or a 2-D array (n_sources, N)
+
+    Returns:
+        1-D array (N,) with combined received levels (dB)
+    """
+    arr = np.asarray(rl_arrays)
+    if arr.ndim == 1:
+        return arr.copy()
+    # If shape (n_sources, N) take max across sources
+    return np.max(arr, axis=0)

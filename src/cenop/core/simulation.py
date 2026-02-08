@@ -91,7 +91,9 @@ class Simulation:
         self,
         params: SimulationParameters,
         cell_data: Optional[CellData] = None,
-        seed: Optional[int] = None
+        seed: Optional[int] = None,
+        movement_module: Optional[Any] = None,
+        time_manager: Optional[Any] = None,
     ):
         """
         Initialize the simulation.
@@ -100,6 +102,8 @@ class Simulation:
             params: Simulation parameters configuration
             cell_data: Pre-loaded landscape data (optional)
             seed: Random seed for reproducibility
+            movement_module: Optional pluggable movement module for modular tests
+            time_manager: Optional TimeManager instance (for advanced time control)
         """
         self.params = params
         self.state = SimulationState()
@@ -109,6 +113,16 @@ class Simulation:
         if actual_seed is not None:
             np.random.seed(actual_seed)
         self._seed = actual_seed
+
+        # Time manager: use provided or instantiate default DEPONS TimeManager
+        if time_manager is not None:
+            self.time_manager = time_manager
+        else:
+            from cenop.core.time_manager import TimeManager, TimeMode
+            self.time_manager = TimeManager(mode=TimeMode.DEPONS, base_seed=(self._seed or 42), sim_years=params.sim_years)
+
+        # Movement module (pluggable for modular tests)
+        self.movement_module = movement_module
         
         # Initialize components (lazy loading or pre-provided)
         self._cell_data: Optional[CellData] = cell_data

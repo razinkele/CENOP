@@ -126,6 +126,11 @@ class PorpoisePopulation:
         # Initialize
         self._initialize_population()
 
+        # Random generator for reproducibility (per-instance)
+        # Use SimulationParameters.random_seed when available
+        seed = getattr(self.params, 'random_seed', None)
+        self.rng = np.random.default_rng(seed)
+
         # Instrumentation controls: set via params.debug_instrumentation or env var CENOP_INSTRUMENT
         self._debug_instrumentation = bool(getattr(self.params, 'debug_instrumentation', False) or os.getenv('CENOP_INSTRUMENT', '0').lower() in ('1','true','yes'))
         self._instrument_events: list = []

@@ -12,6 +12,7 @@ from .tabs.settings import settings_tab
 from .tabs.population import population_tab
 from .tabs.disturbance import disturbance_tab
 from .tabs.export import export_tab
+from .tabs.about import about_tab
 
 
 # Custom CSS for styling
@@ -70,10 +71,16 @@ def create_help_modal():
         ui.div(
             ui.HTML("""
 <div class="help-content">
-    <h2>📖 CENOP User Manual</h2>
-    <p><strong>CENOP</strong> (CETacean Noise-Population Model) is a Python translation of the DEPONS 3.0 model 
-    for simulating how harbour porpoise population dynamics are affected by disturbances from offshore 
-    wind farm construction and ship noise.</p>
+    <h2>📖 CENOP User Manual (DEPONS & JASMINE)</h2>
+    <p><strong>CENOP</strong> (CETacean Noise-Population Model) is a Python agent-based model for simulating 
+    harbour porpoise population dynamics under anthropogenic noise disturbance.</p>
+    <p>It integrates two modelling frameworks:</p>
+    <ul>
+        <li><strong>DEPONS</strong> (Disturbance Effects on the harbour Porpoise population in the North Sea) — 
+            regulatory-grade, fixed-timestep model with empirically-calibrated Correlated Random Walk (CRW).</li>
+        <li><strong>JASMINE</strong> (Joint Agent Simulations of Marine Interactions with Noise and the Environment) — 
+            flexible-timestep, physics-based movement with symplectic integration and environmental advection.</li>
+    </ul>
     
     <h2>🚀 Quick Start</h2>
     <ol>
@@ -86,6 +93,15 @@ def create_help_modal():
         <li><strong>Click "Run Simulation"</strong> - Start the simulation</li>
         <li><strong>Adjust Speed & Update Frequency</strong> - Use sliders to control visualization</li>
     </ol>
+
+    <h2>⚙️ Simulation Modes</h2>
+    <p>CENOP supports different movement and timing regimes:</p>
+    <ul>
+        <li><strong>DEPONS Mode</strong>: Standard 30-minute time steps. Movement is driven by behavioral states and 
+        statistical distributions (CRW) calibrated to observed telemetry data. Optimized for regulatory impact assessment.</li>
+        <li><strong>JASMINE Mode</strong>: Flexible sub-stepping. Movement is physics-based (velocity, acceleration, drag) 
+        and allows for finer temporal resolution during critical events like deterrence.</li>
+    </ul>
     
     <h2>🗺️ Landscapes</h2>
     <table class="param-table">
@@ -142,14 +158,14 @@ def create_help_modal():
     <h3>Basic Tab</h3>
     <table class="param-table">
         <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
-        <tr><td>Random Seed</td><td>0 (auto)</td><td>Seed for reproducibility (0 = random each run)</td></tr>
+        <tr><td>Random Seed</td><td>0 (auto)</td><td>Seed for reproducibility using <code>np.random.Generator</code> (0 = random each run)</td></tr>
         <tr><td>Tracked Porpoises</td><td>1</td><td>Number of individuals to track in detail</td></tr>
         <tr><td>Ship Traffic</td><td>Off</td><td>Enable/disable vessel noise disturbance</td></tr>
         <tr><td>Bycatch Probability</td><td>0.0</td><td>Annual probability of fishing net mortality</td></tr>
     </table>
     
     <h3>Movement Tab (CRW Parameters)</h3>
-    <p>Correlated Random Walk parameters controlling fine-scale movement:</p>
+    <p>Correlated Random Walk parameters controlling fine-scale movement (DEPONS mode):</p>
     <table class="param-table">
         <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
         <tr><td>k (Inertia)</td><td>0.001</td><td>Directional persistence - higher = straighter paths</td></tr>
@@ -221,15 +237,11 @@ def create_help_modal():
     </ul>
     
     <h2>🔬 Scientific Background</h2>
-    <p>CENOP is based on the DEPONS 3.0 model (Nabe-Nielsen et al., 2018). Key features:</p>
+    <p>CENOP implements a hybrid architecture combining:</p>
     <ul>
-        <li><strong>Agent-based</strong> - Each porpoise is an individual with its own state</li>
-        <li><strong>Spatially explicit</strong> - 400m × 400m grid cells (or 1km for CentralBaltic)</li>
-        <li><strong>30-minute time steps</strong> - 48 ticks per day, 17,280 ticks per year</li>
-        <li><strong>Mechanistic</strong> - Population dynamics emerge from individual behavior</li>
-        <li><strong>Energy-based mortality</strong> - Survival depends on energy reserves</li>
-        <li><strong>Persistent Spatial Memory</strong> - Porpoises remember good foraging areas</li>
-        <li><strong>Deterrence response</strong> - Avoidance of noise above 158 dB threshold</li>
+        <li><strong>DEPONS 3.0</strong> (Nabe-Nielsen et al., 2018) - Mechanistic, individual-based structure with energy budget and memory.</li>
+        <li><strong>Structure-of-Arrays (SoA)</strong> - Vectorized NumPy implementation for high performance (up to 100x faster than object-based agents).</li>
+        <li><strong>JASMINE Physics</strong> - Option for continuous physics-based movement (velocity, acceleration, drag) instead of discrete CRW steps.</li>
     </ul>
     
     <h3>Energy Model</h3>
@@ -254,9 +266,9 @@ def create_help_modal():
     </ul>
     
     <h2>📧 Contact</h2>
-    <p>For questions and support, contact the AI4WIND project team.</p>
+    <p>For questions and support, contact the project maintainers via the GitHub repository.</p>
     
-    <p class="text-muted small mt-4">CENOP Version 1.0 • Python Shiny Implementation • 2024-2026</p>
+    <p class="text-muted small mt-4">CENOP-JASMINE Integration • SoA Vectorized Implementation • 2024-2026</p>
 </div>
             """),
             style="max-height: 70vh; overflow-y: auto; padding: 20px;"
@@ -282,6 +294,7 @@ def create_app_ui():
         population_tab(),
         disturbance_tab(),
         export_tab(),
+        about_tab(),
         # Add help button to the navbar
         ui.nav_spacer(),
         ui.nav_control(

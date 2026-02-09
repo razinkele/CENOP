@@ -1965,119 +1965,83 @@ def server(input, output, session):
         the scatter layer is updated via deckgl.setProps().
         """
         import json
-        
-        map_counter = state.map_update_counter()  # Depend on counter for updates
-        sim = state.simulation()
-        
-        # Get landscape-specific bounds
-        from ..ui.sidebar import LANDSCAPE_BOUNDS
-        landscape_name = state.landscape_loaded_name() if state.landscape_loaded_name() else input.landscape()
-        bounds = LANDSCAPE_BOUNDS.get(landscape_name, (53.27, 54.79, 4.83, 7.13))
-        lat_min, lat_max, lon_min, lon_max = bounds
-        
-        points_data = []
-        
-        if sim is not None:
-            # Use new DataFrame access for performance (Vectorized Phase 3)
-            if hasattr(sim, 'agents_df'):
-                df = sim.agents_df
-                if not df.empty:
-                    # Limit to 1000 for plotting performance
-                    df_plot = df.head(1000)
-                    
-                    # Get actual grid dimensions from landscape (via cell_data property)
-                    if hasattr(sim, 'cell_data') and sim.cell_data is not None:
-                        world_width = sim.cell_data.width
-                        world_height = sim.cell_data.height
-                    elif hasattr(sim, '_cell_data') and sim._cell_data is not None:
-                        world_width = sim._cell_data.width
-                        world_height = sim._cell_data.height
-                    else:
-                        world_width = getattr(sim.params, 'world_width', 400)
-                        world_height = getattr(sim.params, 'world_height', 400)
-                    
-                    # Vectorized coordinate conversion
-                    # DEPONS convention: y=0 is SOUTH (low lat), y=max is NORTH (high lat)
-                    # So: lat = lat_min + (y/height) * range
-                    lats = lat_min + (df_plot['y'] / world_height) * (lat_max - lat_min)
-                    lons = lon_min + (df_plot['x'] / world_width) * (lon_max - lon_min)
-                    
-                    # Debug: show porpoise grid and latlon ranges (only first time)
-                    if map_counter <= 1:
-                        print(f"[DEBUG] Porpoise grid: x=[{df_plot['x'].min():.1f}-{df_plot['x'].max():.1f}], y=[{df_plot['y'].min():.1f}-{df_plot['y'].max():.1f}]")
-                        print(f"[DEBUG] Porpoise latlon: lat=[{lats.min():.4f}-{lats.max():.4f}], lon=[{lons.min():.4f}-{lons.max():.4f}]")
-                        print(f"[DEBUG] World size: {world_width}x{world_height}, lat bounds: {lat_min}-{lat_max}, lon bounds: {lon_min}-{lon_max}")
 
-                    # Debug: log depth statistics to verify land-avoidance (every 50 updates)
-                    if 'depth' in df_plot.columns and map_counter % 50 == 1:
-                        depths = df_plot['depth']
-                        on_land_count = (depths < 1.0).sum()  # min_depth = 1.0m
-                        print(f"[DEBUG] Porpoise depths: min={depths.min():.1f}m, max={depths.max():.1f}m, "
-                              f"mean={depths.mean():.1f}m, ON_LAND={on_land_count}/{len(depths)}")
-                    
-                    for i, (lat, lon) in enumerate(zip(lats, lons)):
-                        row = df_plot.iloc[i]
-                        age = int(row.get('age', 0)) if 'age' in row.index else int(row['age']) if 'age' in row else 0
-                        is_disturbed = bool(row.get('is_disturbed', False)) if 'is_disturbed' in row.index else False
-                        depth_val = float(row.get('depth', 20.0)) if 'depth' in row.index else 20.0
-                        points_data.append({
-                            "position": [float(lon), float(lat)],
-                            "radius": 400,
-                            "age": age,
-                            "heading": float(row.get('heading', 0.0)) if 'heading' in row.index else float(row['heading']) if 'heading' in row else 0.0,
-                            "energy": float(row.get('energy', 0.0)) if 'energy' in row.index else float(row['energy']) if 'energy' in row else 0.0,
-                            "is_disturbed": is_disturbed,
-                            "behavioral_state": int(row.get('behavioral_state', 1)) if 'behavioral_state' in row.index else int(row['behavioral_state']) if 'behavioral_state' in row else 1,
-                            "depth": depth_val,
-                        })
-            elif hasattr(sim, '_porpoises') and sim._porpoises:
-                # Fallback for legacy
-                if hasattr(sim, 'cell_data') and sim.cell_data is not None:
-                    world_width = sim.cell_data.width
-                    world_height = sim.cell_data.height
-                elif hasattr(sim, '_cell_data') and sim._cell_data is not None:
-                    world_width = sim._cell_data.width
-                    world_height = sim._cell_data.height
-                else:
-                    world_width = getattr(sim.params, 'world_width', 400)
-                    world_height = getattr(sim.params, 'world_height', 400)
-                
-                for p in sim._porpoises[:1000]:
-                    if hasattr(p, 'alive') and p.alive:
-                        # DEPONS convention: y=0 is SOUTH (low lat)
-                        lat = lat_min + (p.y / world_height) * (lat_max - lat_min)
-                        lon = lon_min + (p.x / world_width) * (lon_max - lon_min)
-                        age = getattr(p, 'age', 0)
-                        is_disturbed = (getattr(p, 'deter_strength', 0.0) > 0.1)
-                        points_data.append({
-                            "position": [lon, lat],
-                            "radius": 400,
-                            "age": age,
-                            "heading": getattr(p, 'heading', 0.0),
-                            "energy": getattr(p, 'energy', 0.0),
-                            "is_disturbed": is_disturbed,
-                            "behavioral_state": getattr(p, 'behavioral_state', 1),
-                        })
-        
-        points_json = json.dumps(points_data)
-        
-        # Return a script that sends data to the iframe via postMessage
-        # This is the DEPONS pattern - update only the overlay, not the whole map
-        js_code = f'''
-        <script>
-            (function() {{
-                var iframe = document.getElementById('porpoise-map-frame');
-                if (iframe && iframe.contentWindow) {{
-                    var data = {points_json};
-                    iframe.contentWindow.postMessage({{
-                        type: 'updatePorpoises',
-                        data: data
-                    }}, '*');
-                }}
-            }})();
-        </script>
-        '''
-        return ui.HTML(js_code)
+        try:
+            map_counter = state.map_update_counter()
+            sim = state.simulation()
+
+            from ..ui.sidebar import LANDSCAPE_BOUNDS
+            landscape_name = state.landscape_loaded_name() or input.landscape()
+            bounds = LANDSCAPE_BOUNDS.get(landscape_name, (53.27, 54.79, 4.83, 7.13))
+            lat_min, lat_max, lon_min, lon_max = bounds
+
+            points_data = []
+
+            if sim is not None:
+                # Helper to get world dimensions
+                def _world_dims():
+                    if hasattr(sim, 'cell_data') and sim.cell_data is not None:
+                        return sim.cell_data.width, sim.cell_data.height
+                    if hasattr(sim, '_cell_data') and sim._cell_data is not None:
+                        return sim._cell_data.width, sim._cell_data.height
+                    return getattr(sim.params, 'world_width', 400), getattr(sim.params, 'world_height', 400)
+
+                if hasattr(sim, 'agents_df'):
+                    df = sim.agents_df
+                    if not df.empty:
+                        df_plot = df.head(1000)
+                        world_width, world_height = _world_dims()
+
+                        lats = lat_min + (df_plot['y'] / world_height) * (lat_max - lat_min)
+                        lons = lon_min + (df_plot['x'] / world_width) * (lon_max - lon_min)
+
+                        cols = set(df_plot.columns)
+                        for i, (lat, lon) in enumerate(zip(lats, lons)):
+                            row = df_plot.iloc[i]
+                            points_data.append({
+                                "position": [float(lon), float(lat)],
+                                "radius": 400,
+                                "age": int(row['age']) if 'age' in cols else 0,
+                                "heading": float(row['heading']) if 'heading' in cols else 0.0,
+                                "energy": float(row['energy']) if 'energy' in cols else 0.0,
+                                "is_disturbed": bool(row['is_disturbed']) if 'is_disturbed' in cols else False,
+                                "behavioral_state": int(row['behavioral_state']) if 'behavioral_state' in cols else 1,
+                                "depth": float(row['depth']) if 'depth' in cols else 20.0,
+                            })
+                elif hasattr(sim, '_porpoises') and sim._porpoises:
+                    world_width, world_height = _world_dims()
+                    for p in sim._porpoises[:1000]:
+                        if hasattr(p, 'alive') and p.alive:
+                            lat = lat_min + (p.y / world_height) * (lat_max - lat_min)
+                            lon = lon_min + (p.x / world_width) * (lon_max - lon_min)
+                            points_data.append({
+                                "position": [lon, lat],
+                                "radius": 400,
+                                "age": getattr(p, 'age', 0),
+                                "heading": getattr(p, 'heading', 0.0),
+                                "energy": getattr(p, 'energy', 0.0),
+                                "is_disturbed": (getattr(p, 'deter_strength', 0.0) > 0.1),
+                                "behavioral_state": getattr(p, 'behavioral_state', 1),
+                            })
+
+            points_json = json.dumps(points_data)
+            js_code = f'''
+            <script>
+                (function() {{
+                    var iframe = document.getElementById('porpoise-map-frame');
+                    if (iframe && iframe.contentWindow) {{
+                        iframe.contentWindow.postMessage({{
+                            type: 'updatePorpoises',
+                            data: {points_json}
+                        }}, '*');
+                    }}
+                }})();
+            </script>
+            '''
+            return ui.HTML(js_code)
+        except Exception as e:
+            logger.error("porpoise_data_updater error: %s", e, exc_info=True)
+            return ui.div()
     
     # =========================================================================
     # Population Tab Renderers
@@ -2086,137 +2050,132 @@ def server(input, output, session):
     @render.ui
     def age_histogram():
         """Age distribution histogram."""
-        # React to population history to update during simulation
-        _ = state.population_history()
-        
-        sim = state.simulation()
-        if sim is None:
-            return no_data_placeholder("Run simulation to see age distribution.")
-        
-        # Use population_manager directly for vectorized access
-        if hasattr(sim, 'population_manager'):
-            pm = sim.population_manager
-            if hasattr(pm, 'age') and hasattr(pm, 'active_mask'):
-                active = pm.active_mask
-                if np.any(active):
-                    ages = pm.age[active].tolist()
-                else:
-                    return no_data_placeholder("No active porpoises.")
-            else:
+        try:
+            _ = state.population_history()
+            sim = state.simulation()
+            if sim is None:
+                return no_data_placeholder("Run simulation to see age distribution.")
+
+            ages = []
+            if hasattr(sim, 'population_manager') and sim.population_manager is not None:
+                pm = sim.population_manager
+                if hasattr(pm, 'age') and hasattr(pm, 'active_mask'):
+                    active = pm.active_mask
+                    if np.any(active):
+                        ages = pm.age[active].tolist()
+            elif hasattr(sim, 'agents_df'):
+                df = sim.agents_df
+                if not df.empty and 'age' in df.columns:
+                    ages = df['age'].tolist()
+
+            if not ages:
                 return no_data_placeholder("No age data available.")
-        elif hasattr(sim, 'agents_df'):
-            df = sim.agents_df
-            if df.empty:
-                return no_data_placeholder("No age data.")
-            ages = df['age'].tolist()
-        else:
-            agents_list = list(sim.agents) if sim.agents else []
-            ages = [a.age for a in agents_list if hasattr(a, 'age')]
-        
-        if not ages:
-            return no_data_placeholder("No age data.")
-        
-        return create_histogram_chart(
-            data=ages,
-            title='Porpoise Age Distribution',
-            x_title='Age (years)',
-            y_title='Count',
-            x_range=(0, 30),
-            nbins=30,
-            color='red',
-            height=300
-        )
+
+            return create_histogram_chart(
+                data=ages,
+                title='Porpoise Age Distribution',
+                x_title='Age (years)',
+                y_title='Count',
+                x_range=(0, 30),
+                nbins=30,
+                color='red',
+                height=300
+            )
+        except Exception as e:
+            logger.error("age_histogram error: %s", e, exc_info=True)
+            return no_data_placeholder("Error rendering age histogram.")
     
     @render.ui
     def energy_histogram():
         """Energy level histogram."""
-        # React to population history to update during simulation
-        _ = state.population_history()
-        
-        sim = state.simulation()
-        if sim is None:
-            return no_data_placeholder("Run simulation to see energy distribution.")
-        
-        # Use population_manager directly for vectorized access
-        if hasattr(sim, 'population_manager'):
-            pm = sim.population_manager
-            if hasattr(pm, 'energy') and hasattr(pm, 'active_mask'):
-                active = pm.active_mask
-                if np.any(active):
-                    energies = pm.energy[active].tolist()
-                else:
-                    return no_data_placeholder("No active porpoises.")
-            else:
+        try:
+            _ = state.population_history()
+            sim = state.simulation()
+            if sim is None:
+                return no_data_placeholder("Run simulation to see energy distribution.")
+
+            energies = []
+            if hasattr(sim, 'population_manager') and sim.population_manager is not None:
+                pm = sim.population_manager
+                if hasattr(pm, 'energy') and hasattr(pm, 'active_mask'):
+                    active = pm.active_mask
+                    if np.any(active):
+                        energies = pm.energy[active].tolist()
+            elif hasattr(sim, 'agents_df'):
+                df = sim.agents_df
+                if not df.empty and 'energy' in df.columns:
+                    energies = df['energy'].tolist()
+
+            if not energies:
                 return no_data_placeholder("No energy data available.")
-        elif hasattr(sim, 'agents_df'):
-            df = sim.agents_df
-            if df.empty:
-                return no_data_placeholder("No energy data.")
-            energies = df['energy'].tolist()
-        else:
-            agents_list = list(sim.agents) if sim.agents else []
-            energies = [getattr(a, 'energy_level', 0) for a in agents_list]
-        
-        if not energies:
-            return no_data_placeholder("No energy data.")
-        
-        return create_histogram_chart(
-            data=energies,
-            title='Energy Level Distribution',
-            x_title='Energy',
-            y_title='Porpoise Count',
-            x_range=(0, 20),
-            nbins=20,
-            color='red',
-            height=300
-        )
+
+            return create_histogram_chart(
+                data=energies,
+                title='Energy Level Distribution',
+                x_title='Energy',
+                y_title='Porpoise Count',
+                x_range=(0, 20),
+                nbins=20,
+                color='red',
+                height=300
+            )
+        except Exception as e:
+            logger.error("energy_histogram error: %s", e, exc_info=True)
+            return no_data_placeholder("Error rendering energy histogram.")
     
     @render.ui
     def landscape_energy_plot():
         """Landscape energy level over time - uses avg porpoise energy as proxy."""
-        history = state.energy_history()
-        if not history:
-            return no_data_placeholder("Run simulation to see energy trends.")
-        
-        df = pd.DataFrame(history)
-        # Use avg_food_eaten as landscape energy proxy
-        if 'avg_food_eaten' not in df.columns:
-            return no_data_placeholder("No landscape energy data.")
-        
-        return create_time_series_chart(
-            df=df,
-            x_col='day',
-            y_cols=['avg_food_eaten'],
-            colors=['blue'],
-            names=['Avg Porpoise Energy'],
-            title='Average Porpoise Energy Level',
-            x_title='Day',
-            y_title='Energy',
-            height=300
-        )
+        try:
+            history = state.energy_history()
+            if not history:
+                return no_data_placeholder("Run simulation to see energy trends.")
+
+            df = pd.DataFrame(history)
+            if 'avg_food_eaten' not in df.columns:
+                return no_data_placeholder("No landscape energy data.")
+
+            return create_time_series_chart(
+                df=df,
+                x_col='day',
+                y_cols=['avg_food_eaten'],
+                colors=['blue'],
+                names=['Avg Porpoise Energy'],
+                title='Average Porpoise Energy Level',
+                x_title='Day',
+                y_title='Energy',
+                height=300
+            )
+        except Exception as e:
+            logger.error("landscape_energy_plot error: %s", e, exc_info=True)
+            return no_data_placeholder("Error rendering energy data.")
     
     @render.ui
     def movement_plot():
         """Average porpoise movement chart - uses dispersal data."""
-        history = state.dispersal_history()
-        if not history:
-            return no_data_placeholder("Run simulation to see movement data.")
-        
-        df = pd.DataFrame(history)
-        if 'dispersing_count' not in df.columns:
-            return no_data_placeholder("No movement data available.")
-        
-        return create_time_series_chart(
-            df=df,
-            x_col='day',
-            y_cols=['dispersing_count'],
-            colors=['blue'],
-            names=['Dispersing Porpoises'],
-            title='Porpoise Dispersal Activity',
-            x_title='Day',
-            y_title='Count',
-            height=300
-        )
+        try:
+            history = state.dispersal_history()
+            if not history:
+                return no_data_placeholder("Run simulation to see movement data.")
+
+            df = pd.DataFrame(history)
+            if 'dispersing_count' not in df.columns:
+                return no_data_placeholder("No movement data available.")
+
+            return create_time_series_chart(
+                df=df,
+                x_col='day',
+                y_cols=['dispersing_count'],
+                colors=['blue'],
+                names=['Dispersing Porpoises'],
+                title='Porpoise Dispersal Activity',
+                x_title='Day',
+                y_title='Count',
+                height=300
+            )
+        except Exception as e:
+            logger.error("movement_plot error: %s", e, exc_info=True)
+            return no_data_placeholder("Error rendering movement data.")
     
     @render.data_frame
     def vital_stats_table():
@@ -2254,83 +2213,138 @@ def server(input, output, session):
     @render.ui
     def dispersal_plot():
         """Porpoise Dispersal chart."""
-        history = state.dispersal_history()
-        if not history:
-            return no_data_placeholder("No dispersal data yet. Run simulation to see results.")
-        
-        df = pd.DataFrame(history)
-        # Use actual columns from dispersal_entry
-        return create_time_series_chart(
-            df=df,
-            x_col='day',
-            y_cols=['dispersing_count', 'max_declining_days'],
-            colors=['blue', 'orange'],
-            names=['Dispersing Porpoises', 'Max Declining Days'],
-            title='Porpoise Dispersal Behavior',
-            x_title='Day',
-            y_title='Count',
-            height=350
-        )
+        try:
+            history = state.dispersal_history()
+            if not history:
+                return no_data_placeholder("No dispersal data yet. Run simulation to see results.")
+
+            df = pd.DataFrame(history)
+            return create_time_series_chart(
+                df=df,
+                x_col='day',
+                y_cols=['dispersing_count', 'max_declining_days'],
+                colors=['blue', 'orange'],
+                names=['Dispersing Porpoises', 'Max Declining Days'],
+                title='Porpoise Dispersal Behavior',
+                x_title='Day',
+                y_title='Count',
+                height=350
+            )
+        except Exception as e:
+            logger.error("dispersal_plot error: %s", e, exc_info=True)
+            return no_data_placeholder("Error rendering dispersal data.")
     
     @render.ui
     def deterrence_plot():
         """Deterrence events display."""
-        # Use population history which includes deterred_count
-        history = state.population_history()
-        if not history:
-            return no_data_placeholder("Deterrence data will appear when simulation runs with turbines/ships.")
-        
-        # Extract deterred counts from history
-        deterred_data = [{'day': h['day'], 'deterred': h.get('deterred_count', 0)} for h in history]
-        df = pd.DataFrame(deterred_data)
-        
-        # Check if any deterrence occurred
-        if df['deterred'].sum() == 0:
-            return no_data_placeholder("No deterrence events detected. Enable turbines or ships.")
-        
-        return create_time_series_chart(
-            df=df,
-            x_col='day',
-            y_cols=['deterred'],
-            colors=['red'],
-            names=['Deterred Porpoises'],
-            title='Deterrence Events Over Time',
-            x_title='Day',
-            y_title='# Deterred',
-            height=350
-        )
+        try:
+            history = state.population_history()
+            if not history:
+                return no_data_placeholder("Deterrence data will appear when simulation runs with turbines/ships.")
+
+            deterred_data = [{'day': h['day'], 'deterred': h.get('deterred_count', 0)} for h in history]
+            df = pd.DataFrame(deterred_data)
+
+            if df['deterred'].sum() == 0:
+                return no_data_placeholder("No deterrence events detected. Enable turbines or ships.")
+
+            return create_time_series_chart(
+                df=df,
+                x_col='day',
+                y_cols=['deterred'],
+                colors=['red'],
+                names=['Deterred Porpoises'],
+                title='Deterrence Events Over Time',
+                x_title='Day',
+                y_title='# Deterred',
+                height=350
+            )
+        except Exception as e:
+            logger.error("deterrence_plot error: %s", e, exc_info=True)
+            return no_data_placeholder("Error rendering deterrence data.")
     
     @render.ui
     def noise_map():
-        """Noise exposure chart showing deterrence/noise events over time."""
-        history = state.population_history()
-        if not history:
-            return no_data_placeholder("Noise data will appear when simulation runs with turbines or ships.")
-
-        # Build noise exposure timeline from deterrence counts
-        data = [{'day': h['day'], 'deterred': h.get('deterred_count', 0)} for h in history]
-        df = pd.DataFrame(data)
-
-        if df['deterred'].sum() == 0:
-            # Check if turbines are loaded but haven't started constructing yet
+        """Noise model info and exposure chart."""
+        try:
+            sim = state.simulation()
             loaded = state.turbine_loaded_name()
-            if loaded and loaded != "off":
-                return no_data_placeholder(
-                    f"Turbines '{loaded}' loaded. Noise events will appear when pile-driving begins."
-                )
-            return no_data_placeholder("No noise sources active. Load turbines or enable ships.")
+            history = state.population_history()
 
-        return create_time_series_chart(
-            df=df,
-            x_col='day',
-            y_cols=['deterred'],
-            colors=['#e74c3c'],
-            names=['Porpoises Exposed to Noise'],
-            title='Noise Exposure Over Time',
-            x_title='Day',
-            y_title='# Exposed',
-            height=300
-        )
+            # --- Noise Model Parameters ---
+            if sim is not None:
+                p = sim.params
+            else:
+                p = None
+
+            beta = getattr(p, 'beta_hat', 20.0) if p else 20.0
+            alpha = getattr(p, 'alpha_hat', 0.0) if p else 0.0
+            threshold = getattr(p, 'deter_threshold', 158.0) if p else 158.0
+            coeff = getattr(p, 'deter_coeff', 0.07) if p else 0.07
+            max_dist = getattr(p, 'deter_max_distance', 50.0) if p else 50.0
+
+            # --- Turbine Info ---
+            turbine_info = ""
+            if sim is not None and hasattr(sim, '_turbine_manager'):
+                tm = sim._turbine_manager
+                n_total = len(tm.turbines)
+                if n_total > 0:
+                    impacts = [t.impact for t in tm.turbines]
+                    sl_min, sl_max = min(impacts), max(impacts)
+                    # Deterrence radius at threshold
+                    radius_m = 10 ** ((sl_max - threshold) / beta) if beta > 0 else 0
+                    sl_str = f"{sl_min:.0f}" if sl_min == sl_max else f"{sl_min:.0f}-{sl_max:.0f}"
+                    turbine_info = (
+                        f'<tr><td style="padding:2px 8px;"><b>Turbines</b></td>'
+                        f'<td style="padding:2px 8px;">{n_total} ({loaded})</td></tr>'
+                        f'<tr><td style="padding:2px 8px;"><b>Source Level (SL)</b></td>'
+                        f'<td style="padding:2px 8px;">{sl_str} dB re 1\u00b5Pa @ 1m</td></tr>'
+                        f'<tr><td style="padding:2px 8px;"><b>Deterrence Radius</b></td>'
+                        f'<td style="padding:2px 8px;">{radius_m/1000:.1f} km (where RL = {threshold:.0f} dB)</td></tr>'
+                    )
+            elif loaded and loaded != "off":
+                turbine_info = (
+                    f'<tr><td style="padding:2px 8px;"><b>Scenario</b></td>'
+                    f'<td style="padding:2px 8px;">{loaded} (not yet simulated)</td></tr>'
+                )
+
+            model_html = f'''
+            <div style="font-size:0.8rem; margin-bottom:8px;">
+            <b>DEPONS Noise Propagation Model</b><br>
+            <span style="font-family:monospace;">TL = \u03b2\u00b7log\u2081\u2080(r) + \u03b1\u00b7r &nbsp;&nbsp; RL = SL \u2212 TL</span>
+            <table style="margin-top:4px; font-size:0.78rem;">
+            <tr><td style="padding:2px 8px;"><b>Spreading (\u03b2)</b></td><td style="padding:2px 8px;">{beta}</td></tr>
+            <tr><td style="padding:2px 8px;"><b>Absorption (\u03b1)</b></td><td style="padding:2px 8px;">{alpha}</td></tr>
+            <tr><td style="padding:2px 8px;"><b>Deterrence Threshold</b></td><td style="padding:2px 8px;">{threshold:.0f} dB</td></tr>
+            <tr><td style="padding:2px 8px;"><b>Deterrence Coeff</b></td><td style="padding:2px 8px;">{coeff}</td></tr>
+            <tr><td style="padding:2px 8px;"><b>Max Distance</b></td><td style="padding:2px 8px;">{max_dist:.0f} km</td></tr>
+            {turbine_info}
+            </table>
+            </div>
+            '''
+
+            # --- Exposure Chart ---
+            if history:
+                data = [{'day': h['day'], 'deterred': h.get('deterred_count', 0)} for h in history]
+                df = pd.DataFrame(data)
+                if df['deterred'].sum() > 0:
+                    chart = create_time_series_chart(
+                        df=df,
+                        x_col='day',
+                        y_cols=['deterred'],
+                        colors=['#e74c3c'],
+                        names=['Porpoises Exposed to Noise'],
+                        title='Noise Exposure Over Time',
+                        x_title='Day',
+                        y_title='# Exposed',
+                        height=220
+                    )
+                    return ui.div(ui.HTML(model_html), chart)
+
+            return ui.HTML(model_html + '<p style="color:#888; font-size:0.8rem;">No noise exposure events recorded yet.</p>')
+        except Exception as e:
+            logger.error("noise_map error: %s", e, exc_info=True)
+            return no_data_placeholder("Error rendering noise data.")
     
     # =========================================================================
     # Export

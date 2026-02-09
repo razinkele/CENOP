@@ -590,13 +590,124 @@ def create_pydeck_map(
     return result
 
 
+def create_svg_chart(
+    df: pd.DataFrame,
+    x_col: str,
+    y_cols: List[str],
+    colors: List[str],
+    names: List[str],
+    title: str = "",
+    height: int = 150,
+) -> "ui.HTML":
+    """
+    Lightweight SVG time series chart — no JS dependencies, instant rendering.
+
+    Designed for dashboard sparklines where Plotly's ~3MB library and heavy
+    DOM operations cause unnecessary performance overhead.
+    """
+    import numpy as np
+
+    if df is None or len(df) < 2:
+        return ui.HTML(
+            f'<div style="height:{height}px;display:flex;align-items:center;'
+            f'justify-content:center;color:#999;font-size:12px;">'
+            f'No data yet. Run simulation to see results.</div>'
+        )
+
+    # Downsample to max 300 points
+    if len(df) > 300:
+        step = max(1, len(df) // 300)
+        df = df.iloc[::step].copy()
+
+    # Dimensions
+    W, H = 500, height
+    ml, mr, mt, mb = 50, 14, 20, 26
+    cw, ch = W - ml - mr, H - mt - mb
+
+    x_vals = df[x_col].values.astype(float)
+    x_min, x_max = float(x_vals.min()), float(x_vals.max())
+    x_range = x_max - x_min or 1.0
+
+    # Global y range
+    all_y = []
+    for col in y_cols:
+        if col in df.columns:
+            v = df[col].dropna().values
+            if len(v):
+                all_y.extend(v.tolist())
+    if not all_y:
+        return ui.HTML(
+            f'<div style="height:{height}px;display:flex;align-items:center;'
+            f'justify-content:center;color:#999;font-size:12px;">No data</div>'
+        )
+
+    y_min, y_max = min(all_y), max(all_y)
+    y_pad = (y_max - y_min) * 0.08 or 1.0
+    y_min -= y_pad
+    y_max += y_pad
+    y_range = y_max - y_min
+
+    p = [f'<svg viewBox="0 0 {W} {H}" preserveAspectRatio="xMidYMid meet" '
+         f'style="width:100%;height:100%;font-family:system-ui,sans-serif;'
+         f'background:#fafafa;border-radius:4px;">']
+
+    # Title
+    p.append(f'<text x="{ml}" y="14" font-size="11" font-weight="600" fill="#444">{title}</text>')
+
+    # Grid + Y labels
+    for i in range(5):
+        frac = i / 4
+        yv = y_min + y_range * frac
+        yp = mt + ch - ch * frac
+        p.append(f'<line x1="{ml}" y1="{yp:.0f}" x2="{ml+cw}" y2="{yp:.0f}" '
+                 f'stroke="#e0e0e0" stroke-width="0.5"/>')
+        p.append(f'<text x="{ml-4}" y="{yp+3:.0f}" text-anchor="end" '
+                 f'font-size="9" fill="#888">{yv:.0f}</text>')
+
+    # Data lines
+    for col, color, name in zip(y_cols, colors, names):
+        if col not in df.columns:
+            continue
+        y_data = df[col].values
+        pts = []
+        for xv, yv in zip(x_vals, y_data):
+            if np.isnan(yv):
+                continue
+            px = ml + ((float(xv) - x_min) / x_range) * cw
+            py = mt + ch - ((float(yv) - y_min) / y_range) * ch
+            pts.append(f"{px:.1f},{py:.1f}")
+        if pts:
+            p.append(f'<polyline points="{" ".join(pts)}" '
+                     f'fill="none" stroke="{color}" stroke-width="1.5" stroke-linejoin="round"/>')
+            # Current value label at right edge
+            last_y = df[col].dropna().iloc[-1] if len(df[col].dropna()) else None
+            if last_y is not None:
+                ly = mt + ch - ((float(last_y) - y_min) / y_range) * ch
+                p.append(f'<circle cx="{ml+cw}" cy="{ly:.1f}" r="2.5" fill="{color}"/>')
+
+    # Legend
+    lx = ml
+    for color, name in zip(colors, names):
+        p.append(f'<line x1="{lx}" y1="{H-9}" x2="{lx+14}" y2="{H-9}" '
+                 f'stroke="{color}" stroke-width="2.5" stroke-linecap="round"/>')
+        p.append(f'<text x="{lx+18}" y="{H-6}" font-size="9" fill="#666">{name}</text>')
+        lx += len(name) * 5.5 + 30
+
+    # Axes
+    p.append(f'<line x1="{ml}" y1="{mt}" x2="{ml}" y2="{mt+ch}" stroke="#bbb"/>')
+    p.append(f'<line x1="{ml}" y1="{mt+ch}" x2="{ml+cw}" y2="{mt+ch}" stroke="#bbb"/>')
+
+    p.append('</svg>')
+    return ui.HTML(''.join(p))
+
+
 def no_data_placeholder(message: str = "No data yet. Run simulation to see results.") -> ui.Tag:
     """
     Create a standardized placeholder for empty charts.
-    
+
     Args:
         message: Message to display
-        
+
     Returns:
         Shiny paragraph element
     """

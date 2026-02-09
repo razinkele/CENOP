@@ -24,6 +24,7 @@ except ImportError:
 from .renderers.chart_helpers import (
     create_time_series_chart,
     create_histogram_chart,
+    create_svg_chart,
     create_map_figure,
     create_pydeck_map,
     no_data_placeholder
@@ -1085,74 +1086,56 @@ def server(input, output, session):
     
     @render.ui
     def population_plot():
-        """Porpoise Population Size chart."""
+        """Porpoise Population Size chart — lightweight SVG."""
         history = state.population_history()
-        hist_len = len(history) if history else 0
-        # Only log occasionally to reduce spam
-        if hist_len == 0 or hist_len % 50 == 0:
-            print(f"[DEBUG] population_plot: history length={hist_len}")
         if not history:
             return no_data_placeholder()
-        
+
         df = pd.DataFrame(history)
         if 'tick' not in df.columns or 'population' not in df.columns:
-            print(f"[DEBUG] population_plot: MISSING COLUMNS! Available: {list(df.columns)}")
             return no_data_placeholder("Missing required data columns")
-        
-        result = create_time_series_chart(
-            df=df,
-            x_col='tick',
+
+        return create_svg_chart(
+            df=df, x_col='tick',
             y_cols=['population', 'lact_calf'],
-            colors=['blue', 'red'],
+            colors=['#2563eb', '#dc2626'],
             names=['Total Count', 'Lactating + Calf'],
             title='Porpoise Population Size',
-            x_title='Tick Count',
-            y_title='Population Size',
-            height=180
         )
-        return result
-    
+
     @render.ui
     def life_death_plot():
-        """Life and Death chart."""
+        """Life and Death chart — lightweight SVG."""
         history = state.population_history()
         if not history:
             return no_data_placeholder()
-        
+
         df = pd.DataFrame(history)
         df['daily_births'] = df['births'].diff().fillna(0)
         df['daily_deaths'] = df['deaths'].diff().fillna(0)
-        
-        return create_time_series_chart(
-            df=df,
-            x_col='tick',
+
+        return create_svg_chart(
+            df=df, x_col='tick',
             y_cols=['daily_births', 'daily_deaths'],
-            colors=['blue', 'red'],
+            colors=['#2563eb', '#dc2626'],
             names=['Births', 'Deaths'],
             title='Life and Death',
-            x_title='Tick Count',
-            y_title='Count',
-            height=180
         )
-    
+
     @render.ui
     def energy_balance_plot():
-        """Food consumption and expenditure chart."""
+        """Food consumption and expenditure chart — lightweight SVG."""
         history = state.energy_history()
         if not history:
             return no_data_placeholder("No energy data yet.")
-        
+
         df = pd.DataFrame(history)
-        return create_time_series_chart(
-            df=df,
-            x_col='day',
+        return create_svg_chart(
+            df=df, x_col='day',
             y_cols=['avg_food_eaten', 'avg_energy_expended'],
-            colors=['blue', 'red'],
+            colors=['#2563eb', '#dc2626'],
             names=['Avg Food Eaten', 'Avg Energy Expended'],
             title='Food Consumption and Expenditure',
-            x_title='Day',
-            y_title='Energy',
-            height=180
         )
     
     # Cache for depth data - will be updated when Load Landscape is clicked or simulation starts

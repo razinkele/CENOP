@@ -957,7 +957,40 @@ def dashboard_tab():
     """Create the Dashboard tab with value boxes and main visualizations."""
     return ui.nav_panel(
         "Dashboard",
-        # Main content: map on left, stats + charts on right
+        # Top row: 4 stat boxes in a single line
+        ui.layout_column_wrap(
+            ui.value_box(
+                "Population",
+                ui.output_text("current_population"),
+                showcase=ui.span("🐬", style="font-size: 1.3rem;"),
+                theme="primary",
+                height="60px"
+            ),
+            ui.value_box(
+                "Year",
+                ui.output_text("current_year"),
+                showcase=ui.span("📅", style="font-size: 1.3rem;"),
+                theme="info",
+                height="60px"
+            ),
+            ui.value_box(
+                "Births",
+                ui.output_text("total_births"),
+                showcase=ui.span("🎂", style="font-size: 1.3rem;"),
+                theme="success",
+                height="60px"
+            ),
+            ui.value_box(
+                "Deaths",
+                ui.output_text("total_deaths"),
+                showcase=ui.span("💀", style="font-size: 1.3rem;"),
+                theme="warning",
+                height="60px"
+            ),
+            width=1/4,
+            heights_equal=True,
+        ),
+        # Main content: map on left, charts on right
         ui.layout_columns(
             # Left: Large map
             ui.card(
@@ -970,61 +1003,22 @@ def dashboard_tab():
                 ui.output_ui("turbine_data_updater"),
                 ui.output_ui("noise_data_initializer"),
                 ui.output_ui("porpoise_data_updater"),
-                height="720px"
+                height="660px"
             ),
-            # Right: Compact stats + charts stacked
+            # Right: 3 SVG charts stacked
             ui.div(
-                # Population value box on its own
-                ui.value_box(
-                    "Population",
-                    ui.output_text("current_population"),
-                    showcase=ui.span("🐬", style="font-size: 1.5rem;"),
-                    theme="primary",
-                    height="65px",
-                    style="margin-bottom: 8px;"
-                ),
-                # Year, Births, Deaths in one row - compact
-                ui.layout_column_wrap(
-                    ui.value_box(
-                        "Year",
-                        ui.div(ui.output_text("current_year"), style="font-size: 1.1rem;"),
-                        showcase=ui.span("📅", style="font-size: 1rem;"),
-                        theme="info",
-                        height="55px"
-                    ),
-                    ui.value_box(
-                        "Births",
-                        ui.div(ui.output_text("total_births"), style="font-size: 1.1rem;"),
-                        showcase=ui.span("🎂", style="font-size: 1rem;"),
-                        theme="success",
-                        height="55px"
-                    ),
-                    ui.value_box(
-                        "Deaths",
-                        ui.div(ui.output_text("total_deaths"), style="font-size: 1.1rem;"),
-                        showcase=ui.span("💀", style="font-size: 1rem;"),
-                        theme="warning",
-                        height="55px"
-                    ),
-                    width=1/3,
-                    heights_equal=True
-                ),
-                # Charts below the value boxes
                 ui.card(
-                    ui.card_header("Population Size", style="padding: 4px 10px; font-size: 0.9rem;"),
                     ui.output_ui("population_plot"),
-                    height="170px"
+                    height="190px"
                 ),
                 ui.card(
-                    ui.card_header("Life and Death", style="padding: 4px 10px; font-size: 0.9rem;"),
                     ui.output_ui("life_death_plot"),
-                    height="170px"
+                    height="190px"
                 ),
                 ui.card(
-                    ui.card_header("Energy Balance", style="padding: 4px 10px; font-size: 0.9rem;"),
                     ui.output_ui("energy_balance_plot"),
-                    height="170px"
-                )
+                    height="190px"
+                ),
             ),
             col_widths=[7, 5]
         )

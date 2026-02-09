@@ -8,15 +8,21 @@ from shiny import ui
 
 # Landscape-turbine compatibility mapping with display labels
 # Note: Only landscapes with available bathymetry data are included
-# Kattegat, InnerDanishWaters, DanTysk, Gemini data files are not available in this distribution
 # Format: {landscape: {turbine_key: display_label}} — used by Shiny input_select
 LANDSCAPE_TURBINE_COMPATIBILITY: dict[str, dict[str, str]] = {
     "Homogeneous": {"off": "No turbines"},
     "CentralBaltic": {"off": "No turbines"},
+    "Kattegat": {"off": "No turbines"},
     "Lithuania": {
         "off": "No turbines",
         "CuronianNord_35_15MW": "Curonian Nord 35x15 MW",
         "CuronianNord_60_10MW": "Curonian Nord 60x10 MW",
+    },
+    "NorthSea": {
+        "off": "No turbines",
+        "NorthSea_scenario1": "Scenario 1",
+        "NorthSea_scenario2": "Scenario 2",
+        "NorthSea_scenario3": "Scenario 3",
     },
 }
 
@@ -25,7 +31,9 @@ LANDSCAPE_TURBINE_COMPATIBILITY: dict[str, dict[str, str]] = {
 LANDSCAPE_BOUNDS = {
     "Homogeneous": (53.27, 54.79, 4.83, 7.13),  # Default North Sea bounds
     "CentralBaltic": (51.2, 55.3, 16.2, 23.7),  # Central Baltic - actual grid extent
-    "Lithuania": (54.20, 57.28, 17.49, 21.70),  # Lithuanian EEZ expanded - 215x375 grid at 1km
+    "Kattegat": (53.90, 57.41, 9.45, 13.49),    # Kattegat / Inner Danish Waters - 600x1000 @ 400m
+    "Lithuania": (54.20, 57.28, 17.49, 21.70),   # Lithuanian EEZ expanded - 215x375 grid at 1km
+    "NorthSea": (50.62, 59.06, -1.95, 9.89),    # DEPONS North Sea - 2088x2175 @ 400m
 }
 
 # Tooltips for sidebar parameters
@@ -86,7 +94,7 @@ def create_sidebar():
                     **{"for": "landscape"}
                 ),
                 ui.input_select("landscape", None,
-                    choices=["Homogeneous", "Lithuania", "CentralBaltic"],
+                    choices=["Homogeneous", "Lithuania", "CentralBaltic", "Kattegat", "NorthSea"],
                     selected="Lithuania"),
                 class_="mb-2"
             ),

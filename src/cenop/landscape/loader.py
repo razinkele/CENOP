@@ -144,30 +144,38 @@ class LandscapeLoader:
     def _load_monthly(self, prefix: str) -> np.ndarray:
         """
         Load 12 monthly data files.
-        
+
+        Supports two naming conventions:
+          - CENOP short:  prey01.asc, prey02.asc, ...
+          - DEPONS long:  prey0000_01.asc, prey0000_02.asc, ...
+
         Args:
-            prefix: File prefix (e.g., 'prey' for prey01.asc, prey02.asc, ...)
-            
+            prefix: File prefix (e.g., 'prey' or 'salinity')
+
         Returns:
             Array of shape (12, height, width)
         """
         monthly_data = []
-        
+
         for month in range(1, 13):
-            filename = f"{prefix}{month:02d}.asc"
-            filepath = self.landscape_path / filename
-            
-            if filepath.exists():
-                data, _ = self._load_asc(filename)
+            # Try short name first, then DEPONS long name
+            short = f"{prefix}{month:02d}.asc"
+            long = f"{prefix}0000_{month:02d}.asc"
+
+            if (self.landscape_path / short).exists():
+                data, _ = self._load_asc(short)
+                monthly_data.append(data)
+            elif (self.landscape_path / long).exists():
+                data, _ = self._load_asc(long)
                 monthly_data.append(data)
             else:
                 # If file doesn't exist, use previous month or zeros
                 if monthly_data:
                     monthly_data.append(monthly_data[-1].copy())
                 else:
-                    # Need to get dimensions from another file
                     raise FileNotFoundError(
-                        f"Monthly file not found: {filepath}"
+                        f"Monthly file not found: {self.landscape_path / short} "
+                        f"or {self.landscape_path / long}"
                     )
                     
         return np.stack(monthly_data)

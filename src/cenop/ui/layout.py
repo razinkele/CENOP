@@ -105,6 +105,8 @@ def create_help_modal():
         <tr><th>Landscape</th><th>Description</th><th>Available Turbine Scenarios</th></tr>
         <tr><td>Homogeneous</td><td>Uniform test landscape (400x400 cells)</td><td>None</td></tr>
         <tr><td>Lithuania</td><td>Central Baltic / Lithuanian waters</td><td>Curonian Nord scenarios</td></tr>
+        <tr><td>Kattegat</td><td>Kattegat / Inner Danish Waters (600x1000 @ 400m)</td><td>None</td></tr>
+        <tr><td>NorthSea</td><td>North Sea with real bathymetry (2088x2175 @ 400m)</td><td>Scenarios 1-3</td></tr>
     </table>
 
     <h2>Wind Turbine Scenarios</h2>

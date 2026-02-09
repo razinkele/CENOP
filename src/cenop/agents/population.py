@@ -47,10 +47,18 @@ class PorpoisePopulation:
     Replaces the list of individual Porpoise objects for performance.
     """
     
-    def __init__(self, count: int, params: SimulationParameters, landscape: Optional[CellData] = None):
+    def __init__(self, count: int, params: SimulationParameters, landscape: Optional[CellData] = None,
+                 movement_module=None, behavior_fsm=None, energy_module=None, memory_module=None):
         self.params = params
         self.landscape = landscape
         self.count = count # Initial count capacity
+
+        # JASMINE integration modules (Phase 2-5)
+        self._movement_module = movement_module
+        self._behavior_fsm = behavior_fsm
+        self._energy_module = energy_module
+        self._memory_module = memory_module
+        self._behavior_state = None
         
         # === Arrays (Structure of Arrays) ===
         # Use a dictionary of arrays or direct attributes? Direct attributes are faster.

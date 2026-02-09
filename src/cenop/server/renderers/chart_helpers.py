@@ -512,7 +512,7 @@ def create_pydeck_map(
         }}
 
         // Initialize deck.gl with all layers
-        const deckgl = new DeckGL({
+        const deckgl = new DeckGL({{
             container: 'deck-container',
             initialViewState: {{
                 latitude: CENTER_LAT,
@@ -532,7 +532,7 @@ def create_pydeck_map(
                     ' | Lon: ' + viewState.longitude.toFixed(3) + 
                     ' | Zoom: ' + viewState.zoom.toFixed(1);
             }}
-        });
+        }});
         
         // Store reference for updates (DEPONS pattern)
         window.deckgl = deckgl;

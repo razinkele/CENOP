@@ -104,9 +104,7 @@ def create_help_modal():
     <table class="param-table">
         <tr><th>Landscape</th><th>Description</th><th>Available Turbine Scenarios</th></tr>
         <tr><td>Homogeneous</td><td>Uniform test landscape (400x400 cells)</td><td>None</td></tr>
-        <tr><td>NorthSea</td><td>North Sea with real bathymetry (400x400 @ 400m)</td><td>Scenarios 1-3 (80-240 turbines)</td></tr>
         <tr><td>Lithuania</td><td>Central Baltic / Lithuanian waters</td><td>Curonian Nord scenarios</td></tr>
-        <tr><td>UserDefined</td><td>DEPONS default landscape data files</td><td>User-defined</td></tr>
     </table>
 
     <h2>Wind Turbine Scenarios</h2>

@@ -9,7 +9,7 @@ import numpy as np
 import logging
 
 from cenop import Simulation, SimulationParameters
-from cenop.landscape import CellData, create_homogeneous_landscape, create_landscape_from_depons
+from cenop.landscape import CellData, create_homogeneous_landscape
 from cenop.core.time_manager import TimeManager, TimeMode
 from cenop.movement import MovementMode, create_movement_module
 from cenop.behavior import FSMMode, create_behavior_fsm, MemoryMode, create_memory_module
@@ -206,8 +206,6 @@ def create_simulation_from_inputs(input) -> Simulation:
     # Create landscape
     if params.is_homogeneous:
         landscape = create_homogeneous_landscape()
-    elif params.landscape == "NorthSea":
-        landscape = create_landscape_from_depons()
     else:
         landscape = CellData(params.landscape)
 

@@ -462,8 +462,8 @@ def create_pydeck_map(
             return new IconLayer({{
                 id: 'turbine-pole-layer',
                 data: data,
-                iconAtlas: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><g fill="white"><circle cx="24" cy="20" r="3"/><rect x="22" y="10" width="4" height="32" fill="white"/></g></svg>',
-                iconMapping: {{ 'pole': {{ x: 0, y: 0, width: 48, height: 48, anchorY: 42, anchorX: 24 }} }},
+                iconAtlas: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><g fill="white"><rect x="22" y="14" width="4" height="32"/><circle cx="24" cy="14" r="3"/></g></svg>',
+                iconMapping: {{ 'pole': {{ x: 0, y: 0, width: 48, height: 48, anchorY: 14, anchorX: 24 }} }},
                 getIcon: d => 'pole',
                 getPosition: d => d.position,
                 getSize: d => Math.max(20, Math.min(64, (d.radius || 300) / 15)),
@@ -482,8 +482,8 @@ def create_pydeck_map(
             return new IconLayer({{
                 id: 'turbine-blade-layer',
                 data: data,
-                iconAtlas: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><g fill="white"><path d="M24 4 L27 24 L24 27 L21 24 Z"/><path d="M42 14 L27 21 L24 18 L39 11 Z"/><path d="M6 14 L21 21 L24 18 L9 11 Z"/></g></svg>',
-                iconMapping: {{ 'blade': {{ x: 0, y: 0, width: 48, height: 48, anchorY: 42, anchorX: 24 }} }},
+                iconAtlas: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><g fill="white"><path d="M22 14 L24 1 L26 14 Z"/><path d="M25 15.7 L12.7 20.5 L23 12.3 Z"/><path d="M25 12.3 L35.3 20.5 L23 15.7 Z"/></g></svg>',
+                iconMapping: {{ 'blade': {{ x: 0, y: 0, width: 48, height: 48, anchorY: 14, anchorX: 24 }} }},
                 getIcon: d => 'blade',
                 getPosition: d => d.position,
                 getSize: d => Math.max(20, Math.min(64, (d.radius || 300) / 15)),

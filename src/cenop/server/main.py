@@ -1187,18 +1187,15 @@ def server(input, output, session):
         # Recompute if landscape changed
         if _depth_data_cache is None or _depth_landscape_name != landscape_name:
             try:
-                from cenop.landscape import CellData, create_homogeneous_landscape, create_landscape_from_depons
-                
+                from cenop.landscape import CellData, create_homogeneous_landscape
+
                 print(f"[DEBUG] Loading landscape '{landscape_name}' for depth overlay...")
-                
+
                 # Create landscape matching the simulation
                 if landscape_name == "Homogeneous":
                     landscape = create_homogeneous_landscape()
-                elif landscape_name == "NorthSea":
-                    # NorthSea uses DEPONS data files directly
-                    landscape = create_landscape_from_depons()
                 else:
-                    # Other named landscapes (CentralBaltic, InnerDanishWaters, etc.)
+                    # Named landscapes (Lithuania, CentralBaltic, etc.)
                     landscape = CellData(landscape_name)
                     landscape.load()  # Explicitly load data
                 
@@ -1333,15 +1330,13 @@ def server(input, output, session):
         # Recompute if landscape changed
         if _foraging_data_cache is None or _foraging_landscape_name != landscape_name:
             try:
-                from cenop.landscape import CellData, create_homogeneous_landscape, create_landscape_from_depons
-                
+                from cenop.landscape import CellData, create_homogeneous_landscape
+
                 print(f"[DEBUG] Loading foraging data for '{landscape_name}'...")
-                
+
                 # Create landscape matching the simulation
                 if landscape_name == "Homogeneous":
                     landscape = create_homogeneous_landscape()
-                elif landscape_name == "NorthSea":
-                    landscape = create_landscape_from_depons()
                 else:
                     landscape = CellData(landscape_name)
                     landscape.load()

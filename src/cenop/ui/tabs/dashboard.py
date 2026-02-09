@@ -139,9 +139,9 @@ def create_static_pydeck_map():
             z-index: 1000;
         }
 
-        /* Spinner animation for operational turbine legend */
+        /* Spinner animation for operational turbine legend — rotates around the hub */
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .turbine-spinner { animation: spin 1s linear infinite; transform-origin: center; transform-box: fill-box; }
+        .turbine-spinner { animation: spin 1s linear infinite; transform-origin: 24px 14px; transform-box: view-box; }
     </style>
 </head>
 <body>
@@ -239,12 +239,12 @@ def create_static_pydeck_map():
             </div>
             <div class="legend-item" style="align-items:flex-start;">
                 <div style="display:flex;flex-direction:column;margin-right:8px;gap:4px;">
-                    <!-- Construction -->
-                    <svg width="18" height="18" viewBox="0 0 48 48"><g fill="#ff4630" stroke="#000" stroke-width="0.6"><circle cx="24" cy="20" r="3"/><path d="M24 4 L27 24 L24 27 L21 24 Z"/><path d="M42 14 L27 21 L24 18 L39 11 Z"/><path d="M6 14 L21 21 L24 18 L9 11 Z"/><rect x="22" y="10" width="4" height="32"/></g></svg>
-                    <!-- Operational (animated) -->
-                    <svg class="turbine-spinner" width="18" height="18" viewBox="0 0 48 48" style="transform-origin:center;transform-box:fill-box;"><g fill="#32b0f0" stroke="#000" stroke-width="0.6"><circle cx="24" cy="20" r="3"/><path d="M24 4 L27 24 L24 27 L21 24 Z"/><path d="M42 14 L27 21 L24 18 L39 11 Z"/><path d="M6 14 L21 21 L24 18 L9 11 Z"/><rect x="22" y="10" width="4" height="32"/></g></svg>
-                    <!-- Planned -->
-                    <svg width="18" height="18" viewBox="0 0 48 48"><g fill="#b0b0b0" stroke="#000" stroke-width="0.6"><circle cx="24" cy="20" r="3"/><path d="M24 4 L27 24 L24 27 L21 24 Z"/><path d="M42 14 L27 21 L24 18 L39 11 Z"/><path d="M6 14 L21 21 L24 18 L9 11 Z"/><rect x="22" y="10" width="4" height="32"/></g></svg>
+                    <!-- Construction (static) -->
+                    <svg width="18" height="18" viewBox="0 0 48 48"><g fill="#ff4630" stroke="#000" stroke-width="0.6"><rect x="22" y="14" width="4" height="32"/><circle cx="24" cy="14" r="3"/><path d="M22 14 L24 1 L26 14 Z"/><path d="M25 15.7 L12.7 20.5 L23 12.3 Z"/><path d="M25 12.3 L35.3 20.5 L23 15.7 Z"/></g></svg>
+                    <!-- Operational (only blades spin) -->
+                    <svg width="18" height="18" viewBox="0 0 48 48"><g stroke="#000" stroke-width="0.6"><rect x="22" y="14" width="4" height="32" fill="#32b0f0"/><circle cx="24" cy="14" r="3" fill="#32b0f0"/><g class="turbine-spinner" fill="#32b0f0"><path d="M22 14 L24 1 L26 14 Z"/><path d="M25 15.7 L12.7 20.5 L23 12.3 Z"/><path d="M25 12.3 L35.3 20.5 L23 15.7 Z"/></g></g></svg>
+                    <!-- Planned (static) -->
+                    <svg width="18" height="18" viewBox="0 0 48 48"><g fill="#b0b0b0" stroke="#000" stroke-width="0.6"><rect x="22" y="14" width="4" height="32"/><circle cx="24" cy="14" r="3"/><path d="M22 14 L24 1 L26 14 Z"/><path d="M25 15.7 L12.7 20.5 L23 12.3 Z"/><path d="M25 12.3 L35.3 20.5 L23 15.7 Z"/></g></svg>
                 </div>
                 <div>
                     <div style="font-weight:bold;margin-bottom:4px;">Turbines (<span id="turbine-count">0</span>)</div>
@@ -504,10 +504,10 @@ def create_static_pydeck_map():
             return new IconLayer({
                 id: 'turbine-pole-layer',
                 data: data,
-                // Pole+hub static icon (no blades)
-                iconAtlas: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><g fill="white"><circle cx="24" cy="20" r="3"/><rect x="22" y="10" width="4" height="32" fill="white"/></g></svg>',
+                // Pole+hub icon: hub at (24,14), pole extends downward. Anchor at hub.
+                iconAtlas: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><g fill="white"><rect x="22" y="14" width="4" height="32"/><circle cx="24" cy="14" r="3"/></g></svg>',
                 iconMapping: {
-                    'pole': { x: 0, y: 0, width: 48, height: 48, anchorY: 42, anchorX: 24 }
+                    'pole': { x: 0, y: 0, width: 48, height: 48, anchorY: 14, anchorX: 24 }
                 },
                 getIcon: d => 'pole',
                 getPosition: d => d.position,
@@ -523,16 +523,16 @@ def create_static_pydeck_map():
             });
         }
 
-        // Turbine blades layer (rotating only the blades)
+        // Turbine blades layer (rotating around the hub)
         function createTurbineBladeLayer(data) {
             if (!data || data.length === 0 || !showTurbineLayer) return null;
             return new IconLayer({
                 id: 'turbine-blade-layer',
                 data: data,
-                // Blades-only icon with transparent center so pole/hub shows below
-                iconAtlas: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><g fill="white"><path d="M24 4 L27 24 L24 27 L21 24 Z"/><path d="M42 14 L27 21 L24 18 L39 11 Z"/><path d="M6 14 L21 21 L24 18 L9 11 Z"/></g></svg>',
+                // Three blades radiating from hub at (24,14). Anchor at hub for correct rotation.
+                iconAtlas: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><g fill="white"><path d="M22 14 L24 1 L26 14 Z"/><path d="M25 15.7 L12.7 20.5 L23 12.3 Z"/><path d="M25 12.3 L35.3 20.5 L23 15.7 Z"/></g></svg>',
                 iconMapping: {
-                    'blade': { x: 0, y: 0, width: 48, height: 48, anchorY: 42, anchorX: 24 }
+                    'blade': { x: 0, y: 0, width: 48, height: 48, anchorY: 14, anchorX: 24 }
                 },
                 getIcon: d => 'blade',
                 getPosition: d => d.position,

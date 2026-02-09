@@ -12,16 +12,6 @@ from shiny import ui
 # Format: {landscape: {turbine_key: display_label}} — used by Shiny input_select
 LANDSCAPE_TURBINE_COMPATIBILITY: dict[str, dict[str, str]] = {
     "Homogeneous": {"off": "No turbines"},
-    "NorthSea": {
-        "off": "No turbines",
-        "NorthSea_scenario1": "Scenario 1",
-        "NorthSea_scenario2": "Scenario 2",
-        "NorthSea_scenario3": "Scenario 3",
-    },
-    "UserDefined": {
-        "off": "No turbines",
-        "User-def": "User Defined Scenario",
-    },
     "CentralBaltic": {"off": "No turbines"},
     "Lithuania": {
         "off": "No turbines",
@@ -34,8 +24,6 @@ LANDSCAPE_TURBINE_COMPATIBILITY: dict[str, dict[str, str]] = {
 # Used for map centering and coordinate transformations
 LANDSCAPE_BOUNDS = {
     "Homogeneous": (53.27, 54.79, 4.83, 7.13),  # Default North Sea bounds
-    "NorthSea": (53.27, 54.79, 4.83, 7.13),     # DEPONS North Sea area
-    "UserDefined": (53.27, 54.79, 4.83, 7.13),  # Same as NorthSea
     "CentralBaltic": (51.2, 55.3, 16.2, 23.7),  # Central Baltic - actual grid extent
     "Lithuania": (54.20, 57.28, 17.49, 21.70),  # Lithuanian EEZ expanded - 215x375 grid at 1km
 }
@@ -98,7 +86,7 @@ def create_sidebar():
                     **{"for": "landscape"}
                 ),
                 ui.input_select("landscape", None,
-                    choices=["Homogeneous", "Lithuania", "CentralBaltic", "NorthSea", "UserDefined"],
+                    choices=["Homogeneous", "Lithuania", "CentralBaltic"],
                     selected="Lithuania"),
                 class_="mb-2"
             ),

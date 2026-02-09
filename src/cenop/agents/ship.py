@@ -670,8 +670,8 @@ class ShipManager:
     def load_from_json(
         self,
         json_file: str,
-        utm_origin_x: float = 3976618.0,  # DEPONS UserDefined XLLCORNER
-        utm_origin_y: float = 3363923.0,  # DEPONS UserDefined YLLCORNER
+        utm_origin_x: float = 3976618.0,  # Fallback UTM origin X
+        utm_origin_y: float = 3363923.0,  # Fallback UTM origin Y
         cell_size: float = 400.0
     ) -> None:
         """

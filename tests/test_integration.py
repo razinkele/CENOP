@@ -398,20 +398,22 @@ class TestLandscapeDataLoading:
         from cenop.landscape.loader import LandscapeLoader
         from cenop.config import DATA_DIR
         
-        # Check if Kattegat or NorthSea data exists
-        kattegat_path = DATA_DIR / "Kattegat"
-        northsea_path = DATA_DIR / "NorthSea"
-        
+        # Check if any real landscape data exists
+        candidates = [
+            ("Lithuania", DATA_DIR / "Lithuania"),
+            ("CentralBaltic", DATA_DIR / "CentralBaltic"),
+            ("Kattegat", DATA_DIR / "Kattegat"),
+        ]
+
         landscape_path = None
-        if kattegat_path.exists():
-            landscape_path = kattegat_path
-            landscape_name = "Kattegat"
-        elif northsea_path.exists():
-            landscape_path = northsea_path
-            landscape_name = "NorthSea"
-            
+        for name, path in candidates:
+            if path.exists():
+                landscape_path = path
+                landscape_name = name
+                break
+
         if landscape_path is None:
-            pytest.skip("No real landscape data available (Kattegat or NorthSea)")
+            pytest.skip("No real landscape data available")
             
         # Try loading
         loader = LandscapeLoader(landscape_name, DATA_DIR)

@@ -11,6 +11,7 @@ JASMINE mode (flexible timestep, event-driven) via the TimeManager.
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 from typing import TYPE_CHECKING, Optional, List, Dict, Any
 from dataclasses import dataclass, field
 from tqdm import tqdm
@@ -188,16 +189,11 @@ class Simulation:
         # Load landscape data if not pre-provided
         if self._cell_data is None:
             from cenop.landscape.cell_data import (
-                CellData, 
+                CellData,
                 create_homogeneous_landscape,
-                create_landscape_from_depons
             )
             if self.params.is_homogeneous:
-                # Try to load real DEPONS bathymetry first
-                self._cell_data = create_landscape_from_depons()
-                if self._cell_data.landscape_name == "Homogeneous":
-                    # Fallback happened, create proper homogeneous
-                    self._cell_data = create_homogeneous_landscape()
+                self._cell_data = create_homogeneous_landscape()
             else:
                 self._cell_data = CellData(self.params.landscape)
         
@@ -282,9 +278,6 @@ class Simulation:
             "operation": "User-def.txt",
             "DanTysk": "DanTysk-construction.txt",
             "Gemini": "Gemini-construction.txt",
-            "NorthSea_scenario1": "NorthSea_scenario1.txt",
-            "NorthSea_scenario2": "NorthSea_scenario2.txt",
-            "NorthSea_scenario3": "NorthSea_scenario3.txt",
             "User-def": "User-def.txt",
         }
         
@@ -380,7 +373,7 @@ class Simulation:
         else:
             width = self.params.world_width
             height = self.params.world_height
-            utm_origin_x = 3976618.0  # DEPONS UserDefined default
+            utm_origin_x = 3976618.0  # Fallback UTM origin
             utm_origin_y = 3363923.0
             cell_size = 400.0
         
@@ -390,7 +383,6 @@ class Simulation:
             "data/ships.json",
             "../data/ships.json",
             "cenop/data/ships.json",
-            "../DEPONS-master/data/UserDefined/ships.json",
         ]
         
         for ships_path in possible_paths:

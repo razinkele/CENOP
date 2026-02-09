@@ -24,7 +24,7 @@ class SimulationParameters:
     porpoise_count: int = 10000
     tracked_porpoise_count: int = 1
     sim_years: int = 50
-    landscape: str = "NorthSea"
+    landscape: str = "Lithuania"
     debug: int = 0
 
     # === JASMINE Mode Selection ===

@@ -225,7 +225,7 @@ def server(input, output, session):
     throttle_value = [1.0]  # Default 100% (maximum speed)
     throttle_lock = threading.Lock()  # Protects throttle_value access
     # Shared ticks per update value [1-48] for map update frequency
-    ticks_per_update_value = [1]  # Default 1 tick (every tick)
+    ticks_per_update_value = [48]  # Default 48 ticks (1 day) per UI update
     ticks_lock = threading.Lock()  # Protects ticks_per_update_value access
     
     # =========================================================================
@@ -881,8 +881,11 @@ def server(input, output, session):
         with throttle_lock:
             throttle_value[0] = (speed_percent - 1) / 99.0  # Convert 1-100 to 0.0-1.0
         
-        # Update ticks per update from slider value
-        ticks_val = input.ticks_per_update()
+        # Update ticks per update from slider value (may not exist in UI)
+        try:
+            ticks_val = input.ticks_per_update()
+        except Exception:
+            ticks_val = ticks_per_update_value[0]
         with ticks_lock:
             ticks_per_update_value[0] = ticks_val
 

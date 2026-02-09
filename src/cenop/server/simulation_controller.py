@@ -267,7 +267,7 @@ class SimulationRunner:
         self.total_deaths = 0
         self.last_pop = simulation.state.population
         self.update_count = 0
-        self.ticks_per_update = 1  # Default to 1 tick per update for smooth animation
+        self.ticks_per_update = 48  # Default to 48 ticks (1 day) per update
         logger.debug("SimulationRunner.__init__: last_pop=%d, max_ticks=%d", self.last_pop, self.max_ticks)
     
     def set_ticks_per_update(self, ticks: int):

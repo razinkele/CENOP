@@ -200,36 +200,32 @@ def create_static_pydeck_map():
         </div>
         <div class="legend-content">
             <div class="legend-item">
-                <!-- Porpoise: small arrow with tail (juvenile) -->
                 <svg width="16" height="16" viewBox="0 0 32 32" style="margin-right:8px;">
-                    <polygon points="16,4 28,24 22,24 16,14 10,24 4,24" fill="#2ecc71" stroke="#111" stroke-width="0.8"/>
+                    <path fill="#2ecc71" d="M16 1 C14.8 3 13.5 6 13 9 C12.6 11 12.5 13 12.5 15 C12 15.5 10 16.5 9 17.5 C10 17.5 11.5 17 12.5 16.2 C12.8 19 13.2 22 14 24.5 C13 26 11 28 9.5 29 C11 29 13.5 27.5 14.8 25.8 C15.2 26.5 15.6 27 16 27.2 C16.4 27 16.8 26.5 17.2 25.8 C18.5 27.5 21 29 22.5 29 C21 28 19 26 18 24.5 C18.8 22 19.2 19 19.5 16.2 C20.5 17 22 17.5 23 17.5 C22 16.5 20 15.5 19.5 15 C19.5 13 19.4 11 19 9 C18.5 6 17.2 3 16 1Z"/>
                 </svg>
                 <span>Juvenile (&lt;2 yr)</span>
             </div>
             <div class="legend-item">
-                <!-- Porpoise: small arrow with tail (young adult) -->
                 <svg width="16" height="16" viewBox="0 0 32 32" style="margin-right:8px;">
-                    <polygon points="16,4 28,24 22,24 16,14 10,24 4,24" fill="#3498db" stroke="#111" stroke-width="0.8"/>
+                    <path fill="#3498db" d="M16 1 C14.8 3 13.5 6 13 9 C12.6 11 12.5 13 12.5 15 C12 15.5 10 16.5 9 17.5 C10 17.5 11.5 17 12.5 16.2 C12.8 19 13.2 22 14 24.5 C13 26 11 28 9.5 29 C11 29 13.5 27.5 14.8 25.8 C15.2 26.5 15.6 27 16 27.2 C16.4 27 16.8 26.5 17.2 25.8 C18.5 27.5 21 29 22.5 29 C21 28 19 26 18 24.5 C18.8 22 19.2 19 19.5 16.2 C20.5 17 22 17.5 23 17.5 C22 16.5 20 15.5 19.5 15 C19.5 13 19.4 11 19 9 C18.5 6 17.2 3 16 1Z"/>
                 </svg>
                 <span>Young Adult (2-6 yr)</span>
             </div>
             <div class="legend-item">
-                <!-- Porpoise: small arrow with tail (mature) -->
                 <svg width="16" height="16" viewBox="0 0 32 32" style="margin-right:8px;">
-                    <polygon points="16,4 28,24 22,24 16,14 10,24 4,24" fill="#2980b9" stroke="#111" stroke-width="0.8"/>
+                    <path fill="#2980b9" d="M16 1 C14.8 3 13.5 6 13 9 C12.6 11 12.5 13 12.5 15 C12 15.5 10 16.5 9 17.5 C10 17.5 11.5 17 12.5 16.2 C12.8 19 13.2 22 14 24.5 C13 26 11 28 9.5 29 C11 29 13.5 27.5 14.8 25.8 C15.2 26.5 15.6 27 16 27.2 C16.4 27 16.8 26.5 17.2 25.8 C18.5 27.5 21 29 22.5 29 C21 28 19 26 18 24.5 C18.8 22 19.2 19 19.5 16.2 C20.5 17 22 17.5 23 17.5 C22 16.5 20 15.5 19.5 15 C19.5 13 19.4 11 19 9 C18.5 6 17.2 3 16 1Z"/>
                 </svg>
                 <span>Mature (6-12 yr)</span>
             </div>
             <div class="legend-item">
-                <!-- Porpoise: small arrow with tail (older) -->
                 <svg width="16" height="16" viewBox="0 0 32 32" style="margin-right:8px;">
-                    <polygon points="16,4 28,24 22,24 16,14 10,24 4,24" fill="#95a5a6" stroke="#111" stroke-width="0.8"/>
+                    <path fill="#95a5a6" d="M16 1 C14.8 3 13.5 6 13 9 C12.6 11 12.5 13 12.5 15 C12 15.5 10 16.5 9 17.5 C10 17.5 11.5 17 12.5 16.2 C12.8 19 13.2 22 14 24.5 C13 26 11 28 9.5 29 C11 29 13.5 27.5 14.8 25.8 C15.2 26.5 15.6 27 16 27.2 C16.4 27 16.8 26.5 17.2 25.8 C18.5 27.5 21 29 22.5 29 C21 28 19 26 18 24.5 C18.8 22 19.2 19 19.5 16.2 C20.5 17 22 17.5 23 17.5 C22 16.5 20 15.5 19.5 15 C19.5 13 19.4 11 19 9 C18.5 6 17.2 3 16 1Z"/>
                 </svg>
                 <span>Older (&gt;12 yr)</span>
             </div>
             <div class="legend-item">
                 <svg width="16" height="16" viewBox="0 0 32 32" style="margin-right:8px;">
-                    <polygon points="16,6 26,22 20,22 16,16 12,22 6,22" fill="#ff3232" stroke="#b40000" stroke-width="1.5"/>
+                    <path fill="#ff3232" d="M16 1 C14.8 3 13.5 6 13 9 C12.6 11 12.5 13 12.5 15 C12 15.5 10 16.5 9 17.5 C10 17.5 11.5 17 12.5 16.2 C12.8 19 13.2 22 14 24.5 C13 26 11 28 9.5 29 C11 29 13.5 27.5 14.8 25.8 C15.2 26.5 15.6 27 16 27.2 C16.4 27 16.8 26.5 17.2 25.8 C18.5 27.5 21 29 22.5 29 C21 28 19 26 18 24.5 C18.8 22 19.2 19 19.5 16.2 C20.5 17 22 17.5 23 17.5 C22 16.5 20 15.5 19.5 15 C19.5 13 19.4 11 19 9 C18.5 6 17.2 3 16 1Z"/>
                 </svg>
                 <span>Disturbed</span>
             </div>
@@ -474,18 +470,18 @@ def create_static_pydeck_map():
                 },
                 getIcon: d => 'porpoise',
                 getPosition: d => d.position,
-                // Size varies by age: juveniles smaller, adults larger (reduced overall sizes)
+                // Size varies by age: juveniles smaller, adults larger
                 getSize: d => {
                     const age = d.age || 5;
-                    if (age < 1) return 8;       // Calves - smallest
-                    if (age < 2) return 9;       // Juveniles
-                    if (age < 6) return 10;      // Young adults
-                    if (age < 15) return 11;     // Prime adults
-                    return 9;                    // Older - slightly smaller
+                    if (age < 1) return 14;      // Calves - smallest
+                    if (age < 2) return 18;      // Juveniles
+                    if (age < 6) return 22;      // Young adults
+                    if (age < 15) return 24;     // Prime adults
+                    return 20;                   // Older - slightly smaller
                 },
-                sizeScale: 0.9,
-                sizeMinPixels: 4,
-                sizeMaxPixels: 18,
+                sizeScale: 1,
+                sizeMinPixels: 8,
+                sizeMaxPixels: 32,
                 // Heading: 0 = North, 90 = East, etc. (matches DEPONS convention)
                 getAngle: d => -(d.heading || 0),  // Negate for deck.gl rotation direction
                 getColor: d => {

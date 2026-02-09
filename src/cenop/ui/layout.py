@@ -262,9 +262,14 @@ def create_help_modal():
 
     <h2>References</h2>
     <ul>
-        <li>Nabe-Nielsen J., et al. (2018). Predicting the impacts of anthropogenic disturbances on marine populations. <em>Conservation Letters</em>.</li>
-        <li>Hin V., et al. (2019). A bioenergetics model for harbour porpoise. <em>Ecological Modelling</em>.</li>
-        <li>Kooijman, S.A.L.M. (2010). Dynamic Energy Budget theory. <em>Cambridge University Press</em>.</li>
+        <li>Nabe-Nielsen J., Sibly R.M., Tougaard J., Teilmann J., Sveegaard S. (2014). Effects of noise and by-catch on a Danish harbour porpoise population. <em>Ecological Modelling</em>, 272, 242–251. <a href="https://doi.org/10.1016/j.ecolmodel.2013.09.025" target="_blank">doi:10.1016/j.ecolmodel.2013.09.025</a></li>
+        <li>Nabe-Nielsen J., van Beest F.M., Grimm V., Sibly R.M., Teilmann J., Thompson P.M. (2018). Predicting the impacts of anthropogenic disturbances on marine populations. <em>Conservation Letters</em>, 11(5), e12563. <a href="https://doi.org/10.1111/conl.12563" target="_blank">doi:10.1111/conl.12563</a></li>
+        <li>Nabe-Nielsen J., Harwood J. (2016). Comparison of the iPCoD and DEPONS models for modelling population consequences of noise on harbour porpoises. <em>Scientific Report from DCE</em>, No. 186.</li>
+        <li>van Beest F.M., Nabe-Nielsen J., Carstensen J., Teilmann J., Sveegaard S. (2015). Disturbance Effects on the Harbour Porpoise Population in the North Sea (DEPONS): Status report on model development. <em>Scientific Report from DCE</em>, No. 140.</li>
+        <li>Hin V., Harwood J., de Roos A.M. (2019). Bio-energetic modeling of medium-sized cetaceans shows that physiological structure is key to determining the cumulative effects of disturbance. <em>Ecological Modelling</em>, 394, 82–93. <a href="https://doi.org/10.1016/j.ecolmodel.2018.12.019" target="_blank">doi:10.1016/j.ecolmodel.2018.12.019</a></li>
+        <li>Tougaard J., Wright A.J., Madsen P.T. (2015). Cetacean noise criteria revisited in the light of proposed exposure limits for harbour porpoises. <em>Marine Pollution Bulletin</em>, 90(1–2), 196–208. <a href="https://doi.org/10.1016/j.marpolbul.2014.10.051" target="_blank">doi:10.1016/j.marpolbul.2014.10.051</a></li>
+        <li>Kooijman S.A.L.M. (2010). <em>Dynamic Energy Budget theory for metabolic organisation</em>. 3rd ed. Cambridge University Press.</li>
+        <li>Grimm V., Railsback S.F. (2005). <em>Individual-based Modeling and Ecology</em>. Princeton University Press.</li>
         <li>DEPONS Project: <a href="http://www.depons.dk" target="_blank">www.depons.dk</a></li>
     </ul>
 

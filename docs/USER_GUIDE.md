@@ -509,8 +509,12 @@ Arturas Razinkovas-Baziukas, Klaipeda University, 2024-2026
 
 ### References
 
-1. Nabe-Nielsen J., et al. (2018). Predicting the impacts of anthropogenic disturbances on marine populations. *Conservation Letters*.
-2. Hin V., et al. (2019). A bioenergetics model for harbour porpoise. *Ecological Modelling*.
-3. Tougaard J., et al. (2015). Noise from operation of offshore wind farms. *Marine Ecology Progress Series*.
-4. DEPONS Project: [www.depons.dk](http://www.depons.dk)
-5. Kooijman, S.A.L.M. (2010). Dynamic Energy Budget theory for metabolic organisation. Cambridge University Press.
+1. Nabe-Nielsen J., Sibly R.M., Tougaard J., Teilmann J., Sveegaard S. (2014). Effects of noise and by-catch on a Danish harbour porpoise population. *Ecological Modelling*, 272, 242–251. [doi:10.1016/j.ecolmodel.2013.09.025](https://doi.org/10.1016/j.ecolmodel.2013.09.025)
+2. Nabe-Nielsen J., van Beest F.M., Grimm V., Sibly R.M., Teilmann J., Thompson P.M. (2018). Predicting the impacts of anthropogenic disturbances on marine populations. *Conservation Letters*, 11(5), e12563. [doi:10.1111/conl.12563](https://doi.org/10.1111/conl.12563)
+3. Nabe-Nielsen J., Harwood J. (2016). Comparison of the iPCoD and DEPONS models for modelling population consequences of noise on harbour porpoises. *Scientific Report from DCE*, No. 186.
+4. van Beest F.M., Nabe-Nielsen J., Carstensen J., Teilmann J., Sveegaard S. (2015). Disturbance Effects on the Harbour Porpoise Population in the North Sea (DEPONS): Status report on model development. *Scientific Report from DCE*, No. 140.
+5. Hin V., Harwood J., de Roos A.M. (2019). Bio-energetic modeling of medium-sized cetaceans shows that physiological structure is key to determining the cumulative effects of disturbance. *Ecological Modelling*, 394, 82–93. [doi:10.1016/j.ecolmodel.2018.12.019](https://doi.org/10.1016/j.ecolmodel.2018.12.019)
+6. Tougaard J., Wright A.J., Madsen P.T. (2015). Cetacean noise criteria revisited in the light of proposed exposure limits for harbour porpoises. *Marine Pollution Bulletin*, 90(1–2), 196–208. [doi:10.1016/j.marpolbul.2014.10.051](https://doi.org/10.1016/j.marpolbul.2014.10.051)
+7. Kooijman S.A.L.M. (2010). *Dynamic Energy Budget theory for metabolic organisation*. 3rd ed. Cambridge University Press.
+8. Grimm V., Railsback S.F. (2005). *Individual-based Modeling and Ecology*. Princeton University Press.
+9. DEPONS Project: [www.depons.dk](http://www.depons.dk)

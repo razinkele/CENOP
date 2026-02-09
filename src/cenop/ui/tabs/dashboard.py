@@ -435,9 +435,32 @@ def create_static_pydeck_map():
             });
         }
         
-        // Create PORPOISE icon layer (chevron symbols rotated by heading)
-        // Simple white arrow with a short tail for clearer heading indication
-        const ARROW_SVG = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><g fill="white"><polygon points="16,4 28,20 22,20 16,12 10,20 4,20"/><rect x="14" y="20" width="4" height="8"/></g></svg>';
+        // Create PORPOISE icon layer — harbour porpoise dorsal-view silhouette (pointing up/north)
+        // Torpedo body, small pectoral fins, dorsal fin bump, horizontal tail fluke
+        const PORPOISE_SVG = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">'
+            // Body: streamlined torpedo, widest at ~1/3 from nose
+            + '<path fill="white" d="'
+            + 'M16 1 C14.8 3 13.5 6 13 9 C12.6 11 12.5 13 12.5 15'
+            // Left pectoral fin
+            + ' C12 15.5 10 16.5 9 17.5 C10 17.5 11.5 17 12.5 16.2'
+            // Body continues tapering to peduncle
+            + ' C12.8 19 13.2 22 14 24.5'
+            // Left tail fluke
+            + ' C13 26 11 28 9.5 29 C11 29 13.5 27.5 14.8 25.8'
+            + ' C15.2 26.5 15.6 27 16 27.2'
+            // Right tail fluke
+            + ' C16.4 27 16.8 26.5 17.2 25.8'
+            + ' C18.5 27.5 21 29 22.5 29 C21 28 19 26 18 24.5'
+            // Right body back up
+            + ' C18.8 22 19.2 19 19.5 16.2'
+            + ' C20.5 17 22 17.5 23 17.5 C22 16.5 20 15.5 19.5 15'
+            // Right body to nose
+            + ' C19.5 13 19.4 11 19 9 C18.5 6 17.2 3 16 1Z"/>'
+            // Dorsal fin (small bump on upper-right of body)
+            + '<path fill="white" d="M18.5 10 C19 9 20.5 8 21 8.5 C20 9.5 19 11 18.8 12Z"/>'
+            + '</svg>'
+        );
 
         function createScatterLayer(data) {
             if (!data || data.length === 0) return null;
@@ -445,7 +468,7 @@ def create_static_pydeck_map():
             return new IconLayer({
                 id: 'porpoise-layer',
                 data: data,
-                iconAtlas: ARROW_SVG,
+                iconAtlas: PORPOISE_SVG,
                 iconMapping: {
                     'porpoise': { x: 0, y: 0, width: 32, height: 32, anchorY: 16, anchorX: 16 }
                 },

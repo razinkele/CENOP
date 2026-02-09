@@ -1846,11 +1846,17 @@ def server(input, output, session):
             </script>
             ''')
         
-        # Recalculate if scenario changed or tick changed significantly
+        # Recalculate if scenario changed, tick changed, or cache is stale
         tick_changed = _noise_tick is None or abs(current_tick - _noise_tick) >= 48  # Update every ~day
         scenario_changed = _noise_scenario_name != turbine_scenario
-        
-        if scenario_changed or _noise_data_cache is None or tick_changed:
+        # Also recalculate when cache is empty but turbine data is now available
+        # (fixes race condition where noise initializer fires before turbine data loads)
+        cache_empty = (_noise_data_cache is not None
+                       and not _noise_data_cache.get("construction")
+                       and not _noise_data_cache.get("operational"))
+        turbines_available = _turbine_data_cache is not None and len(_turbine_data_cache) > 0
+
+        if scenario_changed or _noise_data_cache is None or tick_changed or (cache_empty and turbines_available):
             try:
                 # Get turbine data first
                 if _turbine_data_cache is None or len(_turbine_data_cache) == 0:

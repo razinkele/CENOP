@@ -817,8 +817,17 @@ def create_static_pydeck_map():
         // Set noise propagation data (calculated from turbines)
         window.setNoiseData = function(data) {
             noiseData = data || [];
+            // Auto-enable noise layer when data arrives
+            const hasNoise = (Array.isArray(data) && data.length > 0)
+                || (data && (data.construction && data.construction.length > 0 || data.operational && data.operational.length > 0));
+            if (hasNoise && !showNoiseLayer) {
+                showNoiseLayer = true;
+                var toggle = document.getElementById('noise-toggle');
+                if (toggle) toggle.checked = true;
+            }
             deckgl.setProps({ layers: buildLayers() });
-            console.log('Noise layer loaded:', noiseData.length, 'cells above threshold');
+            const nc = Array.isArray(data) ? data.length : ((data && data.construction ? data.construction.length : 0) + (data && data.operational ? data.operational.length : 0));
+            console.log('Noise layer loaded:', nc, 'sources');
         };
         
         // Set foraging data (food probability / patches)

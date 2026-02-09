@@ -29,6 +29,14 @@ def _safe_float(getter, default: float) -> float:
         return default
 
 
+def _safe_input(input, name: str, default):
+    """Safely get a value from a Shiny input that may not exist."""
+    try:
+        return getattr(input, name)()
+    except Exception:
+        return default
+
+
 def _get_time_mode(mode_str: str) -> TimeMode:
     """Convert string mode to TimeMode enum."""
     if mode_str.upper() == "JASMINE":
@@ -194,13 +202,13 @@ def create_simulation_from_inputs(input) -> Simulation:
         corr_angle_salinity=input.param_b2(),
         corr_angle_base_sd=input.param_b3(),
 
-        # --- Communication / Social params ---
-        communication_enabled=input.communication_enabled(),
-        communication_range_km=input.communication_range_km(),
-        communication_source_level=input.communication_source_level(),
-        communication_threshold=input.communication_threshold(),
-        communication_response_slope=input.communication_response_slope(),
-        social_weight=input.social_weight(),
+        # --- Communication / Social params (UI inputs may not exist yet) ---
+        communication_enabled=_safe_input(input, 'communication_enabled', False),
+        communication_range_km=_safe_float(lambda: input.communication_range_km(), 1.0),
+        communication_source_level=_safe_float(lambda: input.communication_source_level(), 130.0),
+        communication_threshold=_safe_float(lambda: input.communication_threshold(), 80.0),
+        communication_response_slope=_safe_float(lambda: input.communication_response_slope(), 0.1),
+        social_weight=_safe_float(lambda: input.social_weight(), 0.3),
     )
     
     # Create landscape

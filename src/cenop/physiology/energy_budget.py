@@ -54,16 +54,16 @@ class EnergyState:
 
     # Activity tracking
     activity_level: np.ndarray      # Current activity level (0-1)
-    distance_traveled: np.ndarray   # Distance traveled this tick (m)
+    distance_traveled: np.ndarray   # Distance traveled this tick (m) — TODO: update in movement step
 
     # Disturbance impact tracking
     disturbance_energy_cost: np.ndarray  # Cumulative disturbance energy cost
-    time_under_disturbance: np.ndarray   # Total ticks under disturbance
+    time_under_disturbance: np.ndarray   # Total ticks under disturbance — TODO: increment in FSM update
     disturbance_events: np.ndarray       # Count of disturbance events
 
     # Fitness tracking
     cumulative_energy_deficit: np.ndarray  # Total energy shortfall
-    days_in_negative_balance: np.ndarray   # Days with energy deficit
+    days_in_negative_balance: np.ndarray   # Days with energy deficit — TODO: update in daily energy check
 
     @classmethod
     def create(cls, count: int, initial_energy: float = 10.0) -> 'EnergyState':

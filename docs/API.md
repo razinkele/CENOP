@@ -1,8 +1,12 @@
-# CENOP API Documentation
+# CENOP-JASMINE API Documentation
 
 ## Overview
 
-CENOP (Cetacean Noise Operations Planner) is a Python Shiny application for simulating harbor porpoise population dynamics in response to wind farm construction noise. This document describes the core API for developers and researchers.
+CENOP-JASMINE (Cetacean Noise Operations Planner with JASMINE Extensions) is a Python Shiny application for simulating harbor porpoise population dynamics in response to wind farm construction noise. This document describes the core API for developers and researchers.
+
+The API supports two simulation modes:
+- **DEPONS Mode**: Regulatory-compatible empirical models (default)
+- **JASMINE Mode**: Research-grade physics-based and bioenergetics models
 
 ---
 
@@ -242,7 +246,7 @@ class PSM:
     def get_movement_parameters(self, state: State) -> Tuple[float, float]:
         """
         Get movement parameters for given state.
-        
+
         Returns:
             (step_length, turning_angle_std) in meters and radians
         """
@@ -250,7 +254,312 @@ class PSM:
 
 ---
 
-### 5. Deterrence Module
+### 5. Hybrid Behavioral FSM (JASMINE)
+
+**Location:** `src/cenop/behavior/hybrid_fsm.py`
+
+Unified finite state machine supporting both DEPONS and JASMINE behavioral models.
+
+#### Classes
+
+##### `HybridFSM`
+
+```python
+class HybridFSM:
+    """
+    Hybrid Finite State Machine for porpoise behavior.
+
+    Supports both DEPONS (simple) and JASMINE (enhanced) modes.
+
+    States:
+        - FORAGING: Default state, searching for food (DEPONS CRW)
+        - TRAVELING: Directed movement between areas (JASMINE physics)
+        - RESTING: Low activity energy recovery (JASMINE physics)
+        - DISPERSING: Memory-driven dispersal (PSM-based)
+        - DISTURBED: Response to disturbance events
+    """
+
+    class State(Enum):
+        FORAGING = 0
+        TRAVELING = 1
+        RESTING = 2
+        DISPERSING = 3
+        DISTURBED = 4
+
+    def __init__(self, mode: str = "DEPONS"):
+        """
+        Initialize FSM.
+
+        Args:
+            mode: "DEPONS" or "JASMINE"
+        """
+
+    def update(
+        self,
+        context: BehaviorContext
+    ) -> State:
+        """
+        Update behavioral state based on context.
+
+        Args:
+            context: BehaviorContext with energy, disturbance, speed, etc.
+
+        Returns:
+            New behavioral state
+        """
+
+    def get_movement_mode(self, state: State) -> str:
+        """
+        Get movement mode for given state.
+
+        Returns:
+            "DEPONS_CRW" or "JASMINE_PHYSICS"
+        """
+```
+
+##### `BehaviorContext`
+
+```python
+@dataclass
+class BehaviorContext:
+    """Context for behavioral state transitions."""
+
+    energy: float              # Current energy (0-1)
+    speed: float               # Current speed (m/s)
+    disturbance_level: float   # Local disturbance (0-1)
+    memory_intensity: float    # Disturbance memory at location
+    food_available: float      # Local food availability
+    days_declining: int        # Days of energy decline
+    is_lactating: bool         # Lactation status
+    tick: int                  # Current simulation tick
+```
+
+---
+
+### 6. Dynamic Energy Budget (JASMINE)
+
+**Location:** `src/cenop/physiology/energy_budget.py`
+
+Modular energy budget system supporting DEPONS and JASMINE models.
+
+#### Classes
+
+##### `EnergyBudget`
+
+```python
+class EnergyBudget:
+    """
+    Factory for energy budget modules.
+    """
+
+    @staticmethod
+    def create(mode: str = "DEPONS") -> EnergyModule:
+        """
+        Create energy module for specified mode.
+
+        Args:
+            mode: "DEPONS" or "JASMINE"
+
+        Returns:
+            DEPONSEnergy or JASMINEEnergy instance
+        """
+```
+
+##### `JASMINEEnergy`
+
+```python
+class JASMINEEnergy(EnergyModule):
+    """
+    JASMINE Dynamic Energy Budget model.
+
+    Features:
+        - Body mass-dependent metabolism (Kleiber scaling)
+        - Activity cost based on movement speed
+        - Thermoregulation cost based on water temperature
+        - Disturbance energy cost with cumulative tracking
+        - Body condition index and fat reserves
+    """
+
+    # Bioenergetics constants
+    ADULT_MASS_KG: float = 50.0
+    BMR_COEFFICIENT: float = 3.4  # W/kg^0.75
+    THERMONEUTRAL_LOW: float = 5.0   # °C
+    THERMONEUTRAL_HIGH: float = 20.0  # °C
+    DISTURBANCE_BASE_COST: float = 0.1  # MJ
+
+    def calculate_bmr(self, body_mass: float) -> float:
+        """
+        Calculate basal metabolic rate using Kleiber scaling.
+
+        BMR = coefficient * mass^0.75
+
+        Args:
+            body_mass: Body mass in kg
+
+        Returns:
+            BMR in MJ/day
+        """
+
+    def calculate_activity_cost(
+        self,
+        speed: float,
+        duration: float
+    ) -> float:
+        """
+        Calculate activity energy cost.
+
+        Args:
+            speed: Movement speed in m/s
+            duration: Duration in hours
+
+        Returns:
+            Activity cost in MJ
+        """
+
+    def calculate_thermoregulation_cost(
+        self,
+        water_temp: float,
+        body_mass: float
+    ) -> float:
+        """
+        Calculate thermoregulation cost outside thermoneutral zone.
+
+        Args:
+            water_temp: Water temperature in °C
+            body_mass: Body mass in kg
+
+        Returns:
+            Thermoregulation cost in MJ/day
+        """
+
+    def calculate_disturbance_cost(
+        self,
+        disturbance_level: float,
+        duration: float,
+        cumulative_exposure: float
+    ) -> float:
+        """
+        Calculate energy cost of disturbance response.
+
+        Args:
+            disturbance_level: Disturbance intensity (0-1)
+            duration: Exposure duration in hours
+            cumulative_exposure: Previous cumulative exposure
+
+        Returns:
+            Disturbance energy cost in MJ
+        """
+
+    def get_body_condition_index(self) -> float:
+        """
+        Calculate body condition index (0-1 scale).
+
+        Returns:
+            Body condition index
+        """
+```
+
+---
+
+### 7. Disturbance Memory (JASMINE)
+
+**Location:** `src/cenop/behavior/disturbance_memory.py`
+
+Spatial memory system for learned avoidance of disturbance zones.
+
+#### Classes
+
+##### `DisturbanceMemory`
+
+```python
+class DisturbanceMemory:
+    """
+    Spatial memory for disturbance zones.
+
+    Features:
+        - Grid-based memory storage
+        - Exponential memory decay
+        - Learned avoidance behavior
+        - Habituation to repeated exposure
+    """
+
+    def __init__(
+        self,
+        grid_shape: Tuple[int, int],
+        decay_rate: float = 0.001,
+        habituation_enabled: bool = True,
+        habituation_rate: float = 0.05
+    ):
+        """
+        Initialize disturbance memory.
+
+        Args:
+            grid_shape: (rows, cols) of memory grid
+            decay_rate: Per-tick memory decay rate
+            habituation_enabled: Enable habituation
+            habituation_rate: Rate of habituation per exposure
+        """
+
+    def record_disturbance(
+        self,
+        x: int,
+        y: int,
+        intensity: float
+    ):
+        """
+        Record disturbance at location.
+
+        Args:
+            x, y: Grid coordinates
+            intensity: Disturbance intensity (0-1)
+        """
+
+    def get_memory_intensity(self, x: int, y: int) -> float:
+        """
+        Get memory intensity at location.
+
+        Args:
+            x, y: Grid coordinates
+
+        Returns:
+            Memory intensity (0-1)
+        """
+
+    def calculate_avoidance_vector(
+        self,
+        x: int,
+        y: int,
+        radius: int = 20
+    ) -> Tuple[float, float]:
+        """
+        Calculate avoidance direction based on remembered disturbances.
+
+        Args:
+            x, y: Current grid coordinates
+            radius: Search radius in cells
+
+        Returns:
+            (dx, dy) avoidance vector
+        """
+
+    def decay(self):
+        """Apply per-tick memory decay."""
+
+    def get_habituation_factor(self, x: int, y: int) -> float:
+        """
+        Get habituation factor at location.
+
+        Args:
+            x, y: Grid coordinates
+
+        Returns:
+            Habituation factor (0-1, lower = more habituated)
+        """
+```
+
+---
+
+### 8. Deterrence Module
 
 **Location:** `src/cenop/agents/deterrence.py`
 
@@ -576,13 +885,40 @@ class SimulationConfig:
     # Output
     output_dir: str = "./output"
     save_interval: int = 24
+
+    # JASMINE Mode Settings
+    simulation_mode: str = "DEPONS"  # "DEPONS" or "JASMINE"
+
+    # Subsystem overrides (optional)
+    fsm_mode: str = None       # Override FSM mode
+    energy_mode: str = None    # Override energy mode
+    memory_mode: str = None    # Override memory mode
+    movement_mode: str = None  # Override movement mode
+
+    # JASMINE Physics Parameters
+    jasmine_mass_kg: float = 50.0
+    jasmine_drag_coeff: float = 0.01
+    jasmine_max_thrust: float = 100.0
+    jasmine_current_weight: float = 0.5
+
+    # JASMINE DEB Parameters
+    jasmine_bmr_scale: float = 1.0
+    jasmine_activity_cost: float = 2.0
+    jasmine_thermal_model: bool = True
+    jasmine_disturbance_cost: float = 1.5
+
+    # JASMINE Memory Parameters
+    memory_decay_rate: float = 0.001
+    avoidance_radius: float = 20.0
+    habituation_enabled: bool = True
+    habituation_rate: float = 0.05
 ```
 
 ---
 
 ## Usage Examples
 
-### Basic Simulation
+### Basic Simulation (DEPONS Mode)
 
 ```python
 from cenop.core.landscape import Landscape
@@ -605,6 +941,47 @@ for tick in range(config.end_tick):
     state = controller.step()
     if tick % 24 == 0:  # Daily output
         print(f"Day {tick//24}: Pop={state['population_size']}")
+```
+
+### JASMINE Mode Simulation
+
+```python
+from cenop.core.simulation import Simulation
+from cenop.parameters.simulation_params import SimulationParameters
+
+# Create JASMINE configuration
+params = SimulationParameters(
+    porpoise_count=1000,
+    sim_years=5,
+    simulation_mode="JASMINE",
+
+    # Enable all JASMINE subsystems
+    energy_mode="JASMINE",
+    memory_mode="JASMINE",
+    fsm_mode="JASMINE",
+
+    # Custom JASMINE parameters
+    jasmine_bmr_scale=1.2,      # 20% higher metabolism
+    memory_decay_rate=0.001,    # Slow memory decay
+    habituation_enabled=True,   # Enable habituation
+    jasmine_thermal_model=True  # Temperature-dependent costs
+)
+
+# Create and run simulation
+sim = Simulation(params)
+sim.initialize()
+
+# Run with state tracking
+for tick in range(params.total_ticks):
+    state = sim.step()
+
+    # Access JASMINE-specific metrics
+    if tick % 48 == 0:  # Daily
+        print(f"Day {tick//48}:")
+        print(f"  Population: {state['population']}")
+        print(f"  Avg Body Condition: {state['avg_body_condition']:.2f}")
+        print(f"  Disturbed Count: {state['disturbed_count']}")
+        print(f"  Memory Intensity: {state['avg_memory_intensity']:.3f}")
 ```
 
 ### Batch Analysis
@@ -638,7 +1015,16 @@ for result in results:
 
 ## Version History
 
+- **v2.0.0**: CENOP-JASMINE merge
+  - Added JASMINE simulation mode
+  - Hybrid behavioral FSM (5 states)
+  - Dynamic Energy Budget with body mass scaling
+  - Disturbance memory with learned avoidance
+  - Habituation to repeated disturbance
+  - Physics-based movement option
+  - Dual-mode configuration (DEPONS/JASMINE)
+
 - **v0.1.0**: Initial release with core simulation functionality
-- Core modules: Landscape, Population, Energetics, PSM
-- DEPONS-compatible output
-- Shiny web interface
+  - Core modules: Landscape, Population, Energetics, PSM
+  - DEPONS-compatible output
+  - Shiny web interface

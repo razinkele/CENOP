@@ -688,16 +688,33 @@ class PorpoisePopulation:
 
         Checks if proposed positions are on land and tries turning
         40°, 70°, 120° in both directions to find water.
+        
+        Boundary handling uses DEPONS-style reflection (BouncyBorders):
+        when an agent would move past an edge, the overshot component
+        is negated (reflected) and the heading is recalculated.
         """
         # Calculate proposed new positions
         np.add(self.x, self._dx, out=self._new_x)
         np.add(self.y, self._dy, out=self._new_y)
 
-        # Clamp to bounds
+        # DEPONS-style bouncy borders: reflect instead of clamp
         world_w = self.landscape.width if self.landscape else self.params.world_width
         world_h = self.landscape.height if self.landscape else self.params.world_height
-        np.clip(self._new_x, 0, world_w - 1, out=self._new_x)
-        np.clip(self._new_y, 0, world_h - 1, out=self._new_y)
+        # Save original dx/dy to detect which agents got reflected
+        # (_reflect_boundaries flips dx/dy signs for reflected agents)
+        orig_dx = self._dx.copy()
+        orig_dy = self._dy.copy()
+        
+        self._reflect_boundaries(self._new_x, self._new_y, self._dx, self._dy,
+                                 world_w, world_h, mask)
+
+        # Recalculate heading ONLY for agents whose displacement was reflected
+        # (DEPONS Porpoise.forward(): setHeading + setPrevAngle(0) after bounce)
+        reflected = mask & ((self._dx != orig_dx) | (self._dy != orig_dy))
+        if np.any(reflected):
+            self.heading[reflected] = np.degrees(
+                np.arctan2(self._dx[reflected], self._dy[reflected])
+            ) % 360.0
 
         if not self.landscape:
             return
@@ -767,6 +784,49 @@ class PorpoisePopulation:
         self._new_x[self._on_land] = self.x[self._on_land]
         self._new_y[self._on_land] = self.y[self._on_land]
         self.heading[self._on_land] = (self.heading[self._on_land] + 180) % 360
+
+    @staticmethod
+    def _reflect_boundaries(
+        new_x: np.ndarray, new_y: np.ndarray,
+        dx: np.ndarray, dy: np.ndarray,
+        world_w: int, world_h: int,
+        mask: np.ndarray,
+    ) -> None:
+        """
+        DEPONS-style bouncy borders.
+
+        When a position overshoots an edge the component is reflected
+        back into the domain and the displacement sign is flipped so
+        that heading recalculation (done in the caller where needed)
+        points inward.
+
+        Reference: DEPONS Porpoise.forward() bounce logic.
+        """
+        max_x = world_w - 1.0
+        max_y = world_h - 1.0
+
+        # --- X reflection ---
+        under_x = mask & (new_x < 0)
+        over_x  = mask & (new_x > max_x)
+        if np.any(under_x):
+            new_x[under_x] = -new_x[under_x]
+            dx[under_x]    = -dx[under_x]
+        if np.any(over_x):
+            new_x[over_x] = 2.0 * max_x - new_x[over_x]
+            dx[over_x]    = -dx[over_x]
+        # Safety clamp (double-bounce edge case)
+        np.clip(new_x, 0, max_x, out=new_x)
+
+        # --- Y reflection ---
+        under_y = mask & (new_y < 0)
+        over_y  = mask & (new_y > max_y)
+        if np.any(under_y):
+            new_y[under_y] = -new_y[under_y]
+            dy[under_y]    = -dy[under_y]
+        if np.any(over_y):
+            new_y[over_y] = 2.0 * max_y - new_y[over_y]
+            dy[over_y]    = -dy[over_y]
+        np.clip(new_y, 0, max_y, out=new_y)
 
     def _apply_positions(self, mask: np.ndarray) -> None:
         """Apply final positions and update adaptive neighbor recompute."""
@@ -1012,6 +1072,28 @@ class PorpoisePopulation:
         """Export active agents to DataFrame for UI helpers."""
         mask = self.active_mask
         n_active = np.sum(mask)
+
+        # Behavioral state export (if FSM present)
+        if self._behavior_state is not None:
+            behavioral_state = self._behavior_state.state.astype(np.int32)
+        else:
+            behavioral_state = np.ones(self.count, dtype=np.int32)
+
+        # Disturbance flag (boolean): whether deter strength exceeds a small threshold
+        is_disturbed = self.deter_strength > 0.1
+
+        # Get depth at current position for debugging land-avoidance
+        if self.landscape is not None and hasattr(self.landscape, '_depth'):
+            xi = self.x.astype(np.int32)
+            yi = self.y.astype(np.int32)
+            world_w = self.landscape.width
+            world_h = self.landscape.height
+            xi = np.clip(xi, 0, world_w - 1)
+            yi = np.clip(yi, 0, world_h - 1)
+            depths = self.landscape._depth[yi, xi]
+        else:
+            depths = np.full(self.count, 20.0, dtype=np.float32)
+
         return pd.DataFrame({
             'id': self.ids[mask],
             'x': self.x[mask],
@@ -1019,6 +1101,10 @@ class PorpoisePopulation:
             'age': self.age[mask],
             'is_female': self.is_female[mask],
             'energy': self.energy[mask],
+            'heading': self.heading[mask],
+            'is_disturbed': is_disturbed[mask],
+            'behavioral_state': behavioral_state[mask],
+            'depth': depths[mask],  # Debug: depth at current position
             'alive': np.ones(n_active, dtype=bool)
         })
 
@@ -1260,7 +1346,11 @@ class PorpoisePopulation:
         self.heading[idx] = np.degrees(np.arctan2(dx, dy)) % 360.0
 
     def _set_random_dispersal_target(self, idx: int) -> None:
-        """Set a random dispersal target at preferred distance."""
+        """Set a random dispersal target at preferred distance.
+        
+        Uses reflection to keep targets inside the map instead of
+        clamping (which biased targets toward edges/corners).
+        """
         pref_dist_km = self._psm_instances[idx].preferred_distance
         angle_rad = np.random.uniform(0, 2 * np.pi)
         dist_cells = pref_dist_km * 1000 / 400.0
@@ -1268,12 +1358,28 @@ class PorpoisePopulation:
         tx = self.x[idx] + np.sin(angle_rad) * dist_cells
         ty = self.y[idx] + np.cos(angle_rad) * dist_cells
         
-        # Clamp to world
+        # Reflect into world (DEPONS bouncy-border style)
         w = self.landscape.width if self.landscape else self.params.world_width
         h = self.landscape.height if self.landscape else self.params.world_height
+        max_x = float(w - 1)
+        max_y = float(h - 1)
         
-        self.dispersal_target_x[idx] = np.clip(tx, 0, w - 1)
-        self.dispersal_target_y[idx] = np.clip(ty, 0, h - 1)
+        # Reflect X
+        if tx < 0:
+            tx = -tx
+        elif tx > max_x:
+            tx = 2.0 * max_x - tx
+        tx = float(np.clip(tx, 0, max_x))
+        
+        # Reflect Y
+        if ty < 0:
+            ty = -ty
+        elif ty > max_y:
+            ty = 2.0 * max_y - ty
+        ty = float(np.clip(ty, 0, max_y))
+        
+        self.dispersal_target_x[idx] = tx
+        self.dispersal_target_y[idx] = ty
         self.dispersal_target_distance[idx] = dist_cells
 
         
@@ -1360,9 +1466,14 @@ class PorpoisePopulation:
         np.multiply(np.sin(rads), self._step_dist, out=self._dx)
         np.multiply(np.cos(rads), self._step_dist, out=self._dy)
 
-        # Clip to world bounds
-        np.clip(self.x + self._dx, 0, world_w - 1, out=out_x)
-        np.clip(self.y + self._dy, 0, world_h - 1, out=out_y)
+        # Proposed position
+        np.add(self.x, self._dx, out=out_x)
+        np.add(self.y, self._dy, out=out_y)
+
+        # DEPONS-style reflection at boundaries
+        all_mask = np.ones(len(self.x), dtype=bool)
+        self._reflect_boundaries(out_x, out_y, self._dx, self._dy,
+                                 world_w, world_h, all_mask)
 
         # Get cell indices
         np.copyto(out_xi, out_x.astype(np.int32))

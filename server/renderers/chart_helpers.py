@@ -256,7 +256,7 @@ def create_pydeck_map(
     # Create a hash of the data to use as a version identifier
     data_hash = hashlib.md5(points_json.encode()).hexdigest()[:8]
     
-    html_content = f'''
+    html_content = '''
 <!DOCTYPE html>
 <html>
 <head>
@@ -446,38 +446,63 @@ def create_pydeck_map(
             }});
         }}
         
-        // Dynamic turbine layer - shows wind turbine positions
+        // Turbine pole layer (static)
         let turbineData = [];
-        function createTurbineLayer(data) {{
-            return new ScatterplotLayer({{
-                id: 'turbine-layer',
+        function createTurbinePoleLayer(data) {{
+            return new IconLayer({{
+                id: 'turbine-pole-layer',
                 data: data,
+                iconAtlas: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><g fill="white"><circle cx="24" cy="20" r="3"/><rect x="22" y="10" width="4" height="32" fill="white"/></g></svg>',
+                iconMapping: {{ 'pole': {{ x: 0, y: 0, width: 48, height: 48, anchorY: 42, anchorX: 24 }} }},
+                getIcon: d => 'pole',
                 getPosition: d => d.position,
-                getRadius: 800,  // Larger radius for turbines
-                getFillColor: [255, 100, 50, 220],  // Orange-red
+                getSize: d => Math.max(20, Math.min(64, (d.radius || 300) / 15)),
+                getColor: d => {{
+                    if (d.phase === 'construction') return [255, 70, 40, 220];
+                    if (d.phase === 'operational') return [50, 160, 240, 220];
+                    if (d.phase === 'planned') return [180, 180, 180, 180];
+                    return d.color || [255, 140, 60];
+                }},
                 pickable: true,
-                opacity: 1.0,
-                stroked: true,
-                getLineColor: [255, 255, 255, 255],
-                lineWidthMinPixels: 2,
-                radiusMinPixels: 6,
-                radiusMaxPixels: 25,
+                opacity: 0.95,
             }});
         }}
-        
+
+        function createTurbineBladeLayer(data) {{
+            return new IconLayer({{
+                id: 'turbine-blade-layer',
+                data: data,
+                iconAtlas: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><g fill="white"><path d="M24 4 L27 24 L24 27 L21 24 Z"/><path d="M42 14 L27 21 L24 18 L39 11 Z"/><path d="M6 14 L21 21 L24 18 L9 11 Z"/></g></svg>',
+                iconMapping: {{ 'blade': {{ x: 0, y: 0, width: 48, height: 48, anchorY: 42, anchorX: 24 }} }},
+                getIcon: d => 'blade',
+                getPosition: d => d.position,
+                getSize: d => Math.max(20, Math.min(64, (d.radius || 300) / 15)),
+                getAngle: d => 0,
+                getColor: d => {{
+                    if (d.phase === 'construction') return [255, 70, 40, 220];
+                    if (d.phase === 'operational') return [50, 160, 240, 220];
+                    if (d.phase === 'planned') return [180, 180, 180, 180];
+                    return d.color || [255, 140, 60];
+                }},
+                pickable: false,
+                opacity: 0.95,
+            }});
+        }}
+
         // Function to update all layers
         function updateAllLayers() {{
             deckgl.setProps({{
                 layers: [
                     bathymetryLayer, 
-                    createTurbineLayer(turbineData),  // Turbines below porpoises
+                    createTurbinePoleLayer(turbineData),  // poles below blades
+                    createTurbineBladeLayer(turbineData), // blades above poles
                     createScatterLayer(porpoiseData)
                 ]
             }});
         }}
-        
+
         // Initialize deck.gl with all layers
-        const deckgl = new DeckGL({{
+        const deckgl = new DeckGL({
             container: 'deck-container',
             initialViewState: {{
                 latitude: CENTER_LAT,
@@ -487,17 +512,14 @@ def create_pydeck_map(
                 bearing: 0
             }},
             controller: true,
-            layers: [bathymetryLayer, createTurbineLayer([]), createScatterLayer(porpoiseData)],
+            layers: [bathymetryLayer, createTurbinePoleLayer([]), createTurbineBladeLayer([]), createScatterLayer(porpoiseData)],
             parameters: {{
                 clearColor: [0.05, 0.1, 0.15, 1]
             }},
-            onViewStateChange: ({{viewState}}) => {{
-                document.getElementById('view-info').innerHTML = 
-                    'Lat: ' + viewState.latitude.toFixed(3) + 
-                    ' | Lon: ' + viewState.longitude.toFixed(3) + 
-                    ' | Zoom: ' + viewState.zoom.toFixed(1);
-            }}
-        }});
+            onViewStateChange: ({viewState}) => {
+                document.getElementById('view-info').innerHTML = 'Lat: ' + viewState.latitude.toFixed(3) + ' | Lon: ' + viewState.longitude.toFixed(3) + ' | Zoom: ' + viewState.zoom.toFixed(1);
+            }
+        });
         
         // Store reference for updates (DEPONS pattern)
         window.deckgl = deckgl;
@@ -530,14 +552,21 @@ def create_pydeck_map(
         }});
         
         // Initial view info
-        document.getElementById('view-info').innerHTML = 
-            'Lat: ' + CENTER_LAT.toFixed(3) + 
-            ' | Lon: ' + CENTER_LON.toFixed(3) + 
-            ' | Zoom: {zoom}.0';
+        document.getElementById('view-info').innerHTML = 'Lat: ' + CENTER_LAT.toFixed(3) + ' | Lon: ' + CENTER_LON.toFixed(3) + ' | Zoom: {zoom}.0';
     </script>
 </body>
 </html>
 '''
+
+    # Replace double-brace escape sequences used for earlier f-string safety,
+    # and substitute the small set of Python values into the HTML safely.
+    html_content = html_content.replace('{{', '{').replace('}}', '}') \
+                               .replace('{points_json}', points_json) \
+                               .replace('{point_count}', str(point_count)) \
+                               .replace('{center_lat}', str(center_lat)) \
+                               .replace('{center_lon}', str(center_lon)) \
+                               .replace('{zoom}', str(zoom))
+
     # Use a fixed name attribute to help prevent iframe recreation flicker
     return ui.tags.iframe(
         srcdoc=html_content,

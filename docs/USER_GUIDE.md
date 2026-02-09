@@ -1,34 +1,38 @@
-# CENOP User Guide
+# CENOP-JASMINE User Guide
 
-## Cetacean Noise Operations Planner
+## Cetacean Noise Operations Planner with JASMINE Extensions
 
-A web-based simulation tool for assessing the impact of offshore wind farm construction on harbor porpoise populations.
+A web-based simulation tool for assessing the impact of offshore wind farm construction on harbor porpoise populations, with advanced research-grade behavioral modeling.
 
-**Version 1.0** | Python Shiny Implementation of DEPONS 3.0
+**Version 2.0** | Python Shiny Implementation of DEPONS 3.0 + JASMINE Extensions
 
 ---
 
 ## Table of Contents
 
 1. [Introduction](#introduction)
-2. [Getting Started](#getting-started)
-3. [Interface Overview](#interface-overview)
-4. [Running a Simulation](#running-a-simulation)
-5. [Understanding the Results](#understanding-the-results)
-6. [Parameter Reference](#parameter-reference)
-7. [Data Export](#data-export)
-8. [Troubleshooting](#troubleshooting)
+2. [Simulation Modes](#simulation-modes)
+3. [Getting Started](#getting-started)
+4. [Interface Overview](#interface-overview)
+5. [Running a Simulation](#running-a-simulation)
+6. [Understanding the Results](#understanding-the-results)
+7. [Parameter Reference](#parameter-reference)
+8. [Data Export](#data-export)
+9. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Introduction
 
-### What is CENOP?
+### What is CENOP-JASMINE?
 
 CENOP (Cetacean Noise Operations Planner) is a Python translation of the DEPONS (Disturbance Effects on the Harbour Porpoise Population in the North Sea) model. It simulates how harbor porpoise populations respond to noise from offshore wind farm construction.
 
+The JASMINE (Just Another Simulation Model In Nature Environments) extension adds research-grade features including physics-based movement, dynamic energy budgets, and learned avoidance behaviors.
+
 ### Key Features
 
+#### Core Features (DEPONS Mode)
 - **Agent-Based Simulation**: Each porpoise is modeled individually with realistic behavior
 - **Real-Time Visualization**: Watch population dynamics unfold on an interactive map
 - **Energy Budget Modeling**: Tracks individual energy reserves and their effect on survival
@@ -36,6 +40,36 @@ CENOP (Cetacean Noise Operations Planner) is a Python translation of the DEPONS 
 - **Persistent Spatial Memory (PSM)**: Porpoises remember good foraging locations
 - **DEPONS Compatibility**: Outputs match the original Java model format
 - **Vectorized Performance**: NumPy-based simulation supports 1000+ porpoises in real-time
+
+#### JASMINE Extensions (Research Mode)
+- **Behavioral State Machine**: Five behavioral states (FORAGING, TRAVELING, RESTING, DISPERSING, DISTURBED) with configurable transitions
+- **Dynamic Energy Budget (DEB)**: Body mass-dependent metabolism, activity costs, thermoregulation, and disturbance energy impacts
+- **Disturbance Memory**: Spatial memory with learned avoidance of disturbance zones
+- **Habituation**: Reduced response to repeated disturbance exposure
+- **Physics-Based Movement**: Hydrodynamic drag, thrust-based propulsion, and ocean current advection
+
+---
+
+## Simulation Modes
+
+CENOP-JASMINE supports two simulation modes:
+
+### DEPONS Mode (Default)
+- Regulatory-compatible empirical models
+- Validated against DEPONS 3.0 Java implementation
+- Suitable for environmental impact assessments
+- Simple energy model (0-20 scale)
+- Immediate deterrence response (no memory)
+
+### JASMINE Mode (Research)
+- Physics-based movement and bioenergetics
+- Dynamic Energy Budget with body mass scaling
+- Learned avoidance with spatial memory
+- Habituation to repeated disturbance
+- Enhanced behavioral state machine
+- Suitable for research and hypothesis testing
+
+**Selecting a Mode**: Use the "Simulation Mode" dropdown in the sidebar to switch between DEPONS and JASMINE modes
 
 ### Scientific Background
 
@@ -54,10 +88,10 @@ The model is based on:
 - Network connection to the server (laguna.ku.lt)
 - No local installation required
 
-### Accessing CENOP
+### Accessing CENOP-JASMINE
 
 1. Open your web browser
-2. Navigate to: `https://laguna.ku.lt/cenop/`
+2. Navigate to: `https://laguna.ku.lt/cenjas/`
 3. The application will load automatically
 
 ### First Run
@@ -90,9 +124,10 @@ The interface is divided into three main areas:
 ### Sidebar Controls
 
 #### Setup Section
+- **Simulation Mode**: Select DEPONS (Regulatory) or JASMINE (Research) mode
 - **Initial Population**: Starting number of porpoises (1-50,000)
 - **Simulation Years**: Duration of simulation (1-100 years)
-- **Landscape**: Geographic area (Homogeneous, NorthSea, DanTysk, etc.)
+- **Landscape**: Geographic area (Homogeneous, NorthSea, Lithuania, etc.)
 - **Load Landscape**: Button to load bathymetry and display on map
 - **Wind Turbines**: Turbine scenario (filtered by landscape compatibility)
 - **Load Turbines**: Button to display turbines and noise overlay
@@ -279,6 +314,48 @@ The interactive map shows:
 | rR | 0.04 | Reference memory decay rate |
 | rU | 0.1 | Food replenishment rate |
 
+### JASMINE Mode Parameters
+
+These parameters are only active when JASMINE mode is selected.
+
+#### Behavioral State Machine
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| FSM Mode | JASMINE | State machine type (DEPONS or JASMINE) |
+| Recovery Ticks | 48 | Ticks to recover from disturbance |
+| Energy Threshold Low | 0.3 | Low energy threshold for state transitions |
+| Energy Threshold High | 0.7 | High energy threshold for state transitions |
+| Speed Threshold | 2.0 | Speed threshold for TRAVELING state (m/s) |
+
+#### Dynamic Energy Budget (DEB)
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| Body Mass | 50.0 kg | Adult porpoise body mass |
+| BMR Scale | 1.0 | Basal metabolic rate multiplier |
+| Activity Cost | 2.0 | Activity cost multiplier |
+| Thermal Model | On | Enable temperature-dependent metabolism |
+| Disturbance Cost | 1.5 | Energy cost multiplier during disturbance |
+
+#### Disturbance Memory
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| Memory Mode | JASMINE | Memory type (None or JASMINE) |
+| Memory Decay Rate | 0.001 | Per-tick memory decay |
+| Avoidance Radius | 20 | Influence radius in grid cells |
+| Habituation | On | Enable habituation to repeated disturbance |
+| Habituation Rate | 0.05 | Rate of habituation per exposure |
+
+#### Physics-Based Movement
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| Drag Coefficient | 0.01 | Hydrodynamic drag coefficient |
+| Max Thrust | 100.0 N | Maximum propulsive thrust |
+| Current Weight | 0.5 | Ocean current influence (0-1) |
+
 ---
 
 ## Data Export
@@ -383,10 +460,16 @@ writer.finalize()
 
 ### Model Validation
 
-CENOP has been validated against:
+**DEPONS Mode** has been validated against:
 - Original DEPONS 3.0 Java model outputs
 - Empirical porpoise tracking data
 - Published population estimates
+
+**JASMINE Mode** is research-grade and designed for:
+- Exploring advanced behavioral hypotheses
+- Testing learned avoidance scenarios
+- Evaluating bioenergetics models
+- Not yet validated for regulatory use
 
 ### Time Steps
 
@@ -405,12 +488,22 @@ CENOP has been validated against:
 - **Lactation cost**: 1.4× normal metabolism
 - **Starvation threshold**: Energy < 0.1 → increased mortality
 
+### Behavioral States (JASMINE Mode)
+
+| State | Description | Movement |
+|-------|-------------|----------|
+| FORAGING | Searching for/consuming food | DEPONS CRW |
+| TRAVELING | Directed movement between areas | Physics-based |
+| RESTING | Low activity energy recovery | Physics-based |
+| DISPERSING | Memory-driven dispersal to new areas | PSM-based |
+| DISTURBED | Response to disturbance events | Avoidance |
+
 ### Citation
 
-If using CENOP in publications, please cite:
+If using CENOP-JASMINE in publications, please cite:
 ```
-CENOP: Cetacean Noise Operations Planner
-A Python Shiny translation of DEPONS 3.0
+CENOP-JASMINE: Cetacean Noise Operations Planner with JASMINE Extensions
+A Python Shiny implementation of DEPONS 3.0 with research-grade behavioral modeling
 AI4WIND Project, 2024-2026
 ```
 
@@ -420,3 +513,4 @@ AI4WIND Project, 2024-2026
 2. Hin V., et al. (2019). A bioenergetics model for harbour porpoise. *Ecological Modelling*.
 3. Tougaard J., et al. (2015). Noise from operation of offshore wind farms. *Marine Ecology Progress Series*.
 4. DEPONS Project: [www.depons.dk](http://www.depons.dk)
+5. Kooijman, S.A.L.M. (2010). Dynamic Energy Budget theory for metabolic organisation. Cambridge University Press.

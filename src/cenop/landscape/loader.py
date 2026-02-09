@@ -76,6 +76,9 @@ class LandscapeLoader:
         """
         Load an ASCII grid file.
         
+        Optimized: uses np.loadtxt for data parsing instead of
+        pure-Python line-by-line float conversion.
+        
         Args:
             filename: Name of file to load
             
@@ -87,14 +90,15 @@ class LandscapeLoader:
         if not filepath.exists():
             raise FileNotFoundError(f"Landscape file not found: {filepath}")
             
-        # Parse header
+        # Parse header (typically 6 lines)
         header = {}
-        data_lines = []
+        header_line_count = 0
         
         with open(filepath, 'r') as f:
             for line in f:
                 line = line.strip()
                 if not line:
+                    header_line_count += 1
                     continue
                     
                 # Check if this is a header line
@@ -109,9 +113,9 @@ class LandscapeLoader:
                         header[key] = int(value)
                     else:
                         header[key] = float(value)
+                    header_line_count += 1
                 else:
-                    # Data line
-                    data_lines.append(line)
+                    break  # First data line found
                     
         # Create metadata
         metadata = LandscapeMetadata(
@@ -123,13 +127,8 @@ class LandscapeLoader:
             nodata_value=header.get('nodata_value', -9999.0),
         )
         
-        # Parse data
-        data = []
-        for line in data_lines:
-            row = [float(x) for x in line.split()]
-            data.append(row)
-            
-        data_array = np.array(data)
+        # Parse data with numpy (much faster than pure Python)
+        data_array = np.loadtxt(str(filepath), skiprows=header_line_count)
         
         # DEPONS Compatibility: Keep NODATA as -9999, do NOT convert to NaN
         # NaN comparisons always return False, breaking land detection

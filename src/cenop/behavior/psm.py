@@ -199,6 +199,8 @@ class PersistentSpatialMemory:
         Searches for the best cell (highest energy expectation) that is
         approximately at the preferred dispersal distance.
         
+        Optimized: vectorized distance computation over all memory cells.
+        
         Args:
             current_x, current_y: Current position
             tolerance: Tolerance band around preferred distance (km)
@@ -216,38 +218,39 @@ class PersistentSpatialMemory:
         min_dist = preferred_dist_cells - tolerance_cells
         max_dist = preferred_dist_cells + tolerance_cells
         
-        candidates = []
+        # Extract all cell data into arrays at once
+        n = len(self._mem_cells)
+        cell_nums = np.fromiter(self._mem_cells.keys(), dtype=np.int32, count=n)
+        energies = np.array(
+            [cd.energy_expectation for cd in self._mem_cells.values()],
+            dtype=np.float64,
+        )
         
-        for cell_num, cell_data in self._mem_cells.items():
-            x, y = self._cell_number_to_position(cell_num)
-            
-            # Calculate distance from current position
-            dx = x - current_x
-            dy = y - current_y
-            dist = np.sqrt(dx**2 + dy**2)
-            
-            if min_dist <= dist <= max_dist:
-                candidates.append((x, y, dist, cell_data.energy_expectation))
-                
-        if not candidates:
-            # No cells in target range - find closest to preferred distance
-            for cell_num, cell_data in self._mem_cells.items():
-                x, y = self._cell_number_to_position(cell_num)
-                dx = x - current_x
-                dy = y - current_y
-                dist = np.sqrt(dx**2 + dy**2)
-                candidates.append((x, y, dist, cell_data.energy_expectation))
-                
-        if not candidates:
-            return None
-            
-        # Sort by energy expectation (descending)
-        candidates.sort(key=lambda c: c[3], reverse=True)
+        # Vectorized cell_number_to_position
+        mem_x = cell_nums % self.cells_per_row
+        mem_y = cell_nums // self.cells_per_row
+        xs = (mem_x + 0.5) * self.mem_cell_size
+        ys = (mem_y + 0.5) * self.mem_cell_size
         
-        # Return best candidate
-        best = candidates[0]
-        dist_km = best[2] * cell_size / 1000
-        return (best[0], best[1], dist_km)
+        # Vectorized distance computation
+        dx = xs - current_x
+        dy = ys - current_y
+        dists = np.sqrt(dx * dx + dy * dy)
+        
+        # Find candidates in target distance range
+        in_range = (dists >= min_dist) & (dists <= max_dist)
+        
+        if np.any(in_range):
+            # Best candidate in range by energy expectation
+            range_energies = energies.copy()
+            range_energies[~in_range] = -np.inf
+            best_idx = int(np.argmax(range_energies))
+        else:
+            # No cells in target range - pick highest energy overall
+            best_idx = int(np.argmax(energies))
+        
+        dist_km = float(dists[best_idx]) * cell_size / 1000
+        return (float(xs[best_idx]), float(ys[best_idx]), dist_km)
         
     def get_random_target(
         self,

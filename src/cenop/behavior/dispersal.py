@@ -117,8 +117,19 @@ class DispersalBehavior(ABC):
         """
         pass
         
-    def start_dispersal(self, rng: np.random.Generator) -> None:
-        """Start dispersal behavior."""
+    def start_dispersal(
+        self,
+        rng: np.random.Generator,
+        target_heading: Optional[float] = None,
+        start_position: Optional[Tuple[float, float]] = None
+    ) -> None:
+        """Start dispersal behavior.
+        
+        Args:
+            rng: Random number generator.
+            target_heading: Optional heading for directed dispersal (PSM-Type2).
+            start_position: Optional start position for distance tracking (PSM-Type2/3).
+        """
         self._dispersing = True
         self._distance_traveled = 0.0
         # Draw target distance from normal distribution

@@ -138,6 +138,10 @@ def create_static_pydeck_map():
             font-size: 10px;
             z-index: 1000;
         }
+
+        /* Spinner animation for operational turbine legend */
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .turbine-spinner { animation: spin 1s linear infinite; transform-origin: center; transform-box: fill-box; }
     </style>
 </head>
 <body>
@@ -196,12 +200,60 @@ def create_static_pydeck_map():
         </div>
         <div class="legend-content">
             <div class="legend-item">
-                <div class="legend-dot" style="background: rgb(0, 150, 255);"></div>
-                <span>Porpoise</span>
+                <!-- Porpoise: small arrow with tail (juvenile) -->
+                <svg width="16" height="16" viewBox="0 0 32 32" style="margin-right:8px;">
+                    <polygon points="16,4 28,24 22,24 16,14 10,24 4,24" fill="#2ecc71" stroke="#111" stroke-width="0.8"/>
+                </svg>
+                <span>Juvenile (&lt;2 yr)</span>
             </div>
             <div class="legend-item">
-                <div class="legend-dot" style="background: rgb(255, 100, 50);"></div>
-                <span>Turbine (<span id="turbine-count">0</span>)</span>
+                <!-- Porpoise: small arrow with tail (young adult) -->
+                <svg width="16" height="16" viewBox="0 0 32 32" style="margin-right:8px;">
+                    <polygon points="16,4 28,24 22,24 16,14 10,24 4,24" fill="#3498db" stroke="#111" stroke-width="0.8"/>
+                </svg>
+                <span>Young Adult (2-6 yr)</span>
+            </div>
+            <div class="legend-item">
+                <!-- Porpoise: small arrow with tail (mature) -->
+                <svg width="16" height="16" viewBox="0 0 32 32" style="margin-right:8px;">
+                    <polygon points="16,4 28,24 22,24 16,14 10,24 4,24" fill="#2980b9" stroke="#111" stroke-width="0.8"/>
+                </svg>
+                <span>Mature (6-12 yr)</span>
+            </div>
+            <div class="legend-item">
+                <!-- Porpoise: small arrow with tail (older) -->
+                <svg width="16" height="16" viewBox="0 0 32 32" style="margin-right:8px;">
+                    <polygon points="16,4 28,24 22,24 16,14 10,24 4,24" fill="#95a5a6" stroke="#111" stroke-width="0.8"/>
+                </svg>
+                <span>Older (&gt;12 yr)</span>
+            </div>
+            <div class="legend-item">
+                <svg width="16" height="16" viewBox="0 0 32 32" style="margin-right:8px;">
+                    <polygon points="16,6 26,22 20,22 16,16 12,22 6,22" fill="#ff3232" stroke="#b40000" stroke-width="1.5"/>
+                </svg>
+                <span>Disturbed</span>
+            </div>
+            <div class="legend-item" style="margin-top:6px;padding-top:6px;border-top:1px solid #444;">
+                <div style="width:16px;height:8px;margin-right:8px;background:linear-gradient(to right, rgba(52,152,219,0.5), rgba(52,152,219,1));border-radius:2px;"></div>
+                <span style="font-size:9px;color:#888;">Opacity = Energy</span>
+            </div>
+            <div class="legend-item" style="align-items:flex-start;">
+                <div style="display:flex;flex-direction:column;margin-right:8px;gap:4px;">
+                    <!-- Construction -->
+                    <svg width="18" height="18" viewBox="0 0 48 48"><g fill="#ff4630" stroke="#000" stroke-width="0.6"><circle cx="24" cy="20" r="3"/><path d="M24 4 L27 24 L24 27 L21 24 Z"/><path d="M42 14 L27 21 L24 18 L39 11 Z"/><path d="M6 14 L21 21 L24 18 L9 11 Z"/><rect x="22" y="10" width="4" height="32"/></g></svg>
+                    <!-- Operational (animated) -->
+                    <svg class="turbine-spinner" width="18" height="18" viewBox="0 0 48 48" style="transform-origin:center;transform-box:fill-box;"><g fill="#32b0f0" stroke="#000" stroke-width="0.6"><circle cx="24" cy="20" r="3"/><path d="M24 4 L27 24 L24 27 L21 24 Z"/><path d="M42 14 L27 21 L24 18 L39 11 Z"/><path d="M6 14 L21 21 L24 18 L9 11 Z"/><rect x="22" y="10" width="4" height="32"/></g></svg>
+                    <!-- Planned -->
+                    <svg width="18" height="18" viewBox="0 0 48 48"><g fill="#b0b0b0" stroke="#000" stroke-width="0.6"><circle cx="24" cy="20" r="3"/><path d="M24 4 L27 24 L24 27 L21 24 Z"/><path d="M42 14 L27 21 L24 18 L39 11 Z"/><path d="M6 14 L21 21 L24 18 L9 11 Z"/><rect x="22" y="10" width="4" height="32"/></g></svg>
+                </div>
+                <div>
+                    <div style="font-weight:bold;margin-bottom:4px;">Turbines (<span id="turbine-count">0</span>)</div>
+                    <div style="font-size:11px;color:#ccc;">
+                        <span style="display:inline-block;width:10px;height:10px;background:#ff4630;margin-right:6px;border-radius:2px;border:1px solid rgba(0,0,0,0.2);"></span> Construction<br>
+                        <span style="display:inline-block;width:10px;height:10px;background:#32b0f0;margin-right:6px;border-radius:2px;border:1px solid rgba(0,0,0,0.2);"></span> Operational<br>
+                        <span style="display:inline-block;width:10px;height:10px;background:#b0b0b0;margin-right:6px;border-radius:2px;border:1px solid rgba(0,0,0,0.2);"></span> Planned
+                    </div>
+                </div>
             </div>
             <div class="legend-item">
                 <div class="legend-dot" style="background: linear-gradient(to right, #1a237e, #0288d1, #4fc3f7);"></div>
@@ -259,7 +311,7 @@ def create_static_pydeck_map():
     </style>
     
     <script>
-        const {DeckGL, TileLayer, BitmapLayer, ScatterplotLayer, ColumnLayer} = deck;
+        const {DeckGL, TileLayer, BitmapLayer, ScatterplotLayer, ColumnLayer, IconLayer} = deck;
         
         // EMODnet Bathymetry tiles - STATIC base layer
         const BATHYMETRY_URL = 'https://tiles.emodnet-bathymetry.eu/2020/baselayer/web_mercator/{z}/{x}/{y}.png';
@@ -286,7 +338,12 @@ def create_static_pydeck_map():
         let foragingData = [];  // Food availability/foraging patches
         let shipData = [];  // Ship positions
         let showDepthLayer = false;  // Off until loaded
-        let showTurbineLayer = false;
+        // Show turbine layer by default so turbines are visible on load
+        let showTurbineLayer = true;
+        // Rotor animation state for operational turbines
+        let turbineRotation = 0;
+        let turbineAnimationRunning = false;
+        let turbineAnimationFrameId = null;
         let showNoiseLayer = false;
         let showForagingLayer = false;
         let showShipLayer = false;
@@ -376,44 +433,121 @@ def create_static_pydeck_map():
             });
         }
         
-        // Create scatter layer with current data
+        // Create PORPOISE icon layer (chevron symbols rotated by heading)
+        // Simple white arrow with a short tail for clearer heading indication
+        const ARROW_SVG = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><g fill="white"><polygon points="16,4 28,20 22,20 16,12 10,20 4,20"/><rect x="14" y="20" width="4" height="8"/></g></svg>';
+
         function createScatterLayer(data) {
-            return new ScatterplotLayer({
+            if (!data || data.length === 0) return null;
+
+            return new IconLayer({
                 id: 'porpoise-layer',
                 data: data,
+                iconAtlas: ARROW_SVG,
+                iconMapping: {
+                    'porpoise': { x: 0, y: 0, width: 32, height: 32, anchorY: 16, anchorX: 16 }
+                },
+                getIcon: d => 'porpoise',
                 getPosition: d => d.position,
-                getRadius: d => d.radius || 400,
-                getFillColor: d => d.color || [0, 150, 255, 200],
+                // Size varies by age: juveniles smaller, adults larger (reduced overall sizes)
+                getSize: d => {
+                    const age = d.age || 5;
+                    if (age < 1) return 8;       // Calves - smallest
+                    if (age < 2) return 9;       // Juveniles
+                    if (age < 6) return 10;      // Young adults
+                    if (age < 15) return 11;     // Prime adults
+                    return 9;                    // Older - slightly smaller
+                },
+                sizeScale: 0.9,
+                sizeMinPixels: 4,
+                sizeMaxPixels: 18,
+                // Heading: 0 = North, 90 = East, etc. (matches DEPONS convention)
+                getAngle: d => -(d.heading || 0),  // Negate for deck.gl rotation direction
+                getColor: d => {
+                    // Priority: disturbed > server color > age-based
+                    if (d.is_disturbed) return [255, 50, 50, 255];  // Bright red
+
+                    // Server-provided color (RGB or RGBA)
+                    if (d.color && d.color.length >= 3) {
+                        // Add alpha based on energy level if available
+                        const energy = d.energy || 10;
+                        const energyAlpha = Math.floor(200 + 55 * Math.min(1, energy / 15));
+                        return [d.color[0], d.color[1], d.color[2], energyAlpha];
+                    }
+
+                    // Age-based coloring with energy-modulated alpha
+                    const age = d.age || 5;
+                    const energy = d.energy || 10;
+                    const energyAlpha = Math.floor(200 + 55 * Math.min(1, energy / 15));
+
+                    if (age < 2) return [46, 204, 113, energyAlpha];   // Emerald green - juveniles
+                    if (age < 6) return [52, 152, 219, energyAlpha];   // Bright blue - young adults
+                    if (age < 12) return [41, 128, 185, energyAlpha];  // Darker blue - mature
+                    return [149, 165, 166, energyAlpha];               // Gray - older
+                },
                 pickable: true,
-                opacity: 0.9,
-                stroked: true,
-                getLineColor: [255, 255, 255, 150],
-                lineWidthMinPixels: 1,
-                radiusMinPixels: 4,
-                radiusMaxPixels: 20,
+                billboard: false,  // Keep flat on map
+                alphaCutoff: 0.05,
+                // Smooth transitions
                 transitions: {
-                    getPosition: 200,
-                    getRadius: 200
+                    getPosition: 300,
+                    getSize: 200,
+                    getAngle: 250,
+                    getColor: 200
                 }
             });
         }
         
-        // Create turbine layer (orange-red markers for wind turbines)
-        function createTurbineLayer(data) {
+        // Turbine pole+hub layer (static) - poles and hubs do not rotate
+        function createTurbinePoleLayer(data) {
             if (!data || data.length === 0 || !showTurbineLayer) return null;
-            return new ScatterplotLayer({
-                id: 'turbine-layer',
+            return new IconLayer({
+                id: 'turbine-pole-layer',
                 data: data,
+                // Pole+hub static icon (no blades)
+                iconAtlas: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><g fill="white"><circle cx="24" cy="20" r="3"/><rect x="22" y="10" width="4" height="32" fill="white"/></g></svg>',
+                iconMapping: {
+                    'pole': { x: 0, y: 0, width: 48, height: 48, anchorY: 42, anchorX: 24 }
+                },
+                getIcon: d => 'pole',
                 getPosition: d => d.position,
-                getRadius: 800,
-                getFillColor: [255, 100, 50, 220],  // Orange-red
+                getSize: d => Math.max(20, Math.min(64, (d.radius || 300) / 15)),
+                getColor: d => {
+                    if (d.phase === 'construction') return [255, 70, 40, 220];
+                    if (d.phase === 'operational') return [50, 160, 240, 220];
+                    if (d.phase === 'planned') return [180, 180, 180, 180];
+                    return d.color || [255, 140, 60];
+                },
                 pickable: true,
-                opacity: 1.0,
-                stroked: true,
-                getLineColor: [255, 255, 255, 255],
-                lineWidthMinPixels: 2,
-                radiusMinPixels: 5,
-                radiusMaxPixels: 20
+                opacity: 0.95
+            });
+        }
+
+        // Turbine blades layer (rotating only the blades)
+        function createTurbineBladeLayer(data) {
+            if (!data || data.length === 0 || !showTurbineLayer) return null;
+            return new IconLayer({
+                id: 'turbine-blade-layer',
+                data: data,
+                // Blades-only icon with transparent center so pole/hub shows below
+                iconAtlas: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><g fill="white"><path d="M24 4 L27 24 L24 27 L21 24 Z"/><path d="M42 14 L27 21 L24 18 L39 11 Z"/><path d="M6 14 L21 21 L24 18 L9 11 Z"/></g></svg>',
+                iconMapping: {
+                    'blade': { x: 0, y: 0, width: 48, height: 48, anchorY: 42, anchorX: 24 }
+                },
+                getIcon: d => 'blade',
+                getPosition: d => d.position,
+                getSize: d => Math.max(20, Math.min(64, (d.radius || 300) / 15)),
+                getAngle: d => (d.phase === 'operational') ? turbineRotation : 0,
+                getColor: d => {
+                    // Blades follow same color mapping for visibility
+                    if (d.phase === 'construction') return [255, 70, 40, 220];
+                    if (d.phase === 'operational') return [50, 160, 240, 220];
+                    if (d.phase === 'planned') return [180, 180, 180, 180];
+                    return d.color || [255, 140, 60];
+                },
+                pickable: false,
+                opacity: 0.95,
+                billboard: true
             });
         }
         
@@ -510,6 +644,8 @@ def create_static_pydeck_map():
                 radiusMaxPixels: 30
             });
         }
+
+
         
         // Create ship layer (shows vessel traffic)
         function createShipLayer(data) {
@@ -549,11 +685,14 @@ def create_static_pydeck_map():
             // Noise layers (construction + operational)
             const noiseLayers = createNoiseLayers(noiseData);
             layers.push(...noiseLayers);
-            const turbineLayer = createTurbineLayer(turbineData);
-            if (turbineLayer) layers.push(turbineLayer);
+            const poleLayer = createTurbinePoleLayer(turbineData);
+            if (poleLayer) layers.push(poleLayer);
+            const bladeLayer = createTurbineBladeLayer(turbineData);
+            if (bladeLayer) layers.push(bladeLayer);
             const shipLayer = createShipLayer(shipData);
             if (shipLayer) layers.push(shipLayer);
-            layers.push(createScatterLayer(porpoiseData));
+            const porpoiseLayer = createScatterLayer(porpoiseData);
+            if (porpoiseLayer) layers.push(porpoiseLayer);
             return layers;
         }
         
@@ -621,7 +760,8 @@ def create_static_pydeck_map():
         
         // Update function - only updates scatter layer via setProps
         window.updatePorpoiseData = function(newData) {
-            porpoiseData = newData;
+            porpoiseData = newData || [];
+            console.log('Porpoise data loaded (first 10):', porpoiseData.slice(0,10));
             // Use setProps to update ONLY the layers, not the whole map
             deckgl.setProps({ layers: buildLayers() });
             document.getElementById('point-count').textContent = porpoiseData.length;
@@ -644,7 +784,27 @@ def create_static_pydeck_map():
             // Update turbine count if element exists
             const el = document.getElementById('turbine-count');
             if (el) el.textContent = turbineData.length;
-        };
+
+            // Start rotor animation if any turbine is operational
+            const hasOperational = turbineData.some(d => d.phase === 'operational');
+            if (hasOperational && !turbineAnimationRunning) {
+                turbineAnimationRunning = true;
+                function animate() {
+                    turbineRotation = (turbineRotation + 4) % 360; // rotation speed
+                    deckgl.setProps({ layers: buildLayers() });
+                    turbineAnimationFrameId = requestAnimationFrame(animate);
+                }
+                turbineAnimationFrameId = requestAnimationFrame(animate);
+            } else if (!hasOperational && turbineAnimationRunning) {
+                turbineAnimationRunning = false;
+                if (turbineAnimationFrameId) {
+                    cancelAnimationFrame(turbineAnimationFrameId);
+                    turbineAnimationFrameId = null;
+                }
+                turbineRotation = 0;
+                deckgl.setProps({ layers: buildLayers() });
+            }
+        }; 
         
         // Set noise propagation data (calculated from turbines)
         window.setNoiseData = function(data) {
@@ -789,6 +949,7 @@ def dashboard_tab():
                 ui.output_ui("foraging_data_initializer"),
                 ui.output_ui("ship_data_initializer"),
                 ui.output_ui("turbine_data_initializer"),
+                ui.output_ui("turbine_data_updater"),
                 ui.output_ui("noise_data_initializer"),
                 ui.output_ui("porpoise_data_updater"),
                 height="720px"

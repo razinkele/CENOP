@@ -350,28 +350,75 @@ class JASMINEMemoryModule(DisturbanceMemoryModule):
 
         Memory strength decreases over time, allowing agents to
         eventually return to areas where disturbances have stopped.
+        
+        Optimized: batch-processes all agents' grids by collecting
+        entries into flat arrays, applying vectorized decay, and
+        writing back.
         """
         decay_factor = (1.0 - self.decay_rate) ** ticks_elapsed
         threshold = 0.01  # Remove very weak memories
 
         active_indices = np.where(mask)[0]
 
-        for idx in active_indices:
-            grid = state.memory_grids[idx]
-            if not grid:
-                continue
-
-            # Apply decay and remove weak entries
-            cells_to_remove = []
-            for cell_id, strength in grid.items():
-                new_strength = strength * decay_factor
-                if new_strength < threshold:
-                    cells_to_remove.append(cell_id)
-                else:
-                    grid[cell_id] = new_strength
-
-            for cell_id in cells_to_remove:
-                del grid[cell_id]
+        # --- Batch approach: collect all (agent, cell, strength) triples ---
+        # For small agent counts, the per-dict loop is fine.
+        # For large counts, we pre-allocate and vectorize the decay.
+        total_entries = sum(len(state.memory_grids[idx]) for idx in active_indices)
+        
+        if total_entries == 0:
+            state.avoidance_strength[mask] *= decay_factor
+            return
+        
+        if total_entries < 500:
+            # Small scale: simple loop is faster than array overhead
+            for idx in active_indices:
+                grid = state.memory_grids[idx]
+                if not grid:
+                    continue
+                cells_to_remove = []
+                for cell_id, strength in grid.items():
+                    new_strength = strength * decay_factor
+                    if new_strength < threshold:
+                        cells_to_remove.append(cell_id)
+                    else:
+                        grid[cell_id] = new_strength
+                for cell_id in cells_to_remove:
+                    del grid[cell_id]
+        else:
+            # Large scale: vectorized decay
+            strengths = np.empty(total_entries, dtype=np.float64)
+            agent_ids = np.empty(total_entries, dtype=np.int32)
+            cell_ids = np.empty(total_entries, dtype=np.int32)
+            
+            pos = 0
+            for idx in active_indices:
+                grid = state.memory_grids[idx]
+                n = len(grid)
+                if n == 0:
+                    continue
+                keys = list(grid.keys())
+                vals = list(grid.values())
+                agent_ids[pos:pos+n] = idx
+                cell_ids[pos:pos+n] = keys
+                strengths[pos:pos+n] = vals
+                pos += n
+            
+            # Vectorized decay
+            strengths[:pos] *= decay_factor
+            
+            # Rebuild grids, filtering below threshold
+            survive = strengths[:pos] >= threshold
+            
+            # Clear all active grids and rebuild
+            for idx in active_indices:
+                state.memory_grids[idx].clear()
+            
+            surviving_agents = agent_ids[:pos][survive]
+            surviving_cells = cell_ids[:pos][survive]
+            surviving_strengths = strengths[:pos][survive]
+            
+            for i in range(len(surviving_agents)):
+                state.memory_grids[surviving_agents[i]][surviving_cells[i]] = surviving_strengths[i]
 
         # Decay avoidance strength
         state.avoidance_strength[mask] *= decay_factor
@@ -388,6 +435,9 @@ class JASMINEMemoryModule(DisturbanceMemoryModule):
 
         Agents are biased away from areas where they remember
         experiencing disturbances.
+        
+        Optimized: per-agent cell processing is vectorized with numpy
+        array operations on (cell_ids, strengths) instead of Python loops.
         """
         count = len(agent_x)
 
@@ -403,54 +453,63 @@ class JASMINEMemoryModule(DisturbanceMemoryModule):
             self._ensure_grid_dims(max_x, max_y)
 
         active_indices = np.where(mask)[0]
+        max_dist = self.avoidance_radius * self.MEMORY_CELL_SIZE
+        cell_size = self.MEMORY_CELL_SIZE
 
         for idx in active_indices:
             grid = state.memory_grids[idx]
             if not grid:
                 continue
 
-            # Get agent position
+            # Vectorized: extract all cell ids and strengths at once
+            cell_ids_arr = np.fromiter(grid.keys(), dtype=np.int32, count=len(grid))
+            strengths_arr = np.fromiter(grid.values(), dtype=np.float64, count=len(grid))
+
+            # Filter by threshold
+            above_thresh = strengths_arr >= self.AVOIDANCE_THRESHOLD
+            if not np.any(above_thresh):
+                continue
+
+            cell_ids_arr = cell_ids_arr[above_thresh]
+            strengths_arr = strengths_arr[above_thresh]
+
+            # Vectorized cell_to_position
+            mem_x = cell_ids_arr % self._cells_per_row
+            mem_y = cell_ids_arr // self._cells_per_row
+            cx = (mem_x + 0.5) * cell_size
+            cy = (mem_y + 0.5) * cell_size
+
+            # Vectorized distance from agent to each cell
             ax = agent_x[idx]
             ay = agent_y[idx]
-            agent_cell = self._position_to_cell(ax, ay)
+            dx = cx - ax
+            dy = cy - ay
+            dist = np.sqrt(dx * dx + dy * dy)
 
-            # Compute weighted avoidance vector from nearby remembered cells
-            total_weight = 0.0
-            sum_dx = 0.0
-            sum_dy = 0.0
-            avoided = 0
+            # Filter by distance
+            in_range = (dist <= max_dist) & (dist > 0.1)
+            if not np.any(in_range):
+                continue
 
-            for cell_id, strength in grid.items():
-                if strength < self.AVOIDANCE_THRESHOLD:
-                    continue
+            dx = dx[in_range]
+            dy = dy[in_range]
+            dist = dist[in_range]
+            s = strengths_arr[in_range]
 
-                # Get cell center position
-                cx, cy = self._cell_to_position(cell_id)
+            # Vectorized weight computation
+            weights = s / (dist + 1.0)
+            inv_dist = 1.0 / dist
 
-                # Distance from agent to cell
-                dx = cx - ax
-                dy = cy - ay
-                dist = np.sqrt(dx**2 + dy**2)
+            # Direction AWAY from disturbance (negative)
+            total_weight = np.sum(weights)
+            sum_dx = -np.sum(weights * dx * inv_dist)
+            sum_dy = -np.sum(weights * dy * inv_dist)
 
-                # Skip if too far
-                if dist > self.avoidance_radius * self.MEMORY_CELL_SIZE:
-                    continue
-
-                # Weight by memory strength and inverse distance
-                if dist > 0.1:
-                    weight = strength / (dist + 1.0)
-                    # Direction AWAY from disturbance (negative)
-                    sum_dx -= weight * dx / dist
-                    sum_dy -= weight * dy / dist
-                    total_weight += weight
-                    avoided += 1
-
-            if total_weight > 0:
-                # Normalize and scale
-                avoidance_dx[idx] = sum_dx / total_weight
-                avoidance_dy[idx] = sum_dy / total_weight
-                avoidance_strength[idx] = min(total_weight, self.MAX_AVOIDANCE_STRENGTH)
-                cells_avoided[idx] = avoided
+            # Normalize and scale
+            avoidance_dx[idx] = sum_dx / total_weight
+            avoidance_dy[idx] = sum_dy / total_weight
+            avoidance_strength[idx] = min(float(total_weight), self.MAX_AVOIDANCE_STRENGTH)
+            cells_avoided[idx] = int(np.sum(in_range))
 
         # Update state with computed avoidance
         state.avoidance_strength[mask] = avoidance_strength[mask]

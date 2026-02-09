@@ -152,10 +152,10 @@ class BehaviorStateVector:
         self.state_duration += 1
 
     def get_statistics(self) -> Dict[str, Any]:
-        """Get state statistics."""
-        state_counts = {}
-        for s in BehaviorState:
-            state_counts[s.name] = int(np.sum(self.state == s.value))
+        """Get state statistics. Uses np.bincount for O(N) single-pass counting."""
+        max_val = max(s.value for s in BehaviorState)
+        counts = np.bincount(self.state, minlength=max_val + 1)
+        state_counts = {s.name: int(counts[s.value]) for s in BehaviorState}
 
         return {
             'state_counts': state_counts,

@@ -109,7 +109,8 @@ class Turbine(Agent):
             Received level in dB
         """
         if source_level is None:
-            source_level = self.get_source_level()
+            # In DEPONS, impact IS the source level in dB directly
+            source_level = self.impact
             
         # Calculate distance in meters
         dx = (porpoise_x - self.x) * cell_size
@@ -160,8 +161,8 @@ class Turbine(Agent):
         if distance_m < 1.0:
             distance_m = 1.0
             
-        # DEPONS formula: RL = impact - (β*log10(dist) + α*dist)
-        # Where 'impact' IS the source level (SL) in dB
+        # DEPONS formula: RL = SL - (β*log10(dist) + α*dist)
+        # In DEPONS, 'impact' IS the source level (SL) in dB directly
         transmission_loss = (
             params.beta_hat * np.log10(distance_m) +
             params.alpha_hat * distance_m

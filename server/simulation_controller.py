@@ -17,6 +17,33 @@ from cenop.physiology import EnergyMode, create_energy_module
 
 logger = logging.getLogger("CENOP")
 
+# Ensure local 'src' is on sys.path for editable development (helps tests & dev server)
+import sys, os, importlib.util, types
+repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+src_dir = os.path.join(repo_root, 'src')
+if src_dir not in sys.path:
+    sys.path.insert(0, src_dir)
+
+# If direct import of cenop.core.time_manager fails later due to import mechanics,
+# attempt to load the module directly from file (useful for test/CI environments).
+try:
+    import importlib
+    if importlib.util.find_spec('cenop.core.time_manager') is None:
+        tm_path = os.path.join(src_dir, 'cenop', 'core', 'time_manager.py')
+        if os.path.exists(tm_path):
+            spec = importlib.util.spec_from_file_location('cenop.core.time_manager', tm_path)
+            module = importlib.util.module_from_spec(spec)
+            # Ensure package placeholders exist
+            if 'cenop' not in sys.modules:
+                sys.modules['cenop'] = types.ModuleType('cenop')
+            if 'cenop.core' not in sys.modules:
+                sys.modules['cenop.core'] = types.ModuleType('cenop.core')
+            sys.modules['cenop.core.time_manager'] = module
+            spec.loader.exec_module(module)
+except Exception:
+    # Best-effort; fall back to letting import errors surface later
+    pass
+
 
 def _safe_float(getter, default: float) -> float:
     """Safely get a float value from an input getter with a default."""

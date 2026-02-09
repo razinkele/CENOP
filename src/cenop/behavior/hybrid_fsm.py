@@ -170,10 +170,11 @@ class HybridBehaviorFSM:
         state_vector.state_duration[disturbed_trigger] = 0
 
         # === Rule 2: DISTURBED -> FORAGING (recovery) ===
-        # Agents in DISTURBED state with no deterrence for recovery_ticks
-        currently_disturbed = mask & (state_vector.state == BehaviorState.DISTURBED.value)
+        # Only agents that were ALREADY disturbed before this tick can recover
+        # (prevents same-tick disturbance+recovery race condition)
+        was_disturbed = mask & (old_states == BehaviorState.DISTURBED.value)
         no_deterrence = context.deterrence_magnitude <= self.DETERRENCE_THRESHOLD
-        recovered = currently_disturbed & no_deterrence & (context.time_since_disturbance > self.recovery_ticks)
+        recovered = was_disturbed & no_deterrence & (context.time_since_disturbance > self.recovery_ticks)
         state_vector.state[recovered] = BehaviorState.FORAGING.value
         state_vector.state_duration[recovered] = 0
 
@@ -225,9 +226,10 @@ class HybridBehaviorFSM:
         state_vector.state_duration[disturbed_trigger] = 0
 
         # Rule 2: DISTURBED -> FORAGING (or TRAVELING based on speed)
-        currently_disturbed = mask & (state_vector.state == BehaviorState.DISTURBED.value)
+        # Only agents that were ALREADY disturbed before this tick can recover
+        was_disturbed = mask & (old_states == BehaviorState.DISTURBED.value)
         no_deterrence = context.deterrence_magnitude <= self.DETERRENCE_THRESHOLD
-        recovered = currently_disturbed & no_deterrence & (context.time_since_disturbance > self.recovery_ticks)
+        recovered = was_disturbed & no_deterrence & (context.time_since_disturbance > self.recovery_ticks)
 
         # High speed after recovery -> TRAVELING, else FORAGING
         high_speed = context.current_speed > context.speed_threshold
@@ -250,16 +252,18 @@ class HybridBehaviorFSM:
         state_vector.state[to_traveling] = BehaviorState.TRAVELING.value
         state_vector.state_duration[to_traveling] = 0
 
-        # Rule 5: FORAGING -> RESTING (low energy)
+        # Rule 5: FORAGING -> RESTING (low energy, not fast moving)
         low_energy = context.current_energy < context.energy_threshold_low
         to_resting_from_foraging = currently_foraging & low_energy & ~fast_moving
         state_vector.state[to_resting_from_foraging] = BehaviorState.RESTING.value
         state_vector.state_duration[to_resting_from_foraging] = 0
 
         # Rule 6: FORAGING -> DISPERSING (energy declining)
+        # Re-read currently_foraging after Rule 5 to exclude agents now RESTING
+        still_foraging = mask & (state_vector.state == BehaviorState.FORAGING.value)
         energy_declining = context.energy_declining_days >= self.t_disp
         sufficient_memory = context.memory_cell_count >= self.min_memory_cells
-        start_dispersal = currently_foraging & energy_declining & sufficient_memory & ~context.is_dispersing
+        start_dispersal = still_foraging & energy_declining & sufficient_memory & ~context.is_dispersing
         state_vector.state[start_dispersal] = BehaviorState.DISPERSING.value
         state_vector.state_duration[start_dispersal] = 0
 
@@ -297,18 +301,30 @@ class HybridBehaviorFSM:
         """
         Update states using hybrid rules.
 
-        Uses DEPONS rules when disturbance is present,
-        JASMINE rules for normal behavior.
+        Uses DEPONS rules for agents under disturbance,
+        JASMINE rules for undisturbed agents (per-agent selection).
         """
-        # Check if any disturbance present
-        has_disturbance = np.any(context.deterrence_magnitude[mask] > self.DETERRENCE_THRESHOLD)
+        old_states = state_vector.state.copy()
+        count = len(state_vector.state)
 
-        if has_disturbance:
-            # Use DEPONS for disturbance response
-            return self._update_depons(state_vector, context, mask)
-        else:
-            # Use JASMINE for normal behavior
-            return self._update_jasmine(state_vector, context, mask)
+        # Per-agent: determine which agents are under disturbance
+        disturbed_mask = mask & (context.deterrence_magnitude > self.DETERRENCE_THRESHOLD)
+        # Also include agents currently in DISTURBED state (recovering)
+        currently_disturbed = mask & (state_vector.state == BehaviorState.DISTURBED.value)
+        depons_mask = disturbed_mask | currently_disturbed
+        jasmine_mask = mask & ~depons_mask
+
+        # Apply DEPONS rules to disturbed agents
+        if np.any(depons_mask):
+            self._update_depons(state_vector, context, depons_mask)
+
+        # Apply JASMINE rules to undisturbed agents
+        if np.any(jasmine_mask):
+            self._update_jasmine(state_vector, context, jasmine_mask)
+
+        changed = state_vector.state != old_states
+        self._update_stats(old_states, state_vector.state, changed)
+        return changed
 
     def _update_stats(
         self,
@@ -340,17 +356,17 @@ class HybridBehaviorFSM:
         Returns array of movement mode indices:
         - 0: DEPONS_CRW
         - 1: JASMINE_PHYSICS
+        
+        Optimized: single fancy-index lookup instead of per-state loops.
         """
         count = len(state_vector.state)
+        # LUT: index 0 unused, 1=FORAGING→0, 2=TRAVELING→1, 3=RESTING→1,
+        #      4=DISPERSING→0, 5=DISTURBED→0
+        _MOVEMENT_MODE_LUT = np.array([0, 0, 1, 1, 0, 0], dtype=np.int32)
         modes = np.zeros(count, dtype=np.int32)
-
-        # States that use JASMINE physics
-        jasmine_states = {BehaviorState.TRAVELING.value, BehaviorState.RESTING.value}
-
-        for state_val in jasmine_states:
-            in_state = mask & (state_vector.state == state_val)
-            modes[in_state] = 1
-
+        active = np.where(mask)[0]
+        if len(active) > 0:
+            modes[active] = _MOVEMENT_MODE_LUT[state_vector.state[active]]
         return modes
 
     def get_speed_multiplier(
@@ -358,16 +374,17 @@ class HybridBehaviorFSM:
         state_vector: BehaviorStateVector,
         mask: np.ndarray,
     ) -> np.ndarray:
-        """Get speed multiplier for each agent based on state."""
+        """Get speed multiplier for each agent based on state.
+        
+        Optimized: single fancy-index lookup instead of per-state loops.
+        """
         count = len(state_vector.state)
+        # LUT indexed by BehaviorState value (0=unused, 1=FORAGING, ..., 5=DISTURBED)
+        _SPEED_LUT = np.array([1.0, 1.0, 1.5, 0.3, 1.2, 1.8], dtype=np.float32)
         multipliers = np.ones(count, dtype=np.float32)
-
-        for state in BehaviorState:
-            in_state = mask & (state_vector.state == state.value)
-            if np.any(in_state):
-                mult = STATE_PARAMETERS[state]['speed_multiplier']
-                multipliers[in_state] = mult
-
+        active = np.where(mask)[0]
+        if len(active) > 0:
+            multipliers[active] = _SPEED_LUT[state_vector.state[active]]
         return multipliers
 
     def get_energy_cost_multiplier(
@@ -375,16 +392,17 @@ class HybridBehaviorFSM:
         state_vector: BehaviorStateVector,
         mask: np.ndarray,
     ) -> np.ndarray:
-        """Get energy cost multiplier for each agent based on state."""
+        """Get energy cost multiplier for each agent based on state.
+        
+        Optimized: single fancy-index lookup instead of per-state loops.
+        """
         count = len(state_vector.state)
+        # LUT indexed by BehaviorState value (0=unused, 1=FORAGING, ..., 5=DISTURBED)
+        _ENERGY_LUT = np.array([1.0, 1.0, 1.2, 0.5, 1.1, 1.5], dtype=np.float32)
         multipliers = np.ones(count, dtype=np.float32)
-
-        for state in BehaviorState:
-            in_state = mask & (state_vector.state == state.value)
-            if np.any(in_state):
-                mult = STATE_PARAMETERS[state]['energy_cost_multiplier']
-                multipliers[in_state] = mult
-
+        active = np.where(mask)[0]
+        if len(active) > 0:
+            multipliers[active] = _ENERGY_LUT[state_vector.state[active]]
         return multipliers
 
     def get_statistics(self) -> Dict[str, Any]:

@@ -13,7 +13,8 @@ LANDSCAPE_TURBINE_COMPATIBILITY = {
     "Homogeneous": ["off"],  # Synthetic uniform landscape for testing
     "NorthSea": ["off", "NorthSea_scenario1", "NorthSea_scenario2", "NorthSea_scenario3"],  # Uses UserDefined data
     "UserDefined": ["off", "User-def"],  # DEPONS default 400x400 North Sea grid
-    "CentralBaltic": ["off"],  # Central Baltic Sea (Lithuania to Sweden) - 400x400 at 1km resolution
+    "CentralBaltic": ["off"],  # Central Baltic Sea - 250m resolution, no turbine scenarios
+    "Lithuania": ["off", "CuronianNord_35_15MW", "CuronianNord_60_10MW"],  # Lithuanian EEZ with Curonian Nord wind park
 }
 
 # Geographic bounds for each landscape (lat_min, lat_max, lon_min, lon_max)
@@ -22,7 +23,8 @@ LANDSCAPE_BOUNDS = {
     "Homogeneous": (53.27, 54.79, 4.83, 7.13),  # Default North Sea bounds
     "NorthSea": (53.27, 54.79, 4.83, 7.13),     # DEPONS North Sea area
     "UserDefined": (53.27, 54.79, 4.83, 7.13),  # Same as NorthSea
-    "CentralBaltic": (53.9, 59.5, 13.0, 22.0),  # Central Baltic Sea - 450x460 grid (covers Oder mouth)
+    "CentralBaltic": (51.2, 55.3, 16.2, 23.7),  # Central Baltic - actual grid extent
+    "Lithuania": (54.20, 57.28, 17.49, 21.70),  # Lithuanian EEZ expanded - 215x375 grid at 1km
 }
 
 # Tooltips for sidebar parameters
@@ -83,8 +85,8 @@ def create_sidebar():
                     **{"for": "landscape"}
                 ),
                 ui.input_select("landscape", None,
-                    choices=["Homogeneous", "NorthSea", "CentralBaltic", "UserDefined"],
-                    selected="NorthSea"),
+                    choices=["Homogeneous", "Lithuania", "CentralBaltic", "NorthSea", "UserDefined"],
+                    selected="Lithuania"),
                 class_="mb-2"
             ),
             ui.input_action_button("load_landscape", "🗺️ Load Landscape", class_="btn-outline-secondary w-100 mt-1 mb-1"),

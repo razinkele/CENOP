@@ -441,6 +441,12 @@ class ShipManager:
             rl = source_level - tl
             str_val = rl - params.deter_threshold
             
+            # Probabilistic deterrence: match scalar path behavior
+            # Roll per-ship to decide if this ship's ping deters this tick
+            prob_response = getattr(ship, 'prob_response', 1.0)
+            if prob_response < 1.0 and np.random.random() > prob_response:
+                continue
+            
             deter_mask_local = str_val > 0
             if not np.any(deter_mask_local):
                 continue

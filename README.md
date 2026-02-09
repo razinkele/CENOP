@@ -1,157 +1,202 @@
-# CENOP
+# CENOP-JASMINE
 
 <img src="static/CENOP_logo.png" alt="CENOP Logo" height="80">
 
-**CETacean Noise-Population Model**
+**CETacean Noise-Population Model with JASMINE Extensions**
 
-CENOP is a Python agent-based model for simulating harbour porpoise population
-dynamics under anthropogenic noise disturbance (offshore wind-farm construction
-and vessel traffic). It implements two complementary modelling frameworks:
+CENOP is a Python translation of the DEPONS (Disturbance Effects of POrpoises in the North Sea) agent-based model. It simulates how harbour porpoise population dynamics are affected by disturbances from offshore wind farm construction and ship noise.
 
-- **DEPONS** (Disturbance Effects on the harbour Porpoise population in the
-  North Sea) — fixed-timestep, empirically-calibrated Correlated Random Walk
-  (CRW) movement with regulatory-grade reproducibility.
-- **JASMINE** (Joint Agent Simulations of Marine Interactions with Noise and
-  the Environment) — flexible-timestep, physics-based movement with symplectic
-  integration, event scheduling, and advection fields.
+The JASMINE (Just Another Simulation Model In Nature Environments) extension adds research-grade physics-based movement, dynamic energy budgets, and learned avoidance behaviors.
 
-Both modes share a unified **Structure-of-Arrays (SoA)** vectorised population
-manager that operates entirely on NumPy arrays, enabling efficient simulation of
-large populations without per-agent Python objects.
+## Simulation Modes
 
-## Key Features
+- **DEPONS Mode (Default):** Regulatory-compatible empirical models validated against DEPONS 3.0
+- **JASMINE Mode (Research):** Physics-based movement, Dynamic Energy Budget (DEB), and learned animal behaviors
 
-- Vectorised SoA population manager (positions, headings, energy, ages, PSM
-  buffers — all contiguous NumPy arrays)
-- Dual movement engine — DEPONS CRW and JASMINE physics, selectable per run or
-  via a hybrid context-switching strategy
-- Persistent Spatial Memory (PSM) with configurable dispersal types
-- Energy budget, reproduction, mortality (starvation, natural, bycatch)
-- Noise propagation from pile-driving (construction) and operational turbines
-- Ship deterrence with probabilistic dose–response
-- Landscape loading from DEPONS-format ASC bathymetry files (North Sea, Central
-  Baltic, or homogeneous)
-- Per-simulation `np.random.Generator` for thread-safe, reproducible runs
-- Batch runner with parameter sweeps and Monte Carlo replication
-- Interactive [Shiny for Python](https://shiny.posit.co/py/) web UI with
-  real-time maps, charts, and controls
-- Comprehensive test suite (320 tests)
+## Features
+
+### Core Features
+- Agent-based simulation of harbour porpoise populations
+- Realistic North Sea and Central Baltic landscapes with bathymetry and food distribution
+- Noise disturbance modeling (pile-driving and ship noise)
+- Interactive Shiny web interface
+- Real-time visualization of population dynamics
+
+### JASMINE Extensions
+- **Behavioral State Machine:** FORAGING, TRAVELING, RESTING, DISPERSING, and DISTURBED states with configurable transitions
+- **Dynamic Energy Budget:** Body mass-dependent metabolism, activity costs, thermoregulation, and disturbance energy impacts
+- **Disturbance Memory:** Spatial memory with learned avoidance of disturbance zones and habituation support
+- **Physics-Based Movement:** Hydrodynamic drag, thrust-based propulsion, and ocean current advection
 
 ## Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/razinkele/CENOP.git
-cd CENOP
-git checkout CENOP-JASMINE
+git clone https://github.com/your-org/cenop-jasmine.git
+cd cenop-jasmine
 
-# Option A: pip (venv)
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# Option B: micromamba / conda
-micromamba create -n cenop python=3.13 -y
-micromamba activate cenop
-pip install -e ".[dev]"
+# Install dependencies
+pip install -r requirements.txt
+
+# Or install as package
+pip install -e .
 ```
 
 ## Quick Start
 
 ```bash
-# Run the interactive Shiny application
+# Run the Shiny application
 shiny run app.py
 ```
 
-Open your browser at http://localhost:8000.
+Then open your browser to http://localhost:8000
 
-```python
-# Or run a simulation programmatically
-from cenop import Simulation, SimulationParameters
+## Deployment
 
-params = SimulationParameters(
-    porpoise_count=200,
-    sim_years=5,
-    landscape_name="Homogeneous",
-)
-sim = Simulation(params=params, seed=42)
-sim.initialize()
+### Production Server: laguna.ku.lt
 
-for _ in range(1000):
-    sim.step()
+The application is deployed on the Shiny Server at `laguna.ku.lt`.
 
-print(f"Population after 1 000 ticks: {sim.population_size}")
+**Server Configuration:**
+- Shiny Server path: `/srv/shiny-server/cenjas` (symlink)
+- Application directory: `/home/razinka/cenjas`
+- User: `razinka`
+- URL: https://laguna.ku.lt/cenjas/
+
+### Windows Deployment (Recommended)
+
+Use the provided `deploy.cmd` script from Windows. Double-click or run from command prompt:
+
+```cmd
+deploy.cmd
 ```
+
+The interactive menu provides the following options:
+
+```
+[1] Full deployment (pull, install, permissions, restart)
+[2] Pull latest changes only
+[3] Update dependencies only
+[4] Fix permissions for shiny user only
+[5] Restart Shiny Server only
+[6] View server logs
+[7] Check application status
+[0] Exit
+```
+
+### Manual Deployment (Linux/SSH)
+
+```bash
+# 1. SSH into the server
+ssh razinka@laguna.ku.lt
+
+# 2. Navigate to the application directory
+cd ~/cenjas
+
+# 3. Pull the latest changes
+git fetch origin && git reset --hard origin/main
+
+# 4. Update dependencies
+source venv/bin/activate
+pip install -r requirements.txt
+pip install -e .
+
+# 5. Set permissions for shiny user
+find ~/cenjas -type d -exec chmod 755 {} \;
+find ~/cenjas -type f -exec chmod 644 {} \;
+chmod 755 ~/cenjas/venv/bin/*
+chmod 755 /home/razinka
+
+# 6. Restart Shiny Server
+sudo systemctl restart shiny-server
+```
+
+### Shiny User Permissions
+
+The shiny server runs as the `shiny` user, which needs read access to the application files. Required permissions:
+- Home directory `/home/razinka`: 755 (allows shiny to traverse)
+- All directories: 755 (read + execute for shiny)
+- All files: 644 (read for shiny)
+- venv binaries: 755 (executable)
+
+The `deploy.cmd --permissions-only` command sets these automatically
 
 ## Project Structure
 
 ```
-CENOP/
-├── app.py                      # Shiny application entry point
-├── pyproject.toml              # Build metadata & dependencies (hatchling)
-├── src/cenop/                  # Main simulation package
-│   ├── core/                   # Simulation engine, time manager, batch runner
-│   │   ├── simulation.py       # Simulation orchestrator
-│   │   ├── time_manager.py     # DEPONS/JASMINE unified time & seeding
-│   │   ├── batch_runner.py     # Parameter sweeps & Monte Carlo runs
-│   │   └── output_writer.py    # DEPONS-compatible file output
-│   ├── agents/                 # Agent definitions
-│   │   ├── population.py       # Vectorised SoA population manager
-│   │   ├── ship.py             # Vessel traffic & noise
-│   │   └── turbine.py          # Wind-farm turbines & piling schedules
-│   ├── movement/               # Pluggable movement modules
-│   │   ├── depons_crw.py       # Empirical CRW (DEPONS 3.0)
-│   │   ├── jasmine_physics.py  # Physics-based (JASMINE)
-│   │   └── hybrid.py           # Context-switching selector
-│   ├── behavior/               # Behavioral sub-models
-│   │   ├── psm.py              # Persistent Spatial Memory
-│   │   ├── dispersal.py        # Dispersal strategies
-│   │   ├── sound.py            # Acoustic propagation & dose–response
-│   │   └── memory.py           # Disturbance memory
-│   ├── landscape/              # Environmental data loaders
-│   ├── parameters/             # Simulation parameters & demography
-│   ├── physiology/             # Energy budget model
-│   ├── server/                 # Shiny server-side logic
-│   └── ui/                     # Shiny UI layout & components
-├── data/                       # Landscape data (bathymetry, food, wind farms)
-├── tests/                      # Test suite (pytest, 320 tests)
-├── docs/                       # Documentation & proposed fixes
-└── static/                     # Logo and web assets
+cenop-jasmine/
+├── app.py                  # Shiny application entry point
+├── src/cenop/              # Core simulation package
+│   ├── core/               # Simulation engine, scheduler, time manager
+│   ├── agents/             # Agent definitions (porpoise, turbine, ship)
+│   ├── behavior/           # Behavioral modules
+│   │   ├── hybrid_fsm.py   # Behavioral state machine
+│   │   ├── disturbance_memory.py  # Learned avoidance
+│   │   ├── psm.py          # Persistent spatial memory
+│   │   └── dispersal.py    # Dispersal behavior
+│   ├── physiology/         # Energy budget modules
+│   │   └── energy_budget.py  # DEPONS/JASMINE energy systems
+│   ├── movement/           # Movement systems
+│   │   ├── hybrid.py       # Mode selector
+│   │   ├── depons_crw.py   # Correlated random walk
+│   │   └── jasmine_physics.py  # Physics-based movement
+│   ├── landscape/          # Environmental data
+│   └── parameters/         # Configuration and constants
+├── ui/                     # Shiny UI components
+├── server/                 # Shiny server logic
+├── data/                   # Landscape and wind farm data
+└── tests/                  # Test suite
 ```
 
-## Running Tests
+## Configuration
 
-```bash
-pytest tests/ -q
+### Selecting Simulation Mode
+
+**Via UI:** Select "DEPONS (Regulatory)" or "JASMINE (Research)" from the sidebar dropdown.
+
+**Via Code:**
+```python
+from cenop import Simulation, SimulationParameters
+
+params = SimulationParameters(
+    porpoise_count=1000,
+    sim_years=5,
+    simulation_mode="JASMINE",  # or "DEPONS"
+    # Optional subsystem overrides:
+    energy_mode="JASMINE",      # Use DEB energy budget
+    memory_mode="JASMINE",      # Use learned avoidance
+    fsm_mode="JASMINE",         # Use enhanced behavioral FSM
+)
+
+sim = Simulation(params)
 ```
 
-## Simulation Modes
+### JASMINE-Specific Parameters
 
-### DEPONS Mode (default)
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `jasmine_mass_kg` | 50.0 | Body mass (kg) |
+| `jasmine_drag_coeff` | 0.01 | Hydrodynamic drag coefficient |
+| `jasmine_bmr_scale` | 1.0 | Basal metabolic rate scale factor |
+| `memory_decay_rate` | 0.001 | Memory decay per tick |
+| `habituation_enabled` | True | Enable habituation to disturbance |
 
-Fixed 30-minute timesteps (48 ticks/day), deterministic seeding per tick,
-empirical CRW movement calibrated to North Sea GPS telemetry data. Designed for
-regulatory impact assessment of offshore wind farms.
+## Validation
 
-### JASMINE Mode
-
-Flexible sub-stepping with event-driven scheduling, physics-based movement using
-symplectic integration, ocean current advection fields, and adaptive update
-frequencies. Designed for research on movement ecology and multi-stressor
-interactions.
-
-### Hybrid Mode
-
-Context-dependent switching between DEPONS CRW and JASMINE physics based on
-behavioural state (e.g. CRW during foraging, physics during deterrence
-response). Configurable via `HybridStrategy`.
+- **DEPONS mode:** Validated against DEPONS 3.0 for regulatory compliance
+- **JASMINE mode:** Research-grade, designed for exploring advanced behavioral hypotheses
 
 ## License
 
-This project is licensed under the GNU General Public License v2.0, following
-the original DEPONS model. See [LICENSE](LICENSE) for details.
+This project is licensed under the GNU General Public License v2.0, following the original DEPONS model.
 
 ## Acknowledgments
 
 - Original DEPONS model by Jacob Nabe-Nielsen, Aarhus University
+- JASMINE behavioral extensions developed for the AI4WIND project
 - EU Horizon 2020 SATURN project (GA 101006443)
+- AI4WIND project team

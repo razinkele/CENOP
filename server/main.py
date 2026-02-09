@@ -147,6 +147,11 @@ def server(input, output, session):
         # NorthSea scenarios differ in construction timing, not turbine count
         LANDSCAPE_TURBINE_COMPATIBILITY = {
             "Homogeneous": {"off": "No turbines"},
+            "Lithuania": {
+                "off": "No turbines",
+                "CuronianNord_35_15MW": "Curonian Nord 35x15MW (large turbines)",
+                "CuronianNord_60_10MW": "Curonian Nord 60x10MW (smaller turbines)"
+            },
             "NorthSea": {
                 "off": "No turbines",
                 "NorthSea_scenario1": "Scenario 1",
@@ -899,26 +904,31 @@ def server(input, output, session):
             try:
                 from pyproj import Transformer
                 
-                # Find the wind-farms directory
+                # Find the turbine file - check multiple possible locations
+                # Anchor relative to this file's directory for reliable resolution
+                _server_dir = Path(__file__).resolve().parent
+                _project_dir = _server_dir.parent  # cenop-jasmine/
+                
                 possible_paths = [
+                    _project_dir / "data" / "wind-farms",  # cenop-jasmine/data/wind-farms (priority)
+                    Path("data/wind-farms"),  # cwd-relative fallback
                     Path("../DEPONS-master/data/wind-farms"),
                     Path("../../DEPONS-master/data/wind-farms"),
                     Path("DEPONS-master/data/wind-farms"),
-                    Path("data/wind-farms"),
                 ]
-                wind_farms_dir = None
+
+                turbine_file = None
                 for p in possible_paths:
-                    if p.exists():
-                        wind_farms_dir = p
+                    candidate = p / f"{turbine_scenario}.txt"
+                    if candidate.exists():
+                        turbine_file = candidate
                         break
-                
-                if wind_farms_dir is None:
-                    print(f"[DEBUG] Wind farms directory not found")
-                    return ui.div()
-                
-                turbine_file = wind_farms_dir / f"{turbine_scenario}.txt"
-                if not turbine_file.exists():
-                    print(f"[DEBUG] Turbine file not found: {turbine_file}")
+
+                if turbine_file is None:
+                    print(f"[DEBUG] Turbine file not found in any location: {turbine_scenario}.txt")
+                    print(f"[DEBUG]   cwd={os.getcwd()}, project_dir={_project_dir}")
+                    for p in possible_paths:
+                        print(f"[DEBUG]   checked: {p / f'{turbine_scenario}.txt'} exists={( p / f'{turbine_scenario}.txt').exists()}")
                     return ui.div()
                 
                 print(f"[DEBUG] Loading turbines from {turbine_file}")
@@ -962,7 +972,7 @@ def server(input, output, session):
                                 "impact": impact,  # Construction noise: 234 dB SEL
                                 "start": start_tick,  # Pile-driving start tick
                                 "end": end_tick,  # Pile-driving end tick
-                                "radius": 600,  # Turbine marker size
+                                "radius": 300,  # Turbine marker size (smaller)
                                 "color": [255, 100, 50, 220]  # Orange-red for turbines
                             })
                         except (ValueError, IndexError) as e:
@@ -1278,11 +1288,33 @@ def server(input, output, session):
                     print(f"[DEBUG] Porpoise latlon: lat=[{lats.min():.4f}-{lats.max():.4f}], lon=[{lons.min():.4f}-{lons.max():.4f}]")
                     print(f"[DEBUG] World size: {world_width}x{world_height}, lat bounds: {lat_min}-{lat_max}, lon bounds: {lon_min}-{lon_max}")
                     
-                    for lat, lon in zip(lats, lons):
+                    for i, (lat, lon) in enumerate(zip(lats, lons)):
+                        row = df_plot.iloc[i]
+                        age = int(row.get('age', 0)) if 'age' in row.index else int(row['age']) if 'age' in row else 0
+                        is_disturbed = bool(row.get('is_disturbed', False)) if 'is_disturbed' in row.index else False
+                        energy = float(row.get('energy', 10.0)) if 'energy' in row.index else float(row['energy']) if 'energy' in row else 10.0
+
+                        # Age-based color scheme (matches client-side legend)
+                        if is_disturbed:
+                            color = [255, 50, 50]      # Bright red - disturbed
+                        elif age < 2:
+                            color = [46, 204, 113]    # Emerald green - juveniles
+                        elif age < 6:
+                            color = [52, 152, 219]    # Bright blue - young adults
+                        elif age < 12:
+                            color = [41, 128, 185]    # Darker blue - mature
+                        else:
+                            color = [149, 165, 166]   # Gray - older
+
                         points_data.append({
                             "position": [float(lon), float(lat)],
-                            "radius": 400,
-                            "color": [0, 150, 255, 200]
+                            "radius": 200,
+                            "age": age,
+                            "heading": float(row.get('heading', 0.0)) if 'heading' in row.index else float(row['heading']) if 'heading' in row else 0.0,
+                            "energy": energy,
+                            "is_disturbed": is_disturbed,
+                            "behavioral_state": int(row.get('behavioral_state', 1)) if 'behavioral_state' in row.index else int(row['behavioral_state']) if 'behavioral_state' in row else 1,
+                            "color": color
                         })
             elif hasattr(sim, '_porpoises') and sim._porpoises:
                 # Fallback for legacy
@@ -1301,10 +1333,31 @@ def server(input, output, session):
                         # DEPONS convention: y=0 is SOUTH (low lat)
                         lat = lat_min + (p.y / world_height) * (lat_max - lat_min)
                         lon = lon_min + (p.x / world_width) * (lon_max - lon_min)
+                        is_disturbed = (getattr(p, 'deter_strength', 0.0) > 0.1)
+                        age = getattr(p, 'age', 0)
+                        energy = getattr(p, 'energy', 10.0)
+
+                        # Age-based color scheme (matches client-side legend)
+                        if is_disturbed:
+                            color = [255, 50, 50]      # Bright red - disturbed
+                        elif age < 2:
+                            color = [46, 204, 113]    # Emerald green - juveniles
+                        elif age < 6:
+                            color = [52, 152, 219]    # Bright blue - young adults
+                        elif age < 12:
+                            color = [41, 128, 185]    # Darker blue - mature
+                        else:
+                            color = [149, 165, 166]   # Gray - older
+
                         points_data.append({
                             "position": [lon, lat],
-                            "radius": 400,
-                            "color": [0, 150, 255, 200]
+                            "radius": 200,
+                            "age": age,
+                            "heading": getattr(p, 'heading', 0.0),
+                            "energy": energy,
+                            "is_disturbed": is_disturbed,
+                            "behavioral_state": getattr(p, 'behavioral_state', 1),
+                            "color": color
                         })
         
         points_json = json.dumps(points_data)

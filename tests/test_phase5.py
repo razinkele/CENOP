@@ -308,7 +308,7 @@ class TestHistogramCharts:
     
     def test_histogram_chart_creation(self):
         """Test histogram chart is created correctly."""
-        from server.renderers import create_histogram_chart
+        from cenop.server.renderers import create_histogram_chart
         
         data = [1, 2, 3, 4, 5, 5, 6, 7, 8, 9, 10]
         
@@ -328,7 +328,7 @@ class TestHistogramCharts:
     
     def test_histogram_empty_data(self):
         """Test histogram handles empty data gracefully."""
-        from server.renderers import create_histogram_chart
+        from cenop.server.renderers import create_histogram_chart
         
         # Empty list should still return something
         result = create_histogram_chart(

@@ -2302,8 +2302,35 @@ def server(input, output, session):
     
     @render.ui
     def noise_map():
-        """Noise exposure map placeholder."""
-        return no_data_placeholder("Noise exposure map will appear when disturbance sources are active.")
+        """Noise exposure chart showing deterrence/noise events over time."""
+        history = state.population_history()
+        if not history:
+            return no_data_placeholder("Noise data will appear when simulation runs with turbines or ships.")
+
+        # Build noise exposure timeline from deterrence counts
+        data = [{'day': h['day'], 'deterred': h.get('deterred_count', 0)} for h in history]
+        df = pd.DataFrame(data)
+
+        if df['deterred'].sum() == 0:
+            # Check if turbines are loaded but haven't started constructing yet
+            loaded = state.turbine_loaded_name()
+            if loaded and loaded != "off":
+                return no_data_placeholder(
+                    f"Turbines '{loaded}' loaded. Noise events will appear when pile-driving begins."
+                )
+            return no_data_placeholder("No noise sources active. Load turbines or enable ships.")
+
+        return create_time_series_chart(
+            df=df,
+            x_col='day',
+            y_cols=['deterred'],
+            colors=['#e74c3c'],
+            names=['Porpoises Exposed to Noise'],
+            title='Noise Exposure Over Time',
+            x_title='Day',
+            y_title='# Exposed',
+            height=300
+        )
     
     # =========================================================================
     # Export

@@ -961,35 +961,39 @@ def dashboard_tab():
     """Create the Dashboard tab with value boxes and main visualizations."""
     return ui.nav_panel(
         "Dashboard",
+        # Compact value box styling
+        ui.tags.style("""
+            .value-box { padding: 0.15rem 0.5rem !important; min-height: 0 !important; }
+            .value-box .value-box-area { padding: 0.1rem 0 !important; }
+            .value-box .value-box-title { font-size: 0.7rem !important; margin: 0 !important; }
+            .value-box .value-box-value { font-size: 0.95rem !important; line-height: 1.1 !important; }
+            .value-box .value-box-showcase { display: none !important; }
+        """),
         # Top row: 4 stat boxes in a single line
         ui.layout_column_wrap(
             ui.value_box(
                 "Population",
                 ui.output_text("current_population"),
-                showcase=ui.span("🐬", style="font-size: 1.3rem;"),
                 theme="primary",
-                height="60px"
+                height="45px"
             ),
             ui.value_box(
                 "Year",
                 ui.output_text("current_year"),
-                showcase=ui.span("📅", style="font-size: 1.3rem;"),
                 theme="info",
-                height="60px"
+                height="45px"
             ),
             ui.value_box(
                 "Births",
                 ui.output_text("total_births"),
-                showcase=ui.span("🎂", style="font-size: 1.3rem;"),
                 theme="success",
-                height="60px"
+                height="45px"
             ),
             ui.value_box(
                 "Deaths",
                 ui.output_text("total_deaths"),
-                showcase=ui.span("💀", style="font-size: 1.3rem;"),
                 theme="warning",
-                height="60px"
+                height="45px"
             ),
             width=1/4,
             heights_equal=True,

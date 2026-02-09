@@ -360,8 +360,13 @@ class SimulationRunner:
                     'total_active': disp_stats.get('total_active', 0),
                     'max_declining_days': disp_stats.get('max_declining_days', 0)
                 }
-            # Get deterrence count
-            if hasattr(pm, 'deter_strength'):
+            # Get deterrence count — use cumulative _was_deterred flag
+            # (deter_strength is overwritten every tick, so short-lived turbine
+            # events would be missed if we only read the instantaneous value)
+            if hasattr(pm, '_was_deterred'):
+                deterred_count = int(np.sum(pm._was_deterred & pm.active_mask))
+                pm._was_deterred[:] = False  # Reset for next reporting period
+            elif hasattr(pm, 'deter_strength'):
                 deterred_count = int(np.sum(pm.deter_strength[pm.active_mask] > 0))
         
         # Create history entry

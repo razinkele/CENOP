@@ -91,7 +91,9 @@ class PorpoisePopulation:
         
         # Deterrence status
         self.deter_strength = np.zeros(count, dtype=np.float32)
-        
+        # Tracks any porpoise deterred at least once during the reporting period
+        self._was_deterred = np.zeros(count, dtype=bool)
+
         # === PSM and Dispersal State (Phase 2) ===
         # Energy history for dispersal trigger (5 days = 5*48 ticks)
         self._energy_history = np.zeros((count, 5), dtype=np.float32)  # Last 5 daily averages
@@ -651,6 +653,8 @@ class PorpoisePopulation:
         if deterrence_vectors is not None:
             d_dx, d_dy = deterrence_vectors
             self.deter_strength[mask] = np.abs(d_dx[mask]) + np.abs(d_dy[mask])
+            # Accumulate "was deterred" flag for reporting period
+            self._was_deterred |= (self.deter_strength > 0) & mask
             self._dx[mask] += d_dx[mask]
             self._dy[mask] += d_dy[mask]
         else:

@@ -485,26 +485,17 @@ def create_static_pydeck_map():
                 // Heading: 0 = North, 90 = East, etc. (matches DEPONS convention)
                 getAngle: d => -(d.heading || 0),  // Negate for deck.gl rotation direction
                 getColor: d => {
-                    // Priority: disturbed > server color > age-based
-                    if (d.is_disturbed) return [255, 50, 50, 255];  // Bright red
+                    // Priority: disturbed > age-based (colors match legend)
+                    if (d.is_disturbed) return [255, 50, 50, 255];  // #ff3232 red
 
-                    // Server-provided color (RGB or RGBA)
-                    if (d.color && d.color.length >= 3) {
-                        // Add alpha based on energy level if available
-                        const energy = d.energy || 10;
-                        const energyAlpha = Math.floor(200 + 55 * Math.min(1, energy / 15));
-                        return [d.color[0], d.color[1], d.color[2], energyAlpha];
-                    }
-
-                    // Age-based coloring with energy-modulated alpha
                     const age = d.age || 5;
                     const energy = d.energy || 10;
                     const energyAlpha = Math.floor(200 + 55 * Math.min(1, energy / 15));
 
-                    if (age < 2) return [46, 204, 113, energyAlpha];   // Emerald green - juveniles
-                    if (age < 6) return [52, 152, 219, energyAlpha];   // Bright blue - young adults
-                    if (age < 12) return [41, 128, 185, energyAlpha];  // Darker blue - mature
-                    return [149, 165, 166, energyAlpha];               // Gray - older
+                    if (age < 2) return [46, 204, 113, energyAlpha];   // #2ecc71 emerald green - juveniles
+                    if (age < 6) return [52, 152, 219, energyAlpha];   // #3498db bright blue - young adults
+                    if (age < 12) return [41, 128, 185, energyAlpha];  // #2980b9 darker blue - mature
+                    return [149, 165, 166, energyAlpha];               // #95a5a6 gray - older
                 },
                 pickable: true,
                 billboard: false,  // Keep flat on map
@@ -534,9 +525,9 @@ def create_static_pydeck_map():
                 getPosition: d => d.position,
                 getSize: d => Math.max(20, Math.min(64, (d.radius || 300) / 15)),
                 getColor: d => {
-                    if (d.phase === 'construction') return [255, 70, 40, 220];
-                    if (d.phase === 'operational') return [50, 160, 240, 220];
-                    if (d.phase === 'planned') return [180, 180, 180, 180];
+                    if (d.phase === 'construction') return [255, 70, 48, 220];
+                    if (d.phase === 'operational') return [50, 176, 240, 220];
+                    if (d.phase === 'planned') return [176, 176, 176, 180];
                     return d.color || [255, 140, 60];
                 },
                 pickable: true,
@@ -561,9 +552,9 @@ def create_static_pydeck_map():
                 getAngle: d => (d.phase === 'operational') ? turbineRotation : 0,
                 getColor: d => {
                     // Blades follow same color mapping for visibility
-                    if (d.phase === 'construction') return [255, 70, 40, 220];
-                    if (d.phase === 'operational') return [50, 160, 240, 220];
-                    if (d.phase === 'planned') return [180, 180, 180, 180];
+                    if (d.phase === 'construction') return [255, 70, 48, 220];
+                    if (d.phase === 'operational') return [50, 176, 240, 220];
+                    if (d.phase === 'planned') return [176, 176, 176, 180];
                     return d.color || [255, 140, 60];
                 },
                 pickable: false,

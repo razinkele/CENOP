@@ -1750,11 +1750,11 @@ def server(input, output, session):
                 phase = 'planned'
 
             if phase == 'construction':
-                color = [255, 70, 40, 220]
+                color = [255, 70, 48, 220]
             elif phase == 'operational':
-                color = [50, 160, 240, 220]
+                color = [50, 176, 240, 220]
             else:
-                color = [180, 180, 180, 180]
+                color = [176, 176, 176, 180]
 
             tt['phase'] = phase
             tt['color'] = color
@@ -2011,14 +2011,6 @@ def server(input, output, session):
                         row = df_plot.iloc[i]
                         age = int(row.get('age', 0)) if 'age' in row.index else int(row['age']) if 'age' in row else 0
                         is_disturbed = bool(row.get('is_disturbed', False)) if 'is_disturbed' in row.index else False
-                        if is_disturbed:
-                            color = [255, 40, 40]
-                        elif age < 2:
-                            color = [60, 180, 75]
-                        elif age < 12:
-                            color = [0, 150, 255]
-                        else:
-                            color = [160, 160, 160]
                         depth_val = float(row.get('depth', 20.0)) if 'depth' in row.index else 20.0
                         points_data.append({
                             "position": [float(lon), float(lat)],
@@ -2028,8 +2020,7 @@ def server(input, output, session):
                             "energy": float(row.get('energy', 0.0)) if 'energy' in row.index else float(row['energy']) if 'energy' in row else 0.0,
                             "is_disturbed": is_disturbed,
                             "behavioral_state": int(row.get('behavioral_state', 1)) if 'behavioral_state' in row.index else int(row['behavioral_state']) if 'behavioral_state' in row else 1,
-                            "depth": depth_val,  # Debug: depth at porpoise position
-                            "color": color
+                            "depth": depth_val,
                         })
             elif hasattr(sim, '_porpoises') and sim._porpoises:
                 # Fallback for legacy
@@ -2050,14 +2041,6 @@ def server(input, output, session):
                         lon = lon_min + (p.x / world_width) * (lon_max - lon_min)
                         age = getattr(p, 'age', 0)
                         is_disturbed = (getattr(p, 'deter_strength', 0.0) > 0.1)
-                        if is_disturbed:
-                            color = [255, 40, 40]
-                        elif age < 2:
-                            color = [60, 180, 75]
-                        elif age < 12:
-                            color = [0, 150, 255]
-                        else:
-                            color = [160, 160, 160]
                         points_data.append({
                             "position": [lon, lat],
                             "radius": 400,
@@ -2066,7 +2049,6 @@ def server(input, output, session):
                             "energy": getattr(p, 'energy', 0.0),
                             "is_disturbed": is_disturbed,
                             "behavioral_state": getattr(p, 'behavioral_state', 1),
-                            "color": color
                         })
         
         points_json = json.dumps(points_data)

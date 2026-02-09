@@ -442,10 +442,6 @@ class Simulation:
         # 1. Set deterministic seed for this tick (CRITICAL for reproducibility)
         np.random.seed(self.time_manager.get_seed())
 
-        # Debug first few steps
-        if self.time_manager.tick < 5:
-            print(f"[DEBUG] Simulation.step() tick={self.time_manager.tick}, pop={self.state.population}")
-
         # 2. Process scheduled events (JASMINE mode only, no-op in DEPONS mode)
         for event in self.time_manager.get_scheduled_events():
             event()
@@ -476,9 +472,6 @@ class Simulation:
 
         # 5. Step population (Vectorized)
         self.population_manager.step(deterrence_vectors=(total_dx, total_dy))
-
-        if self.time_manager.tick < 5:
-            print(f"[DEBUG] Simulation.step() after pop_manager.step: active={self.population_manager.population_size}")
 
         # 6. Update Statistics
         current_pop = self.population_manager.population_size
@@ -547,9 +540,12 @@ class Simulation:
                 next_id += 1
         self._porpoises.extend(new_calves)
                 
-        # Remove dead porpoises
+        # Remove dead porpoises (legacy scalar list)
         self._porpoises = [p for p in self._porpoises if p.alive]
-        self.state.population = len(self._porpoises)
+        # Only update state.population from legacy list when vectorized
+        # population_manager is NOT active (it maintains its own count).
+        if not hasattr(self, 'population_manager') or self.population_manager is None:
+            self.state.population = len(self._porpoises)
         
         # Replenish food across landscape
         if self._cell_data is not None:

@@ -98,6 +98,10 @@ class PorpoisePopulation:
         self._energy_ticks_today = np.zeros(count, dtype=np.float32)   # Energy sum for current day
         self._tick_counter = 0  # Track ticks for daily updates
         self._last_energy_update_tick = -1  # last global tick when energy was accumulated
+
+        # Per-step energy metrics (exposed for dashboard)
+        self.avg_food_gained = 0.0   # Average food gained per active agent (last step)
+        self.avg_energy_cost = 0.0   # Average energy cost per active agent (last step)
         
         # Dispersal state
         self.is_dispersing = np.zeros(count, dtype=bool)
@@ -887,6 +891,15 @@ class PorpoisePopulation:
 
         total_cost = bmr_cost + swimming_cost
         self.energy[mask] -= total_cost[mask]
+
+        # Expose per-step averages for dashboard
+        n_active = int(np.sum(mask))
+        if n_active > 0:
+            self.avg_food_gained = float(np.mean(food_gained[mask]))
+            self.avg_energy_cost = float(np.mean(total_cost[mask]))
+        else:
+            self.avg_food_gained = 0.0
+            self.avg_energy_cost = 0.0
 
         # Update PSM and energy history
         self._update_psm(mask, food_gained)

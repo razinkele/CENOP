@@ -292,8 +292,12 @@ class SimulationRunner:
             self.sim.step()
             self.tick += 1
         
-        # Calculate metrics
-        current_pop = self.sim.state.population
+        # Calculate metrics — prefer vectorized population_manager over state
+        # (state.population could lag if _daily_tasks runs on a legacy path)
+        if hasattr(self.sim, 'population_manager') and self.sim.population_manager is not None:
+            current_pop = self.sim.population_manager.population_size
+        else:
+            current_pop = self.sim.state.population
         
         if self.update_count < 3:
             logger.debug("step_ticks #%d: after stepping, pop=%d, tick=%d", self.update_count, current_pop, self.tick)
@@ -324,20 +328,15 @@ class SimulationRunner:
 
         self.last_pop = current_pop
         
-        # Calculate energy statistics
+        # Calculate energy statistics from population manager's per-step metrics
         avg_food_eaten = 0.0
         avg_energy_expended = 0.0
         if hasattr(self.sim, 'population_manager'):
             pm = self.sim.population_manager
-            if hasattr(pm, 'energy') and hasattr(pm, 'active_mask'):
-                active = pm.active_mask
-                if np.any(active):
-                    # Average energy level (as proxy for food eaten - energy balance)
-                    avg_energy = float(np.mean(pm.energy[active]))
-                    # Use energy level as food eaten proxy, energy use per step as expended
-                    avg_food_eaten = avg_energy
-                    # Default energy use is 4.5 per 30-min step, so per day (48 steps) = 216
-                    avg_energy_expended = 4.5 * 48  # Daily energy expenditure estimate
+            if hasattr(pm, 'avg_food_gained'):
+                # Real per-step averages; scale to daily (48 steps/day)
+                avg_food_eaten = pm.avg_food_gained * 48
+                avg_energy_expended = pm.avg_energy_cost * 48
         
         # Create energy history entry
         energy_entry = {

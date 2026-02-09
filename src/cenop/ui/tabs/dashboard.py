@@ -307,7 +307,7 @@ def create_static_pydeck_map():
     </style>
     
     <script>
-        const {DeckGL, TileLayer, BitmapLayer, ScatterplotLayer, ColumnLayer, IconLayer} = deck;
+        const {DeckGL, TileLayer, BitmapLayer, ScatterplotLayer, ColumnLayer, IconLayer, SolidPolygonLayer} = deck;
         
         // EMODnet Bathymetry tiles - STATIC base layer
         const BATHYMETRY_URL = 'https://tiles.emodnet-bathymetry.eu/2020/baselayer/web_mercator/{z}/{x}/{y}.png';
@@ -326,6 +326,8 @@ def create_static_pydeck_map():
         let GRID_WIDTH = 400;
         let GRID_HEIGHT = 400;
         let DEPTH_RADIUS = 1800;  // Render radius for depth cells (metres)
+        let CELL_DEG_LAT = 0.005;  // Cell extent in degrees (for square grid)
+        let CELL_DEG_LON = 0.005;
 
         // Current data
         let porpoiseData = [];
@@ -403,31 +405,31 @@ def create_static_pydeck_map():
             return [r, g, b, 160];
         }
         
-        // Create depth overlay layer
+        // Create depth overlay layer — square grid cells via SolidPolygonLayer
         function createDepthLayer(data) {
             if (!data || data.length === 0 || !showDepthLayer) {
                 return null;
             }
-            
-            // Calculate cell size in degrees
-            const cellWidth = (LON_MAX - LON_MIN) / GRID_WIDTH;
-            const cellHeight = (LAT_MAX - LAT_MIN) / GRID_HEIGHT;
-            
+
             // Find depth range for coloring (only water cells)
             const waterDepths = data.filter(d => d.depth > 0).map(d => d.depth);
             const minDepth = Math.min(...waterDepths) || 0;
             const maxDepth = Math.max(...waterDepths) || 50;
-            
-            return new ColumnLayer({
+
+            const halfLon = CELL_DEG_LON * 0.5;
+            const halfLat = CELL_DEG_LAT * 0.5;
+
+            return new SolidPolygonLayer({
                 id: 'depth-layer',
                 data: data,
-                diskResolution: 12,
-                radius: DEPTH_RADIUS,
-                extruded: false,
-                getPosition: d => d.position,
+                getPolygon: d => {
+                    const [lon, lat] = d.position;
+                    return [[lon-halfLon, lat-halfLat], [lon+halfLon, lat-halfLat],
+                            [lon+halfLon, lat+halfLat], [lon-halfLon, lat+halfLat]];
+                },
                 getFillColor: d => getDepthColor(d.depth, minDepth, maxDepth),
                 pickable: false,
-                opacity: 0.5
+                extruded: false,
             });
         }
         
@@ -775,13 +777,15 @@ def create_static_pydeck_map():
         };
         
         // Set depth data (called once at startup)
-        window.setDepthData = function(data, gridWidth, gridHeight, radius) {
+        window.setDepthData = function(data, gridWidth, gridHeight, radius, cellDegLat, cellDegLon) {
             GRID_WIDTH = gridWidth || 400;
             GRID_HEIGHT = gridHeight || 400;
             DEPTH_RADIUS = radius || 1800;
+            CELL_DEG_LAT = cellDegLat || 0.005;
+            CELL_DEG_LON = cellDegLon || 0.005;
             depthData = data;
             deckgl.setProps({ layers: buildLayers() });
-            console.log('Depth layer loaded:', data.length, 'cells, radius:', DEPTH_RADIUS);
+            console.log('Depth layer loaded:', data.length, 'cells, cellDeg:', CELL_DEG_LAT.toFixed(4), CELL_DEG_LON.toFixed(4));
         };
         
         // Set turbine data (called when turbine scenario is selected)
@@ -854,7 +858,7 @@ def create_static_pydeck_map():
                 window.updatePorpoiseData(event.data.data);
             }
             if (event.data && event.data.type === 'setDepthData') {
-                window.setDepthData(event.data.data, event.data.gridWidth, event.data.gridHeight, event.data.radius);
+                window.setDepthData(event.data.data, event.data.gridWidth, event.data.gridHeight, event.data.radius, event.data.cellDegLat, event.data.cellDegLon);
             }
             if (event.data && event.data.type === 'setTurbineData') {
                 window.setTurbineData(event.data.data);

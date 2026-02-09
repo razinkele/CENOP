@@ -997,7 +997,18 @@ def server(input, output, session):
                             state.porpoise_positions.set(msg.get("porpoise_positions"))
                         except Exception:
                             pass
-    
+
+        # Flush batched entries to reactive state so dashboard updates
+        if entries_batch:
+            current_hist = state.population_history()
+            state.population_history.set(current_hist + entries_batch)
+        if energy_entries_batch:
+            current_energy = state.energy_history()
+            state.energy_history.set(current_energy + energy_entries_batch)
+        if dispersal_entries_batch:
+            current_dispersal = state.dispersal_history()
+            state.dispersal_history.set(current_dispersal + dispersal_entries_batch)
+
     @reactive.effect
     @reactive.event(input.stop_sim)
     def stop_simulation():
@@ -1222,11 +1233,17 @@ def server(input, output, session):
                                 "depth": depth
                             })
 
+                    # Cell extent in degrees for square grid rendering
+                    cell_deg_lat = (lat_max - lat_min) / grid_height * sample_step
+                    cell_deg_lon = (lon_max - lon_min) / grid_width * sample_step
+
                     _depth_data_cache = {
                         "points": depth_points,
                         "width": grid_width,
                         "height": grid_height,
                         "radius": render_radius,
+                        "cellDegLat": cell_deg_lat,
+                        "cellDegLon": cell_deg_lon,
                     }
                     _depth_landscape_name = landscape_name
                     state.landscape_info.set(f"{grid_width}x{grid_height} grid, {cellsize:.0f}m cells")
@@ -1275,9 +1292,11 @@ def server(input, output, session):
                             data: data,
                             gridWidth: {_depth_data_cache["width"]},
                             gridHeight: {_depth_data_cache["height"]},
-                            radius: {_depth_data_cache.get("radius", 1800)}
+                            radius: {_depth_data_cache.get("radius", 1800)},
+                            cellDegLat: {_depth_data_cache.get("cellDegLat", 0.005)},
+                            cellDegLon: {_depth_data_cache.get("cellDegLon", 0.005)}
                         }}, '*');
-                        console.log('Depth data sent to map:', data.length, 'points, radius:', {_depth_data_cache.get("radius", 1800)});
+                        console.log('Depth data sent to map:', data.length, 'points, cellDeg:', {_depth_data_cache.get("cellDegLat", 0.005)});
                     }} else {{
                         setTimeout(sendDepthData, 100);
                     }}

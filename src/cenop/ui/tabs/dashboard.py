@@ -329,13 +329,15 @@ def create_static_pydeck_map():
         // Grid dimensions (will be updated from depth data)
         let GRID_WIDTH = 400;
         let GRID_HEIGHT = 400;
-        
+        let DEPTH_RADIUS = 1800;  // Render radius for depth cells (metres)
+
         // Current data
         let porpoiseData = [];
         let depthData = [];
         let turbineData = [];
         let noiseData = [];  // Noise propagation contours
         let foragingData = [];  // Food availability/foraging patches
+        let FORAGING_RADIUS = 1800;  // Render radius for foraging cells (metres)
         let shipData = [];  // Ship positions
         let showDepthLayer = false;  // Off until loaded
         // Show turbine layer by default so turbines are visible on load
@@ -423,8 +425,8 @@ def create_static_pydeck_map():
             return new ColumnLayer({
                 id: 'depth-layer',
                 data: data,
-                diskResolution: 4,
-                radius: 1800,  // meters - roughly matches 400m cells at this zoom
+                diskResolution: 12,
+                radius: DEPTH_RADIUS,
                 extruded: false,
                 getPosition: d => d.position,
                 getFillColor: d => getDepthColor(d.depth, minDepth, maxDepth),
@@ -627,7 +629,7 @@ def create_static_pydeck_map():
                 id: 'foraging-layer',
                 data: data,
                 getPosition: d => d.position,
-                getRadius: 1800,  // meters - matches depth cells
+                getRadius: FORAGING_RADIUS,
                 getFillColor: d => {
                     // Green gradient based on food probability (0-1)
                     // Higher food = brighter green
@@ -768,12 +770,13 @@ def create_static_pydeck_map():
         };
         
         // Set depth data (called once at startup)
-        window.setDepthData = function(data, gridWidth, gridHeight) {
+        window.setDepthData = function(data, gridWidth, gridHeight, radius) {
             GRID_WIDTH = gridWidth || 400;
             GRID_HEIGHT = gridHeight || 400;
+            DEPTH_RADIUS = radius || 1800;
             depthData = data;
             deckgl.setProps({ layers: buildLayers() });
-            console.log('Depth layer loaded:', data.length, 'cells');
+            console.log('Depth layer loaded:', data.length, 'cells, radius:', DEPTH_RADIUS);
         };
         
         // Set turbine data (called when turbine scenario is selected)
@@ -814,10 +817,11 @@ def create_static_pydeck_map():
         };
         
         // Set foraging data (food probability / patches)
-        window.setForagingData = function(data) {
+        window.setForagingData = function(data, radius) {
             foragingData = data || [];
+            FORAGING_RADIUS = radius || 1800;
             deckgl.setProps({ layers: buildLayers() });
-            console.log('Foraging layer loaded:', foragingData.length, 'food cells');
+            console.log('Foraging layer loaded:', foragingData.length, 'food cells, radius:', FORAGING_RADIUS);
         };
         
         // Set ship data (vessel traffic positions)
@@ -836,7 +840,7 @@ def create_static_pydeck_map():
                 window.updatePorpoiseData(event.data.data);
             }
             if (event.data && event.data.type === 'setDepthData') {
-                window.setDepthData(event.data.data, event.data.gridWidth, event.data.gridHeight);
+                window.setDepthData(event.data.data, event.data.gridWidth, event.data.gridHeight, event.data.radius);
             }
             if (event.data && event.data.type === 'setTurbineData') {
                 window.setTurbineData(event.data.data);
@@ -845,7 +849,7 @@ def create_static_pydeck_map():
                 window.setNoiseData(event.data.data);
             }
             if (event.data && event.data.type === 'setForagingData') {
-                window.setForagingData(event.data.data);
+                window.setForagingData(event.data.data, event.data.radius);
             }
             if (event.data && event.data.type === 'setShipData') {
                 window.setShipData(event.data.data);

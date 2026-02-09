@@ -1207,38 +1207,44 @@ def server(input, output, session):
                         for m in msgs:
                             ui.notification_show(f"Landscape load: {m}", type="warning")
 
-                    # Sample depth data (every Nth cell to reduce data size)
-                    # 400x400 = 160,000 cells is too many, sample every 5th = 6,400 cells
-                    sample_step = 5
                     depth_array = landscape._depth
                     grid_height, grid_width = depth_array.shape
-                    
+                    cellsize = landscape.metadata.cellsize if landscape.metadata else 400.0
+
+                    # Adaptive sampling: target ~10-15k points max for
+                    # performance while keeping the overlay continuous.
+                    # The render radius is sample_step * cellsize * 0.75 so
+                    # neighbouring disks overlap slightly.
+                    total_cells = grid_height * grid_width
+                    max_points = 15000
+                    sample_step = max(1, int((total_cells / max_points) ** 0.5))
+                    render_radius = sample_step * cellsize * 0.75  # metres
+
                     # Get landscape-specific bounds
                     from ..ui.sidebar import LANDSCAPE_BOUNDS
                     bounds = LANDSCAPE_BOUNDS.get(landscape_name, (53.27, 54.79, 4.83, 7.13))
                     lat_min, lat_max, lon_min, lon_max = bounds
-                    
+
                     depth_points = []
                     for row in range(0, grid_height, sample_step):
                         for col in range(0, grid_width, sample_step):
                             depth = float(depth_array[row, col])
-                            # Convert grid to lat/lon
-                            # Array is flipped during loading: row 0 = SOUTH, row max = NORTH
                             lat = lat_min + (row / grid_height) * (lat_max - lat_min)
                             lon = lon_min + (col / grid_width) * (lon_max - lon_min)
                             depth_points.append({
                                 "position": [lon, lat],
                                 "depth": depth
                             })
-                    
+
                     _depth_data_cache = {
                         "points": depth_points,
                         "width": grid_width,
-                        "height": grid_height
+                        "height": grid_height,
+                        "radius": render_radius,
                     }
                     _depth_landscape_name = landscape_name
-                    state.landscape_info.set(f"{grid_width}x{grid_height} grid")
-                    print(f"[DEBUG] Depth data cached for '{landscape_name}': {len(depth_points)} points from {grid_width}x{grid_height} grid")
+                    state.landscape_info.set(f"{grid_width}x{grid_height} grid, {cellsize:.0f}m cells")
+                    print(f"[DEBUG] Depth data cached for '{landscape_name}': {len(depth_points)} points, step={sample_step}, radius={render_radius:.0f}m")
                 else:
                     _depth_data_cache = {"points": [], "width": 400, "height": 400}
                     _depth_landscape_name = landscape_name
@@ -1282,9 +1288,10 @@ def server(input, output, session):
                             type: 'setDepthData',
                             data: data,
                             gridWidth: {_depth_data_cache["width"]},
-                            gridHeight: {_depth_data_cache["height"]}
+                            gridHeight: {_depth_data_cache["height"]},
+                            radius: {_depth_data_cache.get("radius", 1800)}
                         }}, '*');
-                        console.log('Depth data sent to map:', data.length, 'points');
+                        console.log('Depth data sent to map:', data.length, 'points, radius:', {_depth_data_cache.get("radius", 1800)});
                     }} else {{
                         setTimeout(sendDepthData, 100);
                     }}
@@ -1349,15 +1356,19 @@ def server(input, output, session):
                         for m in msgs:
                             ui.notification_show(f"Landscape load: {m}", type="warning")
 
-                    # Sample food data (every Nth cell to reduce data size)
-                    sample_step = 5
                     grid_height, grid_width = food_array.shape
-                    
-                    # Get landscape-specific bounds
+                    cellsize = landscape.metadata.cellsize if landscape.metadata else 400.0
+
+                    # Adaptive sampling (same logic as depth layer)
+                    total_cells = grid_height * grid_width
+                    max_points = 15000
+                    sample_step = max(1, int((total_cells / max_points) ** 0.5))
+                    render_radius = sample_step * cellsize * 0.75
+
                     from ..ui.sidebar import LANDSCAPE_BOUNDS
                     bounds = LANDSCAPE_BOUNDS.get(landscape_name, (53.27, 54.79, 4.83, 7.13))
                     lat_min, lat_max, lon_min, lon_max = bounds
-                    
+
                     food_points = []
                     for row in range(0, grid_height, sample_step):
                         for col in range(0, grid_width, sample_step):
@@ -1369,25 +1380,26 @@ def server(input, output, session):
                                     "position": [lon, lat],
                                     "food": food
                                 })
-                    
-                    _foraging_data_cache = food_points
+
+                    _foraging_data_cache = {"points": food_points, "radius": render_radius}
                     _foraging_landscape_name = landscape_name
-                    print(f"[DEBUG] Foraging data cached for '{landscape_name}': {len(food_points)} food cells")
+                    print(f"[DEBUG] Foraging data cached for '{landscape_name}': {len(food_points)} food cells, radius={render_radius:.0f}m")
                 else:
-                    _foraging_data_cache = []
+                    _foraging_data_cache = {"points": [], "radius": 1800}
                     _foraging_landscape_name = landscape_name
             except Exception as e:
                 print(f"[DEBUG] Error loading foraging data for '{landscape_name}': {e}")
                 import traceback
                 traceback.print_exc()
-                _foraging_data_cache = []
+                _foraging_data_cache = {"points": [], "radius": 1800}
                 _foraging_landscape_name = landscape_name
-        
-        if not _foraging_data_cache:
+
+        if not _foraging_data_cache.get("points"):
             return ui.div()
-        
-        foraging_json = json.dumps(_foraging_data_cache)
-        
+
+        foraging_json = json.dumps(_foraging_data_cache["points"])
+        foraging_radius = _foraging_data_cache.get("radius", 1800)
+
         js_code = f'''
         <script>
             (function() {{
@@ -1397,9 +1409,10 @@ def server(input, output, session):
                         var data = {foraging_json};
                         iframe.contentWindow.postMessage({{
                             type: 'setForagingData',
-                            data: data
+                            data: data,
+                            radius: {foraging_radius}
                         }}, '*');
-                        console.log('Foraging data sent to map:', data.length, 'cells');
+                        console.log('Foraging data sent to map:', data.length, 'cells, radius:', {foraging_radius});
                     }} else {{
                         setTimeout(sendForagingData, 100);
                     }}

@@ -197,6 +197,6 @@ This project is licensed under the GNU General Public License v2.0, following th
 ## Acknowledgments
 
 - Original DEPONS model by Jacob Nabe-Nielsen, Aarhus University
-- JASMINE behavioral extensions developed for the AI4WIND project
+- JASMINE behavioral extensions developed at Klaipeda University
 - EU Horizon 2020 SATURN project (GA 101006443)
-- AI4WIND project team
+- arturas.razinkovas-baziukas@ku.lt

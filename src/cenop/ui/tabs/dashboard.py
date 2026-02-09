@@ -592,24 +592,21 @@ def create_static_pydeck_map():
             
             // Construction noise layer (RED - high impact pile-driving, 234 dB)
             if (constructionData.length > 0) {
-                console.log('Creating construction noise layer with', constructionData.length, 'points');
+                console.log('Creating construction noise layer with', constructionData.length, 'turbines');
                 layers.push(new ScatterplotLayer({
                     id: 'noise-construction-layer',
                     data: constructionData,
                     getPosition: d => d.position,
-                    getRadius: 2500,  // Larger radius for high-impact noise
-                    getFillColor: d => {
-                        // Red gradient - construction noise is very loud
-                        const levelAbove = d.level - NOISE_THRESHOLD;
-                        if (levelAbove <= 0) return [0, 0, 0, 0];
-                        const t = Math.min(1, levelAbove / 48);
-                        const alpha = Math.floor(120 + 100 * t);  // 120-220 alpha
-                        return [255, 30, 30, alpha];  // Bright red
-                    },
+                    getRadius: d => d.radius || 6000,
+                    getFillColor: [255, 30, 30, 100],
+                    getLineColor: [255, 50, 50, 180],
+                    lineWidthMinPixels: 1,
+                    stroked: true,
+                    filled: true,
                     pickable: false,
-                    opacity: 0.7,
-                    radiusMinPixels: 5,
-                    radiusMaxPixels: 50
+                    opacity: 0.6,
+                    radiusMinPixels: 8,
+                    radiusMaxPixels: 200
                 }));
             }
             
@@ -620,18 +617,16 @@ def create_static_pydeck_map():
                     id: 'noise-operational-layer',
                     data: operationalData,
                     getPosition: d => d.position,
-                    getRadius: 1500,  // Smaller radius for low-impact noise
-                    getFillColor: d => {
-                        // Yellow/orange gradient - operational noise is quieter
-                        const level = d.level || 140;
-                        const t = Math.min(1, (level - 130) / 20);  // Scale from 130-150 dB
-                        const alpha = Math.floor(40 + 80 * t);  // 40-120 alpha
-                        return [255, 180, 50, alpha];  // Yellow-orange
-                    },
+                    getRadius: d => d.radius || 1800,
+                    getFillColor: [255, 180, 50, 60],
+                    getLineColor: [255, 200, 80, 120],
+                    lineWidthMinPixels: 1,
+                    stroked: true,
+                    filled: true,
                     pickable: false,
                     opacity: 0.4,
-                    radiusMinPixels: 2,
-                    radiusMaxPixels: 25
+                    radiusMinPixels: 3,
+                    radiusMaxPixels: 60
                 }));
             }
             

@@ -1858,113 +1858,61 @@ def server(input, output, session):
                     _noise_scenario_name = turbine_scenario
                     _noise_tick = current_tick
                     return ui.div()
-                
-                # DEPONS noise propagation parameters
-                beta_hat = 20.0  # Spreading loss factor
-                alpha_hat = 0.0  # Absorption coefficient
-                deter_threshold = 158.0  # RT: deterrence threshold (dB)
-                operational_threshold = 140.0  # Lower threshold for operational display
-                
-                # Grid parameters
-                grid_step = 5
-                grid_width = 400
-                grid_height = 400
-                
-                # Get landscape-specific bounds
-                from ..ui.sidebar import LANDSCAPE_BOUNDS
-                landscape_name = state.landscape_loaded_name() if state.landscape_loaded_name() else input.landscape()
-                bounds = LANDSCAPE_BOUNDS.get(landscape_name, (53.27, 54.79, 4.83, 7.13))
-                lat_min, lat_max, lon_min, lon_max = bounds
-                
+
+                # DEPONS noise propagation: TL = beta * log10(d)
+                # Deterrence radius where RL drops to threshold:
+                #   d = 10^((SL - threshold) / beta)
+                beta_hat = 20.0   # Spreading loss factor
+                deter_threshold = 158.0   # Construction deterrence (dB)
+                operational_threshold = 140.0  # Operational display (dB)
+
                 # Separate turbines by phase based on current tick
-                constructing_turbines = []  # Currently pile-driving
-                operational_turbines = []   # Already built (tick > end)
-                
+                constructing_turbines = []
+                operational_turbines = []
+
                 for t in _turbine_data_cache:
                     start = t.get('start', 0)
                     end = t.get('end', start + 4)
-                    
                     if current_tick == 0:
-                        # Preview mode (no simulation): show all as operational
                         operational_turbines.append(t)
                     elif start <= current_tick <= end:
-                        # Currently constructing (pile-driving)
                         constructing_turbines.append(t)
                     elif current_tick > end:
-                        # Construction complete, now operational
                         operational_turbines.append(t)
-                    # If tick < start, turbine not yet built - no noise
-                
+
                 print(f"[DEBUG] Tick {current_tick}: {len(constructing_turbines)} constructing, {len(operational_turbines)} operational")
-                
-                # Calculate construction noise (high impact, red)
+
+                # Build noise contours centered on each turbine with physics-based radius
                 construction_points = []
-                if constructing_turbines:
-                    c_lons = np.array([t['position'][0] for t in constructing_turbines])
-                    c_lats = np.array([t['position'][1] for t in constructing_turbines])
-                    c_impacts = np.array([t.get('impact', 234) for t in constructing_turbines])
-                    
-                    for row in range(0, grid_height, grid_step):
-                        for col in range(0, grid_width, grid_step):
-                            lat = lat_min + (row / grid_height) * (lat_max - lat_min)
-                            lon = lon_min + (col / grid_width) * (lon_max - lon_min)
-                            
-                            lat_scale = 111000
-                            lon_scale = 111000 * np.cos(np.radians(lat))
-                            
-                            dlat = (lat - c_lats) * lat_scale
-                            dlon = (lon - c_lons) * lon_scale
-                            distances = np.maximum(np.sqrt(dlat**2 + dlon**2), 1.0)
-                            
-                            transmission_loss = beta_hat * np.log10(distances) + alpha_hat * distances
-                            received_levels = c_impacts - transmission_loss
-                            max_rl = np.max(received_levels)
-                            
-                            if max_rl > deter_threshold:
-                                construction_points.append({
-                                    "position": [float(lon), float(lat)],
-                                    "level": float(max_rl),
-                                    "type": "construction"
-                                })
-                
-                # Calculate operational noise (low impact, yellow)
+                for t in constructing_turbines:
+                    sl = t.get('impact', 234)
+                    radius_m = 10 ** ((sl - deter_threshold) / beta_hat)
+                    construction_points.append({
+                        "position": t['position'],
+                        "level": float(sl),
+                        "radius": float(radius_m),
+                        "type": "construction"
+                    })
+
                 operational_points = []
-                if operational_turbines:
-                    o_lons = np.array([t['position'][0] for t in operational_turbines])
-                    o_lats = np.array([t['position'][1] for t in operational_turbines])
-                    # Operational noise is much lower - typically 145 dB
-                    o_impacts = np.full(len(operational_turbines), OPERATIONAL_NOISE_LEVEL)
-                    
-                    for row in range(0, grid_height, grid_step):
-                        for col in range(0, grid_width, grid_step):
-                            lat = lat_min + (row / grid_height) * (lat_max - lat_min)
-                            lon = lon_min + (col / grid_width) * (lon_max - lon_min)
-                            
-                            lat_scale = 111000
-                            lon_scale = 111000 * np.cos(np.radians(lat))
-                            
-                            dlat = (lat - o_lats) * lat_scale
-                            dlon = (lon - o_lons) * lon_scale
-                            distances = np.maximum(np.sqrt(dlat**2 + dlon**2), 1.0)
-                            
-                            transmission_loss = beta_hat * np.log10(distances) + alpha_hat * distances
-                            received_levels = o_impacts - transmission_loss
-                            max_rl = np.max(received_levels)
-                            
-                            if max_rl > operational_threshold:
-                                operational_points.append({
-                                    "position": [float(lon), float(lat)],
-                                    "level": float(max_rl),
-                                    "type": "operational"
-                                })
-                
+                for t in operational_turbines:
+                    # Operational noise is low (~145 dB); use a fixed visual
+                    # indicator radius rather than physics-based (which would
+                    # be < 2m at 140 dB threshold)
+                    operational_points.append({
+                        "position": t['position'],
+                        "level": float(OPERATIONAL_NOISE_LEVEL),
+                        "radius": 500.0,
+                        "type": "operational"
+                    })
+
                 _noise_data_cache = {
                     "construction": construction_points,
                     "operational": operational_points
                 }
                 _noise_scenario_name = turbine_scenario
                 _noise_tick = current_tick
-                print(f"[DEBUG] Noise calculated: {len(construction_points)} construction cells, {len(operational_points)} operational cells")
+                print(f"[DEBUG] Noise: {len(construction_points)} construction (r={10**((234-deter_threshold)/beta_hat):.0f}m), {len(operational_points)} operational (r=500m indicator)")
                 
             except Exception as e:
                 print(f"[DEBUG] Error calculating noise propagation: {e}")

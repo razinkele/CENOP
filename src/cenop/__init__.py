@@ -6,7 +6,7 @@ harbour porpoise population dynamics under disturbance.
 """
 
 __version__ = "0.1.0"
-__author__ = "AI4WIND Project Team"
+__author__ = "Arturas Razinkovas-Baziukas"
 
 from cenop.core.simulation import Simulation
 from cenop.parameters.simulation_params import SimulationParameters

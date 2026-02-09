@@ -452,7 +452,7 @@ writer.finalize()
 
 1. Click **❓ Help** in the top navigation bar
 2. Check this documentation
-3. Contact the AI4WIND project team
+3. Contact the arturas.razinkovas-baziukas@ku.lt
 
 ---
 
@@ -504,7 +504,7 @@ If using CENOP-JASMINE in publications, please cite:
 ```
 CENOP-JASMINE: Cetacean Noise Operations Planner with JASMINE Extensions
 A Python Shiny implementation of DEPONS 3.0 with research-grade behavioral modeling
-AI4WIND Project, 2024-2026
+Arturas Razinkovas-Baziukas, Klaipeda University, 2024-2026
 ```
 
 ### References

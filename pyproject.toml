@@ -10,7 +10,7 @@ readme = "README.md"
 license = "GPL-2.0-only"
 requires-python = ">=3.10"
 authors = [
-    { name = "AI4WIND Project Team" }
+    { name = "Arturas Razinkovas-Baziukas", email = "arturas.razinkovas-baziukas@ku.lt" }
 ]
 keywords = ["porpoise", "agent-based-model", "simulation", "marine-ecology", "wind-farms"]
 classifiers = [

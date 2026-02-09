@@ -269,7 +269,7 @@ def create_help_modal():
     </ul>
 
     <h2>Contact</h2>
-    <p>For questions and support, contact the AI4WIND project team.</p>
+    <p>For questions and support, contact the arturas.razinkovas-baziukas@ku.lt.</p>
 
     <p class="text-muted small mt-4">CENOP-JASMINE Version 2.0 | Python Shiny Implementation | 2024-2026</p>
 </div>

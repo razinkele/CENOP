@@ -2,21 +2,30 @@
   "permissions": {
     "allow": [
       "Bash(cd:*)",
-      "Bash(dir /s:*)",
       "Bash(cat:*)",
       "Bash(find:*)",
+      "Bash(wc:*)",
+      "Bash(git stash:*)",
       "Bash(git stash pop:*)",
       "Bash(git stash drop:*)",
       "Bash(git checkout:*)",
-      "Bash(python -m pytest:*)",
-      "Bash(python:*)",
       "Bash(git add:*)",
-      "Bash(git commit -m \"$\\(cat <<''EOF''\nImplement modular energy budget system for CENOP-JASMINE merge \\(Phase 4\\)\n\nAdd JASMINE Dynamic Energy Budget \\(DEB\\) model while preserving DEPONS\ncompatibility. The system supports dual-mode operation: DEPONS for\nregulatory compliance and JASMINE for detailed bioenergetics research.\n\nKey features:\n- EnergyState/EnergyContext/EnergyResult dataclasses for vectorized ops\n- DEPONSEnergyModule: Simple 0-20 energy scale \\(backward compatible\\)\n- JASMINEEnergyModule: Full DEB with Kleiber scaling, thermoregulation,\n  activity costs, and cumulative disturbance impact tracking\n- Factory function create_energy_module\\(params, mode\\) for easy instantiation\n- Integration with Simulation and PorpoisePopulation via optional parameter\n- 26 new tests covering both energy modules\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
-      "Bash(git push)",
-      "Bash(git commit -m \"$\\(cat <<''EOF''\nImplement disturbance memory and learned avoidance for CENOP-JASMINE merge \\(Phase 5\\)\n\nAdd JASMINE memory/cognition system for tracking disturbance zones and\nenabling learned avoidance behavior. DEPONS mode remains stateless for\nregulatory compliance.\n\nKey features:\n- DisturbanceMemoryState: Per-agent sparse spatial memory grids\n- DEPONSMemoryModule: No-op implementation \\(stateless deterrence\\)\n- JASMINEMemoryModule: Full memory with decay and avoidance\n  - Spatial grid matching PSM structure \\(2km cells\\)\n  - Configurable exponential memory decay\n  - Learned avoidance vectors from remembered disturbances\n  - Cumulative exposure and habituation tracking\n- Integration with movement: avoidance combined with deterrence\n- 22 new tests covering both memory modes\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
       "Bash(git fetch:*)",
+      "Bash(git pull:*)",
+      "Bash(git restore:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git remote:*)",
       "Bash(gh pr create:*)",
-      "Bash(git commit:*)"
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(python3 -m pytest:*)",
+      "Bash(/opt/micromamba/envs/shiny/bin/python -m pytest:*)",
+      "Bash(/opt/micromamba/envs/shiny/bin/python3:*)"
     ]
   }
 }

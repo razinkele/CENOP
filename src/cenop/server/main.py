@@ -277,39 +277,15 @@ def server(input, output, session):
     def turbine_selector():
         """Render turbine selector filtered by landscape compatibility."""
         from shiny import ui as shiny_ui
-        
-        # Landscape-turbine compatibility mapping with descriptions
-        # Only landscapes with available data are included
-        # NorthSea scenarios differ in construction timing, not turbine count
-        LANDSCAPE_TURBINE_COMPATIBILITY = {
-            "Homogeneous": {"off": "No turbines"},
-            "NorthSea": {
-                "off": "No turbines",
-                "NorthSea_scenario1": "Scenario 1",
-                "NorthSea_scenario2": "Scenario 2",
-                "NorthSea_scenario3": "Scenario 3"
-            },
-            "UserDefined": {
-                "off": "No turbines",
-                "User-def": "User Defined Scenario"
-            },
-            "CentralBaltic": {
-                "off": "No turbines"
-            },
-            "Lithuania": {
-                "off": "No turbines",
-                "CuronianNord_35_15MW": "Curonian Nord 35×15 MW",
-                "CuronianNord_60_10MW": "Curonian Nord 60×10 MW"
-            },
-        }
-        
+        from ..ui.sidebar import LANDSCAPE_TURBINE_COMPATIBILITY
+
         # Get current landscape with error handling
         landscape = "Homogeneous"
         try:
             landscape = input.landscape()
         except Exception:
             pass
-            
+
         # Get compatible turbines for selected landscape
         compatible = LANDSCAPE_TURBINE_COMPATIBILITY.get(landscape, {"off": "No turbines"})
         

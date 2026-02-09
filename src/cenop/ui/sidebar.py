@@ -6,15 +6,28 @@ CENOP - CETacean Noise-Population Model
 from shiny import ui
 
 
-# Landscape-turbine compatibility mapping
+# Landscape-turbine compatibility mapping with display labels
 # Note: Only landscapes with available bathymetry data are included
 # Kattegat, InnerDanishWaters, DanTysk, Gemini data files are not available in this distribution
-LANDSCAPE_TURBINE_COMPATIBILITY = {
-    "Homogeneous": ["off"],  # Synthetic uniform landscape for testing
-    "NorthSea": ["off", "NorthSea_scenario1", "NorthSea_scenario2", "NorthSea_scenario3"],  # Uses UserDefined data
-    "UserDefined": ["off", "User-def"],  # DEPONS default 400x400 North Sea grid
-    "CentralBaltic": ["off"],  # Central Baltic Sea - 250m resolution, no turbine scenarios
-    "Lithuania": ["off", "CuronianNord_35_15MW", "CuronianNord_60_10MW"],  # Lithuanian EEZ with Curonian Nord wind park
+# Format: {landscape: {turbine_key: display_label}} — used by Shiny input_select
+LANDSCAPE_TURBINE_COMPATIBILITY: dict[str, dict[str, str]] = {
+    "Homogeneous": {"off": "No turbines"},
+    "NorthSea": {
+        "off": "No turbines",
+        "NorthSea_scenario1": "Scenario 1",
+        "NorthSea_scenario2": "Scenario 2",
+        "NorthSea_scenario3": "Scenario 3",
+    },
+    "UserDefined": {
+        "off": "No turbines",
+        "User-def": "User Defined Scenario",
+    },
+    "CentralBaltic": {"off": "No turbines"},
+    "Lithuania": {
+        "off": "No turbines",
+        "CuronianNord_35_15MW": "Curonian Nord 35x15 MW",
+        "CuronianNord_60_10MW": "Curonian Nord 60x10 MW",
+    },
 }
 
 # Geographic bounds for each landscape (lat_min, lat_max, lon_min, lon_max)

@@ -80,9 +80,10 @@ class RefMem:
         entry = MemoryEntry(x=x, y=y, strength=food_amount, steps_ago=0)
         self._entries.append(entry)
         
-        # Remove oldest if over limit
+        # Remove weakest if over limit (DEPONS: weakest first, not FIFO)
         if len(self._entries) > self.max_entries:
-            self._entries.pop(0)
+            weakest_idx = min(range(len(self._entries)), key=lambda i: self._entries[i].strength)
+            self._entries.pop(weakest_idx)
             
     def update(self) -> None:
         """Update memory (decay strengths and age entries)."""
@@ -172,7 +173,8 @@ class RefMem:
             if abs(dx) < 0.001 and abs(dy) < 0.001:
                 continue
                 
-            angle_to = np.degrees(np.arctan2(dy, dx))
+            # Use navigation convention: 0°=North, CW-positive (consistent with DEPONS headings)
+            angle_to = np.degrees(np.arctan2(dx, dy)) % 360
             angle_diff = abs((angle_to - heading + 180) % 360 - 180)
             
             if angle_diff <= cone_angle:

@@ -47,10 +47,18 @@ class PorpoisePopulation:
     Replaces the list of individual Porpoise objects for performance.
     """
     
-    def __init__(self, count: int, params: SimulationParameters, landscape: Optional[CellData] = None):
+    def __init__(self, count: int, params: SimulationParameters, landscape: Optional[CellData] = None,
+                 movement_module=None, behavior_fsm=None, energy_module=None, memory_module=None):
         self.params = params
         self.landscape = landscape
         self.count = count # Initial count capacity
+
+        # JASMINE integration modules (Phase 2-5)
+        self._movement_module = movement_module
+        self._behavior_fsm = behavior_fsm
+        self._energy_module = energy_module
+        self._memory_module = memory_module
+        self._behavior_state = None
         
         # === Arrays (Structure of Arrays) ===
         # Use a dictionary of arrays or direct attributes? Direct attributes are faster.
@@ -83,13 +91,19 @@ class PorpoisePopulation:
         
         # Deterrence status
         self.deter_strength = np.zeros(count, dtype=np.float32)
-        
+        # Tracks any porpoise deterred at least once during the reporting period
+        self._was_deterred = np.zeros(count, dtype=bool)
+
         # === PSM and Dispersal State (Phase 2) ===
         # Energy history for dispersal trigger (5 days = 5*48 ticks)
         self._energy_history = np.zeros((count, 5), dtype=np.float32)  # Last 5 daily averages
         self._energy_ticks_today = np.zeros(count, dtype=np.float32)   # Energy sum for current day
         self._tick_counter = 0  # Track ticks for daily updates
         self._last_energy_update_tick = -1  # last global tick when energy was accumulated
+
+        # Per-step energy metrics (exposed for dashboard)
+        self.avg_food_gained = 0.0   # Average food gained per active agent (last step)
+        self.avg_energy_cost = 0.0   # Average energy cost per active agent (last step)
         
         # Dispersal state
         self.is_dispersing = np.zeros(count, dtype=bool)
@@ -125,6 +139,11 @@ class PorpoisePopulation:
         
         # Initialize
         self._initialize_population()
+
+        # Random generator for reproducibility (per-instance)
+        # Use SimulationParameters.random_seed when available
+        seed = getattr(self.params, 'random_seed', None)
+        self.rng = np.random.default_rng(seed)
 
         # Instrumentation controls: set via params.debug_instrumentation or env var CENOP_INSTRUMENT
         self._debug_instrumentation = bool(getattr(self.params, 'debug_instrumentation', False) or os.getenv('CENOP_INSTRUMENT', '0').lower() in ('1','true','yes'))
@@ -289,8 +308,9 @@ class PorpoisePopulation:
                         # Use query_pairs with output_type='ndarray' for maximum speed
                         # Returns (N, 2) array of indices into pos_active
                         pairs = kd_active.query_pairs(radius, output_type='ndarray')
-                    except Exception:
-                        # Fallback for older scipy versions or errors
+                    except (TypeError, ValueError) as e:
+                        # Fallback for older scipy versions that don't support output_type
+                        logger.debug("query_pairs fallback: %s", e)
                         pairs = np.array([], dtype=np.int32).reshape(0, 2)
                         
                         try:
@@ -315,7 +335,8 @@ class PorpoisePopulation:
                                             cols_fb[pair_idx] = j_local
                                             pair_idx += 1
                                 pairs = np.column_stack((rows_fb, cols_fb))
-                        except Exception:
+                        except (TypeError, ValueError) as e:
+                            logger.debug("query_ball_tree fallback: %s", e)
                             pairs = np.empty((0, 2), dtype=np.int32)
 
                     if pairs.shape[0] == 0:
@@ -413,8 +434,9 @@ class PorpoisePopulation:
                             ux_contrib_i, uy_contrib_i, ux_contrib_j, uy_contrib_j, p_i, p_j,
                             ux_total, uy_total, sw_total
                         )
-                    except Exception:
+                    except (TypeError, ValueError) as e:
                         # Fallback if numba call fails
+                        logger.debug("Numba social accumulator fallback: %s", e)
                         ux_total = np.bincount(np.concatenate([idx_i, idx_j]), weights=np.concatenate([ux_contrib_i, ux_contrib_j]), minlength=self.count)
                         uy_total = np.bincount(np.concatenate([idx_i, idx_j]), weights=np.concatenate([uy_contrib_i, uy_contrib_j]), minlength=self.count)
                         sw_total = np.bincount(np.concatenate([idx_i, idx_j]), weights=np.concatenate([p_i, p_j]), minlength=self.count)
@@ -634,6 +656,8 @@ class PorpoisePopulation:
         if deterrence_vectors is not None:
             d_dx, d_dy = deterrence_vectors
             self.deter_strength[mask] = np.abs(d_dx[mask]) + np.abs(d_dy[mask])
+            # Accumulate "was deterred" flag for reporting period
+            self._was_deterred |= (self.deter_strength > 0) & mask
             self._dx[mask] += d_dx[mask]
             self._dy[mask] += d_dy[mask]
         else:
@@ -683,16 +707,33 @@ class PorpoisePopulation:
 
         Checks if proposed positions are on land and tries turning
         40°, 70°, 120° in both directions to find water.
+        
+        Boundary handling uses DEPONS-style reflection (BouncyBorders):
+        when an agent would move past an edge, the overshot component
+        is negated (reflected) and the heading is recalculated.
         """
         # Calculate proposed new positions
         np.add(self.x, self._dx, out=self._new_x)
         np.add(self.y, self._dy, out=self._new_y)
 
-        # Clamp to bounds
+        # DEPONS-style bouncy borders: reflect instead of clamp
         world_w = self.landscape.width if self.landscape else self.params.world_width
         world_h = self.landscape.height if self.landscape else self.params.world_height
-        np.clip(self._new_x, 0, world_w - 1, out=self._new_x)
-        np.clip(self._new_y, 0, world_h - 1, out=self._new_y)
+        # Save original dx/dy to detect which agents got reflected
+        # (_reflect_boundaries flips dx/dy signs for reflected agents)
+        orig_dx = self._dx.copy()
+        orig_dy = self._dy.copy()
+        
+        self._reflect_boundaries(self._new_x, self._new_y, self._dx, self._dy,
+                                 world_w, world_h, mask)
+
+        # Recalculate heading ONLY for agents whose displacement was reflected
+        # (DEPONS Porpoise.forward(): setHeading + setPrevAngle(0) after bounce)
+        reflected = mask & ((self._dx != orig_dx) | (self._dy != orig_dy))
+        if np.any(reflected):
+            self.heading[reflected] = np.degrees(
+                np.arctan2(self._dx[reflected], self._dy[reflected])
+            ) % 360.0
 
         if not self.landscape:
             return
@@ -763,6 +804,49 @@ class PorpoisePopulation:
         self._new_y[self._on_land] = self.y[self._on_land]
         self.heading[self._on_land] = (self.heading[self._on_land] + 180) % 360
 
+    @staticmethod
+    def _reflect_boundaries(
+        new_x: np.ndarray, new_y: np.ndarray,
+        dx: np.ndarray, dy: np.ndarray,
+        world_w: int, world_h: int,
+        mask: np.ndarray,
+    ) -> None:
+        """
+        DEPONS-style bouncy borders.
+
+        When a position overshoots an edge the component is reflected
+        back into the domain and the displacement sign is flipped so
+        that heading recalculation (done in the caller where needed)
+        points inward.
+
+        Reference: DEPONS Porpoise.forward() bounce logic.
+        """
+        max_x = world_w - 1.0
+        max_y = world_h - 1.0
+
+        # --- X reflection ---
+        under_x = mask & (new_x < 0)
+        over_x  = mask & (new_x > max_x)
+        if np.any(under_x):
+            new_x[under_x] = -new_x[under_x]
+            dx[under_x]    = -dx[under_x]
+        if np.any(over_x):
+            new_x[over_x] = 2.0 * max_x - new_x[over_x]
+            dx[over_x]    = -dx[over_x]
+        # Safety clamp (double-bounce edge case)
+        np.clip(new_x, 0, max_x, out=new_x)
+
+        # --- Y reflection ---
+        under_y = mask & (new_y < 0)
+        over_y  = mask & (new_y > max_y)
+        if np.any(under_y):
+            new_y[under_y] = -new_y[under_y]
+            dy[under_y]    = -dy[under_y]
+        if np.any(over_y):
+            new_y[over_y] = 2.0 * max_y - new_y[over_y]
+            dy[over_y]    = -dy[over_y]
+        np.clip(new_y, 0, max_y, out=new_y)
+
     def _apply_positions(self, mask: np.ndarray) -> None:
         """Apply final positions and update adaptive neighbor recompute."""
         self.x[mask] = self._new_x[mask]
@@ -782,8 +866,8 @@ class PorpoisePopulation:
                 alpha = float(getattr(self.params, 'communication_recompute_ema_alpha', 0.3))
                 self._disp_ema_m = alpha * mean_disp + (1.0 - alpha) * self._disp_ema_m
                 self._update_neighbor_recompute_interval(self._disp_ema_m)
-        except Exception:
-            pass
+        except (AttributeError, ValueError) as e:
+            logger.debug("Adaptive recompute interval error: %s", e)
 
         # Save positions for next tick
         self._prev_x[mask] = self.x[mask]
@@ -814,6 +898,15 @@ class PorpoisePopulation:
 
         total_cost = bmr_cost + swimming_cost
         self.energy[mask] -= total_cost[mask]
+
+        # Expose per-step averages for dashboard
+        n_active = int(np.sum(mask))
+        if n_active > 0:
+            self.avg_food_gained = float(np.mean(food_gained[mask]))
+            self.avg_energy_cost = float(np.mean(total_cost[mask]))
+        else:
+            self.avg_food_gained = 0.0
+            self.avg_energy_cost = 0.0
 
         # Update PSM and energy history
         self._update_psm(mask, food_gained)
@@ -877,7 +970,7 @@ class PorpoisePopulation:
 
         # Bycatch mortality (already parameterized)
         bycatch_prob = getattr(self.params, 'bycatch_prob', 0.0) / 360.0 / 48.0
-        bycatch = (np.random.random(self.count) < bycatch_prob) & mask
+        bycatch = (self.rng.random(self.count) < bycatch_prob) & mask
 
         # Apply deaths
         all_deaths = starved | natural_death | bycatch
@@ -1007,6 +1100,28 @@ class PorpoisePopulation:
         """Export active agents to DataFrame for UI helpers."""
         mask = self.active_mask
         n_active = np.sum(mask)
+
+        # Behavioral state export (if FSM present)
+        if self._behavior_state is not None:
+            behavioral_state = self._behavior_state.state.astype(np.int32)
+        else:
+            behavioral_state = np.ones(self.count, dtype=np.int32)
+
+        # Disturbance flag (boolean): whether deter strength exceeds a small threshold
+        is_disturbed = self.deter_strength > 0.1
+
+        # Get depth at current position for debugging land-avoidance
+        if self.landscape is not None and hasattr(self.landscape, '_depth'):
+            xi = self.x.astype(np.int32)
+            yi = self.y.astype(np.int32)
+            world_w = self.landscape.width
+            world_h = self.landscape.height
+            xi = np.clip(xi, 0, world_w - 1)
+            yi = np.clip(yi, 0, world_h - 1)
+            depths = self.landscape._depth[yi, xi]
+        else:
+            depths = np.full(self.count, 20.0, dtype=np.float32)
+
         return pd.DataFrame({
             'id': self.ids[mask],
             'x': self.x[mask],
@@ -1014,6 +1129,10 @@ class PorpoisePopulation:
             'age': self.age[mask],
             'is_female': self.is_female[mask],
             'energy': self.energy[mask],
+            'heading': self.heading[mask],
+            'is_disturbed': is_disturbed[mask],
+            'behavioral_state': behavioral_state[mask],
+            'depth': depths[mask],  # Debug: depth at current position
             'alive': np.ones(n_active, dtype=bool)
         })
 
@@ -1052,8 +1171,9 @@ class PorpoisePopulation:
 
         try:
             accumulate_psm_updates(self.psm_buffer, idx_arr, ys_arr, xs_arr, food_arr)
-        except Exception:
-            # Fallback to np.add.at for safety
+        except (TypeError, ValueError) as e:
+            # Fallback to np.add.at if Numba accelerator unavailable
+            logger.debug("PSM accumulator fallback: %s", e)
             np.add.at(self.psm_buffer[:, :, :, 0], (active_idx, psm_y, psm_x), 1.0)
             np.add.at(self.psm_buffer[:, :, :, 1], (active_idx, psm_y, psm_x), food_gained[active_idx])
 
@@ -1255,7 +1375,11 @@ class PorpoisePopulation:
         self.heading[idx] = np.degrees(np.arctan2(dx, dy)) % 360.0
 
     def _set_random_dispersal_target(self, idx: int) -> None:
-        """Set a random dispersal target at preferred distance."""
+        """Set a random dispersal target at preferred distance.
+        
+        Uses reflection to keep targets inside the map instead of
+        clamping (which biased targets toward edges/corners).
+        """
         pref_dist_km = self._psm_instances[idx].preferred_distance
         angle_rad = np.random.uniform(0, 2 * np.pi)
         dist_cells = pref_dist_km * 1000 / 400.0
@@ -1263,12 +1387,28 @@ class PorpoisePopulation:
         tx = self.x[idx] + np.sin(angle_rad) * dist_cells
         ty = self.y[idx] + np.cos(angle_rad) * dist_cells
         
-        # Clamp to world
+        # Reflect into world (DEPONS bouncy-border style)
         w = self.landscape.width if self.landscape else self.params.world_width
         h = self.landscape.height if self.landscape else self.params.world_height
+        max_x = float(w - 1)
+        max_y = float(h - 1)
         
-        self.dispersal_target_x[idx] = np.clip(tx, 0, w - 1)
-        self.dispersal_target_y[idx] = np.clip(ty, 0, h - 1)
+        # Reflect X
+        if tx < 0:
+            tx = -tx
+        elif tx > max_x:
+            tx = 2.0 * max_x - tx
+        tx = float(np.clip(tx, 0, max_x))
+        
+        # Reflect Y
+        if ty < 0:
+            ty = -ty
+        elif ty > max_y:
+            ty = 2.0 * max_y - ty
+        ty = float(np.clip(ty, 0, max_y))
+        
+        self.dispersal_target_x[idx] = tx
+        self.dispersal_target_y[idx] = ty
         self.dispersal_target_distance[idx] = dist_cells
 
         
@@ -1355,9 +1495,14 @@ class PorpoisePopulation:
         np.multiply(np.sin(rads), self._step_dist, out=self._dx)
         np.multiply(np.cos(rads), self._step_dist, out=self._dy)
 
-        # Clip to world bounds
-        np.clip(self.x + self._dx, 0, world_w - 1, out=out_x)
-        np.clip(self.y + self._dy, 0, world_h - 1, out=out_y)
+        # Proposed position
+        np.add(self.x, self._dx, out=out_x)
+        np.add(self.y, self._dy, out=out_y)
+
+        # DEPONS-style reflection at boundaries
+        all_mask = np.ones(len(self.x), dtype=bool)
+        self._reflect_boundaries(out_x, out_y, self._dx, self._dy,
+                                 world_w, world_h, all_mask)
 
         # Get cell indices
         np.copyto(out_xi, out_x.astype(np.int32))

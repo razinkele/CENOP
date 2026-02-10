@@ -70,13 +70,26 @@ def create_help_modal():
         ui.div(
             ui.HTML("""
 <div class="help-content">
-    <h2>📖 CENOP User Manual</h2>
-    <p><strong>CENOP</strong> (CETacean Noise-Population Model) is a Python translation of the DEPONS 3.0 model 
-    for simulating how harbour porpoise population dynamics are affected by disturbances from offshore 
-    wind farm construction and ship noise.</p>
-    
-    <h2>🚀 Quick Start</h2>
+    <h2>CENOP-JASMINE User Manual</h2>
+    <p><strong>CENOP-JASMINE</strong> (CETacean Noise-Population Model with JASMINE Extensions) is a Python translation
+    of the DEPONS 3.0 model for simulating how harbour porpoise population dynamics are affected by disturbances
+    from offshore wind farm construction and ship noise.</p>
+    <p>The <strong>JASMINE</strong> (Just Another Simulation Model In Nature Environments) extension adds research-grade
+    features including physics-based movement, dynamic energy budgets, and learned avoidance behaviors.</p>
+
+    <h2>Simulation Modes</h2>
+    <table class="param-table">
+        <tr><th>Mode</th><th>Description</th><th>Use Case</th></tr>
+        <tr><td><strong>DEPONS</strong></td><td>Regulatory-compatible empirical models validated against DEPONS 3.0</td><td>Environmental impact assessments</td></tr>
+        <tr><td><strong>JASMINE</strong></td><td>Physics-based movement, Dynamic Energy Budget (DEB), learned avoidance</td><td>Research and hypothesis testing</td></tr>
+    </table>
+    <div class="tip">
+        <strong>Tip:</strong> Select simulation mode from the "Simulation Mode" dropdown in the sidebar.
+    </div>
+
+    <h2>Quick Start</h2>
     <ol>
+        <li><strong>Select Simulation Mode</strong> - Choose DEPONS (Regulatory) or JASMINE (Research)</li>
         <li><strong>Set Initial Population</strong> - Enter the number of porpoises (default: 1000)</li>
         <li><strong>Set Simulation Years</strong> - How long to run (1-100 years)</li>
         <li><strong>Select Landscape</strong> - Choose the geographical area</li>
@@ -84,61 +97,46 @@ def create_help_modal():
         <li><strong>Select Wind Turbines</strong> (optional) - Choose a turbine scenario</li>
         <li><strong>Click "Load Turbines"</strong> - Display turbines and noise contours</li>
         <li><strong>Click "Run Simulation"</strong> - Start the simulation</li>
-        <li><strong>Adjust Speed & Update Frequency</strong> - Use sliders to control visualization</li>
+        <li><strong>Adjust Speed</strong> - Use the slider to speed up or slow down</li>
     </ol>
-    
-    <h2>🗺️ Landscapes</h2>
+
+    <h2>Landscapes</h2>
     <table class="param-table">
         <tr><th>Landscape</th><th>Description</th><th>Available Turbine Scenarios</th></tr>
-        <tr><td>Homogeneous</td><td>Uniform test landscape (400×400 cells)</td><td>None</td></tr>
-        <tr><td>NorthSea</td><td>North Sea with real bathymetry (400×400 @ 400m)</td><td>Scenarios 1-3 (80-240 turbines)</td></tr>
-        <tr><td>CentralBaltic</td><td>Central Baltic Sea (Lithuania to Sweden, 400×400 @ 1km)</td><td>None</td></tr>
-        <tr><td>UserDefined</td><td>DEPONS default landscape data files</td><td>User-defined</td></tr>
+        <tr><td>Homogeneous</td><td>Uniform test landscape (400x400 cells)</td><td>None</td></tr>
+        <tr><td>Lithuania</td><td>Central Baltic / Lithuanian waters</td><td>Curonian Nord scenarios</td></tr>
+        <tr><td>Kattegat</td><td>Kattegat / Inner Danish Waters (600x1000 @ 400m)</td><td>None</td></tr>
+        <tr><td>NorthSea</td><td>North Sea with real bathymetry (2088x2175 @ 400m)</td><td>Scenarios 1-3</td></tr>
     </table>
-    <div class="note">
-        <strong>Landscape Data Files:</strong> Each landscape loads bathy.asc, blocks.asc, disttocoast.asc, 
-        sediment.asc, and monthly salinity files from the data directory.
-    </div>
-    
-    <h2>🌬️ Wind Turbine Scenarios</h2>
-    <p>Turbine scenarios define the location and construction timing of offshore wind farms. 
+
+    <h2>Wind Turbine Scenarios</h2>
+    <p>Turbine scenarios define the location and construction timing of offshore wind farms.
     Each turbine generates pile-driving noise during construction that deters porpoises.</p>
     <div class="note">
-        <strong>Note:</strong> The noise overlay (red shading) shows areas where received sound levels 
+        <strong>Note:</strong> The noise overlay (red shading) shows areas where received sound levels
         exceed the deterrence threshold (158 dB). Porpoises avoid these areas during pile-driving.
     </div>
-    
-    <h2>📊 Dashboard Visualizations</h2>
+
+    <h2>Dashboard Visualizations</h2>
     <h3>Map Layers (Toggle On/Off)</h3>
     <ul>
         <li><strong>Porpoises</strong> (blue dots) - Current positions of simulated animals</li>
-        <li><strong>Depth</strong> - Bathymetry from landscape data (toggle in Layers panel)</li>
+        <li><strong>Depth</strong> - Bathymetry from EMODnet (toggle in Layers panel)</li>
         <li><strong>Turbines</strong> (orange dots) - Wind turbine locations</li>
         <li><strong>Noise</strong> (red shading) - Sound levels above deterrence threshold</li>
         <li><strong>Foraging</strong> (green shading) - Food availability / patch distribution</li>
     </ul>
-    
+
     <h3>Charts</h3>
     <ul>
         <li><strong>Population Size</strong> - Total porpoises and lactating females with calves over time</li>
         <li><strong>Life and Death</strong> - Daily births and deaths</li>
-        <li><strong>Energy Balance</strong> - Average porpoise energy level vs daily expenditure</li>
+        <li><strong>Energy Balance</strong> - Average food eaten vs energy expended</li>
     </ul>
-    
-    <h2>⚙️ Simulation Controls</h2>
-    <h3>Speed & Update Settings</h3>
-    <table class="param-table">
-        <tr><th>Control</th><th>Default</th><th>Description</th></tr>
-        <tr><td>Simulation Speed</td><td>100%</td><td>How fast the simulation runs (1% = slowest with delay, 100% = maximum speed)</td></tr>
-        <tr><td>Map Update Frequency</td><td>1 tick</td><td>How often to update the porpoise map (1 = every tick for smooth animation, 48 = daily for faster simulation)</td></tr>
-    </table>
-    <div class="tip">
-        <strong>Tip:</strong> For smooth porpoise movement visualization, use 1 tick. For faster long runs, increase to 24-48 ticks.
-    </div>
-    
-    <h2>⚙️ Model Settings</h2>
-    <p>All parameters have tooltip icons (ⓘ) - hover for detailed descriptions.</p>
-    
+
+    <h2>Model Settings</h2>
+    <p>All parameters have tooltip icons - hover for detailed descriptions.</p>
+
     <h3>Basic Tab</h3>
     <table class="param-table">
         <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
@@ -147,121 +145,143 @@ def create_help_modal():
         <tr><td>Ship Traffic</td><td>Off</td><td>Enable/disable vessel noise disturbance</td></tr>
         <tr><td>Bycatch Probability</td><td>0.0</td><td>Annual probability of fishing net mortality</td></tr>
     </table>
-    
+
     <h3>Movement Tab (CRW Parameters)</h3>
     <p>Correlated Random Walk parameters controlling fine-scale movement:</p>
     <table class="param-table">
         <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
         <tr><td>k (Inertia)</td><td>0.001</td><td>Directional persistence - higher = straighter paths</td></tr>
         <tr><td>a0</td><td>0.35</td><td>Step length autocorrelation</td></tr>
-        <tr><td>a1</td><td>0.0005</td><td>Water depth effect on step length</td></tr>
-        <tr><td>a2</td><td>-0.02</td><td>Salinity effect on step length</td></tr>
         <tr><td>b0</td><td>-0.024</td><td>Turning angle autocorrelation</td></tr>
-        <tr><td>b1</td><td>-0.008</td><td>Water depth effect on turning</td></tr>
-        <tr><td>b2</td><td>0.93</td><td>Salinity effect on turning</td></tr>
-        <tr><td>b3</td><td>-14.0</td><td>Intercept for turning angle</td></tr>
     </table>
-    
+
     <h3>Dispersal Tab</h3>
     <p>Controls large-scale movement when porpoises have declining energy:</p>
     <table class="param-table">
         <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
-        <tr><td>Dispersal Type</td><td>PSM-Type2</td><td>PSM-Type2 (memory-based with heading dampening), Undirected, or Off</td></tr>
+        <tr><td>Dispersal Type</td><td>PSM-Type2</td><td>Memory-based with heading dampening</td></tr>
         <tr><td>tDisp</td><td>3 days</td><td>Consecutive days of declining energy to trigger dispersal</td></tr>
-        <tr><td>PSM_log</td><td>0.6</td><td>Logistic increase rate for spatial memory</td></tr>
         <tr><td>PSM_dist</td><td>N(300;100)</td><td>Preferred dispersal distance: mean 300km, std 100km</td></tr>
-        <tr><td>PSM_tol</td><td>5 km</td><td>Tolerance for reaching dispersal target</td></tr>
-        <tr><td>PSM_angle</td><td>20°</td><td>Maximum heading change per step during dispersal</td></tr>
     </table>
-    
+
     <h3>Energy Tab</h3>
-    <p>Memory decay rates and food dynamics:</p>
     <table class="param-table">
         <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
-        <tr><td>rS (Satiation)</td><td>0.04</td><td>Decay rate for satiation memory - how fast porpoises forget satisfaction</td></tr>
-        <tr><td>rR (Reference)</td><td>0.04</td><td>Decay rate for reference memory - how fast they forget food locations</td></tr>
+        <tr><td>rS (Satiation)</td><td>0.04</td><td>Decay rate for satiation memory</td></tr>
+        <tr><td>rR (Reference)</td><td>0.04</td><td>Decay rate for reference memory</td></tr>
         <tr><td>rU (Replenishment)</td><td>0.1</td><td>Rate at which depleted food patches recover</td></tr>
     </table>
-    
-    <h2>📈 Population Tab</h2>
-    <p>Detailed population analytics (updates during simulation):</p>
+
+    <h2>JASMINE Mode Features</h2>
+    <p>When JASMINE mode is selected, the following advanced features are enabled:</p>
+
+    <h3>Behavioral State Machine</h3>
+    <p>Five behavioral states with configurable transitions:</p>
+    <table class="param-table">
+        <tr><th>State</th><th>Description</th><th>Movement</th></tr>
+        <tr><td>FORAGING</td><td>Searching for/consuming food</td><td>DEPONS CRW</td></tr>
+        <tr><td>TRAVELING</td><td>Directed movement between areas</td><td>Physics-based</td></tr>
+        <tr><td>RESTING</td><td>Low activity energy recovery</td><td>Physics-based</td></tr>
+        <tr><td>DISPERSING</td><td>Memory-driven dispersal to new areas</td><td>PSM-based</td></tr>
+        <tr><td>DISTURBED</td><td>Response to disturbance events</td><td>Avoidance</td></tr>
+    </table>
+
+    <h3>Dynamic Energy Budget (DEB)</h3>
+    <table class="param-table">
+        <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+        <tr><td>Body Mass</td><td>50.0 kg</td><td>Adult porpoise body mass</td></tr>
+        <tr><td>BMR Scale</td><td>1.0</td><td>Basal metabolic rate multiplier</td></tr>
+        <tr><td>Activity Cost</td><td>2.0</td><td>Activity cost multiplier</td></tr>
+        <tr><td>Thermal Model</td><td>On</td><td>Temperature-dependent metabolism</td></tr>
+        <tr><td>Disturbance Cost</td><td>1.5</td><td>Energy cost during disturbance</td></tr>
+    </table>
+
+    <h3>Disturbance Memory</h3>
+    <table class="param-table">
+        <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+        <tr><td>Memory Decay Rate</td><td>0.001</td><td>Per-tick memory decay</td></tr>
+        <tr><td>Avoidance Radius</td><td>20 cells</td><td>Influence radius for avoidance</td></tr>
+        <tr><td>Habituation</td><td>On</td><td>Enable habituation to repeated disturbance</td></tr>
+        <tr><td>Habituation Rate</td><td>0.05</td><td>Rate of habituation per exposure</td></tr>
+    </table>
+
+    <h3>Physics-Based Movement</h3>
+    <table class="param-table">
+        <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+        <tr><td>Drag Coefficient</td><td>0.01</td><td>Hydrodynamic drag</td></tr>
+        <tr><td>Max Thrust</td><td>100.0 N</td><td>Maximum propulsive thrust</td></tr>
+        <tr><td>Current Weight</td><td>0.5</td><td>Ocean current influence (0-1)</td></tr>
+    </table>
+
+    <h2>Population Tab</h2>
     <ul>
         <li><strong>Age Distribution</strong> - Histogram of porpoise ages (0-30 years)</li>
-        <li><strong>Energy Distribution</strong> - Histogram of energy levels (0-20 units)</li>
-        <li><strong>Average Porpoise Energy</strong> - Mean energy level over time</li>
-        <li><strong>Dispersal Activity</strong> - Number of dispersing porpoises over time</li>
-        <li><strong>Vital Statistics</strong> - Summary table (population, avg age, avg energy, females, with calf)</li>
+        <li><strong>Energy Distribution</strong> - Histogram of energy levels</li>
+        <li><strong>Landscape Energy</strong> - Total food availability over time</li>
+        <li><strong>Average Movement</strong> - Daily movement distances</li>
+        <li><strong>Vital Statistics</strong> - Summary table of population metrics</li>
     </ul>
-    
-    <h2>🔊 Disturbance Tab</h2>
-    <p>Noise impact analysis:</p>
+
+    <h2>Disturbance Tab</h2>
     <ul>
-        <li><strong>Porpoise Dispersal</strong> - Number of dispersing porpoises and max declining energy days</li>
-        <li><strong>Deterrence Events</strong> - Count of deterred porpoises over time (requires turbines/ships). <em>Deterrence is modelled probabilistically based on received level (RL) using a logistic response</em>.</li>
-        <li><strong>Social Communication</strong> - Porpoises emit calls and can detect nearby conspecifics; detected neighbors influence movement via a social attraction term (configurable).</li>
+        <li><strong>Dispersal Plot</strong> - Number of porpoises in dispersal states over time</li>
+        <li><strong>Deterrence Events</strong> - Count of currently deterred porpoises</li>
         <li><strong>Noise Exposure Map</strong> - Spatial visualization of noise impacts</li>
     </ul>
-    
-    <h2>💾 Export Tab</h2>
-    <p>Export simulation results:</p>
+
+    <h2>Export Tab</h2>
     <ul>
         <li><strong>Download Results CSV</strong> - Population time series with tick, population, births, deaths, energy</li>
     </ul>
-    <div class="tip">
-        <strong>Tip:</strong> For DEPONS-compatible outputs (Population.txt, PorpoiseStatistics.txt, Mortality.txt, 
-        Dispersal.txt, Energy.txt), use the batch runner API programmatically via Python.
-    </div>
-    
-    <h2>⚡ Performance Tips</h2>
+
+    <h2>Simulation Speed</h2>
     <ul>
-        <li><strong>Maximum Speed</strong> - Set speed to 100% and update frequency to 48 ticks for fastest simulation</li>
-        <li><strong>Smooth Animation</strong> - Set update frequency to 1 tick (default) to see every porpoise movement</li>
-        <li><strong>Large Populations</strong> - For 5000+ porpoises, consider increasing update frequency to 12-24 ticks</li>
-        <li><strong>Long Runs</strong> - For multi-year simulations, speed slider at 100% and update every 48 ticks</li>
+        <li><strong>1%</strong> - Slowest (0.3 seconds per simulated day) - good for watching individual movements</li>
+        <li><strong>50%</strong> - Medium (~0.075 seconds per day)</li>
+        <li><strong>100%</strong> - Maximum speed (no delay) - for long runs</li>
     </ul>
-    
-    <h2>🔬 Scientific Background</h2>
-    <p>CENOP is based on the DEPONS 3.0 model (Nabe-Nielsen et al., 2018). Key features:</p>
+
+    <h2>Scientific Background</h2>
+    <p>CENOP-JASMINE is based on the DEPONS 3.0 model (Nabe-Nielsen et al., 2018) with JASMINE extensions. Key features:</p>
     <ul>
         <li><strong>Agent-based</strong> - Each porpoise is an individual with its own state</li>
-        <li><strong>Spatially explicit</strong> - 400m × 400m grid cells (or 1km for CentralBaltic)</li>
+        <li><strong>Spatially explicit</strong> - 400m x 400m grid cells</li>
         <li><strong>30-minute time steps</strong> - 48 ticks per day, 17,280 ticks per year</li>
-        <li><strong>Mechanistic</strong> - Population dynamics emerge from individual behavior</li>
+        <li><strong>Dual-mode</strong> - DEPONS for regulatory, JASMINE for research</li>
         <li><strong>Energy-based mortality</strong> - Survival depends on energy reserves</li>
         <li><strong>Persistent Spatial Memory</strong> - Porpoises remember good foraging areas</li>
-        <li><strong>Deterrence response</strong> - Avoidance of noise above 158 dB threshold</li>
+        <li><strong>Learned Avoidance</strong> (JASMINE) - Porpoises remember disturbance zones</li>
+        <li><strong>Habituation</strong> (JASMINE) - Reduced response to repeated exposure</li>
     </ul>
-    
-    <h3>Energy Model</h3>
-    <p>The Dynamic Energy Budget model includes:</p>
+
+    <h2>Model Validation</h2>
     <ul>
-        <li><strong>Seasonal scaling</strong> - Higher metabolism in warm months (May-Sep: ×1.3)</li>
-        <li><strong>Lactation cost</strong> - Nursing females use ×1.4 more energy</li>
-        <li><strong>Starvation mortality</strong> - Increases when energy drops below threshold</li>
+        <li><strong>DEPONS mode</strong> - Validated against DEPONS 3.0 for regulatory compliance</li>
+        <li><strong>JASMINE mode</strong> - Research-grade, designed for exploring advanced behavioral hypotheses</li>
     </ul>
-    
-    <div class="tip">
-        <strong>Tip:</strong> For detailed model documentation, see the DEPONS 3.0 TRACE document 
-        (Grimm et al., 2014) included with this software.
-    </div>
-    
-    <h2>📚 References</h2>
+
+    <h2>References</h2>
     <ul>
-        <li>Nabe-Nielsen J., et al. (2018). Predicting the impacts of anthropogenic disturbances on marine populations. <em>Conservation Letters</em>.</li>
-        <li>Hin V., et al. (2019). A bioenergetics model for harbour porpoise. <em>Ecological Modelling</em>.</li>
-        <li>Grimm V., et al. (2014). TRACE documentation standard. <em>Ecological Modelling</em>.</li>
+        <li>Nabe-Nielsen J., Sibly R.M., Tougaard J., Teilmann J., Sveegaard S. (2014). Effects of noise and by-catch on a Danish harbour porpoise population. <em>Ecological Modelling</em>, 272, 242–251. <a href="https://doi.org/10.1016/j.ecolmodel.2013.09.025" target="_blank">doi:10.1016/j.ecolmodel.2013.09.025</a></li>
+        <li>Nabe-Nielsen J., van Beest F.M., Grimm V., Sibly R.M., Teilmann J., Thompson P.M. (2018). Predicting the impacts of anthropogenic disturbances on marine populations. <em>Conservation Letters</em>, 11(5), e12563. <a href="https://doi.org/10.1111/conl.12563" target="_blank">doi:10.1111/conl.12563</a></li>
+        <li>Nabe-Nielsen J., Harwood J. (2016). Comparison of the iPCoD and DEPONS models for modelling population consequences of noise on harbour porpoises. <em>Scientific Report from DCE</em>, No. 186.</li>
+        <li>van Beest F.M., Nabe-Nielsen J., Carstensen J., Teilmann J., Sveegaard S. (2015). Disturbance Effects on the Harbour Porpoise Population in the North Sea (DEPONS): Status report on model development. <em>Scientific Report from DCE</em>, No. 140.</li>
+        <li>Hin V., Harwood J., de Roos A.M. (2019). Bio-energetic modeling of medium-sized cetaceans shows that physiological structure is key to determining the cumulative effects of disturbance. <em>Ecological Modelling</em>, 394, 82–93. <a href="https://doi.org/10.1016/j.ecolmodel.2018.12.019" target="_blank">doi:10.1016/j.ecolmodel.2018.12.019</a></li>
+        <li>Tougaard J., Wright A.J., Madsen P.T. (2015). Cetacean noise criteria revisited in the light of proposed exposure limits for harbour porpoises. <em>Marine Pollution Bulletin</em>, 90(1–2), 196–208. <a href="https://doi.org/10.1016/j.marpolbul.2014.10.051" target="_blank">doi:10.1016/j.marpolbul.2014.10.051</a></li>
+        <li>Kooijman S.A.L.M. (2010). <em>Dynamic Energy Budget theory for metabolic organisation</em>. 3rd ed. Cambridge University Press.</li>
+        <li>Grimm V., Railsback S.F. (2005). <em>Individual-based Modeling and Ecology</em>. Princeton University Press.</li>
         <li>DEPONS Project: <a href="http://www.depons.dk" target="_blank">www.depons.dk</a></li>
     </ul>
-    
-    <h2>📧 Contact</h2>
-    <p>For questions and support, contact the AI4WIND project team.</p>
-    
-    <p class="text-muted small mt-4">CENOP Version 1.0 • Python Shiny Implementation • 2024-2026</p>
+
+    <h2>Contact</h2>
+    <p>For questions and support, contact the arturas.razinkovas-baziukas@ku.lt.</p>
+
+    <p class="text-muted small mt-4">CENOP-JASMINE Version 2.0 | Python Shiny Implementation | 2024-2026</p>
 </div>
             """),
             style="max-height: 70vh; overflow-y: auto; padding: 20px;"
         ),
-        title="CENOP Help",
+        title="CENOP-JASMINE Help",
         size="xl",
         easy_close=True,
         footer=ui.modal_button("Close", class_="btn-primary")

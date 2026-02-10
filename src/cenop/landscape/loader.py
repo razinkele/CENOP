@@ -76,6 +76,9 @@ class LandscapeLoader:
         """
         Load an ASCII grid file.
         
+        Optimized: uses np.loadtxt for data parsing instead of
+        pure-Python line-by-line float conversion.
+        
         Args:
             filename: Name of file to load
             
@@ -87,14 +90,15 @@ class LandscapeLoader:
         if not filepath.exists():
             raise FileNotFoundError(f"Landscape file not found: {filepath}")
             
-        # Parse header
+        # Parse header (typically 6 lines)
         header = {}
-        data_lines = []
+        header_line_count = 0
         
         with open(filepath, 'r') as f:
             for line in f:
                 line = line.strip()
                 if not line:
+                    header_line_count += 1
                     continue
                     
                 # Check if this is a header line
@@ -109,9 +113,9 @@ class LandscapeLoader:
                         header[key] = int(value)
                     else:
                         header[key] = float(value)
+                    header_line_count += 1
                 else:
-                    # Data line
-                    data_lines.append(line)
+                    break  # First data line found
                     
         # Create metadata
         metadata = LandscapeMetadata(
@@ -123,13 +127,8 @@ class LandscapeLoader:
             nodata_value=header.get('nodata_value', -9999.0),
         )
         
-        # Parse data
-        data = []
-        for line in data_lines:
-            row = [float(x) for x in line.split()]
-            data.append(row)
-            
-        data_array = np.array(data)
+        # Parse data with numpy (much faster than pure Python)
+        data_array = np.loadtxt(str(filepath), skiprows=header_line_count)
         
         # DEPONS Compatibility: Keep NODATA as -9999, do NOT convert to NaN
         # NaN comparisons always return False, breaking land detection
@@ -145,30 +144,38 @@ class LandscapeLoader:
     def _load_monthly(self, prefix: str) -> np.ndarray:
         """
         Load 12 monthly data files.
-        
+
+        Supports two naming conventions:
+          - CENOP short:  prey01.asc, prey02.asc, ...
+          - DEPONS long:  prey0000_01.asc, prey0000_02.asc, ...
+
         Args:
-            prefix: File prefix (e.g., 'prey' for prey01.asc, prey02.asc, ...)
-            
+            prefix: File prefix (e.g., 'prey' or 'salinity')
+
         Returns:
             Array of shape (12, height, width)
         """
         monthly_data = []
-        
+
         for month in range(1, 13):
-            filename = f"{prefix}{month:02d}.asc"
-            filepath = self.landscape_path / filename
-            
-            if filepath.exists():
-                data, _ = self._load_asc(filename)
+            # Try short name first, then DEPONS long name
+            short = f"{prefix}{month:02d}.asc"
+            long = f"{prefix}0000_{month:02d}.asc"
+
+            if (self.landscape_path / short).exists():
+                data, _ = self._load_asc(short)
+                monthly_data.append(data)
+            elif (self.landscape_path / long).exists():
+                data, _ = self._load_asc(long)
                 monthly_data.append(data)
             else:
                 # If file doesn't exist, use previous month or zeros
                 if monthly_data:
                     monthly_data.append(monthly_data[-1].copy())
                 else:
-                    # Need to get dimensions from another file
                     raise FileNotFoundError(
-                        f"Monthly file not found: {filepath}"
+                        f"Monthly file not found: {self.landscape_path / short} "
+                        f"or {self.landscape_path / long}"
                     )
                     
         return np.stack(monthly_data)

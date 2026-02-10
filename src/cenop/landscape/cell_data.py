@@ -7,13 +7,10 @@ Translates from: CellData.java
 
 from __future__ import annotations
 
-import logging
 import numpy as np
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Tuple, List
-
-logger = logging.getLogger("CENOP")
 
 
 @dataclass
@@ -58,7 +55,7 @@ class CellData:
         Initialize cell data for a landscape.
         
         Args:
-            landscape_name: Name of landscape (e.g., 'NorthSea')
+            landscape_name: Name of landscape (e.g., 'Lithuania')
             data_dir: Base data directory. If None, uses cenop/data.
         """
         self.landscape_name = landscape_name
@@ -101,8 +98,6 @@ class CellData:
         self._blocks = data['blocks']
         self._entropy = data['entropy']
         self._salinity = data['salinity']
-        # Store any loader warnings for UI notifications
-        self._load_warnings = data.get('warnings', [])
         
         # Initialize food values from food probability
         self._food_value = self._food_prob.copy()
@@ -228,49 +223,68 @@ class CellData:
         # DEPONS Java: if (foodValue < 0.01) foodValue = 0.01
         if self._food_value[i, j] < 0.01:
             self._food_value[i, j] = 0.01
-            
+
         return food_eaten
-        
-    def eat_food_vectorized(self, x: np.ndarray, y: np.ndarray, fraction: np.ndarray) -> np.ndarray:
+
+    def eat_food_vectorized(
+        self,
+        x: np.ndarray,
+        y: np.ndarray,
+        fraction: np.ndarray
+    ) -> np.ndarray:
         """
-        Eat a fraction of food in multiple cells (Vectorized).
-        
-        Optimized to handle all agents in a single pass.
-        Handling multiple agents in same cell:
-        - Calculates total demand per cell
-        - Reduces availability once
-        - Returns food eaten for each agent
+        Eat food from multiple cells (vectorized).
+
+        Args:
+            x: Array of x positions
+            y: Array of y positions
+            fraction: Array of fractions to eat (0-1) for each position
+
+        Returns:
+            Array of food amounts eaten at each position
         """
         self._ensure_loaded()
-        if self._food_value is None:
-            return np.zeros_like(x, dtype=np.float32)
-            
-        # Convert to grid indices
-        i = np.clip(y.astype(int), 0, self.height - 1)
-        j = np.clip(x.astype(int), 0, self.width - 1)
-        
-        # Get current food at agent positions (duplicates allowed)
-        current_food = self._food_value[i, j]
-        
-        # Calculate intended food to eat for each agent
+
+        n = len(x)
+        food_eaten = np.zeros(n, dtype=np.float32)
+
+        if self._food_value is None or self._food_prob is None:
+            return food_eaten
+
+        # Get grid indices for all positions
+        i_arr = np.clip(y.astype(np.int32), 0, self.height - 1)
+        j_arr = np.clip(x.astype(np.int32), 0, self.width - 1)
+
+        # Get current food at each position
+        current_food = self._food_value[i_arr, j_arr]
+
+        # Calculate food to eat
         food_eaten = current_food * fraction
-        
-        # Apply consumption to the grid
-        # Use np.add.at to safely handle multiple agents eating from same cell
-        # (This sums up all consumption for a cell)
-        np.add.at(self._food_value, (i, j), -food_eaten)
-        
-        # Enforce minimum food level (0.01)
-        # We only need to check cells we modified, but checking whole array is fast enough for 160k cells
-        # and simpler than tracking modified indices
-        np.maximum(self._food_value, 0.01, out=self._food_value)
-        
-        # Note: In case of race condition (multiple agents eating > 100% of food),
-        # this approach lets them eat what they saw at the start of tick.
-        # The grid is clamped to 0.01 afterwards. This effectively "creates" small amount of food
-        # if over-consumed, but aligns with DEPONS parallel execution behavior.
-        
-        return food_eaten
+
+        # Aggregate consumption for agents in the same cell using np.add.at
+        # This prevents the last-write-wins race condition when multiple
+        # agents occupy the same cell
+        total_consumed = np.zeros_like(self._food_value)
+        np.add.at(total_consumed, (i_arr, j_arr), food_eaten)
+
+        # Update food values with aggregated consumption
+        new_food = np.maximum(0.0, self._food_value - total_consumed)
+
+        # ADD_ARTIFICIAL_FOOD: minimum 0.01
+        new_food = np.maximum(new_food, 0.01)
+
+        # Write back to food grid
+        self._food_value[:] = new_food
+
+        # Recompute actual food eaten per agent (may be less if cell was depleted)
+        actual_available = self._food_value[i_arr, j_arr] + food_eaten
+        ratio = np.where(total_consumed[i_arr, j_arr] > 0,
+                         food_eaten / total_consumed[i_arr, j_arr],
+                         0.0)
+        # Each agent gets its proportional share of the actual depletion
+        actual_eaten = np.minimum(food_eaten, actual_available * ratio)
+
+        return actual_eaten
 
     def replenish_food(self, rate: float) -> None:
         """Replenish food across all cells."""
@@ -418,108 +432,74 @@ def create_landscape_from_depons(
 ) -> CellData:
     """
     Create a landscape using real DEPONS bathymetry data.
-    
-    This loads the actual North Sea bathymetry from the DEPONS-master data files.
-    The DEPONS grid is 400x400 cells at 400m resolution (160km x 160km area).
-    
+
+    This loads bathymetry from external DEPONS-master data files (not shipped
+    with CENOP). The DEPONS grid is 400x400 cells at 400m resolution.
+
     Args:
-        depons_data_dir: Path to DEPONS-master/data/UserDefined folder
-                        If None, will search common locations
+        depons_data_dir: Path to a DEPONS data folder containing bathy.asc.
+                        If None, will search common locations.
         food_prob: Uniform food probability
-        
+
     Returns:
-        CellData with real North Sea bathymetry
+        CellData with DEPONS bathymetry, or homogeneous fallback
     """
     import os
-    
+    import logging
+    logger = logging.getLogger("CENOP")
+
     # Search for DEPONS data directory
     if depons_data_dir is None:
         possible_paths = [
-            "../DEPONS-master/data/UserDefined",
-            "../../DEPONS-master/data/UserDefined",
-            "../../../DEPONS-master/data/UserDefined",
-            "DEPONS-master/data/UserDefined",
+            "../DEPONS-master/data",
+            "../../DEPONS-master/data",
+            "DEPONS-master/data",
         ]
         for path in possible_paths:
             if os.path.exists(path):
                 depons_data_dir = path
                 break
-    
+
     if depons_data_dir is None or not os.path.exists(depons_data_dir):
-        logger.warning("DEPONS data directory not found, falling back to homogeneous landscape")
+        logger.info("DEPONS data directory not found, falling back to homogeneous landscape")
         return create_homogeneous_landscape()
     
     bathy_file = os.path.join(depons_data_dir, "bathy.asc")
     if not os.path.exists(bathy_file):
-        logger.warning(f"Bathymetry file not found: {bathy_file}")
+        logger.info("Bathymetry file not found: %s", bathy_file)
         return create_homogeneous_landscape()
-    
+
     # Load bathymetry
-    logger.info(f"Loading DEPONS bathymetry from {bathy_file}...")
+    logger.info("Loading DEPONS bathymetry from %s...", bathy_file)
     depth_array, metadata = load_bathymetry_from_asc(bathy_file)
     
-    logger.info(f"Loaded bathymetry: {metadata.nrows}x{metadata.ncols}, depth range: {depth_array.min():.1f} to {depth_array.max():.1f}m")
+    # In DEPONS, depth values are positive (meters below sea level)
+    # We need to convert so that negative = land, positive = water
+    # If depth < 0 or very small, it's likely land
+    # DEPONS uses depth > 0 for water, but we treat depth <= 0 as land
+    # Actually in the file, all values are positive depths
+    # We just need to mark land where there's no water
+    
+    # The DEPONS bathy.asc has all positive values for water depths
+    # For land avoidance, we check if depth > 0 (water)
+    # Values of 0 or negative would be land
+    
+    logger.info("Loaded bathymetry: %dx%d, depth range: %.1f to %.1fm",
+                metadata.nrows, metadata.ncols, depth_array.min(), depth_array.max())
     
     cell_data = CellData.__new__(CellData)
-    cell_data.landscape_name = "NorthSea_DEPONS"
+    cell_data.landscape_name = "DEPONS_external"
     cell_data.data_dir = Path(depons_data_dir)
     cell_data.metadata = metadata
+    
     cell_data._depth = depth_array
-    
-    # Load blocks.asc
-    blocks_file = os.path.join(depons_data_dir, "blocks.asc")
-    if os.path.exists(blocks_file):
-        logger.info(f"Loading blocks from {blocks_file}...")
-        blocks_array, _ = load_bathymetry_from_asc(blocks_file)
-        cell_data._blocks = blocks_array.astype(int)
-        logger.info(f"Loaded blocks: unique values = {np.unique(cell_data._blocks)[:10]}...")
-    else:
-        logger.info("blocks.asc not found, using default zeros")
-        cell_data._blocks = np.zeros((metadata.nrows, metadata.ncols), dtype=int)
-    
-    # Load disttocoast.asc
-    disttocoast_file = os.path.join(depons_data_dir, "disttocoast.asc")
-    if os.path.exists(disttocoast_file):
-        logger.info(f"Loading distance to coast from {disttocoast_file}...")
-        disttocoast_array, _ = load_bathymetry_from_asc(disttocoast_file)
-        cell_data._dist_to_coast = disttocoast_array
-        logger.info(f"Loaded disttocoast: range = {disttocoast_array.min():.1f} to {disttocoast_array.max():.1f}")
-    else:
-        logger.info("disttocoast.asc not found, using default 10000m")
-        cell_data._dist_to_coast = np.full((metadata.nrows, metadata.ncols), 10000.0)
-    
-    # Load sediment.asc
-    sediment_file = os.path.join(depons_data_dir, "sediment.asc")
-    if os.path.exists(sediment_file):
-        logger.info(f"Loading sediment from {sediment_file}...")
-        sediment_array, _ = load_bathymetry_from_asc(sediment_file)
-        cell_data._sediment = sediment_array
-        logger.info(f"Loaded sediment: unique values = {np.unique(sediment_array)[:10]}...")
-    else:
-        logger.info("sediment.asc not found, using default 1.0")
-        cell_data._sediment = np.ones((metadata.nrows, metadata.ncols))
-    
-    # Food probability - could load from patches.asc if needed
+    cell_data._dist_to_coast = np.full((metadata.nrows, metadata.ncols), 10000.0)
+    cell_data._sediment = np.ones((metadata.nrows, metadata.ncols))
     cell_data._food_prob = np.full((metadata.nrows, metadata.ncols), food_prob)
     cell_data._food_value = np.full((metadata.nrows, metadata.ncols), food_prob)
-    
-    # Initialize entropy and salinity with defaults (salinity could be loaded from monthly files)
+    cell_data._blocks = np.zeros((metadata.nrows, metadata.ncols), dtype=int)
     cell_data._entropy = np.full((12, metadata.nrows, metadata.ncols), 0.5)
     cell_data._salinity = np.full((12, metadata.nrows, metadata.ncols), 30.0)
-    
-    # Try to load monthly salinity files
-    salinity_loaded = False
-    for month in range(1, 13):
-        salinity_file = os.path.join(depons_data_dir, f"salinity0000_{month:02d}.asc")
-        if os.path.exists(salinity_file):
-            if not salinity_loaded:
-                logger.info("Loading monthly salinity files...")
-                salinity_loaded = True
-            salinity_array, _ = load_bathymetry_from_asc(salinity_file)
-            cell_data._salinity[month-1] = salinity_array
-    
-    if salinity_loaded:
-        logger.info("Loaded 12 monthly salinity grids")
     
     cell_data._current_month = 1
     cell_data._loaded = True

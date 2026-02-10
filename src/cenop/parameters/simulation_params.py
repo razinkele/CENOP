@@ -15,22 +15,56 @@ from typing import Optional
 class SimulationParameters:
     """
     All simulation parameters with defaults from DEPONS.
-    
+
     Translates from: SimulationParameters.java and parameters.xml
     """
-    
+
     # === Simulation Setup ===
     random_seed: Optional[int] = None
     porpoise_count: int = 10000
     tracked_porpoise_count: int = 1
     sim_years: int = 50
-    landscape: str = "NorthSea"
+    landscape: str = "Lithuania"
     debug: int = 0
+
+    # === JASMINE Mode Selection ===
+    # Controls which subsystem implementations to use
+    # "DEPONS" = regulatory-compatible empirical models (default)
+    # "JASMINE" = research-grade physics/DEB models
+    simulation_mode: str = "DEPONS"  # Overall mode: "DEPONS" or "JASMINE"
+
+    # Individual subsystem modes (override simulation_mode if set)
+    # None = follow simulation_mode, "DEPONS"/"JASMINE" = override
+    time_mode: Optional[str] = None       # TimeManager mode
+    movement_mode: Optional[str] = None   # Movement module mode
+    fsm_mode: Optional[str] = None        # Behavioral FSM mode
+    energy_mode: Optional[str] = None     # Energy budget mode
+    memory_mode: Optional[str] = None     # Disturbance memory mode
+
+    # === JASMINE Physics Parameters (when movement_mode=JASMINE) ===
+    jasmine_mass_kg: float = 50.0         # Body mass (kg) for physics calculations
+    jasmine_drag_coeff: float = 0.01      # Drag coefficient
+    jasmine_max_thrust: float = 100.0     # Maximum thrust force (N)
+    jasmine_current_weight: float = 0.5   # Weight of ocean current advection (0-1)
+
+    # === JASMINE DEB Parameters (when energy_mode=JASMINE) ===
+    jasmine_bmr_scale: float = 1.0        # Basal metabolic rate scale factor
+    jasmine_activity_cost: float = 2.0    # Activity cost multiplier
+    jasmine_disturbance_cost: float = 1.5 # Extra energy cost during disturbance
+
+    # === JASMINE Memory Parameters (when memory_mode=JASMINE) ===
+    jasmine_memory_decay_rate: float = 0.001   # Memory decay per tick
+    jasmine_avoidance_strength: float = 0.8    # Max learned avoidance strength
+    jasmine_avoidance_radius: float = 20.0     # Avoidance influence radius (cells)
     
     # === Disturbance Sources ===
     turbines: str = "off"
     ships_enabled: bool = False
     
+    # === Behavioral FSM ===
+    disturbance_recovery_ticks: int = 48   # Ticks to recover from DISTURBED state
+    min_memory_cells: int = 50             # Minimum visited cells before dispersal
+
     # === Dispersal ===
     dispersal: str = "PSM-Type2"
     t_disp: int = 3                    # Days of declining energy before dispersal
@@ -216,3 +250,28 @@ class SimulationParameters:
     def is_homogeneous(self) -> bool:
         """Check if using homogeneous landscape."""
         return self.landscape.lower() == "homogeneous"
+
+    @property
+    def is_jasmine_mode(self) -> bool:
+        """Check if overall simulation mode is JASMINE."""
+        return self.simulation_mode.upper() == "JASMINE"
+
+    def get_effective_time_mode(self) -> str:
+        """Get effective time mode (subsystem override or global)."""
+        return self.time_mode or self.simulation_mode
+
+    def get_effective_movement_mode(self) -> str:
+        """Get effective movement mode (subsystem override or global)."""
+        return self.movement_mode or self.simulation_mode
+
+    def get_effective_fsm_mode(self) -> str:
+        """Get effective FSM mode (subsystem override or global)."""
+        return self.fsm_mode or self.simulation_mode
+
+    def get_effective_energy_mode(self) -> str:
+        """Get effective energy mode (subsystem override or global)."""
+        return self.energy_mode or self.simulation_mode
+
+    def get_effective_memory_mode(self) -> str:
+        """Get effective memory mode (subsystem override or global)."""
+        return self.memory_mode or self.simulation_mode

@@ -10,10 +10,13 @@ import time
 import cProfile
 import pstats
 import io
+import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Callable, Any
 from functools import wraps
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 from cenop.parameters.simulation_params import SimulationParameters
 from cenop.core.simulation import Simulation
@@ -86,7 +89,7 @@ class SimulationProfiler:
         
         for tick in range(ticks):
             if verbose and tick % 100 == 0:
-                print(f"Profiling tick {tick}/{ticks}...")
+                logger.info("Profiling tick %d/%d...", tick, ticks)
                 
             # Profile each phase
             self._profile_tick(sim)
@@ -237,6 +240,7 @@ def benchmark_population_sizes(
     
     for size in sizes:
         print(f"Benchmarking population size: {size}")
+        logger.info("Benchmarking population size: %d", size)
         
         params = SimulationParameters(
             porpoise_count=size,
@@ -261,6 +265,7 @@ def benchmark_population_sizes(
         results[size] = ticks_per_sec
         
         print(f"  {ticks_per_sec:.1f} ticks/sec ({elapsed:.3f}s for {ticks} ticks)")
+        logger.info("  %.1f ticks/sec (%.3fs for %d ticks)", ticks_per_sec, elapsed, ticks)
         
     return results
 
@@ -315,6 +320,7 @@ def timed(func: Callable) -> Callable:
         result = func(*args, **kwargs)
         elapsed = time.perf_counter() - start
         print(f"{func.__name__}: {elapsed*1000:.3f}ms")
+        logger.debug("%s: %.3fms", func.__name__, elapsed * 1000)
         return result
     return wrapper
 

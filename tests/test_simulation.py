@@ -14,7 +14,7 @@ class TestSimulationParameters:
         params = SimulationParameters()
         assert params.porpoise_count == 10000
         assert params.sim_years == 50
-        assert params.landscape == "NorthSea"
+        assert params.landscape == "Lithuania"
         
     def test_custom_parameters(self):
         """Test custom parameter values."""

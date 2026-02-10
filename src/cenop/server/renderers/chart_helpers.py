@@ -212,7 +212,8 @@ def create_pydeck_map(
     center_lon: float = 7.5,
     zoom: int = 6,
     height: str = "600px",
-    map_id: str = "porpoise-map"
+    map_id: str = "porpoise-map",
+    _cache: Dict[str, Any] = {},  # mutable default = module-level cache
 ) -> ui.Tag:
     """
     Create an interactive pydeck/deck.gl map with scatter points.
@@ -220,8 +221,8 @@ def create_pydeck_map(
     Uses EMODnet bathymetry tiles and deck.gl ScatterplotLayer
     for high-performance rendering of porpoise positions.
     
-    The map uses a static bathymetry base layer and only updates the
-    scatter overlay when data changes, following the DEPONS pattern.
+    Optimized: caches HTML output keyed by data hash to avoid
+    redundant JSON serialization and HTML rebuilds.
     
     Args:
         lats: List of latitude values
@@ -238,23 +239,26 @@ def create_pydeck_map(
     import json
     import hashlib
     
-    # Prepare point data for JavaScript
+    # Prepare point data for JavaScript — vectorized path
     points_data = []
     if lats and lons:
         center_lat = sum(lats) / len(lats)
         center_lon = sum(lons) / len(lons)
-        for lat, lon in zip(lats, lons):
-            points_data.append({
-                "position": [lon, lat],
-                "radius": 400,
-                "color": [0, 150, 255, 200]  # Blue with alpha
-            })
+        # Build list-of-dicts via zip (avoids repeated dict() calls in loop)
+        points_data = [
+            {"position": [lon, lat], "radius": 400, "color": [0, 150, 255, 200]}
+            for lat, lon in zip(lats, lons)
+        ]
     
     points_json = json.dumps(points_data)
     point_count = len(points_data)
     
-    # Create a hash of the data to use as a version identifier
+    # Cache key: hash of data + view parameters
     data_hash = hashlib.md5(points_json.encode()).hexdigest()[:8]
+    cache_key = f"{map_id}:{data_hash}:{zoom}:{height}"
+    
+    if cache_key in _cache:
+        return _cache[cache_key]
     
     html_content = f'''
 <!DOCTYPE html>
@@ -401,6 +405,7 @@ def create_pydeck_map(
         
         // Parse porpoise data from embedded JSON - use let so it can be updated
         let porpoiseData = JSON.parse(document.getElementById('porpoise-data').textContent);
+        console.log('Initial porpoise data (first 10):', porpoiseData.slice(0,10));
         
         // Static bathymetry base layer - never recreated
         const bathymetryLayer = new TileLayer({{
@@ -422,60 +427,90 @@ def create_pydeck_map(
             }}
         }});
         
-        // Dynamic scatter layer - updated via setProps pattern from DEPONS
+        // Dynamic porpoise icon layer - updated via setProps pattern from DEPONS
         function createScatterLayer(data) {{
-            return new ScatterplotLayer({{
+            if (!data || data.length === 0) return null;
+            return new IconLayer({{
                 id: 'porpoise-layer',
                 data: data,
+                // Embedded base64 SVG data URL
+                iconAtlas: 'data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4NCjxzdmcgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiI+DQogIDxnIGZpbGw9Im5vbmUiIHN0cm9rZT0iYmxhY2siIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj4NCiAgICA8IS0tIEFycm93IHNoYWZ0IC0tPg0KICAgIDxsaW5lIHgxPSIxNiIgeTE9IjI2IiB4Mj0iMTYiIHkyPSI4IiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMyIgLz4NCiAgICA8IS0tIEFycm93IGhlYWQgLS0+DQogICAgPHBvbHlsaW5lIHBvaW50cz0iOCwxMiAxNiw0IDI0LDEyIiBmaWxsPSIjZmZmZmZmIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMyIvPg0KICA8L2c+DQo8L3N2Zz4=',
+                iconMapping: {{ 'arrow': {{ x: 0, y: 0, width: 32, height: 32, anchorY: 16, anchorX: 16 }} }},
+                getIcon: d => 'arrow',
                 getPosition: d => d.position,
-                getRadius: d => d.radius,
-                getFillColor: d => d.color,
+                getSize: d => Math.max(8, (d.radius || 200) / 20),
+                sizeScale: 1,
+                getAngle: d => d.heading || 0,
+                getColor: d => {{
+                    if (d.color && d.color.length >= 3) return d.color;
+                    if (d.is_disturbed) return [255, 40, 40];
+                    const age = d.age || 0;
+                    if (age < 2) return [60, 180, 75];
+                    if (age < 12) return [0, 150, 255];
+                    return [160, 160, 160];
+                }},
+
                 pickable: true,
-                opacity: 0.9,
-                stroked: true,
-                getLineColor: [255, 255, 255, 150],
-                lineWidthMinPixels: 1,
-                radiusMinPixels: 4,
-                radiusMaxPixels: 20,
-                // Enable transitions for smooth updates
-                transitions: {{
-                    getPosition: 300,
-                    getRadius: 300,
-                    getFillColor: 300
-                }}
+                opacity: 0.95,
+                transitions: {{ getPosition: 300, getSize: 300, getAngle: 300, getColor: 300 }}
             }});
         }}
         
-        // Dynamic turbine layer - shows wind turbine positions
+        // Turbine pole layer (static) for server-rendered charts
         let turbineData = [];
-        function createTurbineLayer(data) {{
-            return new ScatterplotLayer({{
-                id: 'turbine-layer',
+        function createTurbinePoleLayer(data) {{
+            return new IconLayer({{
+                id: 'turbine-pole-layer',
                 data: data,
+                iconAtlas: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><g fill="white"><rect x="22" y="14" width="4" height="32"/><circle cx="24" cy="14" r="3"/></g></svg>',
+                iconMapping: {{ 'pole': {{ x: 0, y: 0, width: 48, height: 48, anchorY: 14, anchorX: 24 }} }},
+                getIcon: d => 'pole',
                 getPosition: d => d.position,
-                getRadius: 800,  // Larger radius for turbines
-                getFillColor: [255, 100, 50, 220],  // Orange-red
+                getSize: d => Math.max(20, Math.min(64, (d.radius || 300) / 15)),
+                getColor: d => {{
+                    if (d.phase === 'construction') return [255, 70, 40, 220];
+                    if (d.phase === 'operational') return [50, 160, 240, 220];
+                    if (d.phase === 'planned') return [180, 180, 180, 180];
+                    return d.color || [255, 140, 60];
+                }},
                 pickable: true,
-                opacity: 1.0,
-                stroked: true,
-                getLineColor: [255, 255, 255, 255],
-                lineWidthMinPixels: 2,
-                radiusMinPixels: 6,
-                radiusMaxPixels: 25,
+                opacity: 0.95,
             }});
         }}
-        
+
+        function createTurbineBladeLayer(data) {{
+            return new IconLayer({{
+                id: 'turbine-blade-layer',
+                data: data,
+                iconAtlas: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><g fill="white"><path d="M22 14 L24 1 L26 14 Z"/><path d="M25 15.7 L12.7 20.5 L23 12.3 Z"/><path d="M25 12.3 L35.3 20.5 L23 15.7 Z"/></g></svg>',
+                iconMapping: {{ 'blade': {{ x: 0, y: 0, width: 48, height: 48, anchorY: 14, anchorX: 24 }} }},
+                getIcon: d => 'blade',
+                getPosition: d => d.position,
+                getSize: d => Math.max(20, Math.min(64, (d.radius || 300) / 15)),
+                getAngle: d => 0,
+                getColor: d => {{
+                    if (d.phase === 'construction') return [255, 70, 40, 220];
+                    if (d.phase === 'operational') return [50, 160, 240, 220];
+                    if (d.phase === 'planned') return [180, 180, 180, 180];
+                    return d.color || [255, 140, 60];
+                }},
+                pickable: false,
+                opacity: 0.95,
+            }});
+        }}
+
         // Function to update all layers
         function updateAllLayers() {{
             deckgl.setProps({{
                 layers: [
                     bathymetryLayer, 
-                    createTurbineLayer(turbineData),  // Turbines below porpoises
+                    createTurbinePoleLayer(turbineData),  // poles below blades
+                    createTurbineBladeLayer(turbineData), // blades above poles
                     createScatterLayer(porpoiseData)
                 ]
             }});
         }}
-        
+
         // Initialize deck.gl with all layers
         const deckgl = new DeckGL({{
             container: 'deck-container',
@@ -487,7 +522,7 @@ def create_pydeck_map(
                 bearing: 0
             }},
             controller: true,
-            layers: [bathymetryLayer, createTurbineLayer([]), createScatterLayer(porpoiseData)],
+            layers: [bathymetryLayer, createTurbinePoleLayer([]), createTurbineBladeLayer([]), createScatterLayer(porpoiseData)],
             parameters: {{
                 clearColor: [0.05, 0.1, 0.15, 1]
             }},
@@ -539,20 +574,140 @@ def create_pydeck_map(
 </html>
 '''
     # Use a fixed name attribute to help prevent iframe recreation flicker
-    return ui.tags.iframe(
+    result = ui.tags.iframe(
         srcdoc=html_content,
         name=f"porpoise-map-{map_id}",
         style=f"width: 100%; height: {height}; min-height: 500px; border: none; border-radius: 8px;",
     )
+    
+    # Cache for next call with same data
+    _cache[cache_key] = result
+    # Limit cache size to prevent memory growth
+    if len(_cache) > 20:
+        oldest_key = next(iter(_cache))
+        del _cache[oldest_key]
+    
+    return result
+
+
+def create_svg_chart(
+    df: pd.DataFrame,
+    x_col: str,
+    y_cols: List[str],
+    colors: List[str],
+    names: List[str],
+    title: str = "",
+    height: int = 150,
+) -> "ui.HTML":
+    """
+    Lightweight SVG time series chart — no JS dependencies, instant rendering.
+
+    Designed for dashboard sparklines where Plotly's ~3MB library and heavy
+    DOM operations cause unnecessary performance overhead.
+    """
+    import numpy as np
+
+    if df is None or len(df) < 2:
+        return ui.HTML(
+            f'<div style="height:{height}px;display:flex;align-items:center;'
+            f'justify-content:center;color:#999;font-size:12px;">'
+            f'No data yet. Run simulation to see results.</div>'
+        )
+
+    # Downsample to max 300 points
+    if len(df) > 300:
+        step = max(1, len(df) // 300)
+        df = df.iloc[::step].copy()
+
+    # Dimensions
+    W, H = 500, height
+    ml, mr, mt, mb = 50, 14, 20, 26
+    cw, ch = W - ml - mr, H - mt - mb
+
+    x_vals = df[x_col].values.astype(float)
+    x_min, x_max = float(x_vals.min()), float(x_vals.max())
+    x_range = x_max - x_min or 1.0
+
+    # Global y range
+    all_y = []
+    for col in y_cols:
+        if col in df.columns:
+            v = df[col].dropna().values
+            if len(v):
+                all_y.extend(v.tolist())
+    if not all_y:
+        return ui.HTML(
+            f'<div style="height:{height}px;display:flex;align-items:center;'
+            f'justify-content:center;color:#999;font-size:12px;">No data</div>'
+        )
+
+    y_min, y_max = min(all_y), max(all_y)
+    y_pad = (y_max - y_min) * 0.08 or 1.0
+    y_min -= y_pad
+    y_max += y_pad
+    y_range = y_max - y_min
+
+    p = [f'<svg viewBox="0 0 {W} {H}" preserveAspectRatio="xMidYMid meet" '
+         f'style="width:100%;height:100%;font-family:system-ui,sans-serif;'
+         f'background:#fafafa;border-radius:4px;">']
+
+    # Title
+    p.append(f'<text x="{ml}" y="14" font-size="11" font-weight="600" fill="#444">{title}</text>')
+
+    # Grid + Y labels
+    for i in range(5):
+        frac = i / 4
+        yv = y_min + y_range * frac
+        yp = mt + ch - ch * frac
+        p.append(f'<line x1="{ml}" y1="{yp:.0f}" x2="{ml+cw}" y2="{yp:.0f}" '
+                 f'stroke="#e0e0e0" stroke-width="0.5"/>')
+        p.append(f'<text x="{ml-4}" y="{yp+3:.0f}" text-anchor="end" '
+                 f'font-size="9" fill="#888">{yv:.0f}</text>')
+
+    # Data lines
+    for col, color, name in zip(y_cols, colors, names):
+        if col not in df.columns:
+            continue
+        y_data = df[col].values
+        pts = []
+        for xv, yv in zip(x_vals, y_data):
+            if np.isnan(yv):
+                continue
+            px = ml + ((float(xv) - x_min) / x_range) * cw
+            py = mt + ch - ((float(yv) - y_min) / y_range) * ch
+            pts.append(f"{px:.1f},{py:.1f}")
+        if pts:
+            p.append(f'<polyline points="{" ".join(pts)}" '
+                     f'fill="none" stroke="{color}" stroke-width="1.5" stroke-linejoin="round"/>')
+            # Current value label at right edge
+            last_y = df[col].dropna().iloc[-1] if len(df[col].dropna()) else None
+            if last_y is not None:
+                ly = mt + ch - ((float(last_y) - y_min) / y_range) * ch
+                p.append(f'<circle cx="{ml+cw}" cy="{ly:.1f}" r="2.5" fill="{color}"/>')
+
+    # Legend
+    lx = ml
+    for color, name in zip(colors, names):
+        p.append(f'<line x1="{lx}" y1="{H-9}" x2="{lx+14}" y2="{H-9}" '
+                 f'stroke="{color}" stroke-width="2.5" stroke-linecap="round"/>')
+        p.append(f'<text x="{lx+18}" y="{H-6}" font-size="9" fill="#666">{name}</text>')
+        lx += len(name) * 5.5 + 30
+
+    # Axes
+    p.append(f'<line x1="{ml}" y1="{mt}" x2="{ml}" y2="{mt+ch}" stroke="#bbb"/>')
+    p.append(f'<line x1="{ml}" y1="{mt+ch}" x2="{ml+cw}" y2="{mt+ch}" stroke="#bbb"/>')
+
+    p.append('</svg>')
+    return ui.HTML(''.join(p))
 
 
 def no_data_placeholder(message: str = "No data yet. Run simulation to see results.") -> ui.Tag:
     """
     Create a standardized placeholder for empty charts.
-    
+
     Args:
         message: Message to display
-        
+
     Returns:
         Shiny paragraph element
     """

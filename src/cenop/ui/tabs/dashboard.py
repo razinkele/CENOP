@@ -138,6 +138,10 @@ def create_static_pydeck_map():
             font-size: 10px;
             z-index: 1000;
         }
+
+        /* Spinner animation for operational turbine legend — rotates around the hub */
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .turbine-spinner { animation: spin 1s linear infinite; transform-origin: 24px 14px; transform-box: view-box; }
     </style>
 </head>
 <body>
@@ -196,12 +200,56 @@ def create_static_pydeck_map():
         </div>
         <div class="legend-content">
             <div class="legend-item">
-                <div class="legend-dot" style="background: rgb(0, 150, 255);"></div>
-                <span>Porpoise</span>
+                <svg width="16" height="16" viewBox="0 0 32 32" style="margin-right:8px;">
+                    <path fill="#2ecc71" d="M16 1 C14.8 3 13.5 6 13 9 C12.6 11 12.5 13 12.5 15 C12 15.5 10 16.5 9 17.5 C10 17.5 11.5 17 12.5 16.2 C12.8 19 13.2 22 14 24.5 C13 26 11 28 9.5 29 C11 29 13.5 27.5 14.8 25.8 C15.2 26.5 15.6 27 16 27.2 C16.4 27 16.8 26.5 17.2 25.8 C18.5 27.5 21 29 22.5 29 C21 28 19 26 18 24.5 C18.8 22 19.2 19 19.5 16.2 C20.5 17 22 17.5 23 17.5 C22 16.5 20 15.5 19.5 15 C19.5 13 19.4 11 19 9 C18.5 6 17.2 3 16 1Z"/>
+                </svg>
+                <span>Juvenile (&lt;2 yr)</span>
             </div>
             <div class="legend-item">
-                <div class="legend-dot" style="background: rgb(255, 100, 50);"></div>
-                <span>Turbine (<span id="turbine-count">0</span>)</span>
+                <svg width="16" height="16" viewBox="0 0 32 32" style="margin-right:8px;">
+                    <path fill="#3498db" d="M16 1 C14.8 3 13.5 6 13 9 C12.6 11 12.5 13 12.5 15 C12 15.5 10 16.5 9 17.5 C10 17.5 11.5 17 12.5 16.2 C12.8 19 13.2 22 14 24.5 C13 26 11 28 9.5 29 C11 29 13.5 27.5 14.8 25.8 C15.2 26.5 15.6 27 16 27.2 C16.4 27 16.8 26.5 17.2 25.8 C18.5 27.5 21 29 22.5 29 C21 28 19 26 18 24.5 C18.8 22 19.2 19 19.5 16.2 C20.5 17 22 17.5 23 17.5 C22 16.5 20 15.5 19.5 15 C19.5 13 19.4 11 19 9 C18.5 6 17.2 3 16 1Z"/>
+                </svg>
+                <span>Young Adult (2-6 yr)</span>
+            </div>
+            <div class="legend-item">
+                <svg width="16" height="16" viewBox="0 0 32 32" style="margin-right:8px;">
+                    <path fill="#2980b9" d="M16 1 C14.8 3 13.5 6 13 9 C12.6 11 12.5 13 12.5 15 C12 15.5 10 16.5 9 17.5 C10 17.5 11.5 17 12.5 16.2 C12.8 19 13.2 22 14 24.5 C13 26 11 28 9.5 29 C11 29 13.5 27.5 14.8 25.8 C15.2 26.5 15.6 27 16 27.2 C16.4 27 16.8 26.5 17.2 25.8 C18.5 27.5 21 29 22.5 29 C21 28 19 26 18 24.5 C18.8 22 19.2 19 19.5 16.2 C20.5 17 22 17.5 23 17.5 C22 16.5 20 15.5 19.5 15 C19.5 13 19.4 11 19 9 C18.5 6 17.2 3 16 1Z"/>
+                </svg>
+                <span>Mature (6-12 yr)</span>
+            </div>
+            <div class="legend-item">
+                <svg width="16" height="16" viewBox="0 0 32 32" style="margin-right:8px;">
+                    <path fill="#95a5a6" d="M16 1 C14.8 3 13.5 6 13 9 C12.6 11 12.5 13 12.5 15 C12 15.5 10 16.5 9 17.5 C10 17.5 11.5 17 12.5 16.2 C12.8 19 13.2 22 14 24.5 C13 26 11 28 9.5 29 C11 29 13.5 27.5 14.8 25.8 C15.2 26.5 15.6 27 16 27.2 C16.4 27 16.8 26.5 17.2 25.8 C18.5 27.5 21 29 22.5 29 C21 28 19 26 18 24.5 C18.8 22 19.2 19 19.5 16.2 C20.5 17 22 17.5 23 17.5 C22 16.5 20 15.5 19.5 15 C19.5 13 19.4 11 19 9 C18.5 6 17.2 3 16 1Z"/>
+                </svg>
+                <span>Older (&gt;12 yr)</span>
+            </div>
+            <div class="legend-item">
+                <svg width="16" height="16" viewBox="0 0 32 32" style="margin-right:8px;">
+                    <path fill="#ff3232" d="M16 1 C14.8 3 13.5 6 13 9 C12.6 11 12.5 13 12.5 15 C12 15.5 10 16.5 9 17.5 C10 17.5 11.5 17 12.5 16.2 C12.8 19 13.2 22 14 24.5 C13 26 11 28 9.5 29 C11 29 13.5 27.5 14.8 25.8 C15.2 26.5 15.6 27 16 27.2 C16.4 27 16.8 26.5 17.2 25.8 C18.5 27.5 21 29 22.5 29 C21 28 19 26 18 24.5 C18.8 22 19.2 19 19.5 16.2 C20.5 17 22 17.5 23 17.5 C22 16.5 20 15.5 19.5 15 C19.5 13 19.4 11 19 9 C18.5 6 17.2 3 16 1Z"/>
+                </svg>
+                <span>Disturbed</span>
+            </div>
+            <div class="legend-item" style="margin-top:6px;padding-top:6px;border-top:1px solid #444;">
+                <div style="width:16px;height:8px;margin-right:8px;background:linear-gradient(to right, rgba(52,152,219,0.5), rgba(52,152,219,1));border-radius:2px;"></div>
+                <span style="font-size:9px;color:#888;">Opacity = Energy</span>
+            </div>
+            <div class="legend-item" style="align-items:flex-start;">
+                <div style="display:flex;flex-direction:column;margin-right:8px;gap:4px;">
+                    <!-- Construction (static) -->
+                    <svg width="18" height="18" viewBox="0 0 48 48"><g fill="#ff4630" stroke="#000" stroke-width="0.6"><rect x="22" y="14" width="4" height="32"/><circle cx="24" cy="14" r="3"/><path d="M22 14 L24 1 L26 14 Z"/><path d="M25 15.7 L12.7 20.5 L23 12.3 Z"/><path d="M25 12.3 L35.3 20.5 L23 15.7 Z"/></g></svg>
+                    <!-- Operational (only blades spin) -->
+                    <svg width="18" height="18" viewBox="0 0 48 48"><g stroke="#000" stroke-width="0.6"><rect x="22" y="14" width="4" height="32" fill="#32b0f0"/><circle cx="24" cy="14" r="3" fill="#32b0f0"/><g class="turbine-spinner" fill="#32b0f0"><path d="M22 14 L24 1 L26 14 Z"/><path d="M25 15.7 L12.7 20.5 L23 12.3 Z"/><path d="M25 12.3 L35.3 20.5 L23 15.7 Z"/></g></g></svg>
+                    <!-- Planned (static) -->
+                    <svg width="18" height="18" viewBox="0 0 48 48"><g fill="#b0b0b0" stroke="#000" stroke-width="0.6"><rect x="22" y="14" width="4" height="32"/><circle cx="24" cy="14" r="3"/><path d="M22 14 L24 1 L26 14 Z"/><path d="M25 15.7 L12.7 20.5 L23 12.3 Z"/><path d="M25 12.3 L35.3 20.5 L23 15.7 Z"/></g></svg>
+                </div>
+                <div>
+                    <div style="font-weight:bold;margin-bottom:4px;">Turbines (<span id="turbine-count">0</span>)</div>
+                    <div style="font-size:11px;color:#ccc;">
+                        <span style="display:inline-block;width:10px;height:10px;background:#ff4630;margin-right:6px;border-radius:2px;border:1px solid rgba(0,0,0,0.2);"></span> Construction<br>
+                        <span style="display:inline-block;width:10px;height:10px;background:#32b0f0;margin-right:6px;border-radius:2px;border:1px solid rgba(0,0,0,0.2);"></span> Operational<br>
+                        <span style="display:inline-block;width:10px;height:10px;background:#b0b0b0;margin-right:6px;border-radius:2px;border:1px solid rgba(0,0,0,0.2);"></span> Planned
+                    </div>
+                </div>
             </div>
             <div class="legend-item">
                 <div class="legend-dot" style="background: linear-gradient(to right, #1a237e, #0288d1, #4fc3f7);"></div>
@@ -259,7 +307,7 @@ def create_static_pydeck_map():
     </style>
     
     <script>
-        const {DeckGL, TileLayer, BitmapLayer, ScatterplotLayer, ColumnLayer} = deck;
+        const {DeckGL, TileLayer, BitmapLayer, ScatterplotLayer, ColumnLayer, IconLayer, SolidPolygonLayer} = deck;
         
         // EMODnet Bathymetry tiles - STATIC base layer
         const BATHYMETRY_URL = 'https://tiles.emodnet-bathymetry.eu/2020/baselayer/web_mercator/{z}/{x}/{y}.png';
@@ -277,16 +325,25 @@ def create_static_pydeck_map():
         // Grid dimensions (will be updated from depth data)
         let GRID_WIDTH = 400;
         let GRID_HEIGHT = 400;
-        
+        let DEPTH_RADIUS = 1800;  // Render radius for depth cells (metres)
+        let CELL_DEG_LAT = 0.005;  // Cell extent in degrees (for square grid)
+        let CELL_DEG_LON = 0.005;
+
         // Current data
         let porpoiseData = [];
         let depthData = [];
         let turbineData = [];
         let noiseData = [];  // Noise propagation contours
         let foragingData = [];  // Food availability/foraging patches
+        let FORAGING_RADIUS = 1800;  // Render radius for foraging cells (metres)
         let shipData = [];  // Ship positions
         let showDepthLayer = false;  // Off until loaded
-        let showTurbineLayer = false;
+        // Show turbine layer by default so turbines are visible on load
+        let showTurbineLayer = true;
+        // Rotor animation state for operational turbines
+        let turbineRotation = 0;
+        let turbineAnimationRunning = false;
+        let turbineAnimationFrameId = null;
         let showNoiseLayer = false;
         let showForagingLayer = false;
         let showShipLayer = false;
@@ -348,72 +405,163 @@ def create_static_pydeck_map():
             return [r, g, b, 160];
         }
         
-        // Create depth overlay layer
+        // Create depth overlay layer — square grid cells via SolidPolygonLayer
         function createDepthLayer(data) {
             if (!data || data.length === 0 || !showDepthLayer) {
                 return null;
             }
-            
-            // Calculate cell size in degrees
-            const cellWidth = (LON_MAX - LON_MIN) / GRID_WIDTH;
-            const cellHeight = (LAT_MAX - LAT_MIN) / GRID_HEIGHT;
-            
+
             // Find depth range for coloring (only water cells)
             const waterDepths = data.filter(d => d.depth > 0).map(d => d.depth);
             const minDepth = Math.min(...waterDepths) || 0;
             const maxDepth = Math.max(...waterDepths) || 50;
-            
-            return new ColumnLayer({
+
+            const halfLon = CELL_DEG_LON * 0.5;
+            const halfLat = CELL_DEG_LAT * 0.5;
+
+            return new SolidPolygonLayer({
                 id: 'depth-layer',
                 data: data,
-                diskResolution: 4,
-                radius: 1800,  // meters - roughly matches 400m cells at this zoom
-                extruded: false,
-                getPosition: d => d.position,
+                getPolygon: d => {
+                    const [lon, lat] = d.position;
+                    return [[lon-halfLon, lat-halfLat], [lon+halfLon, lat-halfLat],
+                            [lon+halfLon, lat+halfLat], [lon-halfLon, lat+halfLat]];
+                },
                 getFillColor: d => getDepthColor(d.depth, minDepth, maxDepth),
                 pickable: false,
-                opacity: 0.5
+                extruded: false,
             });
         }
         
-        // Create scatter layer with current data
+        // Create PORPOISE icon layer — harbour porpoise dorsal-view silhouette (pointing up/north)
+        // Torpedo body, small pectoral fins, dorsal fin bump, horizontal tail fluke
+        const PORPOISE_SVG = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">'
+            // Body: streamlined torpedo, widest at ~1/3 from nose
+            + '<path fill="white" d="'
+            + 'M16 1 C14.8 3 13.5 6 13 9 C12.6 11 12.5 13 12.5 15'
+            // Left pectoral fin
+            + ' C12 15.5 10 16.5 9 17.5 C10 17.5 11.5 17 12.5 16.2'
+            // Body continues tapering to peduncle
+            + ' C12.8 19 13.2 22 14 24.5'
+            // Left tail fluke
+            + ' C13 26 11 28 9.5 29 C11 29 13.5 27.5 14.8 25.8'
+            + ' C15.2 26.5 15.6 27 16 27.2'
+            // Right tail fluke
+            + ' C16.4 27 16.8 26.5 17.2 25.8'
+            + ' C18.5 27.5 21 29 22.5 29 C21 28 19 26 18 24.5'
+            // Right body back up
+            + ' C18.8 22 19.2 19 19.5 16.2'
+            + ' C20.5 17 22 17.5 23 17.5 C22 16.5 20 15.5 19.5 15'
+            // Right body to nose
+            + ' C19.5 13 19.4 11 19 9 C18.5 6 17.2 3 16 1Z"/>'
+            // Dorsal fin (small bump on upper-right of body)
+            + '<path fill="white" d="M18.5 10 C19 9 20.5 8 21 8.5 C20 9.5 19 11 18.8 12Z"/>'
+            + '</svg>'
+        );
+
         function createScatterLayer(data) {
-            return new ScatterplotLayer({
+            if (!data || data.length === 0) return null;
+
+            return new IconLayer({
                 id: 'porpoise-layer',
                 data: data,
+                iconAtlas: PORPOISE_SVG,
+                iconMapping: {
+                    'porpoise': { x: 0, y: 0, width: 32, height: 32, anchorY: 16, anchorX: 16 }
+                },
+                getIcon: d => 'porpoise',
                 getPosition: d => d.position,
-                getRadius: d => d.radius || 400,
-                getFillColor: d => d.color || [0, 150, 255, 200],
+                // Size varies by age: juveniles smaller, adults larger
+                getSize: d => {
+                    const age = d.age || 5;
+                    if (age < 1) return 14;      // Calves - smallest
+                    if (age < 2) return 18;      // Juveniles
+                    if (age < 6) return 22;      // Young adults
+                    if (age < 15) return 24;     // Prime adults
+                    return 20;                   // Older - slightly smaller
+                },
+                sizeScale: 1,
+                sizeMinPixels: 8,
+                sizeMaxPixels: 32,
+                // Heading: 0 = North, 90 = East, etc. (matches DEPONS convention)
+                getAngle: d => -(d.heading || 0),  // Negate for deck.gl rotation direction
+                getColor: d => {
+                    // Priority: disturbed > age-based (colors match legend)
+                    if (d.is_disturbed) return [255, 50, 50, 255];  // #ff3232 red
+
+                    const age = d.age || 5;
+                    const energy = d.energy || 10;
+                    const energyAlpha = Math.floor(200 + 55 * Math.min(1, energy / 15));
+
+                    if (age < 2) return [46, 204, 113, energyAlpha];   // #2ecc71 emerald green - juveniles
+                    if (age < 6) return [52, 152, 219, energyAlpha];   // #3498db bright blue - young adults
+                    if (age < 12) return [41, 128, 185, energyAlpha];  // #2980b9 darker blue - mature
+                    return [149, 165, 166, energyAlpha];               // #95a5a6 gray - older
+                },
                 pickable: true,
-                opacity: 0.9,
-                stroked: true,
-                getLineColor: [255, 255, 255, 150],
-                lineWidthMinPixels: 1,
-                radiusMinPixels: 4,
-                radiusMaxPixels: 20,
+                billboard: false,  // Keep flat on map
+                alphaCutoff: 0.05,
+                // Smooth transitions
                 transitions: {
-                    getPosition: 200,
-                    getRadius: 200
+                    getPosition: 300,
+                    getSize: 200,
+                    getAngle: 250,
+                    getColor: 200
                 }
             });
         }
         
-        // Create turbine layer (orange-red markers for wind turbines)
-        function createTurbineLayer(data) {
+        // Turbine pole+hub layer (static) - poles and hubs do not rotate
+        function createTurbinePoleLayer(data) {
             if (!data || data.length === 0 || !showTurbineLayer) return null;
-            return new ScatterplotLayer({
-                id: 'turbine-layer',
+            return new IconLayer({
+                id: 'turbine-pole-layer',
                 data: data,
+                // Pole+hub icon: hub at (24,14), pole extends downward. Anchor at hub.
+                iconAtlas: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><g fill="white"><rect x="22" y="14" width="4" height="32"/><circle cx="24" cy="14" r="3"/></g></svg>',
+                iconMapping: {
+                    'pole': { x: 0, y: 0, width: 48, height: 48, anchorY: 14, anchorX: 24 }
+                },
+                getIcon: d => 'pole',
                 getPosition: d => d.position,
-                getRadius: 800,
-                getFillColor: [255, 100, 50, 220],  // Orange-red
+                getSize: d => Math.max(20, Math.min(64, (d.radius || 300) / 15)),
+                getColor: d => {
+                    if (d.phase === 'construction') return [255, 70, 48, 220];
+                    if (d.phase === 'operational') return [50, 176, 240, 220];
+                    if (d.phase === 'planned') return [176, 176, 176, 180];
+                    return d.color || [255, 140, 60];
+                },
                 pickable: true,
-                opacity: 1.0,
-                stroked: true,
-                getLineColor: [255, 255, 255, 255],
-                lineWidthMinPixels: 2,
-                radiusMinPixels: 5,
-                radiusMaxPixels: 20
+                opacity: 0.95
+            });
+        }
+
+        // Turbine blades layer (rotating around the hub)
+        function createTurbineBladeLayer(data) {
+            if (!data || data.length === 0 || !showTurbineLayer) return null;
+            return new IconLayer({
+                id: 'turbine-blade-layer',
+                data: data,
+                // Three blades radiating from hub at (24,14). Anchor at hub for correct rotation.
+                iconAtlas: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><g fill="white"><path d="M22 14 L24 1 L26 14 Z"/><path d="M25 15.7 L12.7 20.5 L23 12.3 Z"/><path d="M25 12.3 L35.3 20.5 L23 15.7 Z"/></g></svg>',
+                iconMapping: {
+                    'blade': { x: 0, y: 0, width: 48, height: 48, anchorY: 14, anchorX: 24 }
+                },
+                getIcon: d => 'blade',
+                getPosition: d => d.position,
+                getSize: d => Math.max(20, Math.min(64, (d.radius || 300) / 15)),
+                getAngle: d => (d.phase === 'operational') ? turbineRotation : 0,
+                getColor: d => {
+                    // Blades follow same color mapping for visibility
+                    if (d.phase === 'construction') return [255, 70, 48, 220];
+                    if (d.phase === 'operational') return [50, 176, 240, 220];
+                    if (d.phase === 'planned') return [176, 176, 176, 180];
+                    return d.color || [255, 140, 60];
+                },
+                pickable: false,
+                opacity: 0.95,
+                billboard: true
             });
         }
         
@@ -437,24 +585,21 @@ def create_static_pydeck_map():
             
             // Construction noise layer (RED - high impact pile-driving, 234 dB)
             if (constructionData.length > 0) {
-                console.log('Creating construction noise layer with', constructionData.length, 'points');
+                console.log('Creating construction noise layer with', constructionData.length, 'turbines');
                 layers.push(new ScatterplotLayer({
                     id: 'noise-construction-layer',
                     data: constructionData,
                     getPosition: d => d.position,
-                    getRadius: 2500,  // Larger radius for high-impact noise
-                    getFillColor: d => {
-                        // Red gradient - construction noise is very loud
-                        const levelAbove = d.level - NOISE_THRESHOLD;
-                        if (levelAbove <= 0) return [0, 0, 0, 0];
-                        const t = Math.min(1, levelAbove / 48);
-                        const alpha = Math.floor(120 + 100 * t);  // 120-220 alpha
-                        return [255, 30, 30, alpha];  // Bright red
-                    },
+                    getRadius: d => d.radius || 6000,
+                    getFillColor: [255, 30, 30, 100],
+                    getLineColor: [255, 50, 50, 180],
+                    lineWidthMinPixels: 1,
+                    stroked: true,
+                    filled: true,
                     pickable: false,
-                    opacity: 0.7,
-                    radiusMinPixels: 5,
-                    radiusMaxPixels: 50
+                    opacity: 0.6,
+                    radiusMinPixels: 8,
+                    radiusMaxPixels: 200
                 }));
             }
             
@@ -465,18 +610,16 @@ def create_static_pydeck_map():
                     id: 'noise-operational-layer',
                     data: operationalData,
                     getPosition: d => d.position,
-                    getRadius: 1500,  // Smaller radius for low-impact noise
-                    getFillColor: d => {
-                        // Yellow/orange gradient - operational noise is quieter
-                        const level = d.level || 140;
-                        const t = Math.min(1, (level - 130) / 20);  // Scale from 130-150 dB
-                        const alpha = Math.floor(40 + 80 * t);  // 40-120 alpha
-                        return [255, 180, 50, alpha];  // Yellow-orange
-                    },
+                    getRadius: d => d.radius || 1800,
+                    getFillColor: [255, 180, 50, 60],
+                    getLineColor: [255, 200, 80, 120],
+                    lineWidthMinPixels: 1,
+                    stroked: true,
+                    filled: true,
                     pickable: false,
                     opacity: 0.4,
-                    radiusMinPixels: 2,
-                    radiusMaxPixels: 25
+                    radiusMinPixels: 3,
+                    radiusMaxPixels: 60
                 }));
             }
             
@@ -493,7 +636,7 @@ def create_static_pydeck_map():
                 id: 'foraging-layer',
                 data: data,
                 getPosition: d => d.position,
-                getRadius: 1800,  // meters - matches depth cells
+                getRadius: FORAGING_RADIUS,
                 getFillColor: d => {
                     // Green gradient based on food probability (0-1)
                     // Higher food = brighter green
@@ -510,6 +653,8 @@ def create_static_pydeck_map():
                 radiusMaxPixels: 30
             });
         }
+
+
         
         // Create ship layer (shows vessel traffic)
         function createShipLayer(data) {
@@ -549,11 +694,14 @@ def create_static_pydeck_map():
             // Noise layers (construction + operational)
             const noiseLayers = createNoiseLayers(noiseData);
             layers.push(...noiseLayers);
-            const turbineLayer = createTurbineLayer(turbineData);
-            if (turbineLayer) layers.push(turbineLayer);
+            const poleLayer = createTurbinePoleLayer(turbineData);
+            if (poleLayer) layers.push(poleLayer);
+            const bladeLayer = createTurbineBladeLayer(turbineData);
+            if (bladeLayer) layers.push(bladeLayer);
             const shipLayer = createShipLayer(shipData);
             if (shipLayer) layers.push(shipLayer);
-            layers.push(createScatterLayer(porpoiseData));
+            const porpoiseLayer = createScatterLayer(porpoiseData);
+            if (porpoiseLayer) layers.push(porpoiseLayer);
             return layers;
         }
         
@@ -621,19 +769,23 @@ def create_static_pydeck_map():
         
         // Update function - only updates scatter layer via setProps
         window.updatePorpoiseData = function(newData) {
-            porpoiseData = newData;
+            porpoiseData = newData || [];
+            console.log('Porpoise data loaded (first 10):', porpoiseData.slice(0,10));
             // Use setProps to update ONLY the layers, not the whole map
             deckgl.setProps({ layers: buildLayers() });
             document.getElementById('point-count').textContent = porpoiseData.length;
         };
         
         // Set depth data (called once at startup)
-        window.setDepthData = function(data, gridWidth, gridHeight) {
+        window.setDepthData = function(data, gridWidth, gridHeight, radius, cellDegLat, cellDegLon) {
             GRID_WIDTH = gridWidth || 400;
             GRID_HEIGHT = gridHeight || 400;
+            DEPTH_RADIUS = radius || 1800;
+            CELL_DEG_LAT = cellDegLat || 0.005;
+            CELL_DEG_LON = cellDegLon || 0.005;
             depthData = data;
             deckgl.setProps({ layers: buildLayers() });
-            console.log('Depth layer loaded:', data.length, 'cells');
+            console.log('Depth layer loaded:', data.length, 'cells, cellDeg:', CELL_DEG_LAT.toFixed(4), CELL_DEG_LON.toFixed(4));
         };
         
         // Set turbine data (called when turbine scenario is selected)
@@ -644,20 +796,50 @@ def create_static_pydeck_map():
             // Update turbine count if element exists
             const el = document.getElementById('turbine-count');
             if (el) el.textContent = turbineData.length;
-        };
+
+            // Start rotor animation if any turbine is operational
+            const hasOperational = turbineData.some(d => d.phase === 'operational');
+            if (hasOperational && !turbineAnimationRunning) {
+                turbineAnimationRunning = true;
+                function animate() {
+                    turbineRotation = (turbineRotation + 4) % 360; // rotation speed
+                    deckgl.setProps({ layers: buildLayers() });
+                    turbineAnimationFrameId = requestAnimationFrame(animate);
+                }
+                turbineAnimationFrameId = requestAnimationFrame(animate);
+            } else if (!hasOperational && turbineAnimationRunning) {
+                turbineAnimationRunning = false;
+                if (turbineAnimationFrameId) {
+                    cancelAnimationFrame(turbineAnimationFrameId);
+                    turbineAnimationFrameId = null;
+                }
+                turbineRotation = 0;
+                deckgl.setProps({ layers: buildLayers() });
+            }
+        }; 
         
         // Set noise propagation data (calculated from turbines)
         window.setNoiseData = function(data) {
             noiseData = data || [];
+            // Auto-enable noise layer when data arrives
+            const hasNoise = (Array.isArray(data) && data.length > 0)
+                || (data && (data.construction && data.construction.length > 0 || data.operational && data.operational.length > 0));
+            if (hasNoise && !showNoiseLayer) {
+                showNoiseLayer = true;
+                var toggle = document.getElementById('noise-toggle');
+                if (toggle) toggle.checked = true;
+            }
             deckgl.setProps({ layers: buildLayers() });
-            console.log('Noise layer loaded:', noiseData.length, 'cells above threshold');
+            const nc = Array.isArray(data) ? data.length : ((data && data.construction ? data.construction.length : 0) + (data && data.operational ? data.operational.length : 0));
+            console.log('Noise layer loaded:', nc, 'sources');
         };
         
         // Set foraging data (food probability / patches)
-        window.setForagingData = function(data) {
+        window.setForagingData = function(data, radius) {
             foragingData = data || [];
+            FORAGING_RADIUS = radius || 1800;
             deckgl.setProps({ layers: buildLayers() });
-            console.log('Foraging layer loaded:', foragingData.length, 'food cells');
+            console.log('Foraging layer loaded:', foragingData.length, 'food cells, radius:', FORAGING_RADIUS);
         };
         
         // Set ship data (vessel traffic positions)
@@ -676,7 +858,7 @@ def create_static_pydeck_map():
                 window.updatePorpoiseData(event.data.data);
             }
             if (event.data && event.data.type === 'setDepthData') {
-                window.setDepthData(event.data.data, event.data.gridWidth, event.data.gridHeight);
+                window.setDepthData(event.data.data, event.data.gridWidth, event.data.gridHeight, event.data.radius, event.data.cellDegLat, event.data.cellDegLon);
             }
             if (event.data && event.data.type === 'setTurbineData') {
                 window.setTurbineData(event.data.data);
@@ -685,7 +867,7 @@ def create_static_pydeck_map():
                 window.setNoiseData(event.data.data);
             }
             if (event.data && event.data.type === 'setForagingData') {
-                window.setForagingData(event.data.data);
+                window.setForagingData(event.data.data, event.data.radius);
             }
             if (event.data && event.data.type === 'setShipData') {
                 window.setShipData(event.data.data);
@@ -779,7 +961,44 @@ def dashboard_tab():
     """Create the Dashboard tab with value boxes and main visualizations."""
     return ui.nav_panel(
         "Dashboard",
-        # Main content: map on left, stats + charts on right
+        # Compact value box styling
+        ui.tags.style("""
+            .value-box { padding: 0.15rem 0.5rem !important; min-height: 0 !important; }
+            .value-box .value-box-area { padding: 0.1rem 0 !important; }
+            .value-box .value-box-title { font-size: 0.7rem !important; margin: 0 !important; }
+            .value-box .value-box-value { font-size: 0.95rem !important; line-height: 1.1 !important; }
+            .value-box .value-box-showcase { display: none !important; }
+        """),
+        # Top row: 4 stat boxes in a single line
+        ui.layout_column_wrap(
+            ui.value_box(
+                "Population",
+                ui.output_text("current_population"),
+                theme="primary",
+                height="45px"
+            ),
+            ui.value_box(
+                "Year",
+                ui.output_text("current_year"),
+                theme="info",
+                height="45px"
+            ),
+            ui.value_box(
+                "Births",
+                ui.output_text("total_births"),
+                theme="success",
+                height="45px"
+            ),
+            ui.value_box(
+                "Deaths",
+                ui.output_text("total_deaths"),
+                theme="warning",
+                height="45px"
+            ),
+            width=1/4,
+            heights_equal=True,
+        ),
+        # Main content: map on left, charts on right
         ui.layout_columns(
             # Left: Large map
             ui.card(
@@ -789,51 +1008,25 @@ def dashboard_tab():
                 ui.output_ui("foraging_data_initializer"),
                 ui.output_ui("ship_data_initializer"),
                 ui.output_ui("turbine_data_initializer"),
+                ui.output_ui("turbine_data_updater"),
                 ui.output_ui("noise_data_initializer"),
                 ui.output_ui("porpoise_data_updater"),
-                height="720px"
+                height="660px"
             ),
-            # Right: Compact stats + charts stacked
+            # Right: 3 SVG charts stacked
             ui.div(
-                # Single consolidated stats card
                 ui.card(
-                    ui.card_header("Simulation Stats", style="padding: 6px 12px; font-size: 0.95rem; font-weight: 600;"),
-                    ui.div(
-                        ui.span("🐬 ", style="font-size: 0.9rem;"),
-                        ui.span("Population: ", style="color: #6c757d; font-size: 0.85rem;"),
-                        ui.output_text("current_population", inline=True),
-                        ui.span(" | ", style="margin: 0 8px; color: #ddd;"),
-                        ui.span("📅 ", style="font-size: 0.9rem;"),
-                        ui.span("Year: ", style="color: #6c757d; font-size: 0.85rem;"),
-                        ui.output_text("current_year", inline=True),
-                        ui.span(" | ", style="margin: 0 8px; color: #ddd;"),
-                        ui.span("🎂 ", style="font-size: 0.9rem;"),
-                        ui.span("Births: ", style="color: #6c757d; font-size: 0.85rem;"),
-                        ui.output_text("total_births", inline=True),
-                        ui.span(" | ", style="margin: 0 8px; color: #ddd;"),
-                        ui.span("💀 ", style="font-size: 0.9rem;"),
-                        ui.span("Deaths: ", style="color: #6c757d; font-size: 0.85rem;"),
-                        ui.output_text("total_deaths", inline=True),
-                        style="padding: 12px; font-weight: 600; font-size: 0.95rem;"
-                    ),
-                    style="margin-bottom: 8px;"
-                ),
-                # Charts below the stats card
-                ui.card(
-                    ui.card_header("Population Size", style="padding: 4px 10px; font-size: 0.9rem;"),
                     ui.output_ui("population_plot"),
-                    height="170px"
+                    height="190px"
                 ),
                 ui.card(
-                    ui.card_header("Life and Death", style="padding: 4px 10px; font-size: 0.9rem;"),
                     ui.output_ui("life_death_plot"),
-                    height="170px"
+                    height="190px"
                 ),
                 ui.card(
-                    ui.card_header("Energy Balance", style="padding: 4px 10px; font-size: 0.9rem;"),
                     ui.output_ui("energy_balance_plot"),
-                    height="170px"
-                )
+                    height="190px"
+                ),
             ),
             col_widths=[7, 5]
         )

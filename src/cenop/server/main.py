@@ -13,14 +13,7 @@ import threading
 import queue
 from pathlib import Path
 
-from .reactive_state import SimulationState, append_with_limit
-from cenop.config import (
-    LANDSCAPE_TURBINE_COMPATIBILITY,
-    LANDSCAPE_BOUNDS,
-    DEFAULT_BOUNDS,
-    DEPONS_CRS,
-    get_wind_farm_file,
-)
+from .reactive_state import SimulationState
 try:
     # Importing SimulationRunner at module import time can create circular imports
     # in unit test environments. Import lazily where needed instead.
@@ -31,6 +24,7 @@ except ImportError:
 from .renderers.chart_helpers import (
     create_time_series_chart,
     create_histogram_chart,
+    create_svg_chart,
     create_map_figure,
     create_pydeck_map,
     no_data_placeholder
@@ -52,7 +46,7 @@ def run_simulation_loop(runner, result_queue, stop_event, throttle_value, thrott
         ticks_lock: Threading lock to protect ticks_per_update_value access
     """
     import time
-    logger.debug("run_simulation_loop STARTED - max_ticks=%d", runner.max_ticks)
+    logger.debug("run_simulation_loop STARTED - max_ticks=%s", runner.max_ticks)
     loop_count = 0
     try:
         while not runner.is_complete and not stop_event.is_set():
@@ -71,7 +65,7 @@ def run_simulation_loop(runner, result_queue, stop_event, throttle_value, thrott
                 current_speed = throttle_value[0]
 
             if loop_count <= 5 or loop_count % 500 == 0:
-                logger.debug("Loop #%d: tick=%d, pop=%s, year=%s, speed=%.2f, ticks_per_update=%d",
+                logger.debug("Loop #%d: tick=%s, pop=%s, year=%s, speed=%.2f, ticks_per_update=%s",
                              loop_count, runner.tick, entry.get('population', '?'),
                              entry.get('year', '?'), current_speed, current_ticks)
 
@@ -82,8 +76,7 @@ def run_simulation_loop(runner, result_queue, stop_event, throttle_value, thrott
             if runner.should_update_map:
                 try:
                     porpoise_positions = runner.sim.get_porpoise_positions().tolist()
-                except Exception as e:
-                    logger.debug("Failed to get porpoise positions: %s", e)
+                except Exception:
                     porpoise_positions = None
 
             update = {
@@ -113,10 +106,9 @@ def run_simulation_loop(runner, result_queue, stop_event, throttle_value, thrott
                 time.sleep(sleep_time)
             
         if runner.is_complete:
-            logger.debug("Simulation COMPLETE after %d iterations, years=%d",
-                         loop_count, runner.sim.state.year)
+            logger.debug("Simulation COMPLETE after %d iterations, years=%s", loop_count, runner.sim.state.year)
             result_queue.put({"type": "complete", "years": runner.sim.state.year})
-
+            
     except Exception as e:
         logger.error("Simulation error: %s", e, exc_info=True)
         result_queue.put({"type": "error", "message": str(e)})
@@ -171,7 +163,6 @@ def _build_landscape_table_rows(landscapes):
                 'error': str(e)
             })
     logger.info(f"Completed building {len(rows)} table rows")
-    return rows
     return rows
 
 
@@ -234,7 +225,7 @@ def server(input, output, session):
     throttle_value = [1.0]  # Default 100% (maximum speed)
     throttle_lock = threading.Lock()  # Protects throttle_value access
     # Shared ticks per update value [1-48] for map update frequency
-    ticks_per_update_value = [1]  # Default 1 tick (every tick)
+    ticks_per_update_value = [48]  # Default 48 ticks (1 day) per UI update
     ticks_lock = threading.Lock()  # Protects ticks_per_update_value access
     
     # =========================================================================
@@ -286,15 +277,16 @@ def server(input, output, session):
     def turbine_selector():
         """Render turbine selector filtered by landscape compatibility."""
         from shiny import ui as shiny_ui
-        
+        from ..ui.sidebar import LANDSCAPE_TURBINE_COMPATIBILITY
+
         # Get current landscape with error handling
         landscape = "Homogeneous"
         try:
             landscape = input.landscape()
-        except Exception as e:
-            logger.debug(f"Could not read landscape input: {e}")
-            
-        # Get compatible turbines for selected landscape (uses centralized config)
+        except Exception:
+            pass
+
+        # Get compatible turbines for selected landscape
         compatible = LANDSCAPE_TURBINE_COMPATIBILITY.get(landscape, {"off": "No turbines"})
         
         return shiny_ui.input_select(
@@ -458,53 +450,14 @@ def server(input, output, session):
                     ))
                     continue
                 
-                # Make core files more readable with color coding
+                # Make core files more readable
                 core_files = ["B", "D", "S", "Pat", "Blk"]  # Bathy, DistToCoast, Sediment, Patches, Blocks
                 core_icons_with_labels = []
-                for icon, label in zip(data['core_icons'], core_files):
-                    if icon == "✅":
-                        # Green color for available files
-                        span = shiny_ui.tags.span(f"{icon}{label}", style="color: #28a745; font-weight: 500;")
-                    else:
-                        # Red color for missing files
-                        span = shiny_ui.tags.span(f"{icon}{label}", style="color: #dc3545;")
-                    core_icons_with_labels.append(span)
-                    core_icons_with_labels.append(" ")  # Add space between items
-                core_cell = shiny_ui.tags.td(*core_icons_with_labels, style="font-size: 0.85em;")
-                
-                # Prey months with color coding
-                prey_months = data['prey_months']
-                if prey_months:
-                    n_prey = len(prey_months)
-                    if n_prey == 12:
-                        prey_style = "color: #28a745; font-weight: 500;"  # Green - full year
-                        prey_text = "12 ✓"
-                    elif n_prey >= 6:
-                        prey_style = "color: #ffc107;"  # Yellow - partial
-                        prey_text = str(n_prey)
-                    else:
-                        prey_style = "color: #dc3545;"  # Red - few months
-                        prey_text = str(n_prey)
-                    prey_cell = shiny_ui.tags.td(shiny_ui.tags.span(prey_text, style=prey_style))
-                else:
-                    prey_cell = shiny_ui.tags.td(shiny_ui.tags.span("—", style="color: #6c757d;"))
-                
-                # Salinity months with color coding
-                sal_months = data['salinity_months']
-                if sal_months:
-                    n_sal = len(sal_months)
-                    if n_sal == 12:
-                        sal_style = "color: #28a745; font-weight: 500;"  # Green - full year
-                        sal_text = "12 ✓"
-                    elif n_sal >= 6:
-                        sal_style = "color: #ffc107;"  # Yellow - partial
-                        sal_text = str(n_sal)
-                    else:
-                        sal_style = "color: #dc3545;"  # Red - few months
-                        sal_text = str(n_sal)
-                    sal_cell = shiny_ui.tags.td(shiny_ui.tags.span(sal_text, style=sal_style))
-                else:
-                    sal_cell = shiny_ui.tags.td(shiny_ui.tags.span("—", style="color: #6c757d;"))
+                for i, (icon, label) in enumerate(zip(data['core_icons'], core_files)):
+                    core_icons_with_labels.append(f"{icon}{label}")
+                core_cell = shiny_ui.tags.td(" ".join(core_icons_with_labels), style="font-size: 0.85em;")
+                prey_cell = shiny_ui.tags.td(str(data['prey_months']) if data['prey_months'] else "—")
+                sal_cell = shiny_ui.tags.td(str(data['salinity_months']) if data['salinity_months'] else "—")
                 
                 # Details button: sets input.detail_landscape to landscape name (server event)
                 btn = shiny_ui.tags.button(
@@ -772,7 +725,8 @@ def server(input, output, session):
             data_array = np.flipud(data_array)
             
             # Get landscape-specific bounds (WGS84 lat/lon)
-            bounds = LANDSCAPE_BOUNDS.get(landscape, DEFAULT_BOUNDS)
+            from ..ui.sidebar import LANDSCAPE_BOUNDS
+            bounds = LANDSCAPE_BOUNDS.get(landscape, (53.27, 54.79, 4.83, 7.13))
             lat_min, lat_max, lon_min, lon_max = bounds
             
             # Calculate center from bounds
@@ -892,18 +846,17 @@ def server(input, output, session):
         if state.running():
             logger.debug("Already running, skipping")
             return
-
+        
         logger.debug("Creating simulation from inputs...")
         # Import simulation controller (always import fresh to avoid stale references)
         from .simulation_controller import create_simulation_from_inputs as create_sim, SimulationRunner as Runner
         sim = create_sim(input)
         logger.debug("Simulation created, is_initialized=%s", sim._is_initialized)
         sim.initialize()
-        logger.debug("Simulation initialized, pop_size=%d, max_ticks=%d",
-                     sim.population_size, sim.max_ticks)
-
+        logger.debug("Simulation initialized, pop_size=%s, max_ticks=%s", sim.population_size, sim.max_ticks)
+        
         runner = Runner(sim)
-        logger.debug("SimulationRunner created, max_ticks=%d", runner.max_ticks)
+        logger.debug("SimulationRunner created, max_ticks=%s", runner.max_ticks)
         
         # Reset queue and event - use idiomatic pattern to avoid TOCTOU race
         try:
@@ -928,8 +881,11 @@ def server(input, output, session):
         with throttle_lock:
             throttle_value[0] = (speed_percent - 1) / 99.0  # Convert 1-100 to 0.0-1.0
         
-        # Update ticks per update from slider value
-        ticks_val = input.ticks_per_update()
+        # Update ticks per update from slider value (may not exist in UI)
+        try:
+            ticks_val = input.ticks_per_update()
+        except Exception:
+            ticks_val = ticks_per_update_value[0]
         with ticks_lock:
             ticks_per_update_value[0] = ticks_val
 
@@ -952,8 +908,8 @@ def server(input, output, session):
         new_throttle = (speed_percent - 1) / 99.0  # Convert 1-100 to 0.0-1.0
         with throttle_lock:
             throttle_value[0] = new_throttle
-        logger.debug("Speed slider changed: %d%% -> throttle=%.3f", speed_percent, new_throttle)
-
+        logger.debug("Speed slider changed: %s%% -> throttle=%.3f", speed_percent, new_throttle)
+    
     @reactive.effect
     @reactive.event(input.ticks_per_update)
     def update_ticks_per_update():
@@ -961,7 +917,7 @@ def server(input, output, session):
         ticks_val = input.ticks_per_update()
         with ticks_lock:
             ticks_per_update_value[0] = ticks_val
-        logger.debug("Ticks per update changed: %d", ticks_val)
+        logger.debug("Ticks per update changed: %s", ticks_val)
     
     @reactive.effect
     def poll_simulation():
@@ -973,37 +929,16 @@ def server(input, output, session):
         # Poll at reasonable interval (200ms) to avoid overwhelming connection
         reactive.invalidate_later(0.2)
         
-        # Get display settings - use try/except in case inputs not ready
-        try:
-            live_charts_enabled = input.enable_live_charts()
-        except Exception:
-            live_charts_enabled = True
-        try:
-            live_map_enabled = input.enable_live_map()
-        except Exception:
-            live_map_enabled = True
-        
-        # Debug: log toggle state occasionally
-        if hasattr(poll_simulation, '_debug_count'):
-            poll_simulation._debug_count += 1
-        else:
-            poll_simulation._debug_count = 1
-        if poll_simulation._debug_count % 50 == 1:
-            logger.debug("Poll: live_charts=%s, live_map=%s", live_charts_enabled, live_map_enabled)
-        
         # Process multiple updates per poll to keep up
-        # Limit to avoid UI blocking - process max 50 messages per cycle
-        MAX_MSGS_PER_POLL = 50
         has_updates = False
-        last_positions = None  # Keep only last position for smooth animation
-        should_update_map_this_cycle = False
+        last_positions = None
         msgs_processed = 0
         entries_batch = []
         energy_entries_batch = []
         dispersal_entries_batch = []
         
-        # Process up to MAX_MSGS_PER_POLL messages per poll cycle
-        while msgs_processed < MAX_MSGS_PER_POLL:
+        # Drain queue - process all available messages
+        while True:
             try:
                 msg = result_queue.get_nowait()
             except queue.Empty:
@@ -1021,16 +956,16 @@ def server(input, output, session):
                 state.running.set(False)
                 state.progress.set(100.0)
                 state.progress_message.set(f"Complete! {msg['years']} years simulated")
-                # Final history update with length limiting
+                # Final history update
                 if entries_batch:
                     current_hist = state.population_history()
-                    state.population_history.set(append_with_limit(current_hist, entries_batch))
+                    state.population_history.set(current_hist + entries_batch)
                 if energy_entries_batch:
                     current_energy = state.energy_history()
-                    state.energy_history.set(append_with_limit(current_energy, energy_entries_batch))
+                    state.energy_history.set(current_energy + energy_entries_batch)
                 if dispersal_entries_batch:
                     current_dispersal = state.dispersal_history()
-                    state.dispersal_history.set(append_with_limit(current_dispersal, dispersal_entries_batch))
+                    state.dispersal_history.set(current_dispersal + dispersal_entries_batch)
                 logger.debug("Poll: Simulation COMPLETE, final history len=%d", len(state.population_history()))
                 return
             
@@ -1053,34 +988,26 @@ def server(input, output, session):
                 if 'dispersal_entry' in entry and entry['dispersal_entry'] is not None:
                     dispersal_entries_batch.append(entry['dispersal_entry'])
                 
-                # Track if map should update this cycle (only save LAST positions)
                 if msg["should_update_map"]:
-                    should_update_map_this_cycle = True
+                    state.map_update_counter.set(state.map_update_counter() + 1)
+                    # Extract porpoise positions snapshot (lightweight) instead of whole sim
                     if msg.get("porpoise_positions") is not None:
-                        last_positions = msg.get("porpoise_positions")
-        
-        # After processing batch: trigger ONE map update with last positions
-        if should_update_map_this_cycle and live_map_enabled:
-            state.map_update_counter.set(state.map_update_counter() + 1)
-            if last_positions is not None:
-                try:
-                    state.porpoise_positions.set(last_positions)
-                except Exception as e:
-                    logger.debug("Failed to set porpoise positions: %s", e)
-        
-        # Flush batched entries to state after processing all messages
-        # Always update history data (for export), but charts will check toggle before rendering
-        # Use append_with_limit to prevent unbounded memory growth
+                        try:
+                            state.porpoise_positions.set(msg.get("porpoise_positions"))
+                        except Exception:
+                            pass
+
+        # Flush batched entries to reactive state so dashboard updates
         if entries_batch:
             current_hist = state.population_history()
-            state.population_history.set(append_with_limit(current_hist, entries_batch))
+            state.population_history.set(current_hist + entries_batch)
         if energy_entries_batch:
             current_energy = state.energy_history()
-            state.energy_history.set(append_with_limit(current_energy, energy_entries_batch))
+            state.energy_history.set(current_energy + energy_entries_batch)
         if dispersal_entries_batch:
             current_dispersal = state.dispersal_history()
-            state.dispersal_history.set(append_with_limit(current_dispersal, dispersal_entries_batch))
-    
+            state.dispersal_history.set(current_dispersal + dispersal_entries_batch)
+
     @reactive.effect
     @reactive.event(input.stop_sim)
     def stop_simulation():
@@ -1152,18 +1079,6 @@ def server(input, output, session):
         return str(sim.state.year if sim else 0)
     
     @render.text
-    def current_day():
-        # Use history for reactive updates - day within year (0-359)
-        history = state.population_history()
-        if history:
-            day = history[-1].get('day', 0) % 360  # Day within current year
-            return str(day)
-        sim = state.simulation()
-        if sim and hasattr(sim, 'state'):
-            return str(sim.state.day % 360 if hasattr(sim.state, 'day') else 0)
-        return "0"
-    
-    @render.text
     def total_births():
         # Trigger on history updates
         _ = state.population_history()
@@ -1179,150 +1094,59 @@ def server(input, output, session):
     # Dashboard Chart Renderers
     # =========================================================================
     
-    # Chart throttling: only update every CHART_THROTTLE_TICKS to reduce render overhead
-    CHART_THROTTLE_TICKS = 24  # ~0.5 days in simulation time (reduces jerkiness)
-    _chart_render_cache: dict = {}  # {name: (last_hist_len, html_result)}
-    
-    # Cache for chart DataFrames to avoid recreation on every render
-    _chart_df_cache: dict = {}
-    
-    def get_cached_df(cache_key: str, history: list) -> pd.DataFrame:
-        """Get a cached DataFrame, recreating only if history length changed."""
-        nonlocal _chart_df_cache
-        hist_len = len(history) if history else 0
-        cache_entry = _chart_df_cache.get(cache_key)
-        if cache_entry is not None and cache_entry[0] == hist_len:
-            return cache_entry[1]
-        # Cache miss or stale - recreate
-        df = pd.DataFrame(history) if history else pd.DataFrame()
-        _chart_df_cache[cache_key] = (hist_len, df)
-        return df
-    
     @render.ui
     def population_plot():
-        """Porpoise Population Size chart with throttling."""
-        # Check if live charts are disabled during running simulation
-        is_running = state.running()
-        try:
-            live_charts_enabled = input.enable_live_charts()
-        except Exception:
-            live_charts_enabled = True
-        if is_running and not live_charts_enabled:
-            return no_data_placeholder("Live charts paused. Enable to see updates.")
-        
+        """Porpoise Population Size chart — lightweight SVG."""
         history = state.population_history()
-        hist_len = len(history) if history else 0
-        
-        # Throttle: return cached result if not enough time passed
-        cache_entry = _chart_render_cache.get('population')
-        if cache_entry is not None and is_running:
-            last_len, cached_html = cache_entry
-            if hist_len > 0 and abs(hist_len - last_len) < CHART_THROTTLE_TICKS:
-                return cached_html
-        
         if not history:
             return no_data_placeholder()
-        
-        df = get_cached_df('population', history)
+
+        df = pd.DataFrame(history)
         if 'tick' not in df.columns or 'population' not in df.columns:
             return no_data_placeholder("Missing required data columns")
-        
-        result = create_time_series_chart(
-            df=df,
-            x_col='tick',
+
+        return create_svg_chart(
+            df=df, x_col='tick',
             y_cols=['population', 'lact_calf'],
-            colors=['blue', 'red'],
+            colors=['#2563eb', '#dc2626'],
             names=['Total Count', 'Lactating + Calf'],
             title='Porpoise Population Size',
-            x_title='Tick Count',
-            y_title='Population Size',
-            height=180
         )
-        _chart_render_cache['population'] = (hist_len, result)
-        return result
-    
+
     @render.ui
     def life_death_plot():
-        """Life and Death chart with throttling."""
-        # Check if live charts are disabled during running simulation
-        is_running = state.running()
-        try:
-            live_charts_enabled = input.enable_live_charts()
-        except Exception:
-            live_charts_enabled = True
-        if is_running and not live_charts_enabled:
-            return no_data_placeholder("Live charts paused. Enable to see updates.")
-        
+        """Life and Death chart — lightweight SVG."""
         history = state.population_history()
-        hist_len = len(history) if history else 0
-        
-        # Throttle: return cached result if not enough time passed
-        cache_entry = _chart_render_cache.get('life_death')
-        if cache_entry is not None and is_running:
-            last_len, cached_html = cache_entry
-            if hist_len > 0 and abs(hist_len - last_len) < CHART_THROTTLE_TICKS:
-                return cached_html
-        
         if not history:
             return no_data_placeholder()
-        
-        df = get_cached_df('life_death', history).copy()  # Copy for modification
+
+        df = pd.DataFrame(history)
         df['daily_births'] = df['births'].diff().fillna(0)
         df['daily_deaths'] = df['deaths'].diff().fillna(0)
-        
-        result = create_time_series_chart(
-            df=df,
-            x_col='tick',
+
+        return create_svg_chart(
+            df=df, x_col='tick',
             y_cols=['daily_births', 'daily_deaths'],
-            colors=['blue', 'red'],
+            colors=['#2563eb', '#dc2626'],
             names=['Births', 'Deaths'],
             title='Life and Death',
-            x_title='Tick Count',
-            y_title='Count',
-            height=180
         )
-        _chart_render_cache['life_death'] = (hist_len, result)
-        return result
-    
+
     @render.ui
     def energy_balance_plot():
-        """Food consumption and expenditure chart with throttling."""
-        # Check if live charts are disabled during running simulation
-        is_running = state.running()
-        try:
-            live_charts_enabled = input.enable_live_charts()
-        except Exception:
-            live_charts_enabled = True
-        if is_running and not live_charts_enabled:
-            return no_data_placeholder("Live charts paused. Enable to see updates.")
-        
+        """Food consumption and expenditure chart — lightweight SVG."""
         history = state.energy_history()
-        hist_len = len(history) if history else 0
-        
-        # Throttle: return cached result if not enough time passed
-        cache_entry = _chart_render_cache.get('energy_balance')
-        if cache_entry is not None and is_running:
-            last_len, cached_html = cache_entry
-            if hist_len > 0 and abs(hist_len - last_len) < CHART_THROTTLE_TICKS:
-                return cached_html
-        
         if not history:
             return no_data_placeholder("No energy data yet.")
-        
-        df = get_cached_df('energy', history)
-        result = create_time_series_chart(
-            df=df,
-            x_col='day',
+
+        df = pd.DataFrame(history)
+        return create_svg_chart(
+            df=df, x_col='day',
             y_cols=['avg_food_eaten', 'avg_energy_expended'],
-            colors=['blue', 'red'],
+            colors=['#2563eb', '#dc2626'],
             names=['Avg Food Eaten', 'Avg Energy Expended'],
             title='Food Consumption and Expenditure',
-            x_title='Day',
-            y_title='Energy',
-            height=180
         )
-        _chart_render_cache['energy_balance'] = (hist_len, result)
-        return result
     
     # Cache for depth data - will be updated when Load Landscape is clicked or simulation starts
     _depth_data_cache = None
@@ -1359,18 +1183,15 @@ def server(input, output, session):
         # Recompute if landscape changed
         if _depth_data_cache is None or _depth_landscape_name != landscape_name:
             try:
-                from cenop.landscape import CellData, create_homogeneous_landscape, create_landscape_from_depons
-                
+                from cenop.landscape import CellData, create_homogeneous_landscape
+
                 logger.debug("Loading landscape '%s' for depth overlay...", landscape_name)
-                
+
                 # Create landscape matching the simulation
                 if landscape_name == "Homogeneous":
                     landscape = create_homogeneous_landscape()
-                elif landscape_name == "NorthSea":
-                    # NorthSea uses DEPONS data files directly
-                    landscape = create_landscape_from_depons()
                 else:
-                    # Other named landscapes (CentralBaltic, InnerDanishWaters, etc.)
+                    # Named landscapes (Lithuania, CentralBaltic, etc.)
                     landscape = CellData(landscape_name)
                     landscape.load()  # Explicitly load data
                 
@@ -1382,38 +1203,51 @@ def server(input, output, session):
                         for m in msgs:
                             ui.notification_show(f"Landscape load: {m}", type="warning")
 
-                    # Sample depth data (every Nth cell to reduce data size)
-                    # 400x400 = 160,000 cells is too many, sample every 5th = 6,400 cells
-                    sample_step = 5
                     depth_array = landscape._depth
                     grid_height, grid_width = depth_array.shape
-                    
+                    cellsize = landscape.metadata.cellsize if landscape.metadata else 400.0
+
+                    # Adaptive sampling: target ~10-15k points max for
+                    # performance while keeping the overlay continuous.
+                    # The render radius is sample_step * cellsize * 0.75 so
+                    # neighbouring disks overlap slightly.
+                    total_cells = grid_height * grid_width
+                    max_points = 15000
+                    sample_step = max(1, int((total_cells / max_points) ** 0.5))
+                    render_radius = sample_step * cellsize * 0.75  # metres
+
                     # Get landscape-specific bounds
-                    bounds = LANDSCAPE_BOUNDS.get(landscape_name, DEFAULT_BOUNDS)
+                    from ..ui.sidebar import LANDSCAPE_BOUNDS
+                    bounds = LANDSCAPE_BOUNDS.get(landscape_name, (53.27, 54.79, 4.83, 7.13))
                     lat_min, lat_max, lon_min, lon_max = bounds
-                    
+
                     depth_points = []
                     for row in range(0, grid_height, sample_step):
                         for col in range(0, grid_width, sample_step):
                             depth = float(depth_array[row, col])
-                            # Convert grid to lat/lon
-                            # Array is flipped during loading: row 0 = SOUTH, row max = NORTH
                             lat = lat_min + (row / grid_height) * (lat_max - lat_min)
                             lon = lon_min + (col / grid_width) * (lon_max - lon_min)
                             depth_points.append({
                                 "position": [lon, lat],
                                 "depth": depth
                             })
-                    
+
+                    # Cell extent in degrees for square grid rendering
+                    cell_deg_lat = (lat_max - lat_min) / grid_height * sample_step
+                    cell_deg_lon = (lon_max - lon_min) / grid_width * sample_step
+
                     _depth_data_cache = {
                         "points": depth_points,
                         "width": grid_width,
-                        "height": grid_height
+                        "height": grid_height,
+                        "radius": render_radius,
+                        "cellDegLat": cell_deg_lat,
+                        "cellDegLon": cell_deg_lon,
                     }
                     _depth_landscape_name = landscape_name
-                    state.landscape_info.set(f"{grid_width}x{grid_height} grid")
-                    logger.debug("Depth data cached for '%s': %d points from %dx%d grid",
-                                 landscape_name, len(depth_points), grid_width, grid_height)
+                    state.landscape_info.set(f"{grid_width}x{grid_height} grid, {cellsize:.0f}m cells")
+                    logger.debug("Depth data cached for '%s': %d points, step=%d, radius=%.0fm",
+                                 landscape_name, len(depth_points), sample_step, render_radius)
                 else:
                     _depth_data_cache = {"points": [], "width": 400, "height": 400}
                     _depth_landscape_name = landscape_name
@@ -1428,7 +1262,8 @@ def server(input, output, session):
         depth_json = json.dumps(_depth_data_cache["points"])
         
         # Also send the landscape bounds to update map center
-        bounds = LANDSCAPE_BOUNDS.get(landscape_name, DEFAULT_BOUNDS)
+        from ..ui.sidebar import LANDSCAPE_BOUNDS
+        bounds = LANDSCAPE_BOUNDS.get(landscape_name, (53.27, 54.79, 4.83, 7.13))
         lat_min, lat_max, lon_min, lon_max = bounds
         
         js_code = f'''
@@ -1454,9 +1289,12 @@ def server(input, output, session):
                             type: 'setDepthData',
                             data: data,
                             gridWidth: {_depth_data_cache["width"]},
-                            gridHeight: {_depth_data_cache["height"]}
+                            gridHeight: {_depth_data_cache["height"]},
+                            radius: {_depth_data_cache.get("radius", 1800)},
+                            cellDegLat: {_depth_data_cache.get("cellDegLat", 0.005)},
+                            cellDegLon: {_depth_data_cache.get("cellDegLon", 0.005)}
                         }}, '*');
-                        console.log('Depth data sent to map:', data.length, 'points');
+                        console.log('Depth data sent to map:', data.length, 'points, cellDeg:', {_depth_data_cache.get("cellDegLat", 0.005)});
                     }} else {{
                         setTimeout(sendDepthData, 100);
                     }}
@@ -1502,15 +1340,13 @@ def server(input, output, session):
         # Recompute if landscape changed
         if _foraging_data_cache is None or _foraging_landscape_name != landscape_name:
             try:
-                from cenop.landscape import CellData, create_homogeneous_landscape, create_landscape_from_depons
-                
+                from cenop.landscape import CellData, create_homogeneous_landscape
+
                 logger.debug("Loading foraging data for '%s'...", landscape_name)
-                
+
                 # Create landscape matching the simulation
                 if landscape_name == "Homogeneous":
                     landscape = create_homogeneous_landscape()
-                elif landscape_name == "NorthSea":
-                    landscape = create_landscape_from_depons()
                 else:
                     landscape = CellData(landscape_name)
                     landscape.load()
@@ -1523,14 +1359,19 @@ def server(input, output, session):
                         for m in msgs:
                             ui.notification_show(f"Landscape load: {m}", type="warning")
 
-                    # Sample food data (every Nth cell to reduce data size)
-                    sample_step = 5
                     grid_height, grid_width = food_array.shape
-                    
-                    # Get landscape-specific bounds
-                    bounds = LANDSCAPE_BOUNDS.get(landscape_name, DEFAULT_BOUNDS)
+                    cellsize = landscape.metadata.cellsize if landscape.metadata else 400.0
+
+                    # Adaptive sampling (same logic as depth layer)
+                    total_cells = grid_height * grid_width
+                    max_points = 15000
+                    sample_step = max(1, int((total_cells / max_points) ** 0.5))
+                    render_radius = sample_step * cellsize * 0.75
+
+                    from ..ui.sidebar import LANDSCAPE_BOUNDS
+                    bounds = LANDSCAPE_BOUNDS.get(landscape_name, (53.27, 54.79, 4.83, 7.13))
                     lat_min, lat_max, lon_min, lon_max = bounds
-                    
+
                     food_points = []
                     for row in range(0, grid_height, sample_step):
                         for col in range(0, grid_width, sample_step):
@@ -1542,24 +1383,25 @@ def server(input, output, session):
                                     "position": [lon, lat],
                                     "food": food
                                 })
-                    
-                    _foraging_data_cache = food_points
+
+                    _foraging_data_cache = {"points": food_points, "radius": render_radius}
                     _foraging_landscape_name = landscape_name
-                    logger.debug("Foraging data cached for '%s': %d food cells",
-                                 landscape_name, len(food_points))
+                    logger.debug("Foraging data cached for '%s': %d food cells, radius=%.0fm",
+                                 landscape_name, len(food_points), render_radius)
                 else:
-                    _foraging_data_cache = []
+                    _foraging_data_cache = {"points": [], "radius": 1800}
                     _foraging_landscape_name = landscape_name
             except Exception as e:
                 logger.error("Error loading foraging data for '%s': %s", landscape_name, e, exc_info=True)
-                _foraging_data_cache = []
+                _foraging_data_cache = {"points": [], "radius": 1800}
                 _foraging_landscape_name = landscape_name
-        
-        if not _foraging_data_cache:
+
+        if not _foraging_data_cache.get("points"):
             return ui.div()
-        
-        foraging_json = json.dumps(_foraging_data_cache)
-        
+
+        foraging_json = json.dumps(_foraging_data_cache["points"])
+        foraging_radius = _foraging_data_cache.get("radius", 1800)
+
         js_code = f'''
         <script>
             (function() {{
@@ -1569,9 +1411,10 @@ def server(input, output, session):
                         var data = {foraging_json};
                         iframe.contentWindow.postMessage({{
                             type: 'setForagingData',
-                            data: data
+                            data: data,
+                            radius: {foraging_radius}
                         }}, '*');
-                        console.log('Foraging data sent to map:', data.length, 'cells');
+                        console.log('Foraging data sent to map:', data.length, 'cells, radius:', {foraging_radius});
                     }} else {{
                         setTimeout(sendForagingData, 100);
                     }}
@@ -1632,8 +1475,9 @@ def server(input, output, session):
             ships = ship_manager.get_all_ships()
             
             # Get landscape-specific bounds
+            from ..ui.sidebar import LANDSCAPE_BOUNDS
             landscape_name = state.landscape_loaded_name() if state.landscape_loaded_name() else input.landscape()
-            bounds = LANDSCAPE_BOUNDS.get(landscape_name, DEFAULT_BOUNDS)
+            bounds = LANDSCAPE_BOUNDS.get(landscape_name, (53.27, 54.79, 4.83, 7.13))
             lat_min, lat_max, lon_min, lon_max = bounds
             
             # Get landscape grid dimensions
@@ -1691,7 +1535,7 @@ def server(input, output, session):
         except Exception as e:
             logger.error("Error loading ship data: %s", e, exc_info=True)
             return ui.div()
-
+    
     # Cache for turbine data
     _turbine_data_cache = None
     _turbine_scenario_name = None
@@ -1742,35 +1586,45 @@ def server(input, output, session):
             try:
                 from pyproj import Transformer
                 
-                # Use centralized config for wind farm path
-                from cenop.config import get_wind_farm_file
+                # Find the wind-farms directory
+                possible_paths = [
+                    Path("../DEPONS-master/data/wind-farms"),
+                    Path("../../DEPONS-master/data/wind-farms"),
+                    Path("DEPONS-master/data/wind-farms"),
+                    Path("data/wind-farms"),
+                ]
+                wind_farms_dir = None
+                for p in possible_paths:
+                    if p.exists():
+                        wind_farms_dir = p
+                        break
                 
-                turbine_file = get_wind_farm_file(f"{turbine_scenario}.txt")
+                if wind_farms_dir is None:
+                    logger.debug("Wind farms directory not found")
+                    return ui.div()
+                
+                turbine_file = wind_farms_dir / f"{turbine_scenario}.txt"
                 if not turbine_file.exists():
                     logger.debug("Turbine file not found: %s", turbine_file)
                     return ui.div()
-
+                
                 logger.debug("Loading turbines from %s", turbine_file)
                 
-                # Transform from DEPONS CRS to WGS84
-                transformer = Transformer.from_crs(DEPONS_CRS, 'EPSG:4326', always_xy=True)
+                # Transform from EPSG:3035 to WGS84
+                transformer = Transformer.from_crs('EPSG:3035', 'EPSG:4326', always_xy=True)
                 
                 turbines = []
                 with open(turbine_file, 'r') as f:
                     header = f.readline().strip().split('\t')
-                    # Handle different column names across wind farm files
-                    # NorthSea uses: x, y, start, end
-                    # DanTysk/Gemini use: x.coordinate, y.coordinate, tick.start, tick.end
+                    # Handle different column names
                     x_col = 'x' if 'x' in header else 'x.coordinate'
                     y_col = 'y' if 'y' in header else 'y.coordinate'
-                    start_col = 'start' if 'start' in header else ('tick.start' if 'tick.start' in header else None)
-                    end_col = 'end' if 'end' in header else ('tick.end' if 'tick.end' in header else None)
                     x_idx = header.index(x_col)
                     y_idx = header.index(y_col)
                     id_idx = header.index('id')
                     impact_idx = header.index('impact') if 'impact' in header else None
-                    start_idx = header.index(start_col) if start_col else None
-                    end_idx = header.index(end_col) if end_col else None
+                    start_idx = header.index('start') if 'start' in header else None
+                    end_idx = header.index('end') if 'end' in header else None
                     
                     for line in f:
                         parts = line.strip().split('\t')
@@ -1805,7 +1659,7 @@ def server(input, output, session):
                 _turbine_scenario_name = turbine_scenario
                 state.turbine_count.set(len(turbines))
                 logger.debug("Loaded %d turbines from %s", len(turbines), turbine_scenario)
-
+                
             except Exception as e:
                 logger.error("Error loading turbine data: %s", e, exc_info=True)
                 _turbine_data_cache = []
@@ -1840,7 +1694,90 @@ def server(input, output, session):
         </script>
         '''
         return ui.HTML(js_code)
-    
+
+    @render.ui
+    def turbine_data_updater():
+        """
+        Hidden output that sends turbine data updates with dynamic phase (construction/operational/planned)
+        based on the current simulation tick so the client can color turbines accordingly.
+        """
+        import json
+
+        map_counter = state.map_update_counter()
+        turbine_counter = state.turbine_load_counter()
+        sim = state.simulation()
+
+        nonlocal _turbine_data_cache
+        if not _turbine_data_cache or turbine_counter == 0:
+            # Clear turbine layer when none loaded
+            return ui.HTML('''
+            <script>
+                (function() {
+                    function clearTurbines() {
+                        var iframe = document.getElementById('porpoise-map-frame');
+                        if (iframe && iframe.contentWindow) {
+                            iframe.contentWindow.postMessage({ type: 'setTurbineData', data: [] }, '*');
+                        }
+                    }
+                    setTimeout(clearTurbines, 100);
+                })();
+            </script>
+            ''')
+
+        # Determine current tick for phase calculation
+        current_tick = 0
+        if sim is not None and hasattr(sim, 'state') and hasattr(sim.state, 'tick'):
+            current_tick = sim.state.tick
+
+        # Build updated turbine list with phase and color
+        updated = []
+        for t in _turbine_data_cache:
+            tt = dict(t)
+            start = tt.get('start', 0)
+            end = tt.get('end', start + 4)
+            if current_tick == 0:
+                phase = 'operational'
+            elif start <= current_tick <= end:
+                phase = 'construction'
+            elif current_tick > end:
+                phase = 'operational'
+            else:
+                phase = 'planned'
+
+            if phase == 'construction':
+                color = [255, 70, 48, 220]
+            elif phase == 'operational':
+                color = [50, 176, 240, 220]
+            else:
+                color = [176, 176, 176, 180]
+
+            tt['phase'] = phase
+            tt['color'] = color
+            updated.append(tt)
+
+        turbine_json = json.dumps(updated)
+
+        js_code = f'''
+        <script>
+            (function() {{
+                function sendTurbineStatus() {{
+                    var iframe = document.getElementById('porpoise-map-frame');
+                    if (iframe && iframe.contentWindow) {{
+                        var data = {turbine_json};
+                        iframe.contentWindow.postMessage({{ type: 'setTurbineData', data: data }}, '*');
+                        console.log('Turbine status update sent to map:', data.length);
+                    }} else {{
+                        setTimeout(sendTurbineStatus, 100);
+                    }}
+                }}
+                setTimeout(sendTurbineStatus, 200);
+            }})();
+        </script>
+        '''
+        return ui.HTML(js_code)
+
+    # (END turbine data updater)
+
     # Cache for noise propagation data
     _noise_data_cache = None
     _noise_scenario_name = None
@@ -1904,11 +1841,17 @@ def server(input, output, session):
             </script>
             ''')
         
-        # Recalculate if scenario changed or tick changed significantly
+        # Recalculate if scenario changed, tick changed, or cache is stale
         tick_changed = _noise_tick is None or abs(current_tick - _noise_tick) >= 48  # Update every ~day
         scenario_changed = _noise_scenario_name != turbine_scenario
-        
-        if scenario_changed or _noise_data_cache is None or tick_changed:
+        # Also recalculate when cache is empty but turbine data is now available
+        # (fixes race condition where noise initializer fires before turbine data loads)
+        cache_empty = (_noise_data_cache is not None
+                       and not _noise_data_cache.get("construction")
+                       and not _noise_data_cache.get("operational"))
+        turbines_available = _turbine_data_cache is not None and len(_turbine_data_cache) > 0
+
+        if scenario_changed or _noise_data_cache is None or tick_changed or (cache_empty and turbines_available):
             try:
                 # Get turbine data first
                 if _turbine_data_cache is None or len(_turbine_data_cache) == 0:
@@ -1916,115 +1859,64 @@ def server(input, output, session):
                     _noise_scenario_name = turbine_scenario
                     _noise_tick = current_tick
                     return ui.div()
-                
-                # DEPONS noise propagation parameters
-                beta_hat = 20.0  # Spreading loss factor
-                alpha_hat = 0.0  # Absorption coefficient
-                deter_threshold = 158.0  # RT: deterrence threshold (dB)
-                operational_threshold = 140.0  # Lower threshold for operational display
-                
-                # Grid parameters
-                grid_step = 5
-                grid_width = 400
-                grid_height = 400
-                
-                # Get landscape-specific bounds
-                landscape_name = state.landscape_loaded_name() if state.landscape_loaded_name() else input.landscape()
-                bounds = LANDSCAPE_BOUNDS.get(landscape_name, DEFAULT_BOUNDS)
-                lat_min, lat_max, lon_min, lon_max = bounds
-                
+
+                # DEPONS noise propagation: TL = beta * log10(d)
+                # Deterrence radius where RL drops to threshold:
+                #   d = 10^((SL - threshold) / beta)
+                beta_hat = 20.0   # Spreading loss factor
+                deter_threshold = 158.0   # Construction deterrence (dB)
+                operational_threshold = 140.0  # Operational display (dB)
+
                 # Separate turbines by phase based on current tick
-                constructing_turbines = []  # Currently pile-driving
-                operational_turbines = []   # Already built (tick > end)
-                
+                constructing_turbines = []
+                operational_turbines = []
+
                 for t in _turbine_data_cache:
                     start = t.get('start', 0)
                     end = t.get('end', start + 4)
-                    
                     if current_tick == 0:
-                        # Preview mode (no simulation): show all as operational
                         operational_turbines.append(t)
                     elif start <= current_tick <= end:
-                        # Currently constructing (pile-driving)
                         constructing_turbines.append(t)
                     elif current_tick > end:
-                        # Construction complete, now operational
                         operational_turbines.append(t)
-                    # If tick < start, turbine not yet built - no noise
-                
+
                 logger.debug("Tick %d: %d constructing, %d operational",
                              current_tick, len(constructing_turbines), len(operational_turbines))
-                
-                # Calculate construction noise (high impact, red)
+
+                # Build noise contours centered on each turbine with physics-based radius
                 construction_points = []
-                if constructing_turbines:
-                    c_lons = np.array([t['position'][0] for t in constructing_turbines])
-                    c_lats = np.array([t['position'][1] for t in constructing_turbines])
-                    c_impacts = np.array([t.get('impact', 234) for t in constructing_turbines])
-                    
-                    for row in range(0, grid_height, grid_step):
-                        for col in range(0, grid_width, grid_step):
-                            lat = lat_min + (row / grid_height) * (lat_max - lat_min)
-                            lon = lon_min + (col / grid_width) * (lon_max - lon_min)
-                            
-                            lat_scale = 111000
-                            lon_scale = 111000 * np.cos(np.radians(lat))
-                            
-                            dlat = (lat - c_lats) * lat_scale
-                            dlon = (lon - c_lons) * lon_scale
-                            distances = np.maximum(np.sqrt(dlat**2 + dlon**2), 1.0)
-                            
-                            transmission_loss = beta_hat * np.log10(distances) + alpha_hat * distances
-                            received_levels = c_impacts - transmission_loss
-                            max_rl = np.max(received_levels)
-                            
-                            if max_rl > deter_threshold:
-                                construction_points.append({
-                                    "position": [float(lon), float(lat)],
-                                    "level": float(max_rl),
-                                    "type": "construction"
-                                })
-                
-                # Calculate operational noise (low impact, yellow)
+                for t in constructing_turbines:
+                    sl = t.get('impact', 234)
+                    radius_m = 10 ** ((sl - deter_threshold) / beta_hat)
+                    construction_points.append({
+                        "position": t['position'],
+                        "level": float(sl),
+                        "radius": float(radius_m),
+                        "type": "construction"
+                    })
+
                 operational_points = []
-                if operational_turbines:
-                    o_lons = np.array([t['position'][0] for t in operational_turbines])
-                    o_lats = np.array([t['position'][1] for t in operational_turbines])
-                    # Operational noise is much lower - typically 145 dB
-                    o_impacts = np.full(len(operational_turbines), OPERATIONAL_NOISE_LEVEL)
-                    
-                    for row in range(0, grid_height, grid_step):
-                        for col in range(0, grid_width, grid_step):
-                            lat = lat_min + (row / grid_height) * (lat_max - lat_min)
-                            lon = lon_min + (col / grid_width) * (lon_max - lon_min)
-                            
-                            lat_scale = 111000
-                            lon_scale = 111000 * np.cos(np.radians(lat))
-                            
-                            dlat = (lat - o_lats) * lat_scale
-                            dlon = (lon - o_lons) * lon_scale
-                            distances = np.maximum(np.sqrt(dlat**2 + dlon**2), 1.0)
-                            
-                            transmission_loss = beta_hat * np.log10(distances) + alpha_hat * distances
-                            received_levels = o_impacts - transmission_loss
-                            max_rl = np.max(received_levels)
-                            
-                            if max_rl > operational_threshold:
-                                operational_points.append({
-                                    "position": [float(lon), float(lat)],
-                                    "level": float(max_rl),
-                                    "type": "operational"
-                                })
-                
+                for t in operational_turbines:
+                    # Operational noise is low (~145 dB); use a fixed visual
+                    # indicator radius rather than physics-based (which would
+                    # be < 2m at 140 dB threshold)
+                    operational_points.append({
+                        "position": t['position'],
+                        "level": float(OPERATIONAL_NOISE_LEVEL),
+                        "radius": 500.0,
+                        "type": "operational"
+                    })
+
                 _noise_data_cache = {
                     "construction": construction_points,
                     "operational": operational_points
                 }
                 _noise_scenario_name = turbine_scenario
                 _noise_tick = current_tick
-                logger.debug("Noise calculated: %d construction cells, %d operational cells",
-                             len(construction_points), len(operational_points))
-
+                logger.debug("Noise: %d construction (r=%.0fm), %d operational (r=500m indicator)",
+                             len(construction_points), 10**((234-deter_threshold)/beta_hat), len(operational_points))
+                
             except Exception as e:
                 logger.error("Error calculating noise propagation: %s", e, exc_info=True)
                 _noise_data_cache = {"construction": [], "operational": []}
@@ -2066,351 +1958,217 @@ def server(input, output, session):
         the scatter layer is updated via deckgl.setProps().
         """
         import json
-        
-        map_counter = state.map_update_counter()  # Depend on counter for updates
-        sim = state.simulation()
-        
-        # Check if live map is disabled during running simulation
-        is_running = state.running()
+
         try:
-            live_map_enabled = input.enable_live_map()
-        except Exception:
-            live_map_enabled = True
-        if is_running and not live_map_enabled:
-            return ui.div()  # Skip map update
-        
-        # Get landscape-specific bounds
-        landscape_name = state.landscape_loaded_name() if state.landscape_loaded_name() else input.landscape()
-        bounds = LANDSCAPE_BOUNDS.get(landscape_name, DEFAULT_BOUNDS)
-        lat_min, lat_max, lon_min, lon_max = bounds
-        
-        points_data = []
-        
-        if sim is not None:
-            # Use population_manager for vectorized access with heading and age
-            if hasattr(sim, 'population_manager'):
-                pm = sim.population_manager
-                if hasattr(pm, 'x') and hasattr(pm, 'y') and hasattr(pm, 'active_mask'):
-                    active = pm.active_mask
-                    n_active = int(np.sum(active))
+            map_counter = state.map_update_counter()
+            sim = state.simulation()
 
-                    if n_active > 0:
-                        # Get actual grid dimensions
-                        if hasattr(sim, 'cell_data') and sim.cell_data is not None:
-                            world_width = sim.cell_data.width
-                            world_height = sim.cell_data.height
-                        elif hasattr(sim, '_cell_data') and sim._cell_data is not None:
-                            world_width = sim._cell_data.width
-                            world_height = sim._cell_data.height
-                        else:
-                            world_width = getattr(sim.params, 'world_width', 400)
-                            world_height = getattr(sim.params, 'world_height', 400)
+            from ..ui.sidebar import LANDSCAPE_BOUNDS
+            landscape_name = state.landscape_loaded_name() or input.landscape()
+            bounds = LANDSCAPE_BOUNDS.get(landscape_name, (53.27, 54.79, 4.83, 7.13))
+            lat_min, lat_max, lon_min, lon_max = bounds
 
-                        # Get active agent data (limit to 2000 for performance)
-                        active_indices = np.where(active)[0][:2000]
-                        x_vals = pm.x[active_indices]
-                        y_vals = pm.y[active_indices]
-                        headings = pm.heading[active_indices] if hasattr(pm, 'heading') else np.zeros(len(active_indices))
-                        ages = pm.age[active_indices] if hasattr(pm, 'age') else np.zeros(len(active_indices))
+            points_data = []
 
-                        # Vectorized coordinate conversion
-                        # DEPONS convention: y=0 is SOUTH (low lat), y=max is NORTH (high lat)
-                        lats = lat_min + (y_vals / world_height) * (lat_max - lat_min)
-                        lons = lon_min + (x_vals / world_width) * (lon_max - lon_min)
+            if sim is not None:
+                # Helper to get world dimensions
+                def _world_dims():
+                    if hasattr(sim, 'cell_data') and sim.cell_data is not None:
+                        return sim.cell_data.width, sim.cell_data.height
+                    if hasattr(sim, '_cell_data') and sim._cell_data is not None:
+                        return sim._cell_data.width, sim._cell_data.height
+                    return getattr(sim.params, 'world_width', 400), getattr(sim.params, 'world_height', 400)
 
-                        # Debug: show porpoise grid and latlon ranges (only first time)
-                        if map_counter <= 1:
-                            logger.debug("Porpoise grid: x=[%.1f-%.1f], y=[%.1f-%.1f]",
-                                         x_vals.min(), x_vals.max(), y_vals.min(), y_vals.max())
-                            logger.debug("Porpoise latlon: lat=[%.4f-%.4f], lon=[%.4f-%.4f]",
-                                         lats.min(), lats.max(), lons.min(), lons.max())
-                            logger.debug("World size: %dx%d, lat bounds: %.4f-%.4f, lon bounds: %.4f-%.4f",
-                                         world_width, world_height, lat_min, lat_max, lon_min, lon_max)
+                if hasattr(sim, 'agents_df'):
+                    df = sim.agents_df
+                    if not df.empty:
+                        df_plot = df.head(1000)
+                        world_width, world_height = _world_dims()
 
-                        # Build points data with heading and age
-                        for lat, lon, heading, age in zip(lats, lons, headings, ages):
+                        lats = lat_min + (df_plot['y'] / world_height) * (lat_max - lat_min)
+                        lons = lon_min + (df_plot['x'] / world_width) * (lon_max - lon_min)
+
+                        cols = set(df_plot.columns)
+                        for i, (lat, lon) in enumerate(zip(lats, lons)):
+                            row = df_plot.iloc[i]
                             points_data.append({
                                 "position": [float(lon), float(lat)],
-                                "heading": float(heading),
-                                "age": float(age)
+                                "radius": 400,
+                                "age": int(row['age']) if 'age' in cols else 0,
+                                "heading": float(row['heading']) if 'heading' in cols else 0.0,
+                                "energy": float(row['energy']) if 'energy' in cols else 0.0,
+                                "is_disturbed": bool(row['is_disturbed']) if 'is_disturbed' in cols else False,
+                                "behavioral_state": int(row['behavioral_state']) if 'behavioral_state' in cols else 1,
+                                "depth": float(row['depth']) if 'depth' in cols else 20.0,
+                            })
+                elif hasattr(sim, '_porpoises') and sim._porpoises:
+                    world_width, world_height = _world_dims()
+                    for p in sim._porpoises[:1000]:
+                        if hasattr(p, 'alive') and p.alive:
+                            lat = lat_min + (p.y / world_height) * (lat_max - lat_min)
+                            lon = lon_min + (p.x / world_width) * (lon_max - lon_min)
+                            points_data.append({
+                                "position": [lon, lat],
+                                "radius": 400,
+                                "age": getattr(p, 'age', 0),
+                                "heading": getattr(p, 'heading', 0.0),
+                                "energy": getattr(p, 'energy', 0.0),
+                                "is_disturbed": (getattr(p, 'deter_strength', 0.0) > 0.1),
+                                "behavioral_state": getattr(p, 'behavioral_state', 1),
                             })
 
-            # Fallback to DataFrame access
-            elif hasattr(sim, 'agents_df'):
-                df = sim.agents_df
-                if not df.empty:
-                    # Limit to 2000 for plotting performance
-                    df_plot = df.head(2000)
-
-                    # Get actual grid dimensions from landscape (via cell_data property)
-                    if hasattr(sim, 'cell_data') and sim.cell_data is not None:
-                        world_width = sim.cell_data.width
-                        world_height = sim.cell_data.height
-                    elif hasattr(sim, '_cell_data') and sim._cell_data is not None:
-                        world_width = sim._cell_data.width
-                        world_height = sim._cell_data.height
-                    else:
-                        world_width = getattr(sim.params, 'world_width', 400)
-                        world_height = getattr(sim.params, 'world_height', 400)
-
-                    # Vectorized coordinate conversion
-                    lats = lat_min + (df_plot['y'] / world_height) * (lat_max - lat_min)
-                    lons = lon_min + (df_plot['x'] / world_width) * (lon_max - lon_min)
-
-                    # Get heading and age if available
-                    headings = df_plot['heading'].values if 'heading' in df_plot.columns else np.zeros(len(df_plot))
-                    ages = df_plot['age'].values if 'age' in df_plot.columns else np.zeros(len(df_plot))
-
-                    for lat, lon, heading, age in zip(lats, lons, headings, ages):
-                        points_data.append({
-                            "position": [float(lon), float(lat)],
-                            "heading": float(heading),
-                            "age": float(age)
-                        })
-
-            elif hasattr(sim, '_porpoises') and sim._porpoises:
-                # Fallback for legacy
-                if hasattr(sim, 'cell_data') and sim.cell_data is not None:
-                    world_width = sim.cell_data.width
-                    world_height = sim.cell_data.height
-                elif hasattr(sim, '_cell_data') and sim._cell_data is not None:
-                    world_width = sim._cell_data.width
-                    world_height = sim._cell_data.height
-                else:
-                    world_width = getattr(sim.params, 'world_width', 400)
-                    world_height = getattr(sim.params, 'world_height', 400)
-
-                for p in sim._porpoises[:2000]:
-                    if hasattr(p, 'alive') and p.alive:
-                        # DEPONS convention: y=0 is SOUTH (low lat)
-                        lat = lat_min + (p.y / world_height) * (lat_max - lat_min)
-                        lon = lon_min + (p.x / world_width) * (lon_max - lon_min)
-                        heading = getattr(p, 'heading', 0)
-                        age = getattr(p, 'age', 5)
-                        points_data.append({
-                            "position": [lon, lat],
-                            "heading": float(heading),
-                            "age": float(age)
-                        })
-        
-        points_json = json.dumps(points_data)
-        
-        # Return a script that sends data to the iframe via postMessage
-        # This is the DEPONS pattern - update only the overlay, not the whole map
-        js_code = f'''
-        <script>
-            (function() {{
-                var iframe = document.getElementById('porpoise-map-frame');
-                if (iframe && iframe.contentWindow) {{
-                    var data = {points_json};
-                    iframe.contentWindow.postMessage({{
-                        type: 'updatePorpoises',
-                        data: data
-                    }}, '*');
-                }}
-            }})();
-        </script>
-        '''
-        return ui.HTML(js_code)
+            points_json = json.dumps(points_data)
+            js_code = f'''
+            <script>
+                (function() {{
+                    var iframe = document.getElementById('porpoise-map-frame');
+                    if (iframe && iframe.contentWindow) {{
+                        iframe.contentWindow.postMessage({{
+                            type: 'updatePorpoises',
+                            data: {points_json}
+                        }}, '*');
+                    }}
+                }})();
+            </script>
+            '''
+            return ui.HTML(js_code)
+        except Exception as e:
+            logger.error("porpoise_data_updater error: %s", e, exc_info=True)
+            return ui.div()
     
     # =========================================================================
     # Population Tab Renderers
     # =========================================================================
     
-    # Histogram throttling: only update every HISTOGRAM_THROTTLE_TICKS to reduce CPU
-    HISTOGRAM_THROTTLE_TICKS = 96  # ~2 days in simulation time
-    _histogram_cache: dict = {}  # {name: (last_tick, html_result)}
-    
     @render.ui
     def age_histogram():
-        """Age distribution histogram with throttling."""
-        # Check if live charts are disabled during running simulation
-        is_running = state.running()
+        """Age distribution histogram."""
         try:
-            live_charts_enabled = input.enable_live_charts()
-        except Exception:
-            live_charts_enabled = True
-        if is_running and not live_charts_enabled:
-            return no_data_placeholder("Live charts paused. Enable to see updates.")
-        
-        # React to population history to update during simulation
-        history = state.population_history()
-        current_tick = history[-1]['tick'] if history else 0
-        
-        sim = state.simulation()
-        if sim is None:
-            return no_data_placeholder("Run simulation to see age distribution.")
-        
-        # Check throttle cache
-        cache_entry = _histogram_cache.get('age')
-        if cache_entry is not None and current_tick > 0:
-            last_tick, cached_html = cache_entry
-            if abs(current_tick - last_tick) < HISTOGRAM_THROTTLE_TICKS:
-                return cached_html
-        
-        # Use population_manager directly for vectorized access
-        if hasattr(sim, 'population_manager'):
-            pm = sim.population_manager
-            if hasattr(pm, 'age') and hasattr(pm, 'active_mask'):
-                active = pm.active_mask
-                if np.any(active):
-                    ages = pm.age[active].tolist()
-                else:
-                    return no_data_placeholder("No active porpoises.")
-            else:
+            _ = state.population_history()
+            sim = state.simulation()
+            if sim is None:
+                return no_data_placeholder("Run simulation to see age distribution.")
+
+            ages = []
+            if hasattr(sim, 'population_manager') and sim.population_manager is not None:
+                pm = sim.population_manager
+                if hasattr(pm, 'age') and hasattr(pm, 'active_mask'):
+                    active = pm.active_mask
+                    if np.any(active):
+                        ages = pm.age[active].tolist()
+            elif hasattr(sim, 'agents_df'):
+                df = sim.agents_df
+                if not df.empty and 'age' in df.columns:
+                    ages = df['age'].tolist()
+
+            if not ages:
                 return no_data_placeholder("No age data available.")
-        elif hasattr(sim, 'agents_df'):
-            df = sim.agents_df
-            if df.empty:
-                return no_data_placeholder("No age data.")
-            ages = df['age'].tolist()
-        else:
-            agents_list = list(sim.agents) if sim.agents else []
-            ages = [a.age for a in agents_list if hasattr(a, 'age')]
-        
-        if not ages:
-            return no_data_placeholder("No age data.")
-        
-        result = create_histogram_chart(
-            data=ages,
-            title='Porpoise Age Distribution',
-            x_title='Age (years)',
-            y_title='Count',
-            x_range=(0, 30),
-            nbins=30,
-            color='red',
-            height=300
-        )
-        _histogram_cache['age'] = (current_tick, result)
-        return result
+
+            return create_histogram_chart(
+                data=ages,
+                title='Porpoise Age Distribution',
+                x_title='Age (years)',
+                y_title='Count',
+                x_range=(0, 30),
+                nbins=30,
+                color='red',
+                height=300
+            )
+        except Exception as e:
+            logger.error("age_histogram error: %s", e, exc_info=True)
+            return no_data_placeholder("Error rendering age histogram.")
     
     @render.ui
     def energy_histogram():
-        """Energy level histogram with throttling."""
-        # Check if live charts are disabled during running simulation
-        is_running = state.running()
+        """Energy level histogram."""
         try:
-            live_charts_enabled = input.enable_live_charts()
-        except Exception:
-            live_charts_enabled = True
-        if is_running and not live_charts_enabled:
-            return no_data_placeholder("Live charts paused. Enable to see updates.")
-        
-        # React to population history to update during simulation
-        history = state.population_history()
-        current_tick = history[-1]['tick'] if history else 0
-        
-        sim = state.simulation()
-        if sim is None:
-            return no_data_placeholder("Run simulation to see energy distribution.")
-        
-        # Check throttle cache
-        cache_entry = _histogram_cache.get('energy')
-        if cache_entry is not None and current_tick > 0:
-            last_tick, cached_html = cache_entry
-            if abs(current_tick - last_tick) < HISTOGRAM_THROTTLE_TICKS:
-                return cached_html
-        
-        # Use population_manager directly for vectorized access
-        if hasattr(sim, 'population_manager'):
-            pm = sim.population_manager
-            if hasattr(pm, 'energy') and hasattr(pm, 'active_mask'):
-                active = pm.active_mask
-                if np.any(active):
-                    energies = pm.energy[active].tolist()
-                else:
-                    return no_data_placeholder("No active porpoises.")
-            else:
+            _ = state.population_history()
+            sim = state.simulation()
+            if sim is None:
+                return no_data_placeholder("Run simulation to see energy distribution.")
+
+            energies = []
+            if hasattr(sim, 'population_manager') and sim.population_manager is not None:
+                pm = sim.population_manager
+                if hasattr(pm, 'energy') and hasattr(pm, 'active_mask'):
+                    active = pm.active_mask
+                    if np.any(active):
+                        energies = pm.energy[active].tolist()
+            elif hasattr(sim, 'agents_df'):
+                df = sim.agents_df
+                if not df.empty and 'energy' in df.columns:
+                    energies = df['energy'].tolist()
+
+            if not energies:
                 return no_data_placeholder("No energy data available.")
-        elif hasattr(sim, 'agents_df'):
-            df = sim.agents_df
-            if df.empty:
-                return no_data_placeholder("No energy data.")
-            energies = df['energy'].tolist()
-        else:
-            agents_list = list(sim.agents) if sim.agents else []
-            energies = [getattr(a, 'energy_level', 0) for a in agents_list]
-        
-        if not energies:
-            return no_data_placeholder("No energy data.")
-        
-        result = create_histogram_chart(
-            data=energies,
-            title='Energy Level Distribution',
-            x_title='Energy',
-            y_title='Porpoise Count',
-            x_range=(0, 20),
-            nbins=20,
-            color='red',
-            height=300
-        )
-        _histogram_cache['energy'] = (current_tick, result)
-        return result
+
+            return create_histogram_chart(
+                data=energies,
+                title='Energy Level Distribution',
+                x_title='Energy',
+                y_title='Porpoise Count',
+                x_range=(0, 20),
+                nbins=20,
+                color='red',
+                height=300
+            )
+        except Exception as e:
+            logger.error("energy_histogram error: %s", e, exc_info=True)
+            return no_data_placeholder("Error rendering energy histogram.")
     
     @render.ui
     def landscape_energy_plot():
         """Landscape energy level over time - uses avg porpoise energy as proxy."""
-        # Check if live charts are disabled during running simulation
-        is_running = state.running()
         try:
-            live_charts_enabled = input.enable_live_charts()
-        except Exception:
-            live_charts_enabled = True
-        if is_running and not live_charts_enabled:
-            return no_data_placeholder("Live charts paused. Enable to see updates.")
-        
-        history = state.energy_history()
-        if not history:
-            return no_data_placeholder("Run simulation to see energy trends.")
-        
-        df = get_cached_df('landscape_energy', history)
-        # Use avg_food_eaten as landscape energy proxy
-        if 'avg_food_eaten' not in df.columns:
-            return no_data_placeholder("No landscape energy data.")
-        
-        return create_time_series_chart(
-            df=df,
-            x_col='day',
-            y_cols=['avg_food_eaten'],
-            colors=['blue'],
-            names=['Avg Porpoise Energy'],
-            title='Average Porpoise Energy Level',
-            x_title='Day',
-            y_title='Energy',
-            height=300
-        )
+            history = state.energy_history()
+            if not history:
+                return no_data_placeholder("Run simulation to see energy trends.")
+
+            df = pd.DataFrame(history)
+            if 'avg_food_eaten' not in df.columns:
+                return no_data_placeholder("No landscape energy data.")
+
+            return create_time_series_chart(
+                df=df,
+                x_col='day',
+                y_cols=['avg_food_eaten'],
+                colors=['blue'],
+                names=['Avg Porpoise Energy'],
+                title='Average Porpoise Energy Level',
+                x_title='Day',
+                y_title='Energy',
+                height=300
+            )
+        except Exception as e:
+            logger.error("landscape_energy_plot error: %s", e, exc_info=True)
+            return no_data_placeholder("Error rendering energy data.")
     
     @render.ui
     def movement_plot():
         """Average porpoise movement chart - uses dispersal data."""
-        # Check if live charts are disabled during running simulation
-        is_running = state.running()
         try:
-            live_charts_enabled = input.enable_live_charts()
-        except Exception:
-            live_charts_enabled = True
-        if is_running and not live_charts_enabled:
-            return no_data_placeholder("Live charts paused. Enable to see updates.")
-        
-        history = state.dispersal_history()
-        if not history:
-            return no_data_placeholder("Run simulation to see movement data.")
-        
-        df = get_cached_df('movement', history)
-        if 'dispersing_count' not in df.columns:
-            return no_data_placeholder("No movement data available.")
-        
-        return create_time_series_chart(
-            df=df,
-            x_col='day',
-            y_cols=['dispersing_count'],
-            colors=['blue'],
-            names=['Dispersing Porpoises'],
-            title='Porpoise Dispersal Activity',
-            x_title='Day',
-            y_title='Count',
-            height=300
-        )
+            history = state.dispersal_history()
+            if not history:
+                return no_data_placeholder("Run simulation to see movement data.")
+
+            df = pd.DataFrame(history)
+            if 'dispersing_count' not in df.columns:
+                return no_data_placeholder("No movement data available.")
+
+            return create_time_series_chart(
+                df=df,
+                x_col='day',
+                y_cols=['dispersing_count'],
+                colors=['blue'],
+                names=['Dispersing Porpoises'],
+                title='Porpoise Dispersal Activity',
+                x_title='Day',
+                y_title='Count',
+                height=300
+            )
+        except Exception as e:
+            logger.error("movement_plot error: %s", e, exc_info=True)
+            return no_data_placeholder("Error rendering movement data.")
     
     @render.data_frame
     def vital_stats_table():
@@ -2448,56 +2206,138 @@ def server(input, output, session):
     @render.ui
     def dispersal_plot():
         """Porpoise Dispersal chart."""
-        history = state.dispersal_history()
-        if not history:
-            return no_data_placeholder("No dispersal data yet. Run simulation to see results.")
-        
-        df = get_cached_df('dispersal', history)
-        # Use actual columns from dispersal_entry
-        return create_time_series_chart(
-            df=df,
-            x_col='day',
-            y_cols=['dispersing_count', 'max_declining_days'],
-            colors=['blue', 'orange'],
-            names=['Dispersing Porpoises', 'Max Declining Days'],
-            title='Porpoise Dispersal Behavior',
-            x_title='Day',
-            y_title='Count',
-            height=350
-        )
+        try:
+            history = state.dispersal_history()
+            if not history:
+                return no_data_placeholder("No dispersal data yet. Run simulation to see results.")
+
+            df = pd.DataFrame(history)
+            return create_time_series_chart(
+                df=df,
+                x_col='day',
+                y_cols=['dispersing_count', 'max_declining_days'],
+                colors=['blue', 'orange'],
+                names=['Dispersing Porpoises', 'Max Declining Days'],
+                title='Porpoise Dispersal Behavior',
+                x_title='Day',
+                y_title='Count',
+                height=350
+            )
+        except Exception as e:
+            logger.error("dispersal_plot error: %s", e, exc_info=True)
+            return no_data_placeholder("Error rendering dispersal data.")
     
     @render.ui
     def deterrence_plot():
         """Deterrence events display."""
-        # Use population history which includes deterred_count
-        history = state.population_history()
-        if not history:
-            return no_data_placeholder("Deterrence data will appear when simulation runs with turbines/ships.")
-        
-        # Extract deterred counts from history
-        deterred_data = [{'day': h['day'], 'deterred': h.get('deterred_count', 0)} for h in history]
-        df = pd.DataFrame(deterred_data)
-        
-        # Check if any deterrence occurred
-        if df['deterred'].sum() == 0:
-            return no_data_placeholder("No deterrence events detected. Enable turbines or ships.")
-        
-        return create_time_series_chart(
-            df=df,
-            x_col='day',
-            y_cols=['deterred'],
-            colors=['red'],
-            names=['Deterred Porpoises'],
-            title='Deterrence Events Over Time',
-            x_title='Day',
-            y_title='# Deterred',
-            height=350
-        )
+        try:
+            history = state.population_history()
+            if not history:
+                return no_data_placeholder("Deterrence data will appear when simulation runs with turbines/ships.")
+
+            deterred_data = [{'day': h['day'], 'deterred': h.get('deterred_count', 0)} for h in history]
+            df = pd.DataFrame(deterred_data)
+
+            if df['deterred'].sum() == 0:
+                return no_data_placeholder("No deterrence events detected. Enable turbines or ships.")
+
+            return create_time_series_chart(
+                df=df,
+                x_col='day',
+                y_cols=['deterred'],
+                colors=['red'],
+                names=['Deterred Porpoises'],
+                title='Deterrence Events Over Time',
+                x_title='Day',
+                y_title='# Deterred',
+                height=350
+            )
+        except Exception as e:
+            logger.error("deterrence_plot error: %s", e, exc_info=True)
+            return no_data_placeholder("Error rendering deterrence data.")
     
     @render.ui
     def noise_map():
-        """Noise exposure map placeholder."""
-        return no_data_placeholder("Noise exposure map will appear when disturbance sources are active.")
+        """Noise model info and exposure chart."""
+        try:
+            sim = state.simulation()
+            loaded = state.turbine_loaded_name()
+            history = state.population_history()
+
+            # --- Noise Model Parameters ---
+            if sim is not None:
+                p = sim.params
+            else:
+                p = None
+
+            beta = getattr(p, 'beta_hat', 20.0) if p else 20.0
+            alpha = getattr(p, 'alpha_hat', 0.0) if p else 0.0
+            threshold = getattr(p, 'deter_threshold', 158.0) if p else 158.0
+            coeff = getattr(p, 'deter_coeff', 0.07) if p else 0.07
+            max_dist = getattr(p, 'deter_max_distance', 50.0) if p else 50.0
+
+            # --- Turbine Info ---
+            turbine_info = ""
+            if sim is not None and hasattr(sim, '_turbine_manager'):
+                tm = sim._turbine_manager
+                n_total = len(tm.turbines)
+                if n_total > 0:
+                    impacts = [t.impact for t in tm.turbines]
+                    sl_min, sl_max = min(impacts), max(impacts)
+                    # Deterrence radius at threshold
+                    radius_m = 10 ** ((sl_max - threshold) / beta) if beta > 0 else 0
+                    sl_str = f"{sl_min:.0f}" if sl_min == sl_max else f"{sl_min:.0f}-{sl_max:.0f}"
+                    turbine_info = (
+                        f'<tr><td style="padding:2px 8px;"><b>Turbines</b></td>'
+                        f'<td style="padding:2px 8px;">{n_total} ({loaded})</td></tr>'
+                        f'<tr><td style="padding:2px 8px;"><b>Source Level (SL)</b></td>'
+                        f'<td style="padding:2px 8px;">{sl_str} dB re 1\u00b5Pa @ 1m</td></tr>'
+                        f'<tr><td style="padding:2px 8px;"><b>Deterrence Radius</b></td>'
+                        f'<td style="padding:2px 8px;">{radius_m/1000:.1f} km (where RL = {threshold:.0f} dB)</td></tr>'
+                    )
+            elif loaded and loaded != "off":
+                turbine_info = (
+                    f'<tr><td style="padding:2px 8px;"><b>Scenario</b></td>'
+                    f'<td style="padding:2px 8px;">{loaded} (not yet simulated)</td></tr>'
+                )
+
+            model_html = f'''
+            <div style="font-size:0.8rem; margin-bottom:8px;">
+            <b>DEPONS Noise Propagation Model</b><br>
+            <span style="font-family:monospace;">TL = \u03b2\u00b7log\u2081\u2080(r) + \u03b1\u00b7r &nbsp;&nbsp; RL = SL \u2212 TL</span>
+            <table style="margin-top:4px; font-size:0.78rem;">
+            <tr><td style="padding:2px 8px;"><b>Spreading (\u03b2)</b></td><td style="padding:2px 8px;">{beta}</td></tr>
+            <tr><td style="padding:2px 8px;"><b>Absorption (\u03b1)</b></td><td style="padding:2px 8px;">{alpha}</td></tr>
+            <tr><td style="padding:2px 8px;"><b>Deterrence Threshold</b></td><td style="padding:2px 8px;">{threshold:.0f} dB</td></tr>
+            <tr><td style="padding:2px 8px;"><b>Deterrence Coeff</b></td><td style="padding:2px 8px;">{coeff}</td></tr>
+            <tr><td style="padding:2px 8px;"><b>Max Distance</b></td><td style="padding:2px 8px;">{max_dist:.0f} km</td></tr>
+            {turbine_info}
+            </table>
+            </div>
+            '''
+
+            # --- Exposure Chart ---
+            if history:
+                data = [{'day': h['day'], 'deterred': h.get('deterred_count', 0)} for h in history]
+                df = pd.DataFrame(data)
+                if df['deterred'].sum() > 0:
+                    chart = create_time_series_chart(
+                        df=df,
+                        x_col='day',
+                        y_cols=['deterred'],
+                        colors=['#e74c3c'],
+                        names=['Porpoises Exposed to Noise'],
+                        title='Noise Exposure Over Time',
+                        x_title='Day',
+                        y_title='# Exposed',
+                        height=220
+                    )
+                    return ui.div(ui.HTML(model_html), chart)
+
+            return ui.HTML(model_html + '<p style="color:#888; font-size:0.8rem;">No noise exposure events recorded yet.</p>')
+        except Exception as e:
+            logger.error("noise_map error: %s", e, exc_info=True)
+            return no_data_placeholder("Error rendering noise data.")
     
     # =========================================================================
     # Export
@@ -2510,3 +2350,10 @@ def server(input, output, session):
             df = pd.DataFrame(history)
             return df.to_csv(index=False)
         return ""
+
+    # =========================================================================
+    # GIS Landscape Editor
+    # =========================================================================
+
+    from .renderers.gis_editor import register_gis_editor_renderers
+    register_gis_editor_renderers(input, output, session, state)

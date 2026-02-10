@@ -109,7 +109,8 @@ class Turbine(Agent):
             Received level in dB
         """
         if source_level is None:
-            source_level = self.get_source_level()
+            # In DEPONS, impact IS the source level in dB directly
+            source_level = self.impact
             
         # Calculate distance in meters
         dx = (porpoise_x - self.x) * cell_size
@@ -160,8 +161,8 @@ class Turbine(Agent):
         if distance_m < 1.0:
             distance_m = 1.0
             
-        # DEPONS formula: RL = impact - (β*log10(dist) + α*dist)
-        # Where 'impact' IS the source level (SL) in dB
+        # DEPONS formula: RL = SL - (β*log10(dist) + α*dist)
+        # In DEPONS, 'impact' IS the source level (SL) in dB directly
         transmission_loss = (
             params.beta_hat * np.log10(distance_m) +
             params.alpha_hat * distance_m
@@ -220,29 +221,36 @@ class Turbine(Agent):
             return turbines
             
         with open(filepath, 'r') as f:
-            # Skip header
-            next(f, None)
-            
+            # Read header to detect time unit
+            header = next(f, "").strip().lower()
+            # If header contains "tick.start" / "tick.end", values are in ticks.
+            # If header says just "start" / "end", values are in days → multiply by 48.
+            header_cols = header.split()
+            uses_ticks = any("tick" in col for col in header_cols)
+            day_to_tick = 1 if uses_ticks else 48
+
             for i, line in enumerate(f):
                 line = line.strip()
                 if not line:
                     continue
-                    
+
                 cols = line.split()
                 if len(cols) < 4:
                     continue
-                
+
                 name = cols[0]
                 utm_x = float(cols[1])
                 utm_y = float(cols[2])
                 impact = float(cols[3])
-                
+
                 # Convert UTM to grid coordinates
                 grid_x = (utm_x - utm_origin_x) / cell_size
                 grid_y = (utm_y - utm_origin_y) / cell_size
-                
-                start_tick = int(cols[4]) if len(cols) > 4 else 0
-                end_tick = int(cols[5]) if len(cols) > 5 else 2147483647
+
+                raw_start = int(cols[4]) if len(cols) > 4 else 0
+                raw_end = int(cols[5]) if len(cols) > 5 else 2147483647
+                start_tick = raw_start * day_to_tick
+                end_tick = raw_end * day_to_tick
                     
                 turbine = cls(
                     id=i,

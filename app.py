@@ -22,16 +22,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger("CENOP")
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent))
 # Add src directory to path to ensure cenop package is importable
 sys.path.insert(0, str(Path(__file__).parent / "src"))
+# Add parent directory to path for top-level ui/ imports
+sys.path.insert(0, str(Path(__file__).parent))
 
 from shiny import App
 
-# Import modular components
-from ui.layout import app_ui
-from server.main import server
+# Import modular components — use the canonical package paths
+from cenop.ui.layout import app_ui
+from cenop.server.main import server
 
 # Static files directory for logo and icon
 APP_DIR = Path(__file__).parent / "static"

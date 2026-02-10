@@ -15,9 +15,12 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 from typing import TYPE_CHECKING, Dict, List, Any, Optional, TextIO
 import numpy as np
 
@@ -316,10 +319,15 @@ class OutputWriter:
                 energy = pop.energy[idx]
                 age = pop.age[idx]
                 
+                # Use actual max_age from simulation parameters
+                max_age = getattr(sim.params, 'max_age', 30.0)
+                bycatch_prob = getattr(sim.params, 'bycatch_prob', 0.0)
                 if energy <= 0:
                     cause = "starvation"
-                elif age >= 24:  # Max age
+                elif age >= max_age:
                     cause = "old_age"
+                elif bycatch_prob > 0 and np.random.random() < bycatch_prob:
+                    cause = "bycatch"
                 else:
                     cause = "unknown"
                     
@@ -534,6 +542,6 @@ def run_with_output(
             
             if progress and tick % 1000 == 0:
                 pct = tick / max_ticks * 100
-                print(f"Progress: {pct:.1f}% (tick {tick}/{max_ticks})")
+                logger.info("Progress: %.1f%% (tick %d/%d)", pct, tick, max_ticks)
                 
     return writer

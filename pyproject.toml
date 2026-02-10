@@ -10,7 +10,7 @@ readme = "README.md"
 license = "GPL-2.0-only"
 requires-python = ">=3.10"
 authors = [
-    { name = "AI4WIND Project Team" }
+    { name = "Arturas Razinkovas-Baziukas", email = "arturas.razinkovas-baziukas@ku.lt" }
 ]
 keywords = ["porpoise", "agent-based-model", "simulation", "marine-ecology", "wind-farms"]
 classifiers = [
@@ -20,6 +20,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering",
 ]
 
@@ -58,7 +59,7 @@ packages = ["src/cenop"]
 
 [tool.black]
 line-length = 100
-target-version = ["py310", "py311", "py312"]
+target-version = ["py310", "py311", "py312", "py313"]
 
 [tool.ruff]
 line-length = 100

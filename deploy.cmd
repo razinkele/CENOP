@@ -1,20 +1,17 @@
 @echo off
 REM ============================================================================
-REM CENOP Deployment Script for laguna.ku.lt
+REM CENOP-JASMINE Deployment Script for laguna.ku.lt
 REM ============================================================================
-REM 
-REM This script deploys CENOP to the Shiny Server on laguna.ku.lt
+REM
+REM This script deploys CENOP-JASMINE to the Shiny Server on laguna.ku.lt
 REM User: razinka
-REM 
+REM App directory: /home/razinka/cenjas (symlinked from /srv/shiny-server/cenjas)
+REM
 REM Prerequisites:
 REM   - SSH access to laguna.ku.lt as razinka
-REM   - Python 3.10+ installed on server
-REM   - Shiny Server for Python configured
-REM
-REM Usage:
-REM   deploy.cmd                    - Full deployment
-REM   deploy.cmd --sync-only        - Only sync files (no install)
-REM   deploy.cmd --restart-only     - Only restart Shiny Server
+REM   - Git repository cloned at /home/razinka/cenjas
+REM   - Python 3.10+ with venv at /home/razinka/cenjas/venv
+REM   - Shiny Server configured with cenjas app
 REM
 REM ============================================================================
 
@@ -23,142 +20,305 @@ setlocal enabledelayedexpansion
 REM Configuration
 set SERVER=laguna.ku.lt
 set USER=razinka
-set REMOTE_PATH=/srv/shiny-server/cenop
-set LOCAL_PATH=%~dp0
-set APP_NAME=cenop
+set APP_DIR=/home/razinka/cenjas
+set SHINY_LINK=/srv/shiny-server/cenjas
+set APP_NAME=cenjas
+set BRANCH=main
 
-REM Parse arguments
-set SYNC_ONLY=0
-set RESTART_ONLY=0
-
-if "%1"=="--sync-only" set SYNC_ONLY=1
-if "%1"=="--restart-only" set RESTART_ONLY=1
-
+:menu
+cls
 echo.
 echo ============================================================
-echo   CENOP Deployment to %SERVER%
+echo   CENOP-JASMINE Deployment to %SERVER%
 echo ============================================================
 echo   User: %USER%
-echo   Remote Path: %REMOTE_PATH%
-echo   Local Path: %LOCAL_PATH%
+echo   App Directory: %APP_DIR%
+echo   Branch: %BRANCH%
+echo ============================================================
+echo.
+echo   Select an option:
+echo.
+echo   [1] Full deployment (pull, install, permissions, restart)
+echo   [2] Pull latest changes only
+echo   [3] Update dependencies only
+echo   [4] Fix permissions for shiny user only
+echo   [5] Restart Shiny Server only
+echo   [6] View server logs
+echo   [7] Check application status
+echo   [0] Exit
+echo.
 echo ============================================================
 echo.
 
-REM Check if restart only
-if %RESTART_ONLY%==1 (
-    echo [STEP] Restarting Shiny Server...
-    ssh %USER%@%SERVER% "sudo systemctl restart shiny-server"
-    if errorlevel 1 (
-        echo [ERROR] Failed to restart Shiny Server
-        exit /b 1
-    )
-    echo [OK] Shiny Server restarted successfully
-    goto :end
-)
+set /p choice="Enter your choice (0-7): "
 
-REM Step 1: Create remote directory if needed
-echo [STEP 1/6] Ensuring remote directory exists...
-ssh %USER%@%SERVER% "mkdir -p %REMOTE_PATH%"
-if errorlevel 1 (
-    echo [ERROR] Failed to create remote directory
-    exit /b 1
-)
-echo [OK] Remote directory ready
+if "%choice%"=="1" goto :full_deploy
+if "%choice%"=="2" goto :pull_only
+if "%choice%"=="3" goto :update_deps
+if "%choice%"=="4" goto :fix_permissions
+if "%choice%"=="5" goto :restart_server
+if "%choice%"=="6" goto :view_logs
+if "%choice%"=="7" goto :check_status
+if "%choice%"=="0" goto :exit
 
-REM Step 2: Sync application files using rsync (via SSH)
 echo.
-echo [STEP 2/6] Syncing application files...
-echo   Excluding: __pycache__, .git, .pytest_cache, output/, *.pyc
+echo [ERROR] Invalid choice. Please enter a number between 0 and 7.
+pause
+goto :menu
 
-REM Using scp for Windows (or rsync if available via WSL/Git Bash)
-REM Option A: Using rsync via Git Bash or WSL
-where rsync >nul 2>&1
-if %errorlevel%==0 (
-    rsync -avz --delete ^
-        --exclude "__pycache__" ^
-        --exclude "*.pyc" ^
-        --exclude ".git" ^
-        --exclude ".pytest_cache" ^
-        --exclude "output" ^
-        --exclude ".venv" ^
-        --exclude "*.egg-info" ^
-        "%LOCAL_PATH%" %USER%@%SERVER%:%REMOTE_PATH%/
-) else (
-    echo   [INFO] rsync not found, using scp instead
-    echo   [INFO] For better sync, install Git Bash or use WSL
-    
-    REM Create a temporary exclude list and use scp
-    scp -r "%LOCAL_PATH%app.py" %USER%@%SERVER%:%REMOTE_PATH%/
-    scp -r "%LOCAL_PATH%requirements.txt" %USER%@%SERVER%:%REMOTE_PATH%/
-    scp -r "%LOCAL_PATH%pyproject.toml" %USER%@%SERVER%:%REMOTE_PATH%/
-    scp -r "%LOCAL_PATH%src" %USER%@%SERVER%:%REMOTE_PATH%/
-    scp -r "%LOCAL_PATH%server" %USER%@%SERVER%:%REMOTE_PATH%/
-    scp -r "%LOCAL_PATH%ui" %USER%@%SERVER%:%REMOTE_PATH%/
-    scp -r "%LOCAL_PATH%static" %USER%@%SERVER%:%REMOTE_PATH%/
-    scp -r "%LOCAL_PATH%data" %USER%@%SERVER%:%REMOTE_PATH%/
-)
-
-if errorlevel 1 (
-    echo [ERROR] Failed to sync files
-    exit /b 1
-)
-echo [OK] Files synced
-
-if %SYNC_ONLY%==1 (
-    echo.
-    echo [DONE] Sync-only mode complete
-    goto :end
-)
-
-REM Step 3: Create/update virtual environment
+REM ============================================================================
+REM Option 1: Full Deployment
+REM ============================================================================
+:full_deploy
+cls
 echo.
-echo [STEP 3/6] Setting up Python virtual environment...
-ssh %USER%@%SERVER% "cd %REMOTE_PATH% && python3 -m venv .venv"
-if errorlevel 1 (
-    echo [ERROR] Failed to create virtual environment
-    exit /b 1
-)
-echo [OK] Virtual environment ready
-
-REM Step 4: Install dependencies
+echo ============================================================
+echo   Full Deployment
+echo ============================================================
 echo.
-echo [STEP 4/6] Installing Python dependencies...
-ssh %USER%@%SERVER% "cd %REMOTE_PATH% && source .venv/bin/activate && pip install --upgrade pip && pip install -r requirements.txt"
-if errorlevel 1 (
-    echo [ERROR] Failed to install dependencies
-    exit /b 1
-)
-echo [OK] Dependencies installed
 
-REM Step 5: Install CENOP package in development mode
-echo.
-echo [STEP 5/6] Installing CENOP package...
-ssh %USER%@%SERVER% "cd %REMOTE_PATH% && source .venv/bin/activate && pip install -e ."
-if errorlevel 1 (
-    echo [ERROR] Failed to install CENOP package
-    exit /b 1
-)
-echo [OK] CENOP package installed
+call :check_ssh
+if %ERRORLEVEL% neq 0 goto :menu
 
-REM Step 6: Restart Shiny Server
+echo [STEP 1/5] Pulling latest changes from %BRANCH%...
+ssh %USER%@%SERVER% "cd %APP_DIR% && git fetch origin && git reset --hard origin/%BRANCH%"
+if errorlevel 1 (
+    echo [ERROR] Failed to pull changes
+    pause
+    goto :menu
+)
+echo [OK] Repository updated
 echo.
-echo [STEP 6/6] Restarting Shiny Server...
+
+echo [STEP 2/5] Updating Python dependencies...
+ssh %USER%@%SERVER% "cd %APP_DIR% && source venv/bin/activate && pip install -r requirements.txt --quiet"
+if errorlevel 1 (
+    echo [WARNING] Failed to update dependencies, continuing...
+)
+echo [OK] Dependencies updated
+echo.
+
+echo [STEP 3/5] Installing CENOP-JASMINE package...
+ssh %USER%@%SERVER% "cd %APP_DIR% && source venv/bin/activate && pip install -e . --quiet"
+if errorlevel 1 (
+    echo [WARNING] Failed to install package, continuing...
+)
+echo [OK] Package installed
+echo.
+
+echo [STEP 4/5] Setting permissions for shiny user...
+call :do_permissions
+echo.
+
+echo [STEP 5/5] Restarting Shiny Server...
 ssh %USER%@%SERVER% "sudo systemctl restart shiny-server"
 if errorlevel 1 (
-    echo [WARNING] Could not restart Shiny Server (may need sudo privileges)
-    echo [INFO] Please restart manually: sudo systemctl restart shiny-server
+    echo [WARNING] Could not restart Shiny Server
 ) else (
     echo [OK] Shiny Server restarted
 )
 
-:end
 echo.
 echo ============================================================
 echo   Deployment Complete!
-echo ============================================================
 echo   Application URL: https://%SERVER%/%APP_NAME%/
-echo   Server logs: /var/log/shiny-server/
+echo ============================================================
+echo.
+pause
+goto :menu
+
+REM ============================================================================
+REM Option 2: Pull Only
+REM ============================================================================
+:pull_only
+cls
+echo.
+echo ============================================================
+echo   Pull Latest Changes
 echo ============================================================
 echo.
 
+call :check_ssh
+if %ERRORLEVEL% neq 0 goto :menu
+
+echo Pulling latest changes from %BRANCH%...
+ssh %USER%@%SERVER% "cd %APP_DIR% && git fetch origin && git reset --hard origin/%BRANCH%"
+if errorlevel 1 (
+    echo [ERROR] Failed to pull changes
+) else (
+    echo [OK] Repository updated successfully
+)
+echo.
+pause
+goto :menu
+
+REM ============================================================================
+REM Option 3: Update Dependencies
+REM ============================================================================
+:update_deps
+cls
+echo.
+echo ============================================================
+echo   Update Dependencies
+echo ============================================================
+echo.
+
+call :check_ssh
+if %ERRORLEVEL% neq 0 goto :menu
+
+echo Updating Python dependencies...
+ssh %USER%@%SERVER% "cd %APP_DIR% && source venv/bin/activate && pip install -r requirements.txt"
+if errorlevel 1 (
+    echo [ERROR] Failed to update dependencies
+) else (
+    echo [OK] Dependencies updated
+)
+echo.
+
+echo Installing CENOP-JASMINE package...
+ssh %USER%@%SERVER% "cd %APP_DIR% && source venv/bin/activate && pip install -e ."
+if errorlevel 1 (
+    echo [ERROR] Failed to install package
+) else (
+    echo [OK] Package installed
+)
+echo.
+pause
+goto :menu
+
+REM ============================================================================
+REM Option 4: Fix Permissions
+REM ============================================================================
+:fix_permissions
+cls
+echo.
+echo ============================================================
+echo   Fix Permissions for Shiny User
+echo ============================================================
+echo.
+
+call :check_ssh
+if %ERRORLEVEL% neq 0 goto :menu
+
+call :do_permissions
+echo.
+pause
+goto :menu
+
+REM ============================================================================
+REM Option 5: Restart Server
+REM ============================================================================
+:restart_server
+cls
+echo.
+echo ============================================================
+echo   Restart Shiny Server
+echo ============================================================
+echo.
+
+call :check_ssh
+if %ERRORLEVEL% neq 0 goto :menu
+
+echo Restarting Shiny Server...
+ssh %USER%@%SERVER% "sudo systemctl restart shiny-server"
+if errorlevel 1 (
+    echo [ERROR] Failed to restart Shiny Server
+) else (
+    echo [OK] Shiny Server restarted successfully
+)
+echo.
+pause
+goto :menu
+
+REM ============================================================================
+REM Option 6: View Logs
+REM ============================================================================
+:view_logs
+cls
+echo.
+echo ============================================================
+echo   Server Logs (last 50 lines)
+echo ============================================================
+echo.
+
+call :check_ssh
+if %ERRORLEVEL% neq 0 goto :menu
+
+ssh %USER%@%SERVER% "sudo tail -50 /var/log/shiny-server.log 2>/dev/null || echo 'Could not read log file'"
+echo.
+echo ============================================================
+pause
+goto :menu
+
+REM ============================================================================
+REM Option 7: Check Status
+REM ============================================================================
+:check_status
+cls
+echo.
+echo ============================================================
+echo   Application Status
+echo ============================================================
+echo.
+
+call :check_ssh
+if %ERRORLEVEL% neq 0 goto :menu
+
+echo [Git Status]
+ssh %USER%@%SERVER% "cd %APP_DIR% && git log -1 --oneline && echo. && git status -s"
+echo.
+
+echo [Shiny Server Status]
+ssh %USER%@%SERVER% "sudo systemctl status shiny-server --no-pager -l | head -15"
+echo.
+
+echo [Symlink Check]
+ssh %USER%@%SERVER% "ls -la %SHINY_LINK%"
+echo.
+
+echo ============================================================
+pause
+goto :menu
+
+REM ============================================================================
+REM Exit
+REM ============================================================================
+:exit
+echo.
+echo Goodbye!
 endlocal
+exit /b 0
+
+REM ============================================================================
+REM Helper: Check SSH availability
+REM ============================================================================
+:check_ssh
+where ssh >nul 2>nul
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] SSH not found. Please install OpenSSH or use Git Bash.
+    pause
+    exit /b 1
+)
+exit /b 0
+
+REM ============================================================================
+REM Helper: Set permissions for shiny user
+REM ============================================================================
+:do_permissions
+echo Setting directory permissions (755)...
+ssh %USER%@%SERVER% "find %APP_DIR% -type d -exec chmod 755 {} \;"
+
+echo Setting file permissions (644)...
+ssh %USER%@%SERVER% "find %APP_DIR% -type f -exec chmod 644 {} \;"
+
+echo Setting executable permissions for venv scripts...
+ssh %USER%@%SERVER% "chmod 755 %APP_DIR%/venv/bin/*"
+
+echo Ensuring shiny user can access home directory...
+ssh %USER%@%SERVER% "chmod 755 /home/razinka"
+
+echo Verifying symlink...
+ssh %USER%@%SERVER% "ls -la %SHINY_LINK% 2>/dev/null || echo '[WARNING] Symlink not found'"
+
+echo [OK] Permissions configured for shiny user access
+exit /b 0

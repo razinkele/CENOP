@@ -441,6 +441,12 @@ class ShipManager:
             rl = source_level - tl
             str_val = rl - params.deter_threshold
             
+            # Probabilistic deterrence: match scalar path behavior
+            # Roll per-ship to decide if this ship's ping deters this tick
+            prob_response = getattr(ship, 'prob_response', 1.0)
+            if prob_response < 1.0 and np.random.random() > prob_response:
+                continue
+            
             deter_mask_local = str_val > 0
             if not np.any(deter_mask_local):
                 continue
@@ -664,8 +670,8 @@ class ShipManager:
     def load_from_json(
         self,
         json_file: str,
-        utm_origin_x: float = 3976618.0,  # DEPONS UserDefined XLLCORNER
-        utm_origin_y: float = 3363923.0,  # DEPONS UserDefined YLLCORNER
+        utm_origin_x: float = 3976618.0,  # Fallback UTM origin X
+        utm_origin_y: float = 3363923.0,  # Fallback UTM origin Y
         cell_size: float = 400.0
     ) -> None:
         """
@@ -777,4 +783,4 @@ class ShipManager:
             
             self.ships.append(ship)
             
-        print(f"[INFO] Loaded {len(self.ships)} ships with {len(routes_dict)} routes from {json_file}")
+        logger.info("Loaded %d ships with %d routes from %s", len(self.ships), len(routes_dict), json_file)

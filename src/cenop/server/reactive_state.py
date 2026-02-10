@@ -58,6 +58,9 @@ class SimulationState:
     # UI / Refresh hooks
     last_refreshed: reactive.Value = field(default_factory=lambda: reactive.Value(None))  # ISO timestamp of last refresh
     selected_preview_file: reactive.Value = field(default_factory=lambda: reactive.Value(None))  # Format: {"landscape": "name", "file": "filename"}
+
+    # GIS editor layer statistics
+    gis_stats: reactive.Value = field(default_factory=lambda: reactive.Value(None))
     
     def reset(self):
         """Reset all state to initial values."""
@@ -72,6 +75,10 @@ class SimulationState:
         self.birth_count.set(0)
         self.death_count.set(0)
         self.map_update_counter.set(0)
+        self.porpoise_positions.set([])
+        self.last_refreshed.set(None)
+        self.selected_preview_file.set(None)
+        self.gis_stats.set(None)
 
 
 def create_state() -> SimulationState:

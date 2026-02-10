@@ -842,22 +842,28 @@ def server(input, output, session):
     def start_simulation():
         """Start the simulation in a background thread."""
         nonlocal sim_thread
-        logger.debug("start_simulation() TRIGGERED")
+        logger.info("start_simulation() TRIGGERED")
         if state.running():
-            logger.debug("Already running, skipping")
+            logger.info("Already running, skipping")
             return
-        
-        logger.debug("Creating simulation from inputs...")
-        # Import simulation controller (always import fresh to avoid stale references)
-        from .simulation_controller import create_simulation_from_inputs as create_sim, SimulationRunner as Runner
-        sim = create_sim(input)
-        logger.debug("Simulation created, is_initialized=%s", sim._is_initialized)
-        sim.initialize()
-        logger.debug("Simulation initialized, pop_size=%s, max_ticks=%s", sim.population_size, sim.max_ticks)
-        
-        runner = Runner(sim)
-        logger.debug("SimulationRunner created, max_ticks=%s", runner.max_ticks)
-        
+
+        try:
+            logger.info("Creating simulation from inputs...")
+            # Import simulation controller (always import fresh to avoid stale references)
+            from .simulation_controller import create_simulation_from_inputs as create_sim, SimulationRunner as Runner
+            sim = create_sim(input)
+            logger.info("Simulation created, is_initialized=%s", sim._is_initialized)
+            sim.initialize()
+            logger.info("Simulation initialized, pop_size=%s, max_ticks=%s", sim.population_size, sim.max_ticks)
+
+            runner = Runner(sim)
+            logger.info("SimulationRunner created, max_ticks=%s", runner.max_ticks)
+        except Exception as exc:
+            logger.exception("Failed to create/initialize simulation")
+            state.progress_message.set(f"Error: {exc}")
+            ui.notification_show(f"Simulation failed: {exc}", type="error", duration=10)
+            return
+
         # Reset queue and event - use idiomatic pattern to avoid TOCTOU race
         try:
             while True:
@@ -865,7 +871,7 @@ def server(input, output, session):
         except queue.Empty:
             pass
         stop_event.clear()
-        
+
         state.simulation.set(sim)
         state.running.set(True)
         state.population_history.set([])
@@ -875,12 +881,12 @@ def server(input, output, session):
         state.death_count.set(0)
         state.progress.set(0.0)
         state.progress_message.set("Running simulation...")
-        
+
         # Update throttle from current slider value (with lock protection)
         speed_percent = input.sim_speed()
         with throttle_lock:
             throttle_value[0] = (speed_percent - 1) / 99.0  # Convert 1-100 to 0.0-1.0
-        
+
         # Update ticks per update from slider value (may not exist in UI)
         try:
             ticks_val = input.ticks_per_update()
@@ -896,7 +902,8 @@ def server(input, output, session):
             daemon=True
         )
         sim_thread.start()
-        
+        logger.info("Simulation thread started")
+
         # Start polling immediately
         reactive.invalidate_later(0.1)
     

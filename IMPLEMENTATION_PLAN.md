@@ -362,9 +362,9 @@ with OutputWriter(config) as writer:
 ### 5.3 Histograms ✅
 
 **Already implemented in:**
-- UI: `ui/tabs/population.py` - Age and energy histogram cards
-- Server: `server/main.py` - `age_histogram()` and `energy_histogram()` renderers
-- Helper: `server/renderers/chart_helpers.py` - `create_histogram_chart()` function
+- UI: `src/cenop/ui/tabs/population.py` - Age and energy histogram cards
+- Server: `src/cenop/server/main.py` - `age_histogram()` and `energy_histogram()` renderers
+- Helper: `src/cenop/server/renderers/chart_helpers.py` - `create_histogram_chart()` function
 
 ---
 
@@ -445,8 +445,8 @@ pytest tests/ -v
 ### Key Files to Understand
 
 1. **Entry Point:** `app.py` → creates Shiny app
-2. **UI Layout:** `ui/layout.py` → navbar, help modal
-3. **Server Logic:** `server/main.py` → reactive effects
+2. **UI Layout:** `src/cenop/ui/layout.py` → navbar, help modal
+3. **Server Logic:** `src/cenop/server/main.py` → reactive effects
 4. **Simulation:** `src/cenop/core/simulation.py` → main loop
 5. **Population:** `src/cenop/agents/population.py` → vectorized agents
 

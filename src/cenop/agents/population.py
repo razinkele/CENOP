@@ -140,6 +140,28 @@ class PorpoisePopulation:
         # Initialize
         self._initialize_population()
 
+        # Initialize JASMINE module states
+        self._energy_state = None
+        self._memory_state = None
+        self._movement_state = None
+        self._avoidance_result = None
+
+        if self._behavior_fsm is not None:
+            from cenop.behavior.states import BehaviorStateVector
+            self._behavior_state = BehaviorStateVector.create(count)
+
+        if self._energy_module is not None:
+            from cenop.physiology.energy_budget import EnergyState
+            self._energy_state = EnergyState.create(count, initial_energy=10.0)
+
+        if self._memory_module is not None:
+            from cenop.behavior.disturbance_memory import DisturbanceMemoryState
+            self._memory_state = DisturbanceMemoryState.create(count)
+
+        if self._movement_module is not None:
+            from cenop.movement.base import MovementState
+            self._movement_state = MovementState.create(count)
+
         # Random generator for reproducibility (per-instance)
         # Use SimulationParameters.random_seed when available
         seed = getattr(self.params, 'random_seed', None)
@@ -589,6 +611,9 @@ class PorpoisePopulation:
         - Deterrence vector application
         - Social cohesion vectors
         """
+        if self._movement_module is not None:
+            self._update_movement_jasmine(mask, deterrence_vectors, ambient_rl)
+            return
         # === Get environmental variables from landscape ===
         # DEPONS CRW uses depth and salinity to modulate movement
         if self.landscape is not None:
@@ -700,6 +725,90 @@ class PorpoisePopulation:
         self.heading[dispersing] -= self._pres_angle[dispersing]  # Remove normal turn
         self.heading[dispersing] += dampened_angle[dispersing]  # Add dampened
         self.heading[dispersing] %= 360.0
+
+    def _update_movement_jasmine(
+        self,
+        mask: np.ndarray,
+        deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]],
+        ambient_rl: Optional[np.ndarray],
+    ) -> None:
+        """
+        JASMINE movement path: delegates to movement module.
+
+        Syncs population arrays with MovementState, calls the module,
+        and writes results back to population arrays.
+        """
+        from cenop.movement.base import EnvironmentContext
+
+        # Build environment context
+        if self.landscape is not None:
+            env = EnvironmentContext.from_landscape(self.landscape, self.x, self.y)
+        else:
+            env = EnvironmentContext.create_homogeneous(self.count)
+
+        # Sync population → MovementState
+        state = self._movement_state
+        state.heading[:] = self.heading
+        state.prev_log_mov[:] = self.prev_log_mov
+        state.prev_angle[:] = self.prev_angle
+        state.is_dispersing[:] = self.is_dispersing
+
+        # Compute dispersal headings for dispersing agents
+        dispersing = mask & self.is_dispersing
+        if np.any(dispersing):
+            disp_dx = self.dispersal_target_x - self.x
+            disp_dy = self.dispersal_target_y - self.y
+            state.dispersal_heading[dispersing] = np.degrees(
+                np.arctan2(disp_dx[dispersing], disp_dy[dispersing])
+            ) % 360.0
+
+        # Extract deterrence components
+        det_dx = None
+        det_dy = None
+        if deterrence_vectors is not None:
+            det_dx, det_dy = deterrence_vectors
+
+        # Add memory-based avoidance to deterrence
+        if self._avoidance_result is not None:
+            av = self._avoidance_result
+            if det_dx is not None:
+                det_dx = det_dx + av.avoidance_dx * av.avoidance_strength
+                det_dy = det_dy + av.avoidance_dy * av.avoidance_strength
+            else:
+                strength = av.avoidance_strength
+                if np.any(strength > 0):
+                    det_dx = av.avoidance_dx * strength
+                    det_dy = av.avoidance_dy * strength
+
+        # Call movement module
+        result = self._movement_module.compute_step(
+            self.x, self.y, state, env, mask, det_dx, det_dy
+        )
+
+        # Write results back to population arrays
+        self._dx[mask] = result.dx[mask]
+        self._dy[mask] = result.dy[mask]
+        self.heading[mask] = result.new_heading[mask]
+        self._step_dist[mask] = result.step_distance[mask]
+        self.prev_angle[mask] = result.turning_angle[mask]
+
+        # Update prev_log_mov from step distance
+        safe_dist = np.maximum(result.step_distance * 4.0, 1e-6)
+        self.prev_log_mov[mask] = np.log10(safe_dist[mask])
+
+        # Deterrence tracking
+        if deterrence_vectors is not None:
+            d_dx, d_dy = deterrence_vectors
+            self.deter_strength[mask] = np.abs(d_dx[mask]) + np.abs(d_dy[mask])
+            self._was_deterred |= (self.deter_strength > 0) & mask
+        else:
+            self.deter_strength[mask] = 0.0
+
+        # Social communication & cohesion (same as DEPONS path)
+        if getattr(self.params, 'communication_enabled', False):
+            soc_dx, soc_dy = self._compute_social_vectors(mask, ambient_rl)
+            self._dx[mask] += soc_dx[mask]
+            self._dy[mask] += soc_dy[mask]
 
     def _handle_land_avoidance(self, mask: np.ndarray) -> None:
         """
@@ -873,12 +982,48 @@ class PorpoisePopulation:
         self._prev_x[mask] = self.x[mask]
         self._prev_y[mask] = self.y[mask]
 
+    def _update_behavior_fsm(self, mask: np.ndarray) -> None:
+        """Update behavioral FSM states (JASMINE)."""
+        from cenop.behavior.states import BehaviorContext
+
+        # Compute time since last disturbance
+        time_since = np.full(self.count, 9999, dtype=np.int32)
+        if self._memory_state is not None:
+            valid = self._memory_state.last_disturbance_tick >= 0
+            time_since[valid] = self._global_tick - self._memory_state.last_disturbance_tick[valid]
+
+        # Count PSM memory cells per agent
+        memory_cells = np.zeros(self.count, dtype=np.int32)
+        active_idx = np.where(mask)[0]
+        if len(active_idx) > 0:
+            memory_cells[active_idx] = np.count_nonzero(
+                self.psm_buffer[active_idx, :, :, 0], axis=(1, 2)
+            ).astype(np.int32)
+
+        context = BehaviorContext(
+            deterrence_magnitude=self.deter_strength,
+            time_since_disturbance=time_since,
+            current_energy=self.energy / 20.0,
+            energy_declining_days=self.days_declining_energy.astype(np.int32),
+            current_speed=self._step_dist,
+            memory_cell_count=memory_cells,
+            is_dispersing=self.is_dispersing,
+            dispersal_complete=(
+                self.dispersal_distance_traveled >= self.dispersal_target_distance
+            ) & self.is_dispersing,
+        )
+
+        self._behavior_fsm.update_states(self._behavior_state, context, mask)
+
     def _update_energy_dynamics(self, mask: np.ndarray) -> None:
         """
         Update energy dynamics (DEPONS Pattern).
 
         Handles food consumption, BMR, swimming cost, and PSM updates.
         """
+        if self._energy_module is not None:
+            self._update_energy_jasmine(mask)
+            return
         # Food consumption - hungry porpoises eat more
         fract_to_eat = np.clip((20.0 - self.energy) / 10.0, 0.0, 0.99)
 
@@ -910,6 +1055,114 @@ class PorpoisePopulation:
 
         # Update PSM and energy history
         self._update_psm(mask, food_gained)
+        self._update_energy_history(mask)
+        self._update_dispersal(mask)
+
+        # Clamp energy
+        np.clip(self.energy, 0, 20.0, out=self.energy)
+
+    def _update_disturbance_memory(self, mask: np.ndarray) -> None:
+        """Update disturbance memory (JASMINE)."""
+        from cenop.behavior.disturbance_memory import DisturbanceMemoryContext
+
+        is_disturbed = self.deter_strength > 0.01
+
+        # Approximate disturbance source position from deterrence vector direction
+        # Disturbance is "behind" the deterrence push — opposite direction
+        det_mag = self.deter_strength + 1e-6
+        disturbance_x = self.x.copy()
+        disturbance_y = self.y.copy()
+
+        # If we have deterrence dx/dy stored from movement, use them
+        # Otherwise approximate from deter_strength alone (use agent position)
+        disturbed_mask = is_disturbed & mask
+        if np.any(disturbed_mask):
+            disturbance_x[disturbed_mask] = self.x[disturbed_mask] - self._dx[disturbed_mask] * 5.0
+            disturbance_y[disturbed_mask] = self.y[disturbed_mask] - self._dy[disturbed_mask] * 5.0
+
+        context = DisturbanceMemoryContext(
+            is_disturbed=is_disturbed,
+            disturbance_intensity=self.deter_strength,
+            disturbance_x=disturbance_x,
+            disturbance_y=disturbance_y,
+            agent_x=self.x,
+            agent_y=self.y,
+            current_tick=self._global_tick,
+        )
+
+        self._memory_module.record_disturbance(self._memory_state, context, mask)
+        self._memory_module.decay_memory(self._memory_state, mask)
+
+        # Store avoidance result for use in next tick's movement
+        self._avoidance_result = self._memory_module.compute_avoidance(
+            self._memory_state, self.x, self.y, mask
+        )
+
+    def _update_energy_jasmine(self, mask: np.ndarray) -> None:
+        """JASMINE energy path: delegates to energy module."""
+        from cenop.physiology.energy_budget import EnergyContext
+        from cenop.behavior.states import BehaviorState
+
+        # Sync population energy → module state
+        self._energy_state.energy[:] = self.energy
+
+        # Food availability
+        fract_to_eat = np.clip((20.0 - self.energy) / 10.0, 0.0, 0.99)
+        if self.landscape is not None and hasattr(self.landscape, 'eat_food'):
+            food_available = self._eat_food_vectorized(mask, fract_to_eat)
+        else:
+            food_available = fract_to_eat * np.random.uniform(0.1, 0.5, self.count)
+
+        # Behavioral state
+        if self._behavior_state is not None:
+            behavioral_state = self._behavior_state.state.copy()
+        else:
+            behavioral_state = np.full(self.count, BehaviorState.FORAGING.value, dtype=np.int32)
+
+        current_month = self._get_current_month()
+
+        # Water temperature
+        water_temp = np.full(self.count, 10.0, dtype=np.float32)
+        if self.landscape is not None and hasattr(self.landscape, 'get_temperature'):
+            positions = np.column_stack((self.x, self.y))
+            water_temp = self.landscape.get_temperature(positions)
+
+        # Convert step_dist (cells/tick) to speed (m/s): cells * 400m/cell / 1800s/tick
+        speed_ms = self._step_dist * 400.0 / 1800.0
+
+        context = EnergyContext(
+            food_available=food_available,
+            food_quality=np.ones(self.count, dtype=np.float32),
+            current_speed=speed_ms,
+            behavioral_state=behavioral_state,
+            water_temperature=water_temp,
+            current_month=current_month,
+            is_disturbed=self.deter_strength > 0,
+            deterrence_magnitude=self.deter_strength,
+            is_lactating=self.with_calf,
+            is_pregnant=(self.days_since_mating > 0) & (self.days_since_mating < 300),
+        )
+
+        result = self._energy_module.compute_energy_update(self._energy_state, context, mask)
+        self._energy_module.apply_result(self._energy_state, result, mask)
+
+        # Sync module state → population energy
+        self.energy[:] = self._energy_state.energy
+
+        # Update distance traveled for energy module tracking
+        self._energy_state.distance_traveled[mask] = self._step_dist[mask] * 400.0  # cells → meters
+
+        # Expose per-step averages for dashboard
+        n_active = int(np.sum(mask))
+        if n_active > 0:
+            self.avg_food_gained = float(np.mean(result.energy_intake[mask]))
+            self.avg_energy_cost = float(np.mean(result.total_cost[mask]))
+        else:
+            self.avg_food_gained = 0.0
+            self.avg_energy_cost = 0.0
+
+        # PSM, energy history, and dispersal still needed
+        self._update_psm(mask, food_available)
         self._update_energy_history(mask)
         self._update_dispersal(mask)
 
@@ -1084,8 +1337,16 @@ class PorpoisePopulation:
         # 3. Apply positions
         self._apply_positions(mask)
 
+        # 3.5 Behavioral FSM update (JASMINE)
+        if self._behavior_fsm is not None:
+            self._update_behavior_fsm(mask)
+
         # 4. Energy dynamics
         self._update_energy_dynamics(mask)
+
+        # 4.5 Disturbance memory update (JASMINE)
+        if self._memory_module is not None:
+            self._update_disturbance_memory(mask)
 
         # 5. Mortality
         self._check_mortality(mask, active_before)

@@ -784,6 +784,12 @@ def create_static_pydeck_map():
             CELL_DEG_LAT = cellDegLat || 0.005;
             CELL_DEG_LON = cellDegLon || 0.005;
             depthData = data;
+            // Auto-enable depth layer so users see the actual simulation grid
+            if (!showDepthLayer && data && data.length > 0) {
+                showDepthLayer = true;
+                var toggle = document.getElementById('depth-toggle');
+                if (toggle) toggle.checked = true;
+            }
             deckgl.setProps({ layers: buildLayers() });
             console.log('Depth layer loaded:', data.length, 'cells, cellDeg:', CELL_DEG_LAT.toFixed(4), CELL_DEG_LON.toFixed(4));
         };
@@ -961,42 +967,44 @@ def dashboard_tab():
     """Create the Dashboard tab with value boxes and main visualizations."""
     return ui.nav_panel(
         "Dashboard",
-        # Compact value box styling
+        # Compact stat row styling
         ui.tags.style("""
-            .value-box { padding: 0.15rem 0.5rem !important; min-height: 0 !important; }
-            .value-box .value-box-area { padding: 0.1rem 0 !important; }
-            .value-box .value-box-title { font-size: 0.7rem !important; margin: 0 !important; }
-            .value-box .value-box-value { font-size: 0.95rem !important; line-height: 1.1 !important; }
-            .value-box .value-box-showcase { display: none !important; }
+            .stat-row { display: flex; gap: 6px; margin-bottom: 6px; }
+            .stat-chip {
+                flex: 1; text-align: center; padding: 2px 8px;
+                border-radius: 4px; font-size: 0.75rem; line-height: 1.3;
+                color: #fff;
+            }
+            .stat-chip .stat-label { font-weight: 400; opacity: 0.85; }
+            .stat-chip .stat-val { font-weight: 700; font-size: 0.85rem; }
+            .stat-pop { background: #0d6efd; }
+            .stat-year { background: #0dcaf0; color: #000; }
+            .stat-birth { background: #198754; }
+            .stat-death { background: #fd7e14; }
         """),
-        # Top row: 4 stat boxes in a single line
-        ui.layout_column_wrap(
-            ui.value_box(
-                "Population",
-                ui.output_text("current_population"),
-                theme="primary",
-                height="45px"
+        # Top row: 4 compact stat chips
+        ui.div(
+            ui.div(
+                ui.span("Population ", class_="stat-label"),
+                ui.span(ui.output_text("current_population", inline=True), class_="stat-val"),
+                class_="stat-chip stat-pop"
             ),
-            ui.value_box(
-                "Year",
-                ui.output_text("current_year"),
-                theme="info",
-                height="45px"
+            ui.div(
+                ui.span("Year ", class_="stat-label"),
+                ui.span(ui.output_text("current_year", inline=True), class_="stat-val"),
+                class_="stat-chip stat-year"
             ),
-            ui.value_box(
-                "Births",
-                ui.output_text("total_births"),
-                theme="success",
-                height="45px"
+            ui.div(
+                ui.span("Births ", class_="stat-label"),
+                ui.span(ui.output_text("total_births", inline=True), class_="stat-val"),
+                class_="stat-chip stat-birth"
             ),
-            ui.value_box(
-                "Deaths",
-                ui.output_text("total_deaths"),
-                theme="warning",
-                height="45px"
+            ui.div(
+                ui.span("Deaths ", class_="stat-label"),
+                ui.span(ui.output_text("total_deaths", inline=True), class_="stat-val"),
+                class_="stat-chip stat-death"
             ),
-            width=1/4,
-            heights_equal=True,
+            class_="stat-row"
         ),
         # Main content: map on left, charts on right
         ui.layout_columns(

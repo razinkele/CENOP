@@ -12,6 +12,7 @@ from cenop.server.renderers.chart_helpers import (
     no_data_placeholder,
     DEPONS_COLORS
 )
+from cenop.server.renderers.gis_editor import register_gis_editor_renderers
 
 __all__ = [
     "create_time_series_chart",
@@ -19,5 +20,6 @@ __all__ = [
     "create_svg_chart",
     "create_map_figure",
     "no_data_placeholder",
-    "DEPONS_COLORS"
+    "DEPONS_COLORS",
+    "register_gis_editor_renderers"
 ]

@@ -61,7 +61,7 @@ def create_sidebar():
                                  style="cursor: help; color: #0d6efd;"),
                     **{"for": "porpoise_count"}
                 ),
-                ui.input_numeric("porpoise_count", None, value=1000, min=1, max=50000, step=1),
+                ui.input_numeric("porpoise_count", None, value=100, min=1, max=50000, step=1),
                 class_="mb-2"
             ),
             ui.div(

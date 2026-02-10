@@ -11,6 +11,7 @@ from .tabs.dashboard import dashboard_tab
 from .tabs.settings import settings_tab
 from .tabs.population import population_tab
 from .tabs.disturbance import disturbance_tab
+from .tabs.landscape_editor import landscape_editor_tab
 from .tabs.export import export_tab
 
 
@@ -301,6 +302,7 @@ def create_app_ui():
         settings_tab(),
         population_tab(),
         disturbance_tab(),
+        landscape_editor_tab(),
         export_tab(),
         # Add help button to the navbar
         ui.nav_spacer(),

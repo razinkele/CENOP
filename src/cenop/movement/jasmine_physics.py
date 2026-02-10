@@ -270,6 +270,7 @@ class JASMINEPhysicsMovement(MovementModule):
 
         # Compute new acceleration at new position (simplified - same as old)
         ax_new = ax  # Would recompute with new position in full implementation
+        ay_new = ay
 
         # Full velocity update
         vx_new = vx + 0.5 * (ax + ax_new) * dt

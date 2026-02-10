@@ -519,7 +519,7 @@ class JASMINEEnergyModule(EnergyModule):
             # Cost of transport: J/m/kg × kg × m = J
             distance_m = context.current_speed[mask] * dt_seconds
             cot = self.COT_COEFFICIENT * state.body_mass[mask] * distance_m
-            energy_activity[mask] = (cot * 0.001 * activity_mult).astype(np.float32)
+            energy_activity[mask] = (cot * 0.0001 * activity_mult).astype(np.float32)
 
             # === Thermoregulation ===
             if self.use_thermal_model:

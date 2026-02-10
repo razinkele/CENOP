@@ -230,7 +230,7 @@ def create_simulation_from_inputs(input) -> Simulation:
 
     # Create modules based on effective modes
     movement_module = create_movement_module(params, effective_time_mode, effective_movement_mode)
-    behavior_fsm = create_behavior_fsm(params, effective_fsm_mode)
+    behavior_fsm = create_behavior_fsm(params, effective_time_mode)
     energy_module = create_energy_module(params, effective_energy_mode)
     memory_module = create_memory_module(params, effective_memory_mode)
 

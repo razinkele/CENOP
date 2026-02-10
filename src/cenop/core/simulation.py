@@ -606,19 +606,20 @@ class Simulation:
     def get_porpoise_positions(self) -> np.ndarray:
         """
         Get current positions and energy levels of all porpoises.
-        
+
         Returns:
             Array of shape (N, 3) with [x, y, energy] for each porpoise
         """
-        if not self._porpoises:
-            return np.empty((0, 3))
-            
-        data = np.array([
-            [p.x, p.y, p.energy_level]
-            for p in self._porpoises
-            if p.alive
-        ])
-        return data
+        if hasattr(self, 'population_manager') and self.population_manager is not None:
+            mask = self.population_manager.active_mask
+            if not np.any(mask):
+                return np.empty((0, 3))
+            return np.column_stack((
+                self.population_manager.x[mask],
+                self.population_manager.y[mask],
+                self.population_manager.energy[mask],
+            ))
+        return np.empty((0, 3))
         
     def get_population_history(self) -> Dict[str, List]:
         """Get population history as dictionary of lists."""

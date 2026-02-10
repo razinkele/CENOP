@@ -468,7 +468,7 @@ def create_static_pydeck_map():
                 data: data,
                 iconAtlas: PORPOISE_SVG,
                 iconMapping: {
-                    'porpoise': { x: 0, y: 0, width: 32, height: 32, anchorY: 16, anchorX: 16 }
+                    'porpoise': { x: 0, y: 0, width: 32, height: 32, anchorY: 16, anchorX: 16, mask: true }
                 },
                 getIcon: d => 'porpoise',
                 getPosition: d => d.position,
@@ -522,7 +522,7 @@ def create_static_pydeck_map():
                 // Pole+hub icon: hub at (24,14), pole extends downward. Anchor at hub.
                 iconAtlas: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><g fill="white"><rect x="22" y="14" width="4" height="32"/><circle cx="24" cy="14" r="3"/></g></svg>',
                 iconMapping: {
-                    'pole': { x: 0, y: 0, width: 48, height: 48, anchorY: 14, anchorX: 24 }
+                    'pole': { x: 0, y: 0, width: 48, height: 48, anchorY: 14, anchorX: 24, mask: true }
                 },
                 getIcon: d => 'pole',
                 getPosition: d => d.position,
@@ -548,7 +548,7 @@ def create_static_pydeck_map():
                 // Three blades radiating from hub at (24,14). Anchor at hub for correct rotation.
                 iconAtlas: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><g fill="white"><path d="M22 14 L24 1 L26 14 Z"/><path d="M25 15.7 L12.7 20.5 L23 12.3 Z"/><path d="M25 12.3 L35.3 20.5 L23 15.7 Z"/></g></svg>',
                 iconMapping: {
-                    'blade': { x: 0, y: 0, width: 48, height: 48, anchorY: 14, anchorX: 24 }
+                    'blade': { x: 0, y: 0, width: 48, height: 48, anchorY: 14, anchorX: 24, mask: true }
                 },
                 getIcon: d => 'blade',
                 getPosition: d => d.position,

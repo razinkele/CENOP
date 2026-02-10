@@ -10,11 +10,14 @@ JASMINE mode (flexible timestep, event-driven) via the TimeManager.
 
 from __future__ import annotations
 
+import logging
 import numpy as np
 import pandas as pd
 from typing import TYPE_CHECKING, Optional, List, Dict, Any
 from dataclasses import dataclass, field
 from tqdm import tqdm
+
+logger = logging.getLogger("CENOP")
 
 from cenop.core.time_manager import TimeManager, TimeMode
 
@@ -395,12 +398,12 @@ class Simulation:
                 )
                 if self._ship_manager.count > 0:
                     ships_loaded = True
-                    print(f"[INFO] Loaded {self._ship_manager.count} ships from {ships_path}")
+                    logger.info("Loaded %d ships from %s", self._ship_manager.count, ships_path)
                     break
         
         # Fallback: Create sample ships if no JSON file found
         if not ships_loaded:
-            print("[INFO] No ships.json found, creating sample ship route")
+            logger.info("No ships.json found, creating sample ship route")
             
             # Create a simple route across the landscape
             route = Route(

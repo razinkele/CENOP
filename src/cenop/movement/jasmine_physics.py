@@ -273,7 +273,7 @@ class JASMINEPhysicsMovement(MovementModule):
 
         # Full velocity update
         vx_new = vx + 0.5 * (ax + ax_new) * dt
-        vy_new = vy + 0.5 * (ay + ax_new) * dt
+        vy_new = vy + 0.5 * (ay + ay_new) * dt
 
         # Speed limiting
         speed_new = np.sqrt(vx_new**2 + vy_new**2)

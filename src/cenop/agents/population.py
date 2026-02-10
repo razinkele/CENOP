@@ -308,8 +308,9 @@ class PorpoisePopulation:
                         # Use query_pairs with output_type='ndarray' for maximum speed
                         # Returns (N, 2) array of indices into pos_active
                         pairs = kd_active.query_pairs(radius, output_type='ndarray')
-                    except Exception:
-                        # Fallback for older scipy versions or errors
+                    except (TypeError, ValueError) as e:
+                        # Fallback for older scipy versions that don't support output_type
+                        logger.debug("query_pairs fallback: %s", e)
                         pairs = np.array([], dtype=np.int32).reshape(0, 2)
                         
                         try:
@@ -334,7 +335,8 @@ class PorpoisePopulation:
                                             cols_fb[pair_idx] = j_local
                                             pair_idx += 1
                                 pairs = np.column_stack((rows_fb, cols_fb))
-                        except Exception:
+                        except (TypeError, ValueError) as e:
+                            logger.debug("query_ball_tree fallback: %s", e)
                             pairs = np.empty((0, 2), dtype=np.int32)
 
                     if pairs.shape[0] == 0:
@@ -432,8 +434,9 @@ class PorpoisePopulation:
                             ux_contrib_i, uy_contrib_i, ux_contrib_j, uy_contrib_j, p_i, p_j,
                             ux_total, uy_total, sw_total
                         )
-                    except Exception:
+                    except (TypeError, ValueError) as e:
                         # Fallback if numba call fails
+                        logger.debug("Numba social accumulator fallback: %s", e)
                         ux_total = np.bincount(np.concatenate([idx_i, idx_j]), weights=np.concatenate([ux_contrib_i, ux_contrib_j]), minlength=self.count)
                         uy_total = np.bincount(np.concatenate([idx_i, idx_j]), weights=np.concatenate([uy_contrib_i, uy_contrib_j]), minlength=self.count)
                         sw_total = np.bincount(np.concatenate([idx_i, idx_j]), weights=np.concatenate([p_i, p_j]), minlength=self.count)
@@ -863,8 +866,8 @@ class PorpoisePopulation:
                 alpha = float(getattr(self.params, 'communication_recompute_ema_alpha', 0.3))
                 self._disp_ema_m = alpha * mean_disp + (1.0 - alpha) * self._disp_ema_m
                 self._update_neighbor_recompute_interval(self._disp_ema_m)
-        except Exception:
-            pass
+        except (AttributeError, ValueError) as e:
+            logger.debug("Adaptive recompute interval error: %s", e)
 
         # Save positions for next tick
         self._prev_x[mask] = self.x[mask]
@@ -1168,8 +1171,9 @@ class PorpoisePopulation:
 
         try:
             accumulate_psm_updates(self.psm_buffer, idx_arr, ys_arr, xs_arr, food_arr)
-        except Exception:
-            # Fallback to np.add.at for safety
+        except (TypeError, ValueError) as e:
+            # Fallback to np.add.at if Numba accelerator unavailable
+            logger.debug("PSM accumulator fallback: %s", e)
             np.add.at(self.psm_buffer[:, :, :, 0], (active_idx, psm_y, psm_x), 1.0)
             np.add.at(self.psm_buffer[:, :, :, 1], (active_idx, psm_y, psm_x), food_gained[active_idx])
 

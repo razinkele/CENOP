@@ -783,4 +783,4 @@ class ShipManager:
             
             self.ships.append(ship)
             
-        print(f"[INFO] Loaded {len(self.ships)} ships with {len(routes_dict)} routes from {json_file}")
+        logger.info("Loaded %d ships with %d routes from %s", len(self.ships), len(routes_dict), json_file)

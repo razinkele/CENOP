@@ -326,7 +326,7 @@ class OutputWriter:
                     cause = "starvation"
                 elif age >= max_age:
                     cause = "old_age"
-                elif bycatch_prob > 0:
+                elif bycatch_prob > 0 and np.random.random() < bycatch_prob:
                     cause = "bycatch"
                 else:
                     cause = "unknown"

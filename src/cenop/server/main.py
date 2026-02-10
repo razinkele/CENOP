@@ -46,7 +46,7 @@ def run_simulation_loop(runner, result_queue, stop_event, throttle_value, thrott
         ticks_lock: Threading lock to protect ticks_per_update_value access
     """
     import time
-    print(f"[DEBUG] run_simulation_loop STARTED - max_ticks={runner.max_ticks}")
+    logger.debug("run_simulation_loop STARTED - max_ticks=%s", runner.max_ticks)
     loop_count = 0
     try:
         while not runner.is_complete and not stop_event.is_set():
@@ -65,7 +65,9 @@ def run_simulation_loop(runner, result_queue, stop_event, throttle_value, thrott
                 current_speed = throttle_value[0]
 
             if loop_count <= 5 or loop_count % 500 == 0:
-                print(f"[DEBUG] Loop #{loop_count}: tick={runner.tick}, pop={entry.get('population', '?')}, year={entry.get('year', '?')}, speed={current_speed:.2f}, ticks_per_update={current_ticks}")
+                logger.debug("Loop #%d: tick=%s, pop=%s, year=%s, speed=%.2f, ticks_per_update=%s",
+                             loop_count, runner.tick, entry.get('population', '?'),
+                             entry.get('year', '?'), current_speed, current_ticks)
 
             # Send update to main thread
             # Only include sim reference when map needs update (reduces memory pressure)
@@ -104,14 +106,11 @@ def run_simulation_loop(runner, result_queue, stop_event, throttle_value, thrott
                 time.sleep(sleep_time)
             
         if runner.is_complete:
-            print(f"[DEBUG] Simulation COMPLETE after {loop_count} iterations, years={runner.sim.state.year}")
+            logger.debug("Simulation COMPLETE after %d iterations, years=%s", loop_count, runner.sim.state.year)
             result_queue.put({"type": "complete", "years": runner.sim.state.year})
             
     except Exception as e:
-        print(f"[DEBUG] Simulation ERROR: {e}")
-        import traceback
-        traceback.print_exc()
-        logger.error(f"Simulation error: {e}", exc_info=True)
+        logger.error("Simulation error: %s", e, exc_info=True)
         result_queue.put({"type": "error", "message": str(e)})
 
 
@@ -843,21 +842,21 @@ def server(input, output, session):
     def start_simulation():
         """Start the simulation in a background thread."""
         nonlocal sim_thread
-        print("[DEBUG] start_simulation() TRIGGERED")
+        logger.debug("start_simulation() TRIGGERED")
         if state.running():
-            print("[DEBUG] Already running, skipping")
+            logger.debug("Already running, skipping")
             return
         
-        print("[DEBUG] Creating simulation from inputs...")
+        logger.debug("Creating simulation from inputs...")
         # Import simulation controller (always import fresh to avoid stale references)
         from .simulation_controller import create_simulation_from_inputs as create_sim, SimulationRunner as Runner
         sim = create_sim(input)
-        print(f"[DEBUG] Simulation created, is_initialized={sim._is_initialized}")
+        logger.debug("Simulation created, is_initialized=%s", sim._is_initialized)
         sim.initialize()
-        print(f"[DEBUG] Simulation initialized, pop_size={sim.population_size}, max_ticks={sim.max_ticks}")
+        logger.debug("Simulation initialized, pop_size=%s, max_ticks=%s", sim.population_size, sim.max_ticks)
         
         runner = Runner(sim)
-        print(f"[DEBUG] SimulationRunner created, max_ticks={runner.max_ticks}")
+        logger.debug("SimulationRunner created, max_ticks=%s", runner.max_ticks)
         
         # Reset queue and event - use idiomatic pattern to avoid TOCTOU race
         try:
@@ -909,7 +908,7 @@ def server(input, output, session):
         new_throttle = (speed_percent - 1) / 99.0  # Convert 1-100 to 0.0-1.0
         with throttle_lock:
             throttle_value[0] = new_throttle
-        print(f"[DEBUG] Speed slider changed: {speed_percent}% -> throttle={new_throttle:.3f}")
+        logger.debug("Speed slider changed: %s%% -> throttle=%.3f", speed_percent, new_throttle)
     
     @reactive.effect
     @reactive.event(input.ticks_per_update)
@@ -918,7 +917,7 @@ def server(input, output, session):
         ticks_val = input.ticks_per_update()
         with ticks_lock:
             ticks_per_update_value[0] = ticks_val
-        print(f"[DEBUG] Ticks per update changed: {ticks_val}")
+        logger.debug("Ticks per update changed: %s", ticks_val)
     
     @reactive.effect
     def poll_simulation():
@@ -967,7 +966,7 @@ def server(input, output, session):
                 if dispersal_entries_batch:
                     current_dispersal = state.dispersal_history()
                     state.dispersal_history.set(current_dispersal + dispersal_entries_batch)
-                print(f"[DEBUG] Poll: Simulation COMPLETE, final history len={len(state.population_history())}")
+                logger.debug("Poll: Simulation COMPLETE, final history len=%d", len(state.population_history()))
                 return
             
             if msg["type"] == "update":
@@ -1186,7 +1185,7 @@ def server(input, output, session):
             try:
                 from cenop.landscape import CellData, create_homogeneous_landscape
 
-                print(f"[DEBUG] Loading landscape '{landscape_name}' for depth overlay...")
+                logger.debug("Loading landscape '%s' for depth overlay...", landscape_name)
 
                 # Create landscape matching the simulation
                 if landscape_name == "Homogeneous":
@@ -1247,14 +1246,13 @@ def server(input, output, session):
                     }
                     _depth_landscape_name = landscape_name
                     state.landscape_info.set(f"{grid_width}x{grid_height} grid, {cellsize:.0f}m cells")
-                    print(f"[DEBUG] Depth data cached for '{landscape_name}': {len(depth_points)} points, step={sample_step}, radius={render_radius:.0f}m")
+                    logger.debug("Depth data cached for '%s': %d points, step=%d, radius=%.0fm",
+                                 landscape_name, len(depth_points), sample_step, render_radius)
                 else:
                     _depth_data_cache = {"points": [], "width": 400, "height": 400}
                     _depth_landscape_name = landscape_name
             except Exception as e:
-                print(f"[DEBUG] Error loading depth data for '{landscape_name}': {e}")
-                import traceback
-                traceback.print_exc()
+                logger.error("Error loading depth data for '%s': %s", landscape_name, e, exc_info=True)
                 _depth_data_cache = {"points": [], "width": 400, "height": 400}
                 _depth_landscape_name = landscape_name
         
@@ -1344,7 +1342,7 @@ def server(input, output, session):
             try:
                 from cenop.landscape import CellData, create_homogeneous_landscape
 
-                print(f"[DEBUG] Loading foraging data for '{landscape_name}'...")
+                logger.debug("Loading foraging data for '%s'...", landscape_name)
 
                 # Create landscape matching the simulation
                 if landscape_name == "Homogeneous":
@@ -1388,14 +1386,13 @@ def server(input, output, session):
 
                     _foraging_data_cache = {"points": food_points, "radius": render_radius}
                     _foraging_landscape_name = landscape_name
-                    print(f"[DEBUG] Foraging data cached for '{landscape_name}': {len(food_points)} food cells, radius={render_radius:.0f}m")
+                    logger.debug("Foraging data cached for '%s': %d food cells, radius=%.0fm",
+                                 landscape_name, len(food_points), render_radius)
                 else:
                     _foraging_data_cache = {"points": [], "radius": 1800}
                     _foraging_landscape_name = landscape_name
             except Exception as e:
-                print(f"[DEBUG] Error loading foraging data for '{landscape_name}': {e}")
-                import traceback
-                traceback.print_exc()
+                logger.error("Error loading foraging data for '%s': %s", landscape_name, e, exc_info=True)
                 _foraging_data_cache = {"points": [], "radius": 1800}
                 _foraging_landscape_name = landscape_name
 
@@ -1506,7 +1503,7 @@ def server(input, output, session):
                     "size": ship.vessel_class.value if hasattr(ship.vessel_class, 'value') else 1
                 })
             
-            print(f"[DEBUG] Sending {len(ship_points)} ships to map (update #{map_counter})")
+            logger.debug("Sending %d ships to map (update #%d)", len(ship_points), map_counter)
             
             if not ship_points:
                 return ui.div()
@@ -1536,9 +1533,7 @@ def server(input, output, session):
             return ui.HTML(js_code)
             
         except Exception as e:
-            print(f"[DEBUG] Error loading ship data: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Error loading ship data: %s", e, exc_info=True)
             return ui.div()
     
     # Cache for turbine data
@@ -1605,15 +1600,15 @@ def server(input, output, session):
                         break
                 
                 if wind_farms_dir is None:
-                    print(f"[DEBUG] Wind farms directory not found")
+                    logger.debug("Wind farms directory not found")
                     return ui.div()
                 
                 turbine_file = wind_farms_dir / f"{turbine_scenario}.txt"
                 if not turbine_file.exists():
-                    print(f"[DEBUG] Turbine file not found: {turbine_file}")
+                    logger.debug("Turbine file not found: %s", turbine_file)
                     return ui.div()
                 
-                print(f"[DEBUG] Loading turbines from {turbine_file}")
+                logger.debug("Loading turbines from %s", turbine_file)
                 
                 # Transform from EPSG:3035 to WGS84
                 transformer = Transformer.from_crs('EPSG:3035', 'EPSG:4326', always_xy=True)
@@ -1663,12 +1658,10 @@ def server(input, output, session):
                 _turbine_data_cache = turbines
                 _turbine_scenario_name = turbine_scenario
                 state.turbine_count.set(len(turbines))
-                print(f"[DEBUG] Loaded {len(turbines)} turbines from {turbine_scenario}")
+                logger.debug("Loaded %d turbines from %s", len(turbines), turbine_scenario)
                 
             except Exception as e:
-                print(f"[DEBUG] Error loading turbine data: {e}")
-                import traceback
-                traceback.print_exc()
+                logger.error("Error loading turbine data: %s", e, exc_info=True)
                 _turbine_data_cache = []
                 _turbine_scenario_name = turbine_scenario
         
@@ -1888,7 +1881,8 @@ def server(input, output, session):
                     elif current_tick > end:
                         operational_turbines.append(t)
 
-                print(f"[DEBUG] Tick {current_tick}: {len(constructing_turbines)} constructing, {len(operational_turbines)} operational")
+                logger.debug("Tick %d: %d constructing, %d operational",
+                             current_tick, len(constructing_turbines), len(operational_turbines))
 
                 # Build noise contours centered on each turbine with physics-based radius
                 construction_points = []
@@ -1920,12 +1914,11 @@ def server(input, output, session):
                 }
                 _noise_scenario_name = turbine_scenario
                 _noise_tick = current_tick
-                print(f"[DEBUG] Noise: {len(construction_points)} construction (r={10**((234-deter_threshold)/beta_hat):.0f}m), {len(operational_points)} operational (r=500m indicator)")
+                logger.debug("Noise: %d construction (r=%.0fm), %d operational (r=500m indicator)",
+                             len(construction_points), 10**((234-deter_threshold)/beta_hat), len(operational_points))
                 
             except Exception as e:
-                print(f"[DEBUG] Error calculating noise propagation: {e}")
-                import traceback
-                traceback.print_exc()
+                logger.error("Error calculating noise propagation: %s", e, exc_info=True)
                 _noise_data_cache = {"construction": [], "operational": []}
                 _noise_scenario_name = turbine_scenario
                 _noise_tick = current_tick
@@ -2357,3 +2350,10 @@ def server(input, output, session):
             df = pd.DataFrame(history)
             return df.to_csv(index=False)
         return ""
+
+    # =========================================================================
+    # GIS Landscape Editor
+    # =========================================================================
+
+    from .renderers.gis_editor import register_gis_editor_renderers
+    register_gis_editor_renderers(input, output, session, state)

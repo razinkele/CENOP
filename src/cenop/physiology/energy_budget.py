@@ -236,6 +236,27 @@ class EnergyModule(ABC):
         """Return the energy calculation mode."""
         pass
 
+    def get_fitness_metrics(
+        self,
+        state: EnergyState,
+        mask: np.ndarray,
+    ) -> Dict[str, Any]:
+        """
+        Get fitness metrics for the population.
+
+        Override in subclasses for mode-specific metrics.
+        """
+        active = mask
+        if not np.any(active):
+            return {}
+
+        return {
+            'mean_body_condition': float(np.mean(state.body_condition[active])),
+            'total_disturbance_cost': float(np.sum(state.disturbance_energy_cost[active])),
+            'agents_in_deficit': int(np.sum(state.cumulative_energy_deficit[active] > 0)),
+            'mean_energy_deficit': float(np.mean(state.cumulative_energy_deficit[active])),
+        }
+
     def get_statistics(self, state: EnergyState, mask: np.ndarray) -> Dict[str, Any]:
         """Get energy statistics for reporting."""
         active = mask
@@ -289,38 +310,43 @@ class DEPONSEnergyModule(EnergyModule):
         """Compute DEPONS energy update."""
         count = len(state.energy)
 
-        # Food intake - hungry porpoises eat more
-        hunger = np.clip((self.ENERGY_MAX - state.energy) / 10.0, 0.0, 0.99)
-        energy_intake = hunger * context.food_available
-
-        # Seasonal scaling
-        scaling = self._get_seasonal_scaling(context.current_month, count)
-
-        # BMR cost
-        energy_bmr = 0.001 * scaling * self.e_use_per_30_min
-
-        # Lactation multiplier
-        energy_bmr = np.where(context.is_lactating, energy_bmr * self.e_lact, energy_bmr)
-
-        # Warm water multiplier (June-October)
-        if 6 <= context.current_month <= 10:
-            energy_bmr = energy_bmr * self.e_warm
-
-        # Activity cost (swimming) - currently minimal in DEPONS
-        energy_activity = context.current_speed * 0.0001 * scaling
-
-        # Thermoregulation (included in BMR for DEPONS)
+        # Initialize all result arrays to zero
+        energy_intake = np.zeros(count, dtype=np.float32)
+        energy_bmr = np.zeros(count, dtype=np.float32)
+        energy_activity = np.zeros(count, dtype=np.float32)
         energy_thermoregulation = np.zeros(count, dtype=np.float32)
-
-        # Reproduction cost (included in lactation multiplier)
         energy_reproduction = np.zeros(count, dtype=np.float32)
+        energy_disturbance = np.zeros(count, dtype=np.float32)
 
-        # Disturbance cost (increased activity during deterrence)
-        energy_disturbance = np.where(
-            context.is_disturbed,
-            0.002 * context.deterrence_magnitude * scaling,
-            0.0
-        ).astype(np.float32)
+        if np.any(mask):
+            # Food intake - hungry porpoises eat more
+            hunger = np.clip((self.ENERGY_MAX - state.energy[mask]) / 10.0, 0.0, 0.99)
+            energy_intake[mask] = hunger * context.food_available[mask]
+
+            # Seasonal scaling
+            scaling = self._get_seasonal_scaling(context.current_month, int(np.sum(mask)))
+
+            # BMR cost
+            bmr = 0.001 * scaling * self.e_use_per_30_min
+
+            # Lactation multiplier
+            bmr = np.where(context.is_lactating[mask], bmr * self.e_lact, bmr)
+
+            # Warm water multiplier (June-October)
+            if 6 <= context.current_month <= 10:
+                bmr = bmr * self.e_warm
+
+            energy_bmr[mask] = bmr
+
+            # Activity cost (swimming) - currently minimal in DEPONS
+            energy_activity[mask] = context.current_speed[mask] * 0.0001 * scaling
+
+            # Disturbance cost (increased activity during deterrence)
+            energy_disturbance[mask] = np.where(
+                context.is_disturbed[mask],
+                0.002 * context.deterrence_magnitude[mask] * scaling,
+                0.0
+            ).astype(np.float32)
 
         # Net change
         total_cost = energy_bmr + energy_activity + energy_thermoregulation + energy_reproduction + energy_disturbance
@@ -333,9 +359,9 @@ class DEPONSEnergyModule(EnergyModule):
         survival_prob = self.compute_survival_probability(state, mask)
 
         return EnergyResult(
-            energy_intake=energy_intake.astype(np.float32),
-            energy_bmr=energy_bmr.astype(np.float32),
-            energy_activity=energy_activity.astype(np.float32),
+            energy_intake=energy_intake,
+            energy_bmr=energy_bmr,
+            energy_activity=energy_activity,
             energy_thermoregulation=energy_thermoregulation,
             energy_reproduction=energy_reproduction,
             energy_disturbance=energy_disturbance,
@@ -453,72 +479,73 @@ class JASMINEEnergyModule(EnergyModule):
         count = len(state.energy)
         dt_hours = dt_seconds / 3600.0
 
-        # === Energy Intake ===
-        # Functional response based on food availability and body condition
-        max_intake_rate = 0.05 * state.body_mass  # kg food per hour
-        intake_efficiency = 0.8 * state.body_condition  # Assimilation efficiency
-        energy_density = 5.0 * context.food_quality  # MJ/kg food
-
-        energy_intake = (
-            max_intake_rate * context.food_available *
-            intake_efficiency * energy_density * dt_hours
-        ).astype(np.float32)
-
-        # Scale to DEPONS energy units (0-20)
-        energy_intake = energy_intake * 0.5
-
-        # === Basal Metabolic Rate ===
-        # Kleiber scaling: BMR = a * M^0.75
-        if self.use_body_mass_scaling:
-            bmr_watts = self.BMR_COEFFICIENT * np.power(state.body_mass, self.BMR_EXPONENT)
-        else:
-            bmr_watts = self.BMR_COEFFICIENT * np.power(self.BODY_MASS_ADULT, self.BMR_EXPONENT)
-
-        # Convert to energy units (scaled to be comparable to DEPONS 0.001-0.01 range)
-        # DEPONS BMR is ~0.001-0.01 per 30min, so we scale accordingly
-        energy_bmr = (bmr_watts * dt_hours * 0.0001).astype(np.float32)  # Much lower scaling
-
-        # === Activity Cost ===
-        # Get activity multiplier based on behavioral state
-        activity_mult = np.ones(count, dtype=np.float32)
-        for state_val, mult in self.ACTIVITY_MULTIPLIERS.items():
-            in_state = context.behavioral_state == state_val
-            activity_mult[in_state] = mult
-
-        # Cost of transport
-        cot = self.COT_COEFFICIENT * state.body_mass * context.current_speed * dt_seconds
-        energy_activity = (cot * 0.001 * activity_mult).astype(np.float32)
-
-        # === Thermoregulation ===
-        if self.use_thermal_model:
-            temp_diff = np.zeros(count, dtype=np.float32)
-            # Below thermoneutral zone
-            cold = context.water_temperature < self.THERMONEUTRAL_LOWER
-            temp_diff[cold] = self.THERMONEUTRAL_LOWER - context.water_temperature[cold]
-            # Above thermoneutral zone (less common)
-            hot = context.water_temperature > self.THERMONEUTRAL_UPPER
-            temp_diff[hot] = context.water_temperature[hot] - self.THERMONEUTRAL_UPPER
-
-            energy_thermoregulation = (
-                self.THERMAL_CONDUCTANCE * state.body_mass * temp_diff * dt_hours * 0.001
-            ).astype(np.float32)
-        else:
-            energy_thermoregulation = np.zeros(count, dtype=np.float32)
-
-        # === Reproduction Cost ===
+        # Initialize all result arrays to zero
+        energy_intake = np.zeros(count, dtype=np.float32)
+        energy_bmr = np.zeros(count, dtype=np.float32)
+        energy_activity = np.zeros(count, dtype=np.float32)
+        energy_thermoregulation = np.zeros(count, dtype=np.float32)
         energy_reproduction = np.zeros(count, dtype=np.float32)
-        # Lactation cost
-        energy_reproduction[context.is_lactating] += energy_bmr[context.is_lactating] * 0.4
-        # Pregnancy cost
-        energy_reproduction[context.is_pregnant] += energy_bmr[context.is_pregnant] * 0.2
+        energy_disturbance = np.zeros(count, dtype=np.float32)
 
-        # === Disturbance Cost ===
-        # Additional energy cost during disturbance response
-        base_disturbance = self.DISTURBANCE_BASE_COST * context.deterrence_magnitude
-        speed_penalty = self.DISTURBANCE_SPEED_MULT * context.current_speed * context.is_disturbed.astype(float)
-        energy_disturbance = (
-            (base_disturbance + speed_penalty * 0.01) * self.disturbance_cost_multiplier
-        ).astype(np.float32)
+        if np.any(mask):
+            # === Energy Intake ===
+            max_intake_rate = 0.05 * state.body_mass[mask]
+            intake_efficiency = 0.8 * state.body_condition[mask]
+            energy_density = 5.0 * context.food_quality[mask]
+
+            intake = (
+                max_intake_rate * context.food_available[mask] *
+                intake_efficiency * energy_density * dt_hours
+            ).astype(np.float32)
+            # Scale to DEPONS energy units (0-20)
+            energy_intake[mask] = intake * 0.5
+
+            # === Basal Metabolic Rate ===
+            if self.use_body_mass_scaling:
+                bmr_watts = self.BMR_COEFFICIENT * np.power(
+                    np.maximum(state.body_mass[mask], 1e-6), self.BMR_EXPONENT
+                )
+            else:
+                bmr_watts = self.BMR_COEFFICIENT * np.power(self.BODY_MASS_ADULT, self.BMR_EXPONENT)
+
+            energy_bmr[mask] = (bmr_watts * dt_hours * 0.0001).astype(np.float32)
+
+            # === Activity Cost ===
+            activity_mult = np.ones(int(np.sum(mask)), dtype=np.float32)
+            for state_val, mult in self.ACTIVITY_MULTIPLIERS.items():
+                in_state = context.behavioral_state[mask] == state_val
+                activity_mult[in_state] = mult
+
+            # Cost of transport: J/m/kg × kg × m = J
+            distance_m = context.current_speed[mask] * dt_seconds
+            cot = self.COT_COEFFICIENT * state.body_mass[mask] * distance_m
+            energy_activity[mask] = (cot * 0.001 * activity_mult).astype(np.float32)
+
+            # === Thermoregulation ===
+            if self.use_thermal_model:
+                temp_m = context.water_temperature[mask]
+                temp_diff = np.zeros(int(np.sum(mask)), dtype=np.float32)
+                cold = temp_m < self.THERMONEUTRAL_LOWER
+                temp_diff[cold] = self.THERMONEUTRAL_LOWER - temp_m[cold]
+                hot = temp_m > self.THERMONEUTRAL_UPPER
+                temp_diff[hot] = temp_m[hot] - self.THERMONEUTRAL_UPPER
+
+                energy_thermoregulation[mask] = (
+                    self.THERMAL_CONDUCTANCE * state.body_mass[mask] * temp_diff * dt_hours * 0.001
+                ).astype(np.float32)
+
+            # === Reproduction Cost ===
+            lact_mask = mask & context.is_lactating
+            energy_reproduction[lact_mask] += energy_bmr[lact_mask] * 0.4
+            preg_mask = mask & context.is_pregnant
+            energy_reproduction[preg_mask] += energy_bmr[preg_mask] * 0.2
+
+            # === Disturbance Cost ===
+            base_disturbance = self.DISTURBANCE_BASE_COST * context.deterrence_magnitude[mask]
+            speed_penalty = self.DISTURBANCE_SPEED_MULT * context.current_speed[mask] * context.is_disturbed[mask].astype(float)
+            energy_disturbance[mask] = (
+                (base_disturbance + speed_penalty * 0.01) * self.disturbance_cost_multiplier
+            ).astype(np.float32)
 
         # === Net Energy Change ===
         total_cost = (energy_bmr + energy_activity + energy_thermoregulation +

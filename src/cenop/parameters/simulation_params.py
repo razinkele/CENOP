@@ -61,6 +61,10 @@ class SimulationParameters:
     turbines: str = "off"
     ships_enabled: bool = False
     
+    # === Behavioral FSM ===
+    disturbance_recovery_ticks: int = 48   # Ticks to recover from DISTURBED state
+    min_memory_cells: int = 50             # Minimum visited cells before dispersal
+
     # === Dispersal ===
     dispersal: str = "PSM-Type2"
     t_disp: int = 3                    # Days of declining energy before dispersal

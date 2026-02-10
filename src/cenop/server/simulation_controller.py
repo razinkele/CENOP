@@ -25,7 +25,7 @@ def _safe_float(getter, default: float) -> float:
         if val is None:
             return default
         return float(val)
-    except Exception:
+    except (TypeError, ValueError, AttributeError):
         return default
 
 
@@ -33,7 +33,7 @@ def _safe_input(input, name: str, default):
     """Safely get a value from a Shiny input that may not exist."""
     try:
         return getattr(input, name)()
-    except Exception:
+    except (AttributeError, TypeError):
         return default
 
 

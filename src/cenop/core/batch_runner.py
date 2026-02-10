@@ -253,8 +253,8 @@ class BatchRunner:
                     results.append(result)
                     
         except Exception as e:
-            logger.warning("Parallel execution failed: %s, falling back to sequential", e)
-            return self._run_sequential(combinations, progress=True)
+            logger.warning("Parallel execution failed: %s, falling back to sequential", e, exc_info=True)
+            return self._run_sequential(combinations, progress=progress)
             
         # Sort by run_id to maintain order
         results.sort(key=lambda r: r.run_id)

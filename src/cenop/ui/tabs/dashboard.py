@@ -502,6 +502,7 @@ def create_static_pydeck_map():
                 pickable: true,
                 billboard: false,  // Keep flat on map
                 alphaCutoff: 0.05,
+                mask: true,  // Use icon alpha as mask, getColor provides actual color
                 // Smooth transitions
                 transitions: {
                     getPosition: 300,
@@ -533,6 +534,7 @@ def create_static_pydeck_map():
                     return d.color || [255, 140, 60];
                 },
                 pickable: true,
+                mask: true,
                 opacity: 0.95
             });
         }
@@ -560,6 +562,7 @@ def create_static_pydeck_map():
                     return d.color || [255, 140, 60];
                 },
                 pickable: false,
+                mask: true,
                 opacity: 0.95,
                 billboard: true
             });

@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 class TurbinePhase(str, Enum):
     """Turbine operational phases."""
     OFF = "off"
+    PLANNED = "planned"
     CONSTRUCTION = "construction"
     OPERATION = "operation"
 
@@ -72,19 +73,43 @@ class Turbine(Agent):
         self.noise = TurbineNoise(impact=self.impact)
         
     def is_active(self, tick: int = None) -> bool:
-        """Check if turbine is actively producing noise."""
+        """Check if turbine is actively producing noise (construction or operational)."""
         if tick is not None:
-            return self.start_tick <= tick < self.end_tick
+            # Active means construction OR operational (not planned)
+            return tick >= self.start_tick
         return self._is_active
         
     def update_phase(self, current_tick: int) -> None:
-        """Update turbine active status based on current tick."""
-        self._is_active = self.start_tick <= current_tick < self.end_tick
+        """Update turbine phase and active status based on current tick.
+
+        Lifecycle: PLANNED → CONSTRUCTION → OPERATION
+        - tick < start_tick  → PLANNED   (visible, no noise)
+        - start_tick <= tick < end_tick → CONSTRUCTION (pile-driving noise)
+        - tick >= end_tick   → OPERATION  (operational noise)
+        """
+        if current_tick < self.start_tick:
+            self.phase = TurbinePhase.PLANNED
+            self._is_active = False
+        elif current_tick < self.end_tick:
+            self.phase = TurbinePhase.CONSTRUCTION
+            self._is_active = True
+        else:
+            self.phase = TurbinePhase.OPERATION
+            self._is_active = True
         
     def get_source_level(self) -> float:
-        """Get the current source level based on phase."""
-        is_construction = (self.phase == TurbinePhase.CONSTRUCTION)
-        return self.noise.get_source_level(is_construction)
+        """Get the current source level based on lifecycle phase.
+
+        - CONSTRUCTION: impact value IS the source level (pile-driving, ~200 dB)
+        - OPERATION: fixed operational noise level (145 dB)
+        - PLANNED/OFF: 0 (no noise, turbine inactive)
+        """
+        if self.phase == TurbinePhase.CONSTRUCTION:
+            return self.impact  # In DEPONS, impact IS the SL in dB
+        elif self.phase == TurbinePhase.OPERATION:
+            return self.noise.source_level_operation  # 145 dB
+        else:
+            return 0.0
         
     def get_received_level(
         self,
@@ -162,12 +187,13 @@ class Turbine(Agent):
             distance_m = 1.0
             
         # DEPONS formula: RL = SL - (β*log10(dist) + α*dist)
-        # In DEPONS, 'impact' IS the source level (SL) in dB directly
+        # Source level depends on lifecycle phase (construction ~200 dB, operation ~145 dB)
+        source_level = self.get_source_level()
         transmission_loss = (
             params.beta_hat * np.log10(distance_m) +
             params.alpha_hat * distance_m
         )
-        received_level = self.impact - transmission_loss
+        received_level = source_level - transmission_loss
         
         # Deterrence strength = RL - threshold (DEPONS Turbine.java line 227)
         strength = received_level - params.deter_threshold
@@ -280,10 +306,8 @@ class TurbineManager:
         self.phase: str = TurbinePhase.OFF
         
     def set_phase(self, phase: str) -> None:
-        """Set the operational phase for all turbines."""
+        """Set the manager-level phase (used only for OFF to disable all turbines)."""
         self.phase = phase
-        for turbine in self.turbines:
-            turbine.phase = phase
             
     def update(self, current_tick: int) -> None:
         """Update all turbines for the current tick."""
@@ -393,7 +417,7 @@ class TurbineManager:
                 
             # 3. Calculate sound level for potential candidates
             # RL = SL - (beta*log10(dist) + alpha*dist)
-            source_level = turbine.impact # In DEPONS impact IS source level
+            source_level = turbine.get_source_level()  # Phase-dependent SL
             
             # Compute transmission loss only for in-range
             # Make copies to work on
@@ -486,7 +510,7 @@ class TurbineManager:
             rl_all = np.full(n, -999.0, dtype=np.float32)
             dmask = dist_m[mask]
             tl = params.beta_hat * np.log10(dmask) + params.alpha_hat * dmask
-            rl_mask = turbine.impact - tl
+            rl_mask = turbine.get_source_level() - tl
             rl_all[mask] = rl_mask
             # Convert dB to linear (power) and accumulate
             lin_power[mask] += 10.0 ** (rl_mask / 10.0)

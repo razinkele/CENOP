@@ -1731,29 +1731,22 @@ def server(input, output, session):
             </script>
             ''')
 
-        # Determine current tick for phase calculation
-        current_tick = 0
-        if sim is not None and hasattr(sim, 'state') and hasattr(sim.state, 'tick'):
-            current_tick = sim.state.tick
+        # Build name→phase mapping from simulation model (authoritative source)
+        phase_map = {}
+        if sim is not None and hasattr(sim, '_turbine_manager'):
+            for turbine in sim._turbine_manager.turbines:
+                phase_map[turbine.name] = turbine.phase
 
         # Build updated turbine list with phase and color
         updated = []
         for t in _turbine_data_cache:
             tt = dict(t)
-            start = tt.get('start', 0)
-            end = tt.get('end', start + 4)
-            if current_tick == 0:
-                phase = 'operational'
-            elif start <= current_tick <= end:
-                phase = 'construction'
-            elif current_tick > end:
-                phase = 'operational'
-            else:
-                phase = 'planned'
+            # Look up phase from simulation model by turbine name
+            phase = phase_map.get(tt.get('id', ''), 'planned')
 
             if phase == 'construction':
                 color = [255, 70, 48, 220]
-            elif phase == 'operational':
+            elif phase == 'operational' or phase == 'operation':
                 color = [50, 176, 240, 220]
             else:
                 color = [176, 176, 176, 180]

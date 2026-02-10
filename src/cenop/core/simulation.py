@@ -269,12 +269,15 @@ class Simulation:
         """
         from cenop.agents.turbine import TurbinePhase, Turbine
         from pathlib import Path
-        
+
         # Handle "off" case
         if self.params.turbines == "off":
             self._turbine_manager.set_phase(TurbinePhase.OFF)
             return
-            
+
+        # Mark manager as active (individual turbine phases are per-turbine)
+        self._turbine_manager.phase = TurbinePhase.CONSTRUCTION
+
         # Map turbine scenario names to files
         scenario_files = {
             "construction": "User-def.txt",
@@ -283,14 +286,6 @@ class Simulation:
             "Gemini": "Gemini-construction.txt",
             "User-def": "User-def.txt",
         }
-        
-        # Determine phase based on parameter
-        # Scenarios ending with -construction or containing "construction" use CONSTRUCTION phase
-        # Otherwise default to CONSTRUCTION (since most scenarios are pile-driving)
-        if self.params.turbines == "operation":
-            self._turbine_manager.set_phase(TurbinePhase.OPERATION)
-        else:
-            self._turbine_manager.set_phase(TurbinePhase.CONSTRUCTION)
         
         # Determine data file path using centralized config (Fix Phase 1.1)
         from cenop.config import get_wind_farm_file
@@ -324,10 +319,8 @@ class Simulation:
                 cell_size=cell_size
             )
             
-            # Set phase for all loaded turbines
+            # Initialize per-turbine lifecycle phase based on current tick
             for turbine in self._turbine_manager.turbines:
-                turbine.phase = self._turbine_manager.phase
-                # Activate based on current tick
                 turbine.update_phase(self.state.tick)
         else:
             # Fallback: create sample turbines in center for homogeneous landscape
@@ -339,6 +332,7 @@ class Simulation:
                 center_y = self.params.world_height / 2
             
             # 3x3 grid of turbines (9 turbines total) with realistic impact
+            # start_tick=0, end_tick=1 → immediately OPERATIONAL at tick >= 1
             for i in range(-1, 2):
                 for j in range(-1, 2):
                     turbine = Turbine(
@@ -349,10 +343,9 @@ class Simulation:
                         name=f"Turbine_{i+2}_{j+2}",
                         impact=210.0,  # Realistic dB source level
                         start_tick=0,
-                        end_tick=2147483647
+                        end_tick=1
                     )
-                    turbine.phase = self._turbine_manager.phase
-                    turbine._is_active = True
+                    turbine.update_phase(self.state.tick)
                     self._turbine_manager.turbines.append(turbine)
         
     def _setup_ships(self) -> None:

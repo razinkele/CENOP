@@ -466,8 +466,41 @@ class Simulation:
         total_dx = turb_dx + ship_dx
         total_dy = turb_dy + ship_dy
 
+        # 4b. Compute ambient received level for social call SNR masking
+        ambient_rl = None
+        if getattr(self.params, 'communication_enabled', False):
+            from cenop.behavior.sound import calculate_received_level, combine_rls
+            rl_arrays = []
+            for turbine in self._turbine_manager.get_active_turbines():
+                dist_m = np.hypot(
+                    (px - turbine.x) * 400.0,
+                    (py - turbine.y) * 400.0
+                )
+                dist_m = np.maximum(dist_m, 1.0)
+                rl = calculate_received_level(
+                    turbine.get_source_level(), dist_m,
+                    self.params.alpha_hat, self.params.beta_hat
+                )
+                rl_arrays.append(rl)
+            for ship in self._ship_manager.get_active_ships():
+                dist_m = np.hypot(
+                    (px - ship.x) * 400.0,
+                    (py - ship.y) * 400.0
+                )
+                dist_m = np.maximum(dist_m, 1.0)
+                rl = calculate_received_level(
+                    ship.get_source_level(), dist_m,
+                    self.params.alpha_hat, self.params.beta_hat
+                )
+                rl_arrays.append(rl)
+            if rl_arrays:
+                ambient_rl = combine_rls(rl_arrays)
+
         # 5. Step population (Vectorized)
-        self.population_manager.step(deterrence_vectors=(total_dx, total_dy))
+        self.population_manager.step(
+            deterrence_vectors=(total_dx, total_dy),
+            ambient_rl=ambient_rl
+        )
 
         # 6. Update Statistics
         current_pop = self.population_manager.population_size

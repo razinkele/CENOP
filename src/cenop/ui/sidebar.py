@@ -145,7 +145,24 @@ def create_sidebar():
         ),
         
         ui.tags.hr(),
-        
+
+        # Social Communication controls
+        ui.accordion(
+            ui.accordion_panel(
+                "Social Communication",
+                ui.input_checkbox("communication_enabled", "Enable Social Calls", value=False),
+                ui.input_numeric("communication_range_km", "Detection Range (km)", value=1.0, min=0.1, max=50.0, step=0.5),
+                ui.input_numeric("communication_source_level", "Source Level (dB)", value=130.0, min=80.0, max=200.0, step=1.0),
+                ui.input_numeric("communication_threshold", "Detection Threshold (dB)", value=80.0, min=40.0, max=160.0, step=1.0),
+                ui.input_numeric("communication_response_slope", "Response Slope", value=0.1, min=0.01, max=1.0, step=0.01),
+                ui.input_slider("social_weight", "Social Weight", min=0.0, max=1.0, value=0.3, step=0.05),
+            ),
+            id="social_comm_accordion",
+            open=False,
+        ),
+
+        ui.tags.hr(),
+
         ui.p("Advanced parameters in 'Model Settings' tab. JASMINE-specific settings available when JASMINE mode is selected.", class_="text-muted small"),
         
         width=280,

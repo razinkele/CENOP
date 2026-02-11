@@ -31,6 +31,12 @@ CUSTOM_CSS = """
 /* Sidebar styling */
 .sidebar { background-color: #f8f9fa; }
 
+/* Titlebar: match height to CENOP icon (35px) */
+.navbar { min-height: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }
+.navbar > .container-fluid { min-height: 0 !important; }
+.navbar-brand { padding-top: 0 !important; padding-bottom: 0 !important; margin-right: 0 !important; }
+.navbar .nav-link { padding-top: 0.25rem !important; padding-bottom: 0.25rem !important; }
+
 /* Error display */
 .shiny-output-error { color: #dc3545; }
 .shiny-output-error:before { content: '⚠ '; }
@@ -291,10 +297,10 @@ def create_help_modal():
 
 def create_app_ui():
     """Create the main application UI."""
-    # Create title with logo (80% larger: 42px * 1.8 = ~76px)
+    # Create title with logo
     title_with_logo = ui.div(
-        ui.img(src="CENOP_logo.png", height="76px", style="vertical-align: middle;"),
-        style="display: inline-flex; align-items: center;"
+        ui.img(src="CENOP_logo.png", height="35px", style="vertical-align: middle;"),
+        style="display: inline-flex; align-items: center; margin-right: 1rem;"
     )
     
     return ui.page_navbar(

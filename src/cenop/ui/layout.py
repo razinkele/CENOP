@@ -17,46 +17,257 @@ from .tabs.export import export_tab
 
 # Custom CSS for styling
 CUSTOM_CSS = """
-/* Progress bar styling */
-.progress { height: 20px; }
-.progress-bar { transition: width 0.3s ease-in-out; }
+/* ═══════════════════════════════════════════════════
+   CENOP-JASMINE "Hybrid Depth" Marine Theme
+   Light coastal shell + dark ocean data zones
+   ═══════════════════════════════════════════════════ */
 
-/* Card improvements */
-.card { box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-.card-header { font-weight: 600; background-color: #f8f9fa; }
+/* CSS Custom Properties */
+:root {
+    /* Light Zone — Navbar, Sidebar */
+    --coastal-bg: #f0f4f8;
+    --coastal-sidebar: #e8eff5;
+    --coastal-text: #1a3a5c;
+    --coastal-border: #d0dbe6;
 
-/* Value box styling */
-.value-box { min-height: 100px; }
+    /* Dark Zone — Cards, Charts, Map */
+    --ocean-bg: #0f1923;
+    --ocean-header: #142330;
+    --ocean-text: #c8dce8;
+    --ocean-muted: #8899aa;
+    --ocean-grid: rgba(255,255,255,0.08);
+    --ocean-row-alt: #1a2a3a;
 
-/* Sidebar styling */
-.sidebar { background-color: #f8f9fa; }
+    /* Accent Colors — Bioluminescence */
+    --accent-teal: #0d7377;
+    --accent-cyan: #00b4d8;
+    --accent-cyan-light: #90e0ef;
+    --accent-coral: #ff6b6b;
+    --accent-coral-btn: #d4544e;
+    --accent-green: #48c78e;
+    --accent-amber: #f0a040;
+    --accent-slate: #5a6f80;
+}
 
-/* Titlebar: match height to CENOP icon (35px) */
-.navbar { min-height: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }
+/* ─── Navbar ─── */
+.navbar {
+    min-height: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    background: var(--coastal-bg) !important;
+    border-bottom: 2px solid var(--accent-teal) !important;
+}
 .navbar > .container-fluid { min-height: 0 !important; }
-.navbar-brand { padding-top: 0 !important; padding-bottom: 0 !important; margin-right: 0 !important; }
-.navbar .nav-link { padding-top: 0.25rem !important; padding-bottom: 0.25rem !important; }
+.navbar-brand {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    margin-right: 0 !important;
+}
+.navbar .nav-link {
+    padding-top: 0.25rem !important;
+    padding-bottom: 0.25rem !important;
+    color: var(--coastal-text) !important;
+    font-weight: 500;
+    transition: color 0.2s, border-color 0.2s;
+    border-bottom: 2px solid transparent;
+}
+.navbar .nav-link:hover {
+    color: var(--accent-teal) !important;
+}
+.navbar .nav-link.active,
+.navbar .nav-item.active .nav-link {
+    color: var(--accent-teal) !important;
+    border-bottom: 2px solid var(--accent-teal);
+}
 
-/* Error display */
-.shiny-output-error { color: #dc3545; }
+/* ─── Sidebar ─── */
+.sidebar {
+    background-color: var(--coastal-sidebar) !important;
+    border-right: 1px solid var(--coastal-border);
+}
+.sidebar h5 {
+    color: var(--coastal-text);
+    font-weight: 600;
+}
+.sidebar label {
+    color: var(--coastal-text);
+    font-weight: 500;
+    font-size: 0.85rem;
+}
+.sidebar .text-muted {
+    color: var(--accent-slate) !important;
+}
+.sidebar hr {
+    border-color: var(--coastal-border);
+    opacity: 0.6;
+}
+
+/* Sidebar tooltip icons: teal instead of Bootstrap blue */
+.sidebar span[style*="color: #0d6efd"] {
+    color: var(--accent-teal) !important;
+}
+
+/* Sidebar buttons */
+.sidebar .btn-primary {
+    background: var(--accent-teal) !important;
+    border-color: var(--accent-teal) !important;
+    border-radius: 6px;
+    font-weight: 500;
+    transition: background 0.2s, transform 0.1s;
+}
+.sidebar .btn-primary:hover {
+    background: #0b6264 !important;
+    transform: translateY(-1px);
+}
+.sidebar .btn-danger {
+    background: var(--accent-coral-btn) !important;
+    border-color: var(--accent-coral-btn) !important;
+    border-radius: 6px;
+}
+.sidebar .btn-secondary {
+    background: var(--accent-slate) !important;
+    border-color: var(--accent-slate) !important;
+    border-radius: 6px;
+}
+.sidebar .btn-outline-secondary {
+    color: var(--accent-teal) !important;
+    border-color: var(--accent-teal) !important;
+    border-radius: 6px;
+}
+.sidebar .btn-outline-secondary:hover {
+    background: var(--accent-teal) !important;
+    color: white !important;
+}
+
+/* Slider: teal track */
+.sidebar .irs--shiny .irs-bar {
+    background: var(--accent-teal) !important;
+    border-color: var(--accent-teal) !important;
+}
+.sidebar .irs--shiny .irs-handle {
+    border-color: var(--accent-teal) !important;
+}
+.sidebar .irs--shiny .irs-single {
+    background: var(--accent-teal) !important;
+}
+
+/* Progress bar: teal gradient */
+.progress { height: 20px; border-radius: 6px; background: var(--coastal-border); }
+.progress-bar {
+    transition: width 0.3s ease-in-out;
+    background: linear-gradient(90deg, var(--accent-teal), var(--accent-cyan)) !important;
+}
+
+/* ─── Dark Data Cards ─── */
+.card.ocean-card {
+    background: var(--ocean-bg) !important;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-left: 3px solid var(--accent-teal);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+.card.ocean-card .card-header {
+    background: var(--ocean-header) !important;
+    color: var(--accent-cyan) !important;
+    font-weight: 600;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    font-size: 0.9rem;
+}
+.card.ocean-card .card-body {
+    color: var(--ocean-text);
+}
+.card.ocean-card .text-muted {
+    color: var(--ocean-muted) !important;
+}
+
+/* Default card overrides (for non-ocean cards in Settings) */
+.card {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    border-radius: 8px;
+    border: 1px solid var(--coastal-border);
+}
+.card-header {
+    font-weight: 600;
+    background-color: var(--coastal-bg) !important;
+    color: var(--coastal-text);
+    font-size: 0.9rem;
+}
+
+/* ─── Dark Tables ─── */
+.ocean-card table {
+    color: var(--ocean-text) !important;
+}
+.ocean-card table thead th {
+    background: var(--accent-teal) !important;
+    color: white !important;
+    border-color: rgba(255,255,255,0.1) !important;
+}
+.ocean-card table tbody tr:nth-child(even) {
+    background: var(--ocean-row-alt) !important;
+}
+.ocean-card table tbody tr:nth-child(odd) {
+    background: var(--ocean-bg) !important;
+}
+.ocean-card table td, .ocean-card table th {
+    border-color: rgba(255,255,255,0.06) !important;
+}
+
+/* ─── Stat Chips (Dashboard top row) ─── */
+.stat-chip {
+    border-radius: 6px !important;
+    font-weight: 500;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+.stat-pop { background: var(--accent-teal) !important; }
+.stat-year { background: var(--accent-cyan) !important; color: #000 !important; }
+.stat-birth { background: var(--accent-green) !important; }
+.stat-death { background: var(--accent-amber) !important; }
+
+/* ─── Collapsible Chart Panel ─── */
+.chart-toggle-bar {
+    background: rgba(15, 25, 35, 0.92);
+    color: var(--accent-cyan);
+    text-align: center;
+    padding: 6px 0;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+    border-radius: 0 0 8px 8px;
+    user-select: none;
+    transition: background 0.2s;
+}
+.chart-toggle-bar:hover {
+    background: rgba(15, 25, 35, 1);
+}
+.chart-panel {
+    transition: max-height 0.4s ease, opacity 0.3s ease;
+    overflow: hidden;
+    max-height: 250px;
+    opacity: 1;
+}
+.chart-panel.collapsed {
+    max-height: 0;
+    opacity: 0;
+}
+
+/* ─── Error Display ─── */
+.shiny-output-error { color: var(--accent-coral); }
 .shiny-output-error:before { content: '⚠ '; }
 
-/* Help button styling */
+/* ─── Help Button ─── */
 .help-btn {
     background: transparent;
     border: none;
-    color: #6c757d;
+    color: var(--accent-slate);
     font-size: 1.5rem;
     cursor: pointer;
     padding: 5px 10px;
     margin-left: auto;
 }
-.help-btn:hover {
-    color: #2c3e50;
-}
+.help-btn:hover { color: var(--accent-teal); }
 
-/* Help modal content styling */
-.help-content h2 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; margin-top: 25px; }
+/* ─── Help Modal ─── */
+.help-content h2 { color: var(--coastal-text); border-bottom: 2px solid var(--accent-teal); padding-bottom: 10px; margin-top: 25px; }
 .help-content h3 { color: #34495e; margin-top: 20px; }
 .help-content h4 { color: #7f8c8d; margin-top: 15px; }
 .help-content ul { margin-left: 20px; }
@@ -64,10 +275,39 @@ CUSTOM_CSS = """
 .help-content code { background: #ecf0f1; padding: 2px 6px; border-radius: 3px; }
 .help-content .param-table { width: 100%; border-collapse: collapse; margin: 15px 0; }
 .help-content .param-table th, .help-content .param-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-.help-content .param-table th { background: #3498db; color: white; }
+.help-content .param-table th { background: var(--accent-teal); color: white; }
 .help-content .param-table tr:nth-child(even) { background: #f9f9f9; }
 .help-content .note { background: #fff3cd; border-left: 4px solid #ffc107; padding: 10px 15px; margin: 15px 0; }
-.help-content .tip { background: #d4edda; border-left: 4px solid #28a745; padding: 10px 15px; margin: 15px 0; }
+.help-content .tip { background: #d4edda; border-left: 4px solid var(--accent-green); padding: 10px 15px; margin: 15px 0; }
+
+/* ─── Settings Tab ─── */
+.navset-card-tab .nav-link {
+    color: var(--coastal-text) !important;
+}
+.navset-card-tab .nav-link.active {
+    color: var(--accent-teal) !important;
+    border-bottom-color: var(--accent-teal) !important;
+}
+
+/* ─── Accordion (sidebar social comms) ─── */
+.accordion-button {
+    background: var(--coastal-sidebar) !important;
+    color: var(--coastal-text) !important;
+    font-size: 0.85rem;
+}
+.accordion-button:not(.collapsed) {
+    background: var(--coastal-bg) !important;
+    color: var(--accent-teal) !important;
+}
+
+/* ─── Data Frame / Tables in light zone ─── */
+.shiny-data-grid {
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+/* Value box styling */
+.value-box { min-height: 100px; }
 """
 
 

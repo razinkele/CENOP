@@ -45,7 +45,7 @@ def create_gis_editor_map():
         }
         .legend-title {
             font-weight: bold;
-            color: #4fc3f7;
+            color: #00b4d8;
             margin-bottom: 6px;
             font-size: 12px;
         }

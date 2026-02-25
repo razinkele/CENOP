@@ -60,7 +60,7 @@ def create_static_pydeck_map():
         .info-panel h4 {
             margin: 0 0 8px 0;
             font-size: 13px;
-            color: #4fc3f7;
+            color: #00b4d8;
             border-bottom: 1px solid #444;
             padding-bottom: 6px;
             display: flex;
@@ -70,7 +70,7 @@ def create_static_pydeck_map():
         .collapse-btn {
             background: none;
             border: none;
-            color: #4fc3f7;
+            color: #00b4d8;
             cursor: pointer;
             font-size: 14px;
             padding: 0 4px;
@@ -84,7 +84,7 @@ def create_static_pydeck_map():
             margin: 6px 0;
         }
         .stat-label { color: #aaa; }
-        .stat-value { font-weight: bold; color: #4fc3f7; }
+        .stat-value { font-weight: bold; color: #00b4d8; }
         .legend {
             position: absolute;
             bottom: 20px;
@@ -111,7 +111,7 @@ def create_static_pydeck_map():
             align-items: center;
             margin-bottom: 6px;
             font-size: 11px;
-            color: #4fc3f7;
+            color: #00b4d8;
             font-weight: bold;
         }
         .legend-item {
@@ -252,7 +252,7 @@ def create_static_pydeck_map():
                 </div>
             </div>
             <div class="legend-item">
-                <div class="legend-dot" style="background: linear-gradient(to right, #1a237e, #0288d1, #4fc3f7);"></div>
+                <div class="legend-dot" style="background: linear-gradient(to right, #1a237e, #0288d1, #00b4d8);"></div>
                 <span>Depth</span>
             </div>
             <div class="legend-item">
@@ -302,7 +302,7 @@ def create_static_pydeck_map():
             transition: .3s;
             border-radius: 50%;
         }
-        input:checked + .slider { background-color: #4fc3f7; }
+        input:checked + .slider { background-color: #00b4d8; }
         input:checked + .slider:before { transform: translateX(16px); }
     </style>
     
@@ -967,23 +967,20 @@ def create_static_pydeck_map():
 
 
 def dashboard_tab():
-    """Create the Dashboard tab with value boxes and main visualizations."""
+    """Create the Dashboard tab with full-width map and collapsible chart panel."""
     return ui.nav_panel(
         "Dashboard",
-        # Compact stat row styling
+        # Compact stat row styling (using ocean theme)
         ui.tags.style("""
             .stat-row { display: flex; gap: 6px; margin-bottom: 6px; }
             .stat-chip {
                 flex: 1; text-align: center; padding: 2px 8px;
-                border-radius: 4px; font-size: 0.75rem; line-height: 1.3;
-                color: #fff;
+                border-radius: 6px; font-size: 0.75rem; line-height: 1.3;
+                color: #fff; font-weight: 500;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.15);
             }
             .stat-chip .stat-label { font-weight: 400; opacity: 0.85; }
             .stat-chip .stat-val { font-weight: 700; font-size: 0.85rem; }
-            .stat-pop { background: #0d6efd; }
-            .stat-year { background: #0dcaf0; color: #000; }
-            .stat-birth { background: #198754; }
-            .stat-death { background: #fd7e14; }
         """),
         # Top row: 4 compact stat chips
         ui.div(
@@ -1009,36 +1006,57 @@ def dashboard_tab():
             ),
             class_="stat-row"
         ),
-        # Main content: map on left, charts on right
-        ui.layout_columns(
-            # Left: Large map
-            ui.card(
-                ui.card_header("Spatial Distribution"),
-                create_static_pydeck_map(),
-                ui.output_ui("depth_data_initializer"),
-                ui.output_ui("foraging_data_initializer"),
-                ui.output_ui("ship_data_initializer"),
-                ui.output_ui("turbine_data_initializer"),
-                ui.output_ui("turbine_data_updater"),
-                ui.output_ui("noise_data_initializer"),
-                ui.output_ui("porpoise_data_updater"),
-                height="660px"
-            ),
-            # Right: 3 SVG charts stacked
-            ui.div(
+        # Full-width map card (dark zone)
+        ui.card(
+            ui.card_header("Spatial Distribution"),
+            create_static_pydeck_map(),
+            ui.output_ui("depth_data_initializer"),
+            ui.output_ui("foraging_data_initializer"),
+            ui.output_ui("ship_data_initializer"),
+            ui.output_ui("turbine_data_initializer"),
+            ui.output_ui("turbine_data_updater"),
+            ui.output_ui("noise_data_initializer"),
+            ui.output_ui("porpoise_data_updater"),
+            height="calc(100vh - 280px)",
+            class_="ocean-card"
+        ),
+        # Collapsible chart toggle bar
+        ui.div(
+            ui.HTML('<span id="chart-toggle-icon">▼</span> Charts'),
+            id="chart-toggle",
+            class_="chart-toggle-bar",
+            onclick="toggleChartPanel()"
+        ),
+        # Collapsible chart panel: 3 charts in a row
+        ui.div(
+            ui.layout_columns(
                 ui.card(
                     ui.output_ui("population_plot"),
-                    height="190px"
+                    height="190px",
+                    class_="ocean-card"
                 ),
                 ui.card(
                     ui.output_ui("life_death_plot"),
-                    height="190px"
+                    height="190px",
+                    class_="ocean-card"
                 ),
                 ui.card(
                     ui.output_ui("energy_balance_plot"),
-                    height="190px"
+                    height="190px",
+                    class_="ocean-card"
                 ),
+                col_widths=[4, 4, 4]
             ),
-            col_widths=[7, 5]
-        )
+            id="chart-panel",
+            class_="chart-panel"
+        ),
+        # Toggle script
+        ui.tags.script("""
+            function toggleChartPanel() {
+                var panel = document.getElementById('chart-panel');
+                var icon = document.getElementById('chart-toggle-icon');
+                panel.classList.toggle('collapsed');
+                icon.textContent = panel.classList.contains('collapsed') ? '▶' : '▼';
+            }
+        """),
     )

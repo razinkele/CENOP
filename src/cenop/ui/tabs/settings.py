@@ -120,7 +120,7 @@ def _input_with_tooltip(input_fn, input_id: str, label: str, **kwargs):
                 ui.tags.span(
                     " ⓘ",
                     title=tooltip_text,
-                    style="cursor: help; color: #0d6efd; font-size: 0.9em;",
+                    style="cursor: help; color: #0d7377; font-size: 0.9em;",
                     **{"data-bs-toggle": "tooltip", "data-bs-placement": "right"}
                 ),
                 **{"for": input_id}
@@ -161,12 +161,12 @@ def _basic_settings_panel():
         "Basic",
         ui.layout_columns(
             ui.card(
-                ui.card_header("🎯 Advanced Setup"),
+                ui.card_header("Advanced Setup"),
                 ui.div(
                     ui.tags.label(
                         "Random Seed (0 = auto) ",
                         ui.tags.span("ⓘ", title=TOOLTIPS["random_seed"], 
-                                     style="cursor: help; color: #0d6efd;"),
+                                     style="cursor: help; color: #0d7377;"),
                         **{"for": "random_seed"}
                     ),
                     ui.input_numeric("random_seed", None, value=0, min=0),
@@ -176,7 +176,7 @@ def _basic_settings_panel():
                     ui.tags.label(
                         "Tracked Porpoises ",
                         ui.tags.span("ⓘ", title=TOOLTIPS["tracked_porpoise_count"], 
-                                     style="cursor: help; color: #0d6efd;"),
+                                     style="cursor: help; color: #0d7377;"),
                         **{"for": "tracked_porpoise_count"}
                     ),
                     ui.input_numeric("tracked_porpoise_count", None, value=1, min=0, max=100),
@@ -186,14 +186,14 @@ def _basic_settings_panel():
                      class_="text-muted small mt-3"),
             ),
             ui.card(
-                ui.card_header("⚠️ Disturbance & Threats"),
+                ui.card_header("Disturbance & Threats"),
                 ui.p("Wind turbines are selected in the left sidebar (filtered by landscape).", 
                      class_="text-muted small"),
                 ui.div(
                     ui.tags.label(
                         "Ship Traffic Enabled ",
                         ui.tags.span("ⓘ", title=TOOLTIPS["ships_enabled"], 
-                                     style="cursor: help; color: #0d6efd;"),
+                                     style="cursor: help; color: #0d7377;"),
                     ),
                     ui.input_switch("ships_enabled", None, value=False),
                     class_="mb-3"
@@ -202,7 +202,7 @@ def _basic_settings_panel():
                     ui.tags.label(
                         "Annual Bycatch Probability ",
                         ui.tags.span("ⓘ", title=TOOLTIPS["bycatch_prob"], 
-                                     style="cursor: help; color: #0d6efd;"),
+                                     style="cursor: help; color: #0d7377;"),
                         **{"for": "bycatch_prob"}
                     ),
                     ui.input_numeric("bycatch_prob", None, value=0.0, step=0.001, min=0.0, max=1.0),
@@ -219,14 +219,14 @@ def _movement_settings_panel():
     return ui.nav_panel(
         "Movement",
         ui.card(
-            ui.card_header("🧭 Correlated Random Walk (CRW) Parameters"),
+            ui.card_header("Correlated Random Walk (CRW) Parameters"),
             ui.p("These parameters control porpoise movement behavior based on the DEPONS CRW model.", 
                  class_="text-muted mb-3"),
             ui.layout_column_wrap(
                 ui.div(
                     ui.tags.label("k - Inertia constant ", 
                                   ui.tags.span("ⓘ", title=TOOLTIPS["param_k"], 
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "param_k"}),
                     ui.input_numeric("param_k", None, value=0.001, step=0.001),
                     class_="mb-2"
@@ -234,7 +234,7 @@ def _movement_settings_panel():
                 ui.div(
                     ui.tags.label("a0 - AutoReg for log₁₀(d/100) ", 
                                   ui.tags.span("ⓘ", title=TOOLTIPS["param_a0"], 
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "param_a0"}),
                     ui.input_numeric("param_a0", None, value=0.35, step=0.01),
                     class_="mb-2"
@@ -242,7 +242,7 @@ def _movement_settings_panel():
                 ui.div(
                     ui.tags.label("a1 - Water depth effect ", 
                                   ui.tags.span("ⓘ", title=TOOLTIPS["param_a1"], 
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "param_a1"}),
                     ui.input_numeric("param_a1", None, value=0.0005, step=0.0001),
                     class_="mb-2"
@@ -250,7 +250,7 @@ def _movement_settings_panel():
                 ui.div(
                     ui.tags.label("a2 - Salinity effect ", 
                                   ui.tags.span("ⓘ", title=TOOLTIPS["param_a2"], 
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "param_a2"}),
                     ui.input_numeric("param_a2", None, value=-0.02, step=0.01),
                     class_="mb-2"
@@ -258,7 +258,7 @@ def _movement_settings_panel():
                 ui.div(
                     ui.tags.label("b0 - AutoReg for turning ", 
                                   ui.tags.span("ⓘ", title=TOOLTIPS["param_b0"], 
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "param_b0"}),
                     ui.input_numeric("param_b0", None, value=-0.024, step=0.001),
                     class_="mb-2"
@@ -266,7 +266,7 @@ def _movement_settings_panel():
                 ui.div(
                     ui.tags.label("b1 - Depth on turning ", 
                                   ui.tags.span("ⓘ", title=TOOLTIPS["param_b1"], 
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "param_b1"}),
                     ui.input_numeric("param_b1", None, value=-0.008, step=0.001),
                     class_="mb-2"
@@ -274,7 +274,7 @@ def _movement_settings_panel():
                 ui.div(
                     ui.tags.label("b2 - Salinity on turning ", 
                                   ui.tags.span("ⓘ", title=TOOLTIPS["param_b2"], 
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "param_b2"}),
                     ui.input_numeric("param_b2", None, value=0.93, step=0.01),
                     class_="mb-2"
@@ -282,7 +282,7 @@ def _movement_settings_panel():
                 ui.div(
                     ui.tags.label("b3 - Intercept ", 
                                   ui.tags.span("ⓘ", title=TOOLTIPS["param_b3"], 
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "param_b3"}),
                     ui.input_numeric("param_b3", None, value=-14.0, step=1.0),
                     class_="mb-2"
@@ -299,11 +299,11 @@ def _dispersal_settings_panel():
         "Dispersal",
         ui.layout_columns(
             ui.card(
-                ui.card_header("🌊 Dispersal Settings"),
+                ui.card_header("Dispersal Settings"),
                 ui.div(
                     ui.tags.label("Dispersal Type ", 
                                   ui.tags.span("ⓘ", title=TOOLTIPS["dispersal"], 
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "dispersal"}),
                     ui.input_select("dispersal", None, 
                         choices=["off", "PSM-Type2", "Undirected", "InnerDanishWaters"], 
@@ -313,18 +313,18 @@ def _dispersal_settings_panel():
                 ui.div(
                     ui.tags.label("Days to Dispersal (tDisp) ", 
                                   ui.tags.span("ⓘ", title=TOOLTIPS["tdisp"], 
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "tdisp"}),
                     ui.input_numeric("tdisp", None, value=3, min=1),
                     class_="mb-3"
                 ),
             ),
             ui.card(
-                ui.card_header("📢 PSM Parameters (Persistent Spatial Memory)"),
+                ui.card_header("PSM Parameters (Persistent Spatial Memory)"),
                 ui.div(
                     ui.tags.label("PSM_log - Logistic increase ", 
                                   ui.tags.span("ⓘ", title=TOOLTIPS["psm_log"], 
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "psm_log"}),
                     ui.input_numeric("psm_log", None, value=0.6, step=0.1),
                     class_="mb-3"
@@ -332,7 +332,7 @@ def _dispersal_settings_panel():
                 ui.div(
                     ui.tags.label("PSM_dist - Preferred distance ", 
                                   ui.tags.span("ⓘ", title=TOOLTIPS["psm_dist"], 
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "psm_dist"}),
                     ui.input_text("psm_dist", None, value="N(300;100)"),
                     class_="mb-3"
@@ -340,7 +340,7 @@ def _dispersal_settings_panel():
                 ui.div(
                     ui.tags.label("PSM_tol - Tolerance (km) ", 
                                   ui.tags.span("ⓘ", title=TOOLTIPS["psm_tol"], 
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "psm_tol"}),
                     ui.input_numeric("psm_tol", None, value=5.0, step=0.5),
                     class_="mb-3"
@@ -348,7 +348,7 @@ def _dispersal_settings_panel():
                 ui.div(
                     ui.tags.label("PSM_angle - Max turn (deg) ", 
                                   ui.tags.span("ⓘ", title=TOOLTIPS["psm_angle"], 
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "psm_angle"}),
                     ui.input_numeric("psm_angle", None, value=20.0, step=1.0),
                     class_="mb-3"
@@ -364,14 +364,14 @@ def _energy_settings_panel():
     return ui.nav_panel(
         "Energy",
         ui.card(
-            ui.card_header("⚡ Energy & Memory Parameters"),
+            ui.card_header("Energy & Memory Parameters"),
             ui.p("Memory decay rates and food replenishment control how porpoises remember food locations.",
                  class_="text-muted mb-3"),
             ui.layout_column_wrap(
                 ui.div(
                     ui.tags.label("rS - Satiation memory decay ",
                                   ui.tags.span("ⓘ", title=TOOLTIPS["param_rS"],
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "param_rS"}),
                     ui.input_numeric("param_rS", None, value=0.04, step=0.01),
                     class_="mb-2"
@@ -379,7 +379,7 @@ def _energy_settings_panel():
                 ui.div(
                     ui.tags.label("rR - Reference memory decay ",
                                   ui.tags.span("ⓘ", title=TOOLTIPS["param_rR"],
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "param_rR"}),
                     ui.input_numeric("param_rR", None, value=0.04, step=0.01),
                     class_="mb-2"
@@ -387,7 +387,7 @@ def _energy_settings_panel():
                 ui.div(
                     ui.tags.label("rU - Food replenishment rate ",
                                   ui.tags.span("ⓘ", title=TOOLTIPS["param_rU"],
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "param_rU"}),
                     ui.input_numeric("param_rU", None, value=0.1, step=0.01),
                     class_="mb-2"
@@ -414,13 +414,13 @@ def _jasmine_settings_panel():
         ui.layout_columns(
             # Subsystem Mode Overrides
             ui.card(
-                ui.card_header("🔧 Subsystem Mode Overrides"),
+                ui.card_header("Subsystem Mode Overrides"),
                 ui.p("Override individual subsystems independently of the main simulation mode.",
                      class_="text-muted small mb-3"),
                 ui.div(
                     ui.tags.label("Time Mode ",
                                   ui.tags.span("ⓘ", title=TOOLTIPS["time_mode_override"],
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "time_mode_override"}),
                     ui.input_select("time_mode_override", None,
                         choices={"": "Follow main mode", "DEPONS": "DEPONS", "JASMINE": "JASMINE"},
@@ -430,7 +430,7 @@ def _jasmine_settings_panel():
                 ui.div(
                     ui.tags.label("Movement Mode ",
                                   ui.tags.span("ⓘ", title=TOOLTIPS["movement_mode_override"],
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "movement_mode_override"}),
                     ui.input_select("movement_mode_override", None,
                         choices={"": "Follow main mode", "DEPONS": "DEPONS", "JASMINE": "JASMINE"},
@@ -440,7 +440,7 @@ def _jasmine_settings_panel():
                 ui.div(
                     ui.tags.label("Behavior FSM Mode ",
                                   ui.tags.span("ⓘ", title=TOOLTIPS["fsm_mode_override"],
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "fsm_mode_override"}),
                     ui.input_select("fsm_mode_override", None,
                         choices={"": "Follow main mode", "DEPONS": "DEPONS", "JASMINE": "JASMINE"},
@@ -450,7 +450,7 @@ def _jasmine_settings_panel():
                 ui.div(
                     ui.tags.label("Energy Mode ",
                                   ui.tags.span("ⓘ", title=TOOLTIPS["energy_mode_override"],
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "energy_mode_override"}),
                     ui.input_select("energy_mode_override", None,
                         choices={"": "Follow main mode", "DEPONS": "DEPONS", "JASMINE": "JASMINE"},
@@ -460,7 +460,7 @@ def _jasmine_settings_panel():
                 ui.div(
                     ui.tags.label("Memory Mode ",
                                   ui.tags.span("ⓘ", title=TOOLTIPS["memory_mode_override"],
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "memory_mode_override"}),
                     ui.input_select("memory_mode_override", None,
                         choices={"": "Follow main mode", "DEPONS": "DEPONS", "JASMINE": "JASMINE"},
@@ -470,13 +470,13 @@ def _jasmine_settings_panel():
             ),
             # Physics Parameters
             ui.card(
-                ui.card_header("🔬 Physics Parameters"),
+                ui.card_header("Physics Parameters"),
                 ui.p("Parameters for JASMINE physics-based movement model.",
                      class_="text-muted small mb-3"),
                 ui.div(
                     ui.tags.label("Body Mass (kg) ",
                                   ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_mass_kg"],
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "jasmine_mass_kg"}),
                     ui.input_numeric("jasmine_mass_kg", None, value=50.0, min=10.0, max=100.0, step=1.0),
                     class_="mb-2"
@@ -484,7 +484,7 @@ def _jasmine_settings_panel():
                 ui.div(
                     ui.tags.label("Drag Coefficient ",
                                   ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_drag_coeff"],
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "jasmine_drag_coeff"}),
                     ui.input_numeric("jasmine_drag_coeff", None, value=0.01, min=0.001, max=0.1, step=0.001),
                     class_="mb-2"
@@ -492,7 +492,7 @@ def _jasmine_settings_panel():
                 ui.div(
                     ui.tags.label("Max Thrust (N) ",
                                   ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_max_thrust"],
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "jasmine_max_thrust"}),
                     ui.input_numeric("jasmine_max_thrust", None, value=100.0, min=10.0, max=500.0, step=10.0),
                     class_="mb-2"
@@ -500,7 +500,7 @@ def _jasmine_settings_panel():
                 ui.div(
                     ui.tags.label("Current Weight (0-1) ",
                                   ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_current_weight"],
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "jasmine_current_weight"}),
                     ui.input_numeric("jasmine_current_weight", None, value=0.5, min=0.0, max=1.0, step=0.1),
                     class_="mb-2"
@@ -511,13 +511,13 @@ def _jasmine_settings_panel():
         ui.layout_columns(
             # DEB Parameters
             ui.card(
-                ui.card_header("⚡ DEB Energy Parameters"),
+                ui.card_header("DEB Energy Parameters"),
                 ui.p("Dynamic Energy Budget parameters for JASMINE mode.",
                      class_="text-muted small mb-3"),
                 ui.div(
                     ui.tags.label("BMR Scale Factor ",
                                   ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_bmr_scale"],
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "jasmine_bmr_scale"}),
                     ui.input_numeric("jasmine_bmr_scale", None, value=1.0, min=0.5, max=2.0, step=0.1),
                     class_="mb-2"
@@ -525,7 +525,7 @@ def _jasmine_settings_panel():
                 ui.div(
                     ui.tags.label("Activity Cost Multiplier ",
                                   ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_activity_cost"],
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "jasmine_activity_cost"}),
                     ui.input_numeric("jasmine_activity_cost", None, value=2.0, min=1.0, max=5.0, step=0.1),
                     class_="mb-2"
@@ -533,7 +533,7 @@ def _jasmine_settings_panel():
                 ui.div(
                     ui.tags.label("Disturbance Cost Multiplier ",
                                   ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_disturbance_cost"],
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "jasmine_disturbance_cost"}),
                     ui.input_numeric("jasmine_disturbance_cost", None, value=1.5, min=1.0, max=3.0, step=0.1),
                     class_="mb-2"
@@ -541,13 +541,13 @@ def _jasmine_settings_panel():
             ),
             # Memory Parameters
             ui.card(
-                ui.card_header("🧠 Learned Avoidance Parameters"),
+                ui.card_header("Learned Avoidance Parameters"),
                 ui.p("Disturbance memory and avoidance behavior parameters.",
                      class_="text-muted small mb-3"),
                 ui.div(
                     ui.tags.label("Memory Decay Rate ",
                                   ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_memory_decay_rate"],
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "jasmine_memory_decay_rate"}),
                     ui.input_numeric("jasmine_memory_decay_rate", None, value=0.001, min=0.0001, max=0.01, step=0.0001),
                     class_="mb-2"
@@ -555,7 +555,7 @@ def _jasmine_settings_panel():
                 ui.div(
                     ui.tags.label("Avoidance Strength (0-1) ",
                                   ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_avoidance_strength"],
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "jasmine_avoidance_strength"}),
                     ui.input_numeric("jasmine_avoidance_strength", None, value=0.8, min=0.0, max=1.0, step=0.1),
                     class_="mb-2"
@@ -563,7 +563,7 @@ def _jasmine_settings_panel():
                 ui.div(
                     ui.tags.label("Avoidance Radius (cells) ",
                                   ui.tags.span("ⓘ", title=TOOLTIPS["jasmine_avoidance_radius"],
-                                               style="cursor: help; color: #0d6efd;"),
+                                               style="cursor: help; color: #0d7377;"),
                                   **{"for": "jasmine_avoidance_radius"}),
                     ui.input_numeric("jasmine_avoidance_radius", None, value=20.0, min=5.0, max=50.0, step=1.0),
                     class_="mb-2"

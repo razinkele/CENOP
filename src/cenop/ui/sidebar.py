@@ -50,7 +50,7 @@ SIDEBAR_TOOLTIPS = {
 def create_sidebar():
     """Create the simulation control sidebar with setup controls."""
     return ui.sidebar(
-        ui.h5("🎮 Simulation Control", class_="mb-3"),
+        ui.h5("Simulation Control", class_="mb-3"),
         
         # Simulation Setup
         ui.div(
@@ -58,7 +58,7 @@ def create_sidebar():
                 ui.tags.label(
                     "Initial Population ",
                     ui.tags.span("ⓘ", title=SIDEBAR_TOOLTIPS["porpoise_count"], 
-                                 style="cursor: help; color: #0d6efd;"),
+                                 style="cursor: help; color: #0d7377;"),
                     **{"for": "porpoise_count"}
                 ),
                 ui.input_numeric("porpoise_count", None, value=100, min=1, max=50000, step=1),
@@ -68,7 +68,7 @@ def create_sidebar():
                 ui.tags.label(
                     "Simulation Years ",
                     ui.tags.span("ⓘ", title=SIDEBAR_TOOLTIPS["sim_years"],
-                                 style="cursor: help; color: #0d6efd;"),
+                                 style="cursor: help; color: #0d7377;"),
                     **{"for": "sim_years"}
                 ),
                 ui.input_numeric("sim_years", None, value=5, min=1, max=100),
@@ -78,7 +78,7 @@ def create_sidebar():
                 ui.tags.label(
                     "Simulation Mode ",
                     ui.tags.span("ⓘ", title=SIDEBAR_TOOLTIPS["simulation_mode"],
-                                 style="cursor: help; color: #0d6efd;"),
+                                 style="cursor: help; color: #0d7377;"),
                     **{"for": "simulation_mode"}
                 ),
                 ui.input_select("simulation_mode", None,
@@ -90,7 +90,7 @@ def create_sidebar():
                 ui.tags.label(
                     "Landscape ",
                     ui.tags.span("ⓘ", title=SIDEBAR_TOOLTIPS["landscape"],
-                                 style="cursor: help; color: #0d6efd;"),
+                                 style="cursor: help; color: #0d7377;"),
                     **{"for": "landscape"}
                 ),
                 ui.input_select("landscape", None,
@@ -98,11 +98,11 @@ def create_sidebar():
                     selected="Lithuania"),
                 class_="mb-2"
             ),
-            ui.input_action_button("load_landscape", "🗺️ Load Landscape", class_="btn-outline-secondary w-100 mt-1 mb-1"),
+            ui.input_action_button("load_landscape", "Load Landscape", class_="btn-outline-secondary w-100 mt-1 mb-1"),
             ui.output_text("landscape_status"),
             # Turbine scenario - dynamically filtered based on landscape
             ui.output_ui("turbine_selector"),
-            ui.input_action_button("load_turbines", "🌬️ Load Turbines", class_="btn-outline-secondary w-100 mt-1 mb-1"),
+            ui.input_action_button("load_turbines", "Load Turbines", class_="btn-outline-secondary w-100 mt-1 mb-1"),
             ui.output_text("turbine_status"),
             class_="mb-3"
         ),
@@ -118,18 +118,18 @@ def create_sidebar():
         
         # Run controls
         ui.div(
-            ui.input_action_button("run_sim", "▶ Run Simulation", class_="btn-primary w-100 mb-2"),
-            ui.input_action_button("stop_sim", "⏹ Stop", class_="btn-danger w-100 mb-2"),
-            ui.input_action_button("reset_sim", "🔄 Reset", class_="btn-secondary w-100"),
+            ui.input_action_button("run_sim", "Run Simulation", class_="btn-primary w-100 mb-2"),
+            ui.input_action_button("stop_sim", "Stop", class_="btn-danger w-100 mb-2"),
+            ui.input_action_button("reset_sim", "Reset", class_="btn-secondary w-100"),
             class_="mb-3"
         ),
         
         # Speed control with tooltip
         ui.div(
             ui.tags.label(
-                "⚡ Simulation Speed ",
+                "Simulation Speed ",
                 ui.tags.span("ⓘ", title=SIDEBAR_TOOLTIPS["sim_speed"], 
-                             style="cursor: help; color: #0d6efd;"),
+                             style="cursor: help; color: #0d7377;"),
             ),
             ui.input_slider(
                 "sim_speed", 
@@ -166,6 +166,6 @@ def create_sidebar():
         ui.p("Advanced parameters in 'Model Settings' tab. JASMINE-specific settings available when JASMINE mode is selected.", class_="text-muted small"),
         
         width=280,
-        bg="#f8f9fa"
+        bg="#e8eff5"
     )
 

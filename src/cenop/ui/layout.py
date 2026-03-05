@@ -5,6 +5,7 @@ CENOP - CETacean Noise-Population Model
 
 from shiny import ui
 import shinyswatch
+from shiny_deckgl import head_includes
 
 from .sidebar import create_sidebar
 from .tabs.dashboard import dashboard_tab
@@ -544,6 +545,7 @@ def create_app_ui():
     )
     
     return ui.page_navbar(
+        head_includes(),
         dashboard_tab(),
         settings_tab(),
         population_tab(),

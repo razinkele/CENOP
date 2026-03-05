@@ -25,9 +25,19 @@ from .renderers.chart_helpers import (
     create_time_series_chart,
     create_histogram_chart,
     create_svg_chart,
-    create_map_figure,
-    create_pydeck_map,
     no_data_placeholder
+)
+
+from shiny_deckgl import zoom_widget, compass_widget, scale_widget
+from cenop.ui.tabs.dashboard import sim_map
+from cenop.server.map_layers import (
+    build_porpoise_layer,
+    build_depth_heatmap,
+    build_foraging_heatmap,
+    build_noise_construction_layer,
+    build_noise_operational_layer,
+    build_turbine_pole_layer,
+    build_turbine_blade_layer,
 )
 
 logger = logging.getLogger("CENOP")
@@ -206,7 +216,37 @@ def _build_details_modal_content(name, info, warnings):
 def server(input, output, session):
     """Main server function for CENOP Shiny app."""
     logger.info("Server function initialized")
-    
+
+    # --- shiny-deckgl layer cache ---
+    _layer_cache: dict[str, dict] = {}
+    _blade_rotation = [0.0]
+
+    async def _push_all_layers():
+        """Combine cached layers and push to MapWidget."""
+        layers = [
+            _layer_cache.get("depth-heatmap", build_depth_heatmap([])),
+            _layer_cache.get("foraging-heatmap", build_foraging_heatmap([])),
+            _layer_cache.get("noise-construction", build_noise_construction_layer([])),
+            _layer_cache.get("noise-operational", build_noise_operational_layer([])),
+            _layer_cache.get("turbine-poles", build_turbine_pole_layer([])),
+            _layer_cache.get("turbine-blades", build_turbine_blade_layer([])),
+            _layer_cache.get("porpoises", build_porpoise_layer([])),
+        ]
+        await sim_map.update(session, layers=layers)
+
+    @reactive.effect
+    async def _init_map():
+        """Send initial empty layers and map widgets on startup."""
+        await sim_map.update(
+            session,
+            layers=[],
+            widgets=[
+                zoom_widget(placement="top-right"),
+                compass_widget(placement="top-right"),
+                scale_widget(placement="bottom-left"),
+            ],
+        )
+
     # Centralized reactive state
     state = SimulationState()
     
@@ -1155,886 +1195,333 @@ def server(input, output, session):
             title='Food Consumption and Expenditure',
         )
     
-    # Cache for depth data - will be updated when Load Landscape is clicked or simulation starts
-    _depth_data_cache = None
-    _depth_landscape_name = None  # Track which landscape is cached
-    
-    @render.ui
-    def depth_data_initializer():
-        """
-        Hidden output that sends depth data to the map.
-        Updates when Load Landscape button is clicked or simulation starts.
-        The landscape depth grid is shown as a static overlay on the map.
-        """
-        import json
-        nonlocal _depth_data_cache, _depth_landscape_name
-        
-        # React to load landscape button clicks
-        load_counter = state.landscape_load_counter()
-        
-        # Also react to simulation state changes (when sim starts)
-        sim = state.simulation()
-        
-        # Get the landscape to load
-        landscape_name = state.landscape_loaded_name() if state.landscape_loaded_name() else input.landscape()
-        
-        # Use simulation's landscape if available
-        if sim is not None and hasattr(sim, 'landscape') and sim.landscape is not None:
-            landscape_name = getattr(sim.landscape, 'landscape_name', landscape_name)
-        
-        # Only load if button was clicked or sim started (not just on dropdown change)
-        if load_counter == 0 and sim is None:
-            # No load yet - return empty
-            return ui.div()
-        
-        # Recompute if landscape changed
-        if _depth_data_cache is None or _depth_landscape_name != landscape_name:
-            try:
-                from cenop.landscape import CellData, create_homogeneous_landscape
+    @reactive.effect
+    @reactive.event(state.landscape_load_counter)
+    async def _update_depth_layer():
+        """Rebuild depth heatmap when landscape is loaded."""
+        loaded_name = state.landscape_loaded_name()
+        if not loaded_name:
+            _layer_cache["depth-heatmap"] = build_depth_heatmap([])
+            return
 
-                logger.debug("Loading landscape '%s' for depth overlay...", landscape_name)
-
-                # Create landscape matching the simulation
-                if landscape_name == "Homogeneous":
-                    landscape = create_homogeneous_landscape()
-                else:
-                    # Named landscapes (Lithuania, CentralBaltic, etc.)
-                    landscape = CellData(landscape_name)
-                    landscape.load()  # Explicitly load data
-                
-                depth_array = landscape._depth
-                if depth_array is not None:
-                    # Surface loader warnings to UI if any
-                    if getattr(landscape, '_load_warnings', None):
-                        msgs = landscape._load_warnings
-                        for m in msgs:
-                            ui.notification_show(f"Landscape load: {m}", type="warning")
-
-                    depth_array = landscape._depth
-                    grid_height, grid_width = depth_array.shape
-                    cellsize = landscape.metadata.cellsize if landscape.metadata else 400.0
-
-                    # Adaptive sampling: target ~10-15k points max for
-                    # performance while keeping the overlay continuous.
-                    # The render radius is sample_step * cellsize * 0.75 so
-                    # neighbouring disks overlap slightly.
-                    total_cells = grid_height * grid_width
-                    max_points = 15000
-                    sample_step = max(1, int((total_cells / max_points) ** 0.5))
-                    render_radius = sample_step * cellsize * 0.75  # metres
-
-                    # Get landscape-specific bounds
-                    from ..ui.sidebar import LANDSCAPE_BOUNDS
-                    bounds = LANDSCAPE_BOUNDS.get(landscape_name, (53.27, 54.79, 4.83, 7.13))
-                    lat_min, lat_max, lon_min, lon_max = bounds
-
-                    depth_points = []
-                    for row in range(0, grid_height, sample_step):
-                        for col in range(0, grid_width, sample_step):
-                            depth = float(depth_array[row, col])
-                            lat = lat_min + (row / grid_height) * (lat_max - lat_min)
-                            lon = lon_min + (col / grid_width) * (lon_max - lon_min)
-                            depth_points.append({
-                                "position": [lon, lat],
-                                "depth": depth
-                            })
-
-                    # Cell extent in degrees for square grid rendering
-                    cell_deg_lat = (lat_max - lat_min) / grid_height * sample_step
-                    cell_deg_lon = (lon_max - lon_min) / grid_width * sample_step
-
-                    _depth_data_cache = {
-                        "points": depth_points,
-                        "width": grid_width,
-                        "height": grid_height,
-                        "radius": render_radius,
-                        "cellDegLat": cell_deg_lat,
-                        "cellDegLon": cell_deg_lon,
-                    }
-                    _depth_landscape_name = landscape_name
-                    state.landscape_info.set(f"{grid_width}x{grid_height} grid, {cellsize:.0f}m cells")
-                    logger.debug("Depth data cached for '%s': %d points, step=%d, radius=%.0fm",
-                                 landscape_name, len(depth_points), sample_step, render_radius)
-                else:
-                    _depth_data_cache = {"points": [], "width": 400, "height": 400}
-                    _depth_landscape_name = landscape_name
-            except Exception as e:
-                logger.error("Error loading depth data for '%s': %s", landscape_name, e, exc_info=True)
-                _depth_data_cache = {"points": [], "width": 400, "height": 400}
-                _depth_landscape_name = landscape_name
-        
-        if not _depth_data_cache["points"]:
-            return ui.div()
-        
-        depth_json = json.dumps(_depth_data_cache["points"])
-        
-        # Also send the landscape bounds to update map center
-        from ..ui.sidebar import LANDSCAPE_BOUNDS
-        bounds = LANDSCAPE_BOUNDS.get(landscape_name, (53.27, 54.79, 4.83, 7.13))
-        lat_min, lat_max, lon_min, lon_max = bounds
-        
-        js_code = f'''
-        <script>
-            (function() {{
-                // Wait for iframe to be ready
-                function sendDepthData() {{
-                    var iframe = document.getElementById('porpoise-map-frame');
-                    if (iframe && iframe.contentWindow) {{
-                        // First update the landscape bounds
-                        iframe.contentWindow.postMessage({{
-                            type: 'setLandscapeBounds',
-                            latMin: {lat_min},
-                            latMax: {lat_max},
-                            lonMin: {lon_min},
-                            lonMax: {lon_max}
-                        }}, '*');
-                        console.log('Landscape bounds sent:', {{latMin: {lat_min}, latMax: {lat_max}, lonMin: {lon_min}, lonMax: {lon_max}}});
-                        
-                        // Then send depth data
-                        var data = {depth_json};
-                        iframe.contentWindow.postMessage({{
-                            type: 'setDepthData',
-                            data: data,
-                            gridWidth: {_depth_data_cache["width"]},
-                            gridHeight: {_depth_data_cache["height"]},
-                            radius: {_depth_data_cache.get("radius", 1800)},
-                            cellDegLat: {_depth_data_cache.get("cellDegLat", 0.005)},
-                            cellDegLon: {_depth_data_cache.get("cellDegLon", 0.005)}
-                        }}, '*');
-                        console.log('Depth data sent to map:', data.length, 'points, cellDeg:', {_depth_data_cache.get("cellDegLat", 0.005)});
-                    }} else {{
-                        setTimeout(sendDepthData, 100);
-                    }}
-                }}
-                // Small delay to ensure iframe is loaded
-                setTimeout(sendDepthData, 500);
-            }})();
-        </script>
-        '''
-        return ui.HTML(js_code)
-    
-    # Cache for foraging data
-    _foraging_data_cache = None
-    _foraging_landscape_name = None
-    
-    @render.ui
-    def foraging_data_initializer():
-        """
-        Hidden output that sends foraging/food data to the map.
-        Shows food probability (patches) as a green overlay.
-        Updates when Load Landscape button is clicked.
-        """
-        import json
-        nonlocal _foraging_data_cache, _foraging_landscape_name
-        
-        # React to load landscape button clicks
-        load_counter = state.landscape_load_counter()
-        
-        # Also react to simulation state changes (when sim starts)
-        sim = state.simulation()
-        
-        # Get the landscape to load
-        landscape_name = state.landscape_loaded_name() if state.landscape_loaded_name() else input.landscape()
-        
-        # Use simulation's landscape if available
-        if sim is not None and hasattr(sim, 'landscape') and sim.landscape is not None:
-            landscape_name = getattr(sim.landscape, 'landscape_name', landscape_name)
-        
-        # Only load if button was clicked or sim started
-        if load_counter == 0 and sim is None:
-            return ui.div()
-        
-        # Recompute if landscape changed
-        if _foraging_data_cache is None or _foraging_landscape_name != landscape_name:
-            try:
-                from cenop.landscape import CellData, create_homogeneous_landscape
-
-                logger.debug("Loading foraging data for '%s'...", landscape_name)
-
-                # Create landscape matching the simulation
-                if landscape_name == "Homogeneous":
-                    landscape = create_homogeneous_landscape()
-                else:
-                    landscape = CellData(landscape_name)
-                    landscape.load()
-                
-                food_array = landscape._food_prob
-                if food_array is not None:
-                    # Surface loader warnings to UI if any
-                    if getattr(landscape, '_load_warnings', None):
-                        msgs = landscape._load_warnings
-                        for m in msgs:
-                            ui.notification_show(f"Landscape load: {m}", type="warning")
-
-                    grid_height, grid_width = food_array.shape
-                    cellsize = landscape.metadata.cellsize if landscape.metadata else 400.0
-
-                    # Adaptive sampling (same logic as depth layer)
-                    total_cells = grid_height * grid_width
-                    max_points = 15000
-                    sample_step = max(1, int((total_cells / max_points) ** 0.5))
-                    render_radius = sample_step * cellsize * 0.75
-
-                    from ..ui.sidebar import LANDSCAPE_BOUNDS
-                    bounds = LANDSCAPE_BOUNDS.get(landscape_name, (53.27, 54.79, 4.83, 7.13))
-                    lat_min, lat_max, lon_min, lon_max = bounds
-
-                    food_points = []
-                    for row in range(0, grid_height, sample_step):
-                        for col in range(0, grid_width, sample_step):
-                            food = float(food_array[row, col])
-                            if food > 0.1:  # Only include cells with significant food
-                                lat = lat_min + (row / grid_height) * (lat_max - lat_min)
-                                lon = lon_min + (col / grid_width) * (lon_max - lon_min)
-                                food_points.append({
-                                    "position": [lon, lat],
-                                    "food": food
-                                })
-
-                    _foraging_data_cache = {"points": food_points, "radius": render_radius}
-                    _foraging_landscape_name = landscape_name
-                    logger.debug("Foraging data cached for '%s': %d food cells, radius=%.0fm",
-                                 landscape_name, len(food_points), render_radius)
-                else:
-                    _foraging_data_cache = {"points": [], "radius": 1800}
-                    _foraging_landscape_name = landscape_name
-            except Exception as e:
-                logger.error("Error loading foraging data for '%s': %s", landscape_name, e, exc_info=True)
-                _foraging_data_cache = {"points": [], "radius": 1800}
-                _foraging_landscape_name = landscape_name
-
-        if not _foraging_data_cache.get("points"):
-            return ui.div()
-
-        foraging_json = json.dumps(_foraging_data_cache["points"])
-        foraging_radius = _foraging_data_cache.get("radius", 1800)
-
-        js_code = f'''
-        <script>
-            (function() {{
-                function sendForagingData() {{
-                    var iframe = document.getElementById('porpoise-map-frame');
-                    if (iframe && iframe.contentWindow) {{
-                        var data = {foraging_json};
-                        iframe.contentWindow.postMessage({{
-                            type: 'setForagingData',
-                            data: data,
-                            radius: {foraging_radius}
-                        }}, '*');
-                        console.log('Foraging data sent to map:', data.length, 'cells, radius:', {foraging_radius});
-                    }} else {{
-                        setTimeout(sendForagingData, 100);
-                    }}
-                }}
-                setTimeout(sendForagingData, 600);  // After depth data
-            }})();
-        </script>
-        '''
-        return ui.HTML(js_code)
-    
-    # =========================================================================
-    # Ship Data Layer
-    # =========================================================================
-    
-    @render.ui
-    def ship_data_initializer():
-        """
-        Hidden output that sends ship traffic data to the map.
-        Shows ships as moving markers when Ship Traffic is enabled.
-        Updates during simulation to show ship movement.
-        """
-        import json
-        
-        # React to simulation state changes
-        sim = state.simulation()
-        
-        # Also react to map updates during simulation
-        map_counter = state.map_update_counter()
-        
-        # Check if ships are enabled
-        ships_enabled_val = input.ships_enabled() if hasattr(input, 'ships_enabled') else False
-        
-        # If no simulation or ships not enabled, send empty data
-        if sim is None or not ships_enabled_val:
-            return ui.HTML('''
-            <script>
-                (function() {
-                    function clearShips() {
-                        var iframe = document.getElementById('porpoise-map-frame');
-                        if (iframe && iframe.contentWindow) {
-                            iframe.contentWindow.postMessage({
-                                type: 'setShipData',
-                                data: []
-                            }, '*');
-                        }
-                    }
-                    setTimeout(clearShips, 500);
-                })();
-            </script>
-            ''')
-        
         try:
-            # Get ship data from simulation
-            ship_manager = getattr(sim, '_ship_manager', None)
-            if ship_manager is None or len(ship_manager.get_all_ships()) == 0:
-                return ui.div()
-            
-            ships = ship_manager.get_all_ships()
-            
-            # Get landscape-specific bounds
-            from ..ui.sidebar import LANDSCAPE_BOUNDS
-            landscape_name = state.landscape_loaded_name() if state.landscape_loaded_name() else input.landscape()
-            bounds = LANDSCAPE_BOUNDS.get(landscape_name, (53.27, 54.79, 4.83, 7.13))
+            if loaded_name == "Homogeneous":
+                from cenop.landscape import create_homogeneous_landscape
+                landscape = create_homogeneous_landscape()
+            else:
+                from cenop.landscape import CellData
+                landscape = CellData(loaded_name)
+
+            depth = landscape._depth
+            rows, cols = depth.shape
+
+            from cenop.ui.sidebar import LANDSCAPE_BOUNDS
+            bounds = LANDSCAPE_BOUNDS.get(loaded_name, (54.5, 56.5, 19.5, 22.5))
             lat_min, lat_max, lon_min, lon_max = bounds
-            
-            # Get landscape grid dimensions
-            grid_width = 400
-            grid_height = 400
-            if hasattr(sim, 'landscape') and sim.landscape is not None:
-                grid_width = getattr(sim.landscape, 'width', 400)
-                grid_height = getattr(sim.landscape, 'height', 400)
-            
-            ship_points = []
-            for ship in ships:
-                # Get ship position (grid coordinates)
-                x, y = ship.x, ship.y
-                
-                # Convert grid to lat/lon
-                lat = lat_min + (y / grid_height) * (lat_max - lat_min)
-                lon = lon_min + (x / grid_width) * (lon_max - lon_min)
-                
-                ship_points.append({
-                    "position": [lon, lat],
-                    "name": ship.name,
-                    "speed": ship.speed,
-                    "size": ship.vessel_class.value if hasattr(ship.vessel_class, 'value') else 1
-                })
-            
-            logger.debug("Sending %d ships to map (update #%d)", len(ship_points), map_counter)
-            
-            if not ship_points:
-                return ui.div()
-            
-            ship_json = json.dumps(ship_points)
-            
-            js_code = f'''
-            <script>
-                (function() {{
-                    function sendShipData() {{
-                        var iframe = document.getElementById('porpoise-map-frame');
-                        if (iframe && iframe.contentWindow) {{
-                            var data = {ship_json};
-                            iframe.contentWindow.postMessage({{
-                                type: 'setShipData',
-                                data: data
-                            }}, '*');
-                            console.log('Ship data sent to map:', data.length, 'vessels');
-                        }} else {{
-                            setTimeout(sendShipData, 100);
-                        }}
-                    }}
-                    setTimeout(sendShipData, 700);  // After other layers
-                }})();
-            </script>
-            '''
-            return ui.HTML(js_code)
-            
+
+            total_cells = rows * cols
+            max_points = 15000
+            sample_step = max(1, int((total_cells / max_points) ** 0.5))
+
+            points = []
+            for r in range(0, rows, sample_step):
+                for c in range(0, cols, sample_step):
+                    d = float(depth[r, c])
+                    if d <= 0:
+                        continue
+                    lat = lat_min + (r / rows) * (lat_max - lat_min)
+                    lon = lon_min + (c / cols) * (lon_max - lon_min)
+                    points.append([lon, lat, d])
+
+            _layer_cache["depth-heatmap"] = build_depth_heatmap(points)
+            center_lat = (lat_min + lat_max) / 2
+            center_lon = (lon_min + lon_max) / 2
+            await sim_map.fly_to(session, longitude=center_lon, latitude=center_lat, zoom=6)
+            await _push_all_layers()
+            logger.info(f"Depth heatmap: {len(points)} points (step={sample_step})")
         except Exception as e:
-            logger.error("Error loading ship data: %s", e, exc_info=True)
-            return ui.div()
+            logger.error(f"Error building depth layer: {e}", exc_info=True)
     
-    # Cache for turbine data
-    _turbine_data_cache = None
-    _turbine_scenario_name = None
+    @reactive.effect
+    @reactive.event(state.landscape_load_counter)
+    async def _update_foraging_layer():
+        """Rebuild foraging heatmap when landscape is loaded."""
+        loaded_name = state.landscape_loaded_name()
+        if not loaded_name:
+            _layer_cache["foraging-heatmap"] = build_foraging_heatmap([])
+            return
+
+        try:
+            if loaded_name == "Homogeneous":
+                from cenop.landscape import create_homogeneous_landscape
+                landscape = create_homogeneous_landscape()
+            else:
+                from cenop.landscape import CellData
+                landscape = CellData(loaded_name)
+
+            food = landscape._food_prob
+            rows, cols = food.shape
+
+            from cenop.ui.sidebar import LANDSCAPE_BOUNDS
+            bounds = LANDSCAPE_BOUNDS.get(loaded_name, (54.5, 56.5, 19.5, 22.5))
+            lat_min, lat_max, lon_min, lon_max = bounds
+
+            total_cells = rows * cols
+            max_points = 15000
+            sample_step = max(1, int((total_cells / max_points) ** 0.5))
+
+            points = []
+            for r in range(0, rows, sample_step):
+                for c in range(0, cols, sample_step):
+                    f = float(food[r, c])
+                    if f < 0.1:
+                        continue
+                    lat = lat_min + (r / rows) * (lat_max - lat_min)
+                    lon = lon_min + (c / cols) * (lon_max - lon_min)
+                    points.append([lon, lat, f])
+
+            _layer_cache["foraging-heatmap"] = build_foraging_heatmap(points)
+            await _push_all_layers()
+            logger.info(f"Foraging heatmap: {len(points)} points (step={sample_step})")
+        except Exception as e:
+            logger.error(f"Error building foraging layer: {e}", exc_info=True)
     
-    @render.ui
-    def turbine_data_initializer():
-        """
-        Hidden output that sends turbine data to the map.
-        Updates when Load Turbines button is clicked.
-        """
-        import json
-        import os
-        from pathlib import Path
-        nonlocal _turbine_data_cache, _turbine_scenario_name
-        
-        # React to Load Turbines button clicks
-        turbine_counter = state.turbine_load_counter()
-        turbine_scenario = input.turbines() if hasattr(input, 'turbines') else "off"
-        
-        # Skip if no turbines or button not clicked
-        if turbine_scenario == "off" or turbine_counter == 0:
-            _turbine_data_cache = None
-            _turbine_scenario_name = turbine_scenario
-            state.turbine_count.set(0)
-            # Send empty turbine data to clear the layer
-            return ui.HTML('''
-            <script>
-                (function() {
-                    function clearTurbines() {
-                        var iframe = document.getElementById('porpoise-map-frame');
-                        if (iframe && iframe.contentWindow) {
-                            iframe.contentWindow.postMessage({
-                                type: 'setTurbineData',
-                                data: []
-                            }, '*');
-                        }
-                    }
-                    setTimeout(clearTurbines, 500);
-                })();
-            </script>
-            ''')
-        
-        # Only reload if scenario changed
-        if _turbine_data_cache is not None and _turbine_scenario_name == turbine_scenario:
-            turbine_json = json.dumps(_turbine_data_cache)
-        else:
-            # Load turbine data from file
+    # (Ship data layer removed — out of scope for shiny-deckgl migration)
+    
+    @reactive.effect
+    @reactive.event(state.turbine_load_counter)
+    async def _update_turbine_layers():
+        """Rebuild turbine layers when turbines are loaded."""
+        loaded_name = state.turbine_loaded_name()
+        if not loaded_name or loaded_name == "off":
+            _layer_cache["turbine-poles"] = build_turbine_pole_layer([])
+            _layer_cache["turbine-blades"] = build_turbine_blade_layer([])
+            _layer_cache["_turbine_data_raw"] = []
+            await _push_all_layers()
+            return
+
+        try:
+            import os
+            landscape_name = "Homogeneous"
+            try:
+                landscape_name = input.landscape()
+            except Exception:
+                pass
+
+            base_paths = [
+                os.path.join("data", "landscapes", landscape_name, "wind-farms"),
+                os.path.join("landscapes", landscape_name, "wind-farms"),
+            ]
+            wf_dir = None
+            for p in base_paths:
+                if os.path.isdir(p):
+                    wf_dir = p
+                    break
+
+            if not wf_dir:
+                logger.warning(f"No wind-farms directory found for {landscape_name}")
+                return
+
+            turbine_file = os.path.join(wf_dir, f"{loaded_name}.txt")
+            if not os.path.isfile(turbine_file):
+                logger.warning(f"Turbine file not found: {turbine_file}")
+                return
+
+            import pandas as pd_local
+            df = pd_local.read_csv(turbine_file, sep=r'\s+')
+
             try:
                 from pyproj import Transformer
-                
-                # Find the wind-farms directory
-                possible_paths = [
-                    Path("../DEPONS-master/data/wind-farms"),
-                    Path("../../DEPONS-master/data/wind-farms"),
-                    Path("DEPONS-master/data/wind-farms"),
-                    Path("data/wind-farms"),
-                ]
-                wind_farms_dir = None
-                for p in possible_paths:
-                    if p.exists():
-                        wind_farms_dir = p
-                        break
-                
-                if wind_farms_dir is None:
-                    logger.debug("Wind farms directory not found")
-                    return ui.div()
-                
-                turbine_file = wind_farms_dir / f"{turbine_scenario}.txt"
-                if not turbine_file.exists():
-                    logger.debug("Turbine file not found: %s", turbine_file)
-                    return ui.div()
-                
-                logger.debug("Loading turbines from %s", turbine_file)
-                
-                # Transform from EPSG:3035 to WGS84
-                transformer = Transformer.from_crs('EPSG:3035', 'EPSG:4326', always_xy=True)
-                
-                turbines = []
-                with open(turbine_file, 'r') as f:
-                    header = f.readline().strip().split('\t')
-                    # Handle different column names
-                    x_col = 'x' if 'x' in header else 'x.coordinate'
-                    y_col = 'y' if 'y' in header else 'y.coordinate'
-                    x_idx = header.index(x_col)
-                    y_idx = header.index(y_col)
-                    id_idx = header.index('id')
-                    impact_idx = header.index('impact') if 'impact' in header else None
-                    start_idx = header.index('start') if 'start' in header else None
-                    end_idx = header.index('end') if 'end' in header else None
-                    
-                    for line in f:
-                        parts = line.strip().split('\t')
-                        if len(parts) < max(x_idx, y_idx) + 1:
-                            continue
-                        
-                        try:
-                            x_3035 = float(parts[x_idx])
-                            y_3035 = float(parts[y_idx])
-                            turbine_id = parts[id_idx]
-                            impact = int(float(parts[impact_idx])) if impact_idx else 200
-                            # Construction start/end ticks (pile-driving phase)
-                            start_tick = int(float(parts[start_idx])) if start_idx else 0
-                            end_tick = int(float(parts[end_idx])) if end_idx else start_tick + 4
-                            
-                            # Transform to lat/lon
-                            lon, lat = transformer.transform(x_3035, y_3035)
-                            
-                            turbines.append({
-                                "id": turbine_id,
-                                "position": [lon, lat],
-                                "impact": impact,  # Construction noise: 234 dB SEL
-                                "start": start_tick,  # Pile-driving start tick
-                                "end": end_tick,  # Pile-driving end tick
-                                "radius": 600,  # Turbine marker size
-                                "color": [255, 100, 50, 220]  # Orange-red for turbines
-                            })
-                        except (ValueError, IndexError) as e:
-                            continue
-                
-                _turbine_data_cache = turbines
-                _turbine_scenario_name = turbine_scenario
-                state.turbine_count.set(len(turbines))
-                logger.debug("Loaded %d turbines from %s", len(turbines), turbine_scenario)
-                
-            except Exception as e:
-                logger.error("Error loading turbine data: %s", e, exc_info=True)
-                _turbine_data_cache = []
-                _turbine_scenario_name = turbine_scenario
-        
-        if not _turbine_data_cache:
-            return ui.div()
-        
-        turbine_json = json.dumps(_turbine_data_cache)
-        turbine_count = len(_turbine_data_cache)
-        
-        js_code = f'''
-        <script>
-            (function() {{
-                function sendTurbineData() {{
-                    var iframe = document.getElementById('porpoise-map-frame');
-                    if (iframe && iframe.contentWindow) {{
-                        var data = {turbine_json};
-                        iframe.contentWindow.postMessage({{
-                            type: 'setTurbineData',
-                            data: data,
-                            count: {turbine_count},
-                            scenario: '{turbine_scenario}'
-                        }}, '*');
-                        console.log('Turbine data sent to map:', data.length, 'turbines');
-                    }} else {{
-                        setTimeout(sendTurbineData, 100);
-                    }}
-                }}
-                setTimeout(sendTurbineData, 600);
-            }})();
-        </script>
-        '''
-        return ui.HTML(js_code)
+                transformer = Transformer.from_crs("EPSG:3035", "EPSG:4326", always_xy=True)
+            except ImportError:
+                logger.error("pyproj not available for coordinate transform")
+                return
 
-    @render.ui
-    def turbine_data_updater():
-        """
-        Hidden output that sends turbine data updates with dynamic phase (construction/operational/planned)
-        based on the current simulation tick so the client can color turbines accordingly.
-        """
-        import json
+            turbine_data = []
+            for _, row in df.iterrows():
+                x = float(row.get("x", row.iloc[0]))
+                y = float(row.get("y", row.iloc[1]))
+                lon, lat = transformer.transform(x, y)
+                impact = float(row.get("impact", 234))
+                start = int(row.get("start", 0))
+                end = int(row.get("end", 0))
+                turbine_data.append({
+                    "position": [lon, lat],
+                    "impact": impact,
+                    "start": start,
+                    "end": end,
+                    "radius": 600,
+                    "phase": "planned",
+                    "color": [255, 100, 50, 220],
+                    "layerType": "Turbine",
+                    "info": f"Impact: {impact} dB",
+                })
 
-        map_counter = state.map_update_counter()
-        turbine_counter = state.turbine_load_counter()
+            state.turbine_count.set(len(turbine_data))
+            _layer_cache["_turbine_data_raw"] = turbine_data
+            _layer_cache["turbine-poles"] = build_turbine_pole_layer(turbine_data)
+            _layer_cache["turbine-blades"] = build_turbine_blade_layer(turbine_data, _blade_rotation[0])
+            await _push_all_layers()
+            logger.info(f"Turbine layers: {len(turbine_data)} turbines loaded")
+        except Exception as e:
+            logger.error(f"Error building turbine layers: {e}", exc_info=True)
+
+    @reactive.effect
+    @reactive.event(state.map_update_counter)
+    async def _update_turbine_phases():
+        """Update turbine phases based on current simulation tick."""
+        raw = _layer_cache.get("_turbine_data_raw", [])
+        if not raw:
+            return
+
         sim = state.simulation()
-
-        nonlocal _turbine_data_cache
-        if not _turbine_data_cache or turbine_counter == 0:
-            # Clear turbine layer when none loaded
-            return ui.HTML('''
-            <script>
-                (function() {
-                    function clearTurbines() {
-                        var iframe = document.getElementById('porpoise-map-frame');
-                        if (iframe && iframe.contentWindow) {
-                            iframe.contentWindow.postMessage({ type: 'setTurbineData', data: [] }, '*');
-                        }
-                    }
-                    setTimeout(clearTurbines, 100);
-                })();
-            </script>
-            ''')
-
-        # Build name→phase mapping from simulation model (authoritative source)
-        phase_map = {}
-        if sim is not None and hasattr(sim, '_turbine_manager'):
-            for turbine in sim._turbine_manager.turbines:
-                phase_map[turbine.name] = turbine.phase
-
-        # Build updated turbine list with phase and color
-        updated = []
-        for t in _turbine_data_cache:
-            tt = dict(t)
-            # Look up phase from simulation model by turbine name
-            phase = phase_map.get(tt.get('id', ''), 'planned')
-
-            if phase == 'construction':
-                color = [255, 70, 48, 220]
-            elif phase == 'operational' or phase == 'operation':
-                color = [50, 176, 240, 220]
-            else:
-                color = [176, 176, 176, 180]
-
-            tt['phase'] = phase
-            tt['color'] = color
-            updated.append(tt)
-
-        turbine_json = json.dumps(updated)
-
-        js_code = f'''
-        <script>
-            (function() {{
-                function sendTurbineStatus() {{
-                    var iframe = document.getElementById('porpoise-map-frame');
-                    if (iframe && iframe.contentWindow) {{
-                        var data = {turbine_json};
-                        iframe.contentWindow.postMessage({{ type: 'setTurbineData', data: data }}, '*');
-                        console.log('Turbine status update sent to map:', data.length);
-                    }} else {{
-                        setTimeout(sendTurbineStatus, 100);
-                    }}
-                }}
-                setTimeout(sendTurbineStatus, 200);
-            }})();
-        </script>
-        '''
-        return ui.HTML(js_code)
-
-    # (END turbine data updater)
-
-    # Cache for noise propagation data
-    _noise_data_cache = None
-    _noise_scenario_name = None
-    _noise_tick = None  # Track tick for dynamic updates
-    
-    # Operational noise level (dB SEL) - much lower than construction
-    OPERATIONAL_NOISE_LEVEL = 145.0  # Typical operational turbine noise
-    
-    @render.ui
-    def noise_data_initializer():
-        """
-        Hidden output that sends noise propagation data to the map.
-        
-        Two types of noise:
-        1. Construction noise (red): 234 dB during pile-driving (start <= tick <= end)
-        2. Operational noise (yellow): ~145 dB after construction (tick > end)
-        
-        Before simulation: Shows operational noise for all turbines (preview mode)
-        During simulation: Shows construction + operational based on current tick
-        """
-        import json
-        import numpy as np
-        
-        nonlocal _noise_data_cache, _noise_scenario_name, _noise_tick
-        
-        # Depend on turbine load button clicks
-        turbine_scenario = input.turbines() if hasattr(input, 'turbines') else "off"
-        turbine_counter = state.turbine_load_counter()
-        
-        # Also react to simulation state for tick-based updates
-        sim = state.simulation()
-        map_counter = state.map_update_counter()  # Triggers on map updates
-        
-        # Get current tick from simulation
-        current_tick = 0
-        if sim is not None and hasattr(sim, 'state') and hasattr(sim.state, 'tick'):
-            current_tick = sim.state.tick
-        
-        # Only show noise when turbines are loaded (not "off" and button clicked)
-        if not turbine_scenario or turbine_scenario == "off" or turbine_counter == 0:
-            _noise_data_cache = {"construction": [], "operational": []}
-            _noise_scenario_name = turbine_scenario
-            _noise_tick = current_tick
-            # Clear noise layer when no turbines
-            return ui.HTML('''
-            <script>
-                (function() {
-                    function clearNoise() {
-                        var iframe = document.getElementById('porpoise-map-frame');
-                        if (iframe && iframe.contentWindow) {
-                            iframe.contentWindow.postMessage({
-                                type: 'setNoiseData',
-                                data: {construction: [], operational: []}
-                            }, '*');
-                        } else {
-                            setTimeout(clearNoise, 100);
-                        }
-                    }
-                    setTimeout(clearNoise, 300);
-                })();
-            </script>
-            ''')
-        
-        # Recalculate if scenario changed, tick changed, or cache is stale
-        tick_changed = _noise_tick is None or abs(current_tick - _noise_tick) >= 48  # Update every ~day
-        scenario_changed = _noise_scenario_name != turbine_scenario
-        # Also recalculate when cache is empty but turbine data is now available
-        # (fixes race condition where noise initializer fires before turbine data loads)
-        cache_empty = (_noise_data_cache is not None
-                       and not _noise_data_cache.get("construction")
-                       and not _noise_data_cache.get("operational"))
-        turbines_available = _turbine_data_cache is not None and len(_turbine_data_cache) > 0
-
-        if scenario_changed or _noise_data_cache is None or tick_changed or (cache_empty and turbines_available):
-            try:
-                # Get turbine data first
-                if _turbine_data_cache is None or len(_turbine_data_cache) == 0:
-                    _noise_data_cache = {"construction": [], "operational": []}
-                    _noise_scenario_name = turbine_scenario
-                    _noise_tick = current_tick
-                    return ui.div()
-
-                # DEPONS noise propagation: TL = beta * log10(d)
-                # Deterrence radius where RL drops to threshold:
-                #   d = 10^((SL - threshold) / beta)
-                beta_hat = 20.0   # Spreading loss factor
-                deter_threshold = 158.0   # Construction deterrence (dB)
-                operational_threshold = 140.0  # Operational display (dB)
-
-                # Separate turbines by phase based on current tick
-                constructing_turbines = []
-                operational_turbines = []
-
-                for t in _turbine_data_cache:
-                    start = t.get('start', 0)
-                    end = t.get('end', start + 4)
-                    if current_tick == 0:
-                        operational_turbines.append(t)
-                    elif start <= current_tick <= end:
-                        constructing_turbines.append(t)
-                    elif current_tick > end:
-                        operational_turbines.append(t)
-
-                logger.debug("Tick %d: %d constructing, %d operational",
-                             current_tick, len(constructing_turbines), len(operational_turbines))
-
-                # Build noise contours centered on each turbine with physics-based radius
-                construction_points = []
-                for t in constructing_turbines:
-                    sl = t.get('impact', 234)
-                    radius_m = 10 ** ((sl - deter_threshold) / beta_hat)
-                    construction_points.append({
-                        "position": t['position'],
-                        "level": float(sl),
-                        "radius": float(radius_m),
-                        "type": "construction"
-                    })
-
-                operational_points = []
-                for t in operational_turbines:
-                    # Operational noise is low (~145 dB); use a fixed visual
-                    # indicator radius rather than physics-based (which would
-                    # be < 2m at 140 dB threshold)
-                    operational_points.append({
-                        "position": t['position'],
-                        "level": float(OPERATIONAL_NOISE_LEVEL),
-                        "radius": 500.0,
-                        "type": "operational"
-                    })
-
-                _noise_data_cache = {
-                    "construction": construction_points,
-                    "operational": operational_points
-                }
-                _noise_scenario_name = turbine_scenario
-                _noise_tick = current_tick
-                logger.debug("Noise: %d construction (r=%.0fm), %d operational (r=500m indicator)",
-                             len(construction_points), 10**((234-deter_threshold)/beta_hat), len(operational_points))
-                
-            except Exception as e:
-                logger.error("Error calculating noise propagation: %s", e, exc_info=True)
-                _noise_data_cache = {"construction": [], "operational": []}
-                _noise_scenario_name = turbine_scenario
-                _noise_tick = current_tick
-        
-        if not _noise_data_cache or (not _noise_data_cache.get("construction") and not _noise_data_cache.get("operational")):
-            return ui.div()
-        
-        noise_json = json.dumps(_noise_data_cache)
-        
-        js_code = f'''
-        <script>
-            (function() {{
-                function sendNoiseData() {{
-                    var iframe = document.getElementById('porpoise-map-frame');
-                    if (iframe && iframe.contentWindow) {{
-                        var data = {noise_json};
-                        iframe.contentWindow.postMessage({{
-                            type: 'setNoiseData',
-                            data: data
-                        }}, '*');
-                        console.log('Noise data sent to map: construction=' + data.construction.length + ', operational=' + data.operational.length);
-                    }} else {{
-                        setTimeout(sendNoiseData, 100);
-                    }}
-                }}
-                setTimeout(sendNoiseData, 700);
-            }})();
-        </script>
-        '''
-        return ui.HTML(js_code)
-    
-    @render.ui
-    def porpoise_data_updater():
-        """
-        Hidden output that sends porpoise data to the static map via JavaScript.
-        Following the DEPONS pattern where the map is created once and only
-        the scatter layer is updated via deckgl.setProps().
-        """
-        import json
+        if sim is None:
+            return
 
         try:
-            map_counter = state.map_update_counter()
-            sim = state.simulation()
+            current_tick = sim.state.tick
+            updated = []
+            for t in raw:
+                phase = "planned"
+                if t["start"] <= current_tick <= t["end"]:
+                    phase = "construction"
+                elif current_tick > t["end"] and t["end"] > 0:
+                    phase = "operational"
+                updated.append({**t, "phase": phase})
 
-            from ..ui.sidebar import LANDSCAPE_BOUNDS
-            landscape_name = state.landscape_loaded_name() or input.landscape()
-            bounds = LANDSCAPE_BOUNDS.get(landscape_name, (53.27, 54.79, 4.83, 7.13))
-            lat_min, lat_max, lon_min, lon_max = bounds
-
-            points_data = []
-
-            if sim is not None:
-                # Helper to get world dimensions
-                def _world_dims():
-                    if hasattr(sim, 'cell_data') and sim.cell_data is not None:
-                        return sim.cell_data.width, sim.cell_data.height
-                    if hasattr(sim, '_cell_data') and sim._cell_data is not None:
-                        return sim._cell_data.width, sim._cell_data.height
-                    return getattr(sim.params, 'world_width', 400), getattr(sim.params, 'world_height', 400)
-
-                if hasattr(sim, 'agents_df'):
-                    df = sim.agents_df
-                    if not df.empty:
-                        df_plot = df.head(1000)
-                        world_width, world_height = _world_dims()
-
-                        lats = lat_min + (df_plot['y'] / world_height) * (lat_max - lat_min)
-                        lons = lon_min + (df_plot['x'] / world_width) * (lon_max - lon_min)
-
-                        cols = set(df_plot.columns)
-                        for i, (lat, lon) in enumerate(zip(lats, lons)):
-                            row = df_plot.iloc[i]
-                            points_data.append({
-                                "position": [float(lon), float(lat)],
-                                "radius": 400,
-                                "age": int(row['age']) if 'age' in cols else 0,
-                                "heading": float(row['heading']) if 'heading' in cols else 0.0,
-                                "energy": float(row['energy']) if 'energy' in cols else 0.0,
-                                "is_disturbed": bool(row['is_disturbed']) if 'is_disturbed' in cols else False,
-                                "behavioral_state": int(row['behavioral_state']) if 'behavioral_state' in cols else 1,
-                                "depth": float(row['depth']) if 'depth' in cols else 20.0,
-                            })
-                elif hasattr(sim, '_porpoises') and sim._porpoises:
-                    world_width, world_height = _world_dims()
-                    for p in sim._porpoises[:1000]:
-                        if hasattr(p, 'alive') and p.alive:
-                            lat = lat_min + (p.y / world_height) * (lat_max - lat_min)
-                            lon = lon_min + (p.x / world_width) * (lon_max - lon_min)
-                            points_data.append({
-                                "position": [lon, lat],
-                                "radius": 400,
-                                "age": getattr(p, 'age', 0),
-                                "heading": getattr(p, 'heading', 0.0),
-                                "energy": getattr(p, 'energy', 0.0),
-                                "is_disturbed": (getattr(p, 'deter_strength', 0.0) > 0.1),
-                                "behavioral_state": getattr(p, 'behavioral_state', 1),
-                            })
-
-            points_json = json.dumps(points_data)
-            js_code = f'''
-            <script>
-                (function() {{
-                    var iframe = document.getElementById('porpoise-map-frame');
-                    if (iframe && iframe.contentWindow) {{
-                        iframe.contentWindow.postMessage({{
-                            type: 'updatePorpoises',
-                            data: {points_json}
-                        }}, '*');
-                    }}
-                }})();
-            </script>
-            '''
-            return ui.HTML(js_code)
+            _layer_cache["_turbine_data_raw"] = updated
+            _layer_cache["turbine-poles"] = build_turbine_pole_layer(updated)
+            _layer_cache["turbine-blades"] = build_turbine_blade_layer(updated, _blade_rotation[0])
         except Exception as e:
-            logger.error("porpoise_data_updater error: %s", e, exc_info=True)
-            return ui.div()
+            logger.error(f"Error updating turbine phases: {e}", exc_info=True)
+
+    @reactive.effect
+    @reactive.event(state.turbine_load_counter, state.map_update_counter)
+    async def _update_noise_layers():
+        """Rebuild noise layers based on turbine phases."""
+        raw = _layer_cache.get("_turbine_data_raw", [])
+        if not raw:
+            _layer_cache["noise-construction"] = build_noise_construction_layer([])
+            _layer_cache["noise-operational"] = build_noise_operational_layer([])
+            return
+
+        sim = state.simulation()
+        current_tick = sim.state.tick if sim else 0
+
+        construction_noise = []
+        operational_noise = []
+
+        for t in raw:
+            start = t.get("start", 0)
+            end = t.get("end", 0)
+            impact = t.get("impact", 234)
+            pos = t["position"]
+
+            if start <= current_tick <= end:
+                threshold = 158
+                radius = 10 ** ((impact - threshold) / 20)
+                construction_noise.append({
+                    "position": pos,
+                    "radius": radius,
+                    "layerType": "Noise",
+                    "info": f"Construction: {impact} dB, radius: {radius:.0f}m",
+                })
+            elif current_tick > end and end > 0:
+                operational_noise.append({
+                    "position": pos,
+                    "radius": 500,
+                    "layerType": "Noise",
+                    "info": "Operational: 145 dB, radius: 500m",
+                })
+
+        _layer_cache["noise-construction"] = build_noise_construction_layer(construction_noise)
+        _layer_cache["noise-operational"] = build_noise_operational_layer(operational_noise)
+    
+    @reactive.effect
+    @reactive.event(state.map_update_counter)
+    async def _update_porpoise_layer():
+        """Rebuild porpoise layer and push all layers on simulation tick."""
+        positions_raw = state.porpoise_positions()
+        if not positions_raw:
+            _layer_cache["porpoises"] = build_porpoise_layer([])
+            await _push_all_layers()
+            return
+
+        try:
+            points = []
+            for p in positions_raw[:1000]:
+                lon, lat = p[0], p[1]
+                heading = p[2] if len(p) > 2 else 0
+                age = p[3] if len(p) > 3 else 5
+                is_disturbed = p[6] if len(p) > 6 else False
+
+                if is_disturbed:
+                    color = [255, 40, 40, 240]
+                elif age < 2:
+                    color = [60, 180, 75, 240]
+                elif age < 12:
+                    color = [0, 150, 255, 240]
+                else:
+                    color = [160, 160, 160, 240]
+
+                points.append({
+                    "position": [lon, lat],
+                    "heading": heading,
+                    "age": age,
+                    "is_disturbed": is_disturbed,
+                    "radius": 200,
+                    "color": color,
+                    "layerType": "Porpoise",
+                    "info": f"Age: {age:.1f}y" if isinstance(age, float) else f"Age: {age}",
+                })
+
+            _layer_cache["porpoises"] = build_porpoise_layer(points)
+            await _push_all_layers()
+        except Exception as e:
+            logger.error(f"Error updating porpoise layer: {e}", exc_info=True)
+
+    @reactive.effect
+    async def _sync_layer_visibility():
+        """Sync sidebar layer toggles to MapWidget visibility."""
+        visibility = {}
+        try:
+            visibility["depth-heatmap"] = input.layer_depth()
+        except Exception:
+            visibility["depth-heatmap"] = False
+        try:
+            visibility["foraging-heatmap"] = input.layer_foraging()
+        except Exception:
+            visibility["foraging-heatmap"] = False
+        try:
+            visibility["noise-construction"] = input.layer_noise()
+            visibility["noise-operational"] = input.layer_noise()
+        except Exception:
+            visibility["noise-construction"] = True
+            visibility["noise-operational"] = True
+        try:
+            visibility["turbine-poles"] = input.layer_turbines()
+            visibility["turbine-blades"] = input.layer_turbines()
+        except Exception:
+            visibility["turbine-poles"] = True
+            visibility["turbine-blades"] = True
+        try:
+            visibility["porpoises"] = input.layer_porpoises()
+        except Exception:
+            visibility["porpoises"] = True
+
+        await sim_map.set_layer_visibility(session, visibility)
+
+    @reactive.effect
+    async def _animate_turbine_blades():
+        """Animate turbine blades for operational turbines."""
+        reactive.invalidate_later(0.1)
+        raw = _layer_cache.get("_turbine_data_raw", [])
+        has_operational = any(t.get("phase") == "operational" for t in raw)
+        if not has_operational:
+            return
+        _blade_rotation[0] = (_blade_rotation[0] + 4) % 360
+        _layer_cache["turbine-blades"] = build_turbine_blade_layer(raw, _blade_rotation[0])
+        await _push_all_layers()
     
     # =========================================================================
     # Population Tab Renderers

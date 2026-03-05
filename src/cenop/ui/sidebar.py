@@ -163,6 +163,15 @@ def create_sidebar():
 
         ui.tags.hr(),
 
+        ui.h5("Map Layers"),
+        ui.input_checkbox("layer_depth", "Depth heatmap", value=False),
+        ui.input_checkbox("layer_foraging", "Foraging heatmap", value=False),
+        ui.input_checkbox("layer_noise", "Noise contours", value=True),
+        ui.input_checkbox("layer_turbines", "Wind turbines", value=True),
+        ui.input_checkbox("layer_porpoises", "Porpoises", value=True),
+
+        ui.tags.hr(),
+
         ui.p("Advanced parameters in 'Model Settings' tab. JASMINE-specific settings available when JASMINE mode is selected.", class_="text-muted small"),
         
         width=280,

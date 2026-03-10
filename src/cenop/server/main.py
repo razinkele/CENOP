@@ -28,7 +28,7 @@ from .renderers.chart_helpers import (
     no_data_placeholder
 )
 
-from shiny_deckgl import zoom_widget, compass_widget, scale_widget
+from shiny_deckgl import zoom_widget, compass_widget, scale_widget, deck_legend_control
 from cenop.ui.tabs.dashboard import sim_map
 from cenop.server.map_layers import (
     build_porpoise_layer,
@@ -41,6 +41,54 @@ from cenop.server.map_layers import (
 )
 
 logger = logging.getLogger("CENOP")
+
+
+def _safe_input(input_obj, name: str, default=None):
+    """Safely read a Shiny input that may not be bound yet."""
+    try:
+        return getattr(input_obj, name)()
+    except Exception:
+        return default
+
+
+# ---------------------------------------------------------------------------
+# CRS coordinate transformer: grid cell indices → WGS84 lon/lat
+# ---------------------------------------------------------------------------
+_transformers: dict = {}  # cache: source_crs → pyproj.Transformer
+
+
+def _get_transformer(source_crs: str):
+    """Get or create a cached pyproj Transformer from source_crs to WGS84."""
+    if source_crs not in _transformers:
+        from pyproj import Transformer
+        _transformers[source_crs] = Transformer.from_crs(
+            source_crs, "EPSG:4326", always_xy=True
+        )
+    return _transformers[source_crs]
+
+
+def grid_to_lonlat(
+    grid_x, grid_y, metadata, source_crs: str
+):
+    """Convert grid cell coordinates to WGS84 (lon, lat).
+
+    Works with scalars or numpy arrays.
+
+    Args:
+        grid_x: column index (or array of column indices)
+        grid_y: row index (or array of row indices)
+        metadata: LandscapeMetadata with xllcorner, yllcorner, cellsize
+        source_crs: EPSG string for the landscape's native CRS
+
+    Returns:
+        (lon, lat) — scalars or arrays matching input type
+    """
+    # Grid cell centre → projected CRS coordinates
+    proj_x = metadata.xllcorner + (grid_x + 0.5) * metadata.cellsize
+    proj_y = metadata.yllcorner + (grid_y + 0.5) * metadata.cellsize
+    transformer = _get_transformer(source_crs)
+    lon, lat = transformer.transform(proj_x, proj_y)
+    return lon, lat
 
 
 def run_simulation_loop(runner, result_queue, stop_event, throttle_value, throttle_lock, ticks_per_update_value, ticks_lock):
@@ -85,8 +133,27 @@ def run_simulation_loop(runner, result_queue, stop_event, throttle_value, thrott
             porpoise_positions = None
             if runner.should_update_map:
                 try:
-                    porpoise_positions = runner.sim.get_porpoise_positions().tolist()
-                except Exception:
+                    raw_pos = runner.sim.get_porpoise_positions()  # (N,3): grid x, y, energy
+                    if raw_pos.size > 0:
+                        sim = runner.sim
+                        meta = sim._cell_data.metadata if sim._cell_data else None
+                        if meta is not None:
+                            from cenop.ui.sidebar import LANDSCAPE_CRS
+                            crs = LANDSCAPE_CRS.get(
+                                sim.params.landscape, "EPSG:3035"
+                            )
+                            lons, lats = grid_to_lonlat(
+                                raw_pos[:, 0], raw_pos[:, 1], meta, crs
+                            )
+                            # Replace grid x,y with lon,lat; keep energy col
+                            converted = np.column_stack((lons, lats, raw_pos[:, 2]))
+                            porpoise_positions = converted.tolist()
+                        else:
+                            porpoise_positions = raw_pos.tolist()
+                    else:
+                        porpoise_positions = []
+                except (ImportError, ValueError, RuntimeError) as e:
+                    logger.debug("Coordinate transform failed: %s", e)
                     porpoise_positions = None
 
             update = {
@@ -221,8 +288,54 @@ def server(input, output, session):
     _layer_cache: dict[str, dict] = {}
     _blade_rotation = [0.0]
 
+    # Legend entries for deck_legend_control (matches layer IDs)
+    _legend_entries = [
+        {
+            "layer_id": "depth-heatmap",
+            "label": "Bathymetry",
+            "colors": [
+                [1, 31, 75], [3, 56, 108], [15, 94, 156],
+                [46, 134, 193], [86, 180, 233], [166, 216, 247],
+            ],
+            "shape": "rect",
+        },
+        {
+            "layer_id": "foraging-heatmap",
+            "label": "Foraging",
+            "colors": [
+                [8, 48, 20], [20, 100, 40], [40, 160, 60],
+                [80, 200, 80], [140, 230, 100], [200, 255, 140],
+            ],
+            "shape": "rect",
+        },
+        {
+            "layer_id": "noise-construction",
+            "label": "Construction noise",
+            "color": [255, 60, 60, 160],
+            "shape": "circle",
+        },
+        {
+            "layer_id": "noise-operational",
+            "label": "Operational noise",
+            "color": [255, 200, 60, 120],
+            "shape": "circle",
+        },
+        {
+            "layer_id": "turbine-poles",
+            "label": "Wind turbines",
+            "color": [50, 160, 240],
+            "shape": "rect",
+        },
+        {
+            "layer_id": "porpoises",
+            "label": "Porpoises",
+            "color": [0, 150, 255],
+            "shape": "circle",
+        },
+    ]
+
     async def _push_all_layers():
-        """Combine cached layers and push to MapWidget."""
+        """Combine cached layers, legend, and push to MapWidget."""
         layers = [
             _layer_cache.get("depth-heatmap", build_depth_heatmap([])),
             _layer_cache.get("foraging-heatmap", build_foraging_heatmap([])),
@@ -232,20 +345,37 @@ def server(input, output, session):
             _layer_cache.get("turbine-blades", build_turbine_blade_layer([])),
             _layer_cache.get("porpoises", build_porpoise_layer([])),
         ]
-        await sim_map.update(session, layers=layers)
-
-    @reactive.effect
-    async def _init_map():
-        """Send initial empty layers and map widgets on startup."""
         await sim_map.update(
             session,
-            layers=[],
+            layers=layers,
             widgets=[
                 zoom_widget(placement="top-right"),
                 compass_widget(placement="top-right"),
                 scale_widget(placement="bottom-left"),
+                deck_legend_control(
+                    _legend_entries,
+                    position="bottom-right",
+                    show_checkbox=True,
+                    collapsed=False,
+                    title="Layers",
+                ),
             ],
         )
+
+    async def _push_dynamic_layers(*layer_ids: str):
+        """Partial layer push — only sends specified layers by ID.
+
+        Uses partial_update() which merges by layer ID on the JS side,
+        leaving static layers (depth, foraging) untouched.
+        """
+        layers = [_layer_cache[lid] for lid in layer_ids if lid in _layer_cache]
+        if layers:
+            await sim_map.partial_update(session, layers=layers)
+
+    @reactive.effect
+    async def _init_map():
+        """Send initial empty layers, legend widget, and map controls on startup."""
+        await _push_all_layers()
 
     # Centralized reactive state
     state = SimulationState()
@@ -320,11 +450,7 @@ def server(input, output, session):
         from ..ui.sidebar import LANDSCAPE_TURBINE_COMPATIBILITY
 
         # Get current landscape with error handling
-        landscape = "Homogeneous"
-        try:
-            landscape = input.landscape()
-        except Exception:
-            pass
+        landscape = _safe_input(input, "landscape", "Homogeneous")
 
         # Get compatible turbines for selected landscape
         compatible = LANDSCAPE_TURBINE_COMPATIBILITY.get(landscape, {"off": "No turbines"})
@@ -345,13 +471,7 @@ def server(input, output, session):
         """Render the landscape selector with current available landscapes."""
         from shiny import ui as shiny_ui
         # Use the refresh button as an event to re-run this renderer
-        _ = None
-        try:
-            # referencing event input.refresh_landscapes() causes reactivity
-            _ = input.refresh_landscapes()
-        except Exception:
-            # Older sessions might not have the input bound; ignore
-            pass
+        _ = _safe_input(input, "refresh_landscapes")
 
         try:
             from cenop.landscape.loader import LandscapeLoader
@@ -364,11 +484,7 @@ def server(input, output, session):
         choices = ["Homogeneous"] + sorted(lands)
         
         # Keep currently selected landscape if still available
-        current = None
-        try:
-            current = input.landscape()
-        except Exception:
-            pass
+        current = _safe_input(input, "landscape")
             
         selected = current if (current and current in choices) else (choices[0] if choices else "Homogeneous")
 
@@ -416,7 +532,7 @@ def server(input, output, session):
         ts = None
         try:
             ts = state.last_refreshed()
-        except Exception:
+        except AttributeError:
             pass
         if ts:
             return f"Last refreshed: {ts}"
@@ -434,12 +550,8 @@ def server(input, output, session):
         from datetime import datetime
         
         # Check if refresh button was clicked
-        refresh_clicked = False
-        try:
-            _ = input.refresh_data_available()
-            refresh_clicked = True
-        except Exception:
-            pass
+        _ = _safe_input(input, "refresh_data_available")
+        refresh_clicked = _ is not None
 
         try:
             from cenop.landscape.loader import LandscapeLoader
@@ -453,7 +565,7 @@ def server(input, output, session):
                 ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 try:
                     state.last_refreshed.set(ts)
-                except Exception:
+                except AttributeError:
                     pass
                 ui.notification_show(
                     f"Data refreshed at {ts} - Found {len(landscapes)} landscape(s)", 
@@ -525,11 +637,8 @@ def server(input, output, session):
     @reactive.event(input.detail_landscape)
     def show_landscape_details():
         """Show details modal when a landscape's Details button is clicked."""
-        try:
-            name = input.detail_landscape()
-            if not name:
-                return
-        except Exception:
+        name = _safe_input(input, "detail_landscape")
+        if not name:
             return
 
         try:
@@ -540,6 +649,7 @@ def server(input, output, session):
             loaded = loader.load_all()
             warnings = loaded.get('warnings', [])
         except Exception as e:
+            logger.error("Error loading landscape details for %s: %s", name, e, exc_info=True)
             ui.notification_show(f"Error loading details for {name}: {e}", type="error")
             return
 
@@ -928,10 +1038,7 @@ def server(input, output, session):
             throttle_value[0] = (speed_percent - 1) / 99.0  # Convert 1-100 to 0.0-1.0
 
         # Update ticks per update from slider value (may not exist in UI)
-        try:
-            ticks_val = input.ticks_per_update()
-        except Exception:
-            ticks_val = ticks_per_update_value[0]
+        ticks_val = _safe_input(input, "ticks_per_update", ticks_per_update_value[0])
         with ticks_lock:
             ticks_per_update_value[0] = ticks_val
 
@@ -1041,7 +1148,7 @@ def server(input, output, session):
                     if msg.get("porpoise_positions") is not None:
                         try:
                             state.porpoise_positions.set(msg.get("porpoise_positions"))
-                        except Exception:
+                        except AttributeError:
                             pass
 
         # Flush batched entries to reactive state so dashboard updates
@@ -1211,13 +1318,17 @@ def server(input, output, session):
             else:
                 from cenop.landscape import CellData
                 landscape = CellData(loaded_name)
+                landscape.load()
 
             depth = landscape._depth
+            if depth is None:
+                _layer_cache["depth-heatmap"] = build_depth_heatmap([])
+                return
             rows, cols = depth.shape
+            meta = landscape.metadata
 
-            from cenop.ui.sidebar import LANDSCAPE_BOUNDS
-            bounds = LANDSCAPE_BOUNDS.get(loaded_name, (54.5, 56.5, 19.5, 22.5))
-            lat_min, lat_max, lon_min, lon_max = bounds
+            from cenop.ui.sidebar import LANDSCAPE_CRS, LANDSCAPE_BOUNDS
+            source_crs = LANDSCAPE_CRS.get(loaded_name, "EPSG:3035")
 
             total_cells = rows * cols
             max_points = 15000
@@ -1229,11 +1340,12 @@ def server(input, output, session):
                     d = float(depth[r, c])
                     if d <= 0:
                         continue
-                    lat = lat_min + (r / rows) * (lat_max - lat_min)
-                    lon = lon_min + (c / cols) * (lon_max - lon_min)
+                    lon, lat = grid_to_lonlat(c, r, meta, source_crs)
                     points.append([lon, lat, d])
 
             _layer_cache["depth-heatmap"] = build_depth_heatmap(points)
+            bounds = LANDSCAPE_BOUNDS.get(loaded_name, (54.5, 56.5, 19.5, 22.5))
+            lat_min, lat_max, lon_min, lon_max = bounds
             center_lat = (lat_min + lat_max) / 2
             center_lon = (lon_min + lon_max) / 2
             await sim_map.fly_to(session, longitude=center_lon, latitude=center_lat, zoom=6)
@@ -1258,13 +1370,17 @@ def server(input, output, session):
             else:
                 from cenop.landscape import CellData
                 landscape = CellData(loaded_name)
+                landscape.load()
 
             food = landscape._food_prob
+            if food is None:
+                _layer_cache["foraging-heatmap"] = build_foraging_heatmap([])
+                return
             rows, cols = food.shape
+            meta = landscape.metadata
 
-            from cenop.ui.sidebar import LANDSCAPE_BOUNDS
-            bounds = LANDSCAPE_BOUNDS.get(loaded_name, (54.5, 56.5, 19.5, 22.5))
-            lat_min, lat_max, lon_min, lon_max = bounds
+            from cenop.ui.sidebar import LANDSCAPE_CRS
+            source_crs = LANDSCAPE_CRS.get(loaded_name, "EPSG:3035")
 
             total_cells = rows * cols
             max_points = 15000
@@ -1276,8 +1392,7 @@ def server(input, output, session):
                     f = float(food[r, c])
                     if f < 0.1:
                         continue
-                    lat = lat_min + (r / rows) * (lat_max - lat_min)
-                    lon = lon_min + (c / cols) * (lon_max - lon_min)
+                    lon, lat = grid_to_lonlat(c, r, meta, source_crs)
                     points.append([lon, lat, f])
 
             _layer_cache["foraging-heatmap"] = build_foraging_heatmap(points)
@@ -1302,13 +1417,10 @@ def server(input, output, session):
 
         try:
             import os
-            landscape_name = "Homogeneous"
-            try:
-                landscape_name = input.landscape()
-            except Exception:
-                pass
+            landscape_name = _safe_input(input, "landscape", "Homogeneous")
 
             base_paths = [
+                os.path.join("data", "wind-farms"),
                 os.path.join("data", "landscapes", landscape_name, "wind-farms"),
                 os.path.join("landscapes", landscape_name, "wind-farms"),
             ]
@@ -1330,11 +1442,12 @@ def server(input, output, session):
             import pandas as pd_local
             df = pd_local.read_csv(turbine_file, sep=r'\s+')
 
+            from cenop.ui.sidebar import LANDSCAPE_CRS
+            source_crs = LANDSCAPE_CRS.get(landscape_name, "EPSG:3035")
             try:
-                from pyproj import Transformer
-                transformer = Transformer.from_crs("EPSG:3035", "EPSG:4326", always_xy=True)
-            except ImportError:
-                logger.error("pyproj not available for coordinate transform")
+                transformer = _get_transformer(source_crs)
+            except (ImportError, RuntimeError) as e:
+                logger.error("pyproj not available for coordinate transform: %s", e)
                 return
 
             turbine_data = []
@@ -1440,11 +1553,11 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(state.map_update_counter)
     async def _update_porpoise_layer():
-        """Rebuild porpoise layer and push all layers on simulation tick."""
+        """Rebuild porpoise layer and push via partial_update on simulation tick."""
         positions_raw = state.porpoise_positions()
         if not positions_raw:
             _layer_cache["porpoises"] = build_porpoise_layer([])
-            await _push_all_layers()
+            await _push_dynamic_layers("porpoises")
             return
 
         try:
@@ -1476,40 +1589,9 @@ def server(input, output, session):
                 })
 
             _layer_cache["porpoises"] = build_porpoise_layer(points)
-            await _push_all_layers()
+            await _push_dynamic_layers("porpoises")
         except Exception as e:
             logger.error(f"Error updating porpoise layer: {e}", exc_info=True)
-
-    @reactive.effect
-    async def _sync_layer_visibility():
-        """Sync sidebar layer toggles to MapWidget visibility."""
-        visibility = {}
-        try:
-            visibility["depth-heatmap"] = input.layer_depth()
-        except Exception:
-            visibility["depth-heatmap"] = False
-        try:
-            visibility["foraging-heatmap"] = input.layer_foraging()
-        except Exception:
-            visibility["foraging-heatmap"] = False
-        try:
-            visibility["noise-construction"] = input.layer_noise()
-            visibility["noise-operational"] = input.layer_noise()
-        except Exception:
-            visibility["noise-construction"] = True
-            visibility["noise-operational"] = True
-        try:
-            visibility["turbine-poles"] = input.layer_turbines()
-            visibility["turbine-blades"] = input.layer_turbines()
-        except Exception:
-            visibility["turbine-poles"] = True
-            visibility["turbine-blades"] = True
-        try:
-            visibility["porpoises"] = input.layer_porpoises()
-        except Exception:
-            visibility["porpoises"] = True
-
-        await sim_map.set_layer_visibility(session, visibility)
 
     @reactive.effect
     async def _animate_turbine_blades():
@@ -1561,7 +1643,7 @@ def server(input, output, session):
                 color='red',
                 height=300
             )
-        except Exception as e:
+        except (ValueError, TypeError, IndexError, KeyError) as e:
             logger.error("age_histogram error: %s", e, exc_info=True)
             return no_data_placeholder("Error rendering age histogram.")
     
@@ -1599,7 +1681,7 @@ def server(input, output, session):
                 color='red',
                 height=300
             )
-        except Exception as e:
+        except (ValueError, TypeError, IndexError, KeyError) as e:
             logger.error("energy_histogram error: %s", e, exc_info=True)
             return no_data_placeholder("Error rendering energy histogram.")
     
@@ -1626,7 +1708,7 @@ def server(input, output, session):
                 y_title='Energy',
                 height=300
             )
-        except Exception as e:
+        except (ValueError, TypeError, IndexError, KeyError) as e:
             logger.error("landscape_energy_plot error: %s", e, exc_info=True)
             return no_data_placeholder("Error rendering energy data.")
     
@@ -1653,7 +1735,7 @@ def server(input, output, session):
                 y_title='Count',
                 height=300
             )
-        except Exception as e:
+        except (ValueError, TypeError, IndexError, KeyError) as e:
             logger.error("movement_plot error: %s", e, exc_info=True)
             return no_data_placeholder("Error rendering movement data.")
     
@@ -1683,7 +1765,8 @@ def server(input, output, session):
                 for k, v in stats.items()
             ])
             return df
-        except Exception:
+        except (ValueError, TypeError, KeyError) as e:
+            logger.warning("Vital stats table rendering failed: %s", e)
             return pd.DataFrame()
     
     # =========================================================================
@@ -1710,7 +1793,7 @@ def server(input, output, session):
                 y_title='Count',
                 height=350
             )
-        except Exception as e:
+        except (ValueError, TypeError, IndexError, KeyError) as e:
             logger.error("dispersal_plot error: %s", e, exc_info=True)
             return no_data_placeholder("Error rendering dispersal data.")
     
@@ -1739,7 +1822,7 @@ def server(input, output, session):
                 y_title='# Deterred',
                 height=350
             )
-        except Exception as e:
+        except (ValueError, TypeError, IndexError, KeyError) as e:
             logger.error("deterrence_plot error: %s", e, exc_info=True)
             return no_data_placeholder("Error rendering deterrence data.")
     
@@ -1822,7 +1905,7 @@ def server(input, output, session):
                     return ui.div(ui.HTML(model_html), chart)
 
             return ui.HTML(model_html + '<p style="color:#888; font-size:0.8rem;">No noise exposure events recorded yet.</p>')
-        except Exception as e:
+        except (ValueError, TypeError, IndexError, KeyError) as e:
             logger.error("noise_map error: %s", e, exc_info=True)
             return no_data_placeholder("Error rendering noise data.")
     

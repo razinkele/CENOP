@@ -25,6 +25,8 @@ from enum import Enum, auto
 from typing import TYPE_CHECKING, Optional, Dict, Any, Tuple
 import numpy as np
 
+from cenop.parameters.constants import SimulationConstants
+
 if TYPE_CHECKING:
     from cenop.parameters.simulation_params import SimulationParameters
     from cenop.behavior.states import BehaviorState
@@ -54,32 +56,28 @@ class EnergyState:
 
     # Activity tracking
     activity_level: np.ndarray      # Current activity level (0-1)
-    distance_traveled: np.ndarray   # Distance traveled this tick (m) — TODO: update in movement step
+    distance_traveled: np.ndarray   # Distance traveled this tick (m)
 
     # Disturbance impact tracking
     disturbance_energy_cost: np.ndarray  # Cumulative disturbance energy cost
-    time_under_disturbance: np.ndarray   # Total ticks under disturbance — TODO: increment in FSM update
     disturbance_events: np.ndarray       # Count of disturbance events
 
     # Fitness tracking
     cumulative_energy_deficit: np.ndarray  # Total energy shortfall
-    days_in_negative_balance: np.ndarray   # Days with energy deficit — TODO: update in daily energy check
 
     @classmethod
     def create(cls, count: int, initial_energy: float = 10.0) -> 'EnergyState':
         """Create energy state for count agents."""
         return cls(
             energy=np.full(count, initial_energy, dtype=np.float32),
-            body_mass=np.full(count, 50.0, dtype=np.float32),  # ~50 kg adult
-            body_condition=np.full(count, 0.5, dtype=np.float32),
-            fat_reserve=np.full(count, 5.0, dtype=np.float32),  # ~10% body mass
+            body_mass=np.full(count, SimulationConstants.DEFAULT_BODY_MASS_KG, dtype=np.float32),
+            body_condition=np.full(count, SimulationConstants.DEFAULT_BODY_CONDITION, dtype=np.float32),
+            fat_reserve=np.full(count, SimulationConstants.DEFAULT_BODY_MASS_KG * SimulationConstants.DEFAULT_FAT_FRACTION, dtype=np.float32),
             activity_level=np.full(count, 0.5, dtype=np.float32),
             distance_traveled=np.zeros(count, dtype=np.float32),
             disturbance_energy_cost=np.zeros(count, dtype=np.float32),
-            time_under_disturbance=np.zeros(count, dtype=np.int32),
             disturbance_events=np.zeros(count, dtype=np.int32),
             cumulative_energy_deficit=np.zeros(count, dtype=np.float32),
-            days_in_negative_balance=np.zeros(count, dtype=np.int32),
         )
 
 
@@ -292,13 +290,13 @@ class DEPONSEnergyModule(EnergyModule):
         super().__init__(params)
 
         # Extract parameters
-        self.e_use_per_30_min = getattr(params, 'e_use_per_30_min', 4.5)
-        self.e_lact = getattr(params, 'e_lact', 1.4)
-        self.e_warm = getattr(params, 'e_warm', 1.3)
+        self.e_use_per_30_min = params.e_use_per_30_min
+        self.e_lact = params.e_lact
+        self.e_warm = params.e_warm
 
         # Mortality parameters
-        self.m_mort_prob_const = getattr(params, 'm_mort_prob_const', 0.5)
-        self.x_survival_const = getattr(params, 'x_survival_const', 0.15)
+        self.m_mort_prob_const = params.m_mort_prob_const
+        self.x_survival_const = params.x_survival_const
 
     def compute_energy_update(
         self,
@@ -440,7 +438,7 @@ class JASMINEEnergyModule(EnergyModule):
     BODY_MASS_CALF = 15.0           # Calf body mass (kg)
     BMR_COEFFICIENT = 3.4           # Kleiber coefficient (W/kg^0.75)
     BMR_EXPONENT = 0.75             # Kleiber exponent
-    COT_COEFFICIENT = 0.1           # Cost of transport coefficient (J/m/kg)
+    COT_COEFFICIENT = 0.0001        # Cost of transport coefficient (J/m/kg), scaled for 0-20 energy units
 
     # Activity multipliers (relative to BMR)
     ACTIVITY_MULTIPLIERS = {
@@ -464,9 +462,13 @@ class JASMINEEnergyModule(EnergyModule):
         super().__init__(params)
 
         # JASMINE-specific parameters
-        self.use_body_mass_scaling = getattr(params, 'jasmine_body_mass_scaling', True)
-        self.use_thermal_model = getattr(params, 'jasmine_thermal_model', True)
-        self.disturbance_cost_multiplier = getattr(params, 'jasmine_disturbance_cost_mult', 1.0)
+        self.use_body_mass_scaling = params.jasmine_body_mass_scaling
+        self.use_thermal_model = params.jasmine_thermal_model
+        self.disturbance_cost_multiplier = params.jasmine_disturbance_cost_mult
+
+        # Mortality parameters (shared with DEPONS formula)
+        self.m_mort_prob_const = params.m_mort_prob_const
+        self.x_survival_const = params.x_survival_const
 
     def compute_energy_update(
         self,
@@ -605,19 +607,26 @@ class JASMINEEnergyModule(EnergyModule):
 
         Uses body condition and cumulative disturbance impact.
         """
-        # Base survival from body condition
-        condition_effect = np.clip(state.body_condition, 0.1, 1.0)
+        # Map body_condition (0.1-1.0) to effective energy (2-20)
+        effective_energy = np.clip(state.body_condition, 0.1, 1.0) * 20.0
 
-        # Disturbance impact (cumulative effect reduces survival)
-        disturbance_impact = 1.0 - np.clip(
-            state.disturbance_energy_cost * 0.001, 0, 0.5
+        # DEPONS starvation survival formula
+        yearly_surv = np.where(
+            effective_energy > 0,
+            1.0 - (self.m_mort_prob_const * np.exp(-effective_energy * self.x_survival_const)),
+            0.0,
         )
 
-        # Combined yearly survival
-        yearly_surv = 0.95 * condition_effect * disturbance_impact
+        # Disturbance impact (cumulative effect reduces survival)
+        disturbance_impact = 1.0 - np.clip(state.disturbance_energy_cost * 0.001, 0, 0.5)
+        yearly_surv *= disturbance_impact
 
         # Convert to per-tick
-        step_surv = np.exp(np.log(np.maximum(yearly_surv, 1e-10)) / (360 * 48))
+        step_surv = np.where(
+            yearly_surv > 0,
+            np.exp(np.log(np.maximum(yearly_surv, 1e-10)) / (360 * 48)),
+            0.0,
+        )
 
         return step_surv.astype(np.float32)
 

@@ -32,29 +32,29 @@ class TestSoundPropagationParameters:
     """Test that sound propagation parameters match DEPONS 3.0 defaults."""
 
     def test_spreading_loss_factor(self):
-        """Verify beta_hat (spreading loss) matches DEPONS."""
+        """Verify beta_hat (spreading loss) matches DEPONS 3.2."""
         params = SimulationParameters()
-        assert params.beta_hat == 20.0, "beta_hat should be 20.0 (spherical spreading)"
+        assert params.beta_hat == 14.72, "beta_hat should be 14.72 (DEPONS 3.2 Kattegat)"
 
     def test_absorption_coefficient(self):
-        """Verify alpha_hat (absorption) matches DEPONS."""
+        """Verify alpha_hat (absorption) matches DEPONS 3.2."""
         params = SimulationParameters()
-        assert params.alpha_hat == 0.0, "alpha_hat should be 0.0 (default)"
+        assert params.alpha_hat == 0.00027, "alpha_hat should be 0.00027 (DEPONS 3.2)"
 
     def test_deterrence_threshold(self):
-        """Verify deterrence threshold matches DEPONS."""
+        """Verify deterrence threshold matches DEPONS 3.2."""
         params = SimulationParameters()
-        assert params.deter_threshold == 158.0, "deter_threshold should be 158 dB"
+        assert params.deter_threshold == 152.0, "deter_threshold should be 152 dB (DEPONS 3.2)"
 
     def test_deterrence_coefficient(self):
-        """Verify deterrence coefficient matches DEPONS."""
+        """Verify deterrence coefficient matches DEPONS 3.2."""
         params = SimulationParameters()
-        assert params.deter_coeff == 0.07, "deter_coeff should be 0.07"
+        assert params.deter_coeff == 0.012, "deter_coeff should be 0.012 (DEPONS 3.2)"
 
     def test_max_deterrence_distance(self):
-        """Verify max deterrence distance matches DEPONS."""
+        """Verify max deterrence distance matches DEPONS 3.2."""
         params = SimulationParameters()
-        assert params.deter_max_distance == 50.0, "deter_max_distance should be 50 km"
+        assert params.deter_max_distance == 1000.0, "deter_max_distance should be 1000 km (DEPONS 3.2)"
 
 
 class TestTransmissionLoss:
@@ -157,8 +157,8 @@ class TestTurbineDeterrenceParameters:
 class TestTurbineDeterrenceLogic:
     """Test turbine deterrence calculation logic."""
 
-    def test_turbine_should_deter_within_range(self):
-        """Turbine should deter porpoises within deterrence range."""
+    def test_turbine_should_not_deter_far_away(self):
+        """Turbine should not deter porpoises far enough away."""
         params = SimulationParameters()
         turbine = Turbine(
             id=1,
@@ -168,13 +168,13 @@ class TestTurbineDeterrenceLogic:
         )
         turbine._is_active = True
 
-        # Porpoise at 1km (2.5 grid cells at 400m)
-        result = turbine.should_deter(102.5, 100.0, params, cell_size=400.0)
+        # Porpoise at 2km (5 grid cells at 400m)
+        # With DEPONS 3.2: TL = 14.72*log10(2000) + 0.00027*2000 ≈ 49.1 dB
+        # RL = 200 - 49.1 = 150.9 dB < 152 threshold → should NOT deter
+        result = turbine.should_deter(105.0, 100.0, params, cell_size=400.0)
         should_deter, rl, distance_m, strength = result
 
-        # RL = 200 - 20*log10(1000) = 200 - 60 = 140 dB
-        # Strength = 140 - 158 = -18 (should NOT deter)
-        assert not should_deter, "Porpoise at 1km should not be deterred"
+        assert not should_deter, "Porpoise at 2km should not be deterred (RL below 152 dB threshold)"
 
     def test_turbine_should_deter_close(self):
         """Turbine should deter porpoises very close."""
@@ -191,8 +191,8 @@ class TestTurbineDeterrenceLogic:
         result = turbine.should_deter(100.25, 100.0, params, cell_size=400.0)
         should_deter, rl, distance_m, strength = result
 
-        # RL = 200 - 20*log10(100) = 200 - 40 = 160 dB
-        # Strength = 160 - 158 = 2 (should deter)
+        # With DEPONS 3.2: TL = 14.72*log10(100) + 0.00027*100 ≈ 29.47 dB
+        # RL = 200 - 29.47 ≈ 170.5 dB >> 152 threshold (should deter)
         assert should_deter, "Porpoise at 100m should be deterred"
         assert strength > 0, "Deterrence strength should be positive"
 

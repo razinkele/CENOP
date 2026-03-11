@@ -46,16 +46,25 @@ class SimulationParameters:
     jasmine_drag_coeff: float = 0.01      # Drag coefficient
     jasmine_max_thrust: float = 100.0     # Maximum thrust force (N)
     jasmine_current_weight: float = 0.5   # Weight of ocean current advection (0-1)
+    dt_seconds: int = 1800                # Time step in seconds (30 min default)
+    prey_attraction_weight: float = 1.0   # Weight of prey attraction force
+    avoidance_weight: float = 2.0         # Weight of disturbance avoidance force
 
     # === JASMINE DEB Parameters (when energy_mode=JASMINE) ===
     jasmine_bmr_scale: float = 1.0        # Basal metabolic rate scale factor
     jasmine_activity_cost: float = 2.0    # Activity cost multiplier
     jasmine_disturbance_cost: float = 1.5 # Extra energy cost during disturbance
+    jasmine_body_mass_scaling: bool = True       # Use body-mass-based metabolic scaling
+    jasmine_thermal_model: bool = True           # Use thermal conductance model
+    jasmine_disturbance_cost_mult: float = 1.0   # Disturbance energy cost multiplier
 
     # === JASMINE Memory Parameters (when memory_mode=JASMINE) ===
     jasmine_memory_decay_rate: float = 0.001   # Memory decay per tick
     jasmine_avoidance_strength: float = 0.8    # Max learned avoidance strength
     jasmine_avoidance_radius: float = 20.0     # Avoidance influence radius (cells)
+    memory_decay_rate: float = 0.001           # Per-tick memory decay rate
+    avoidance_radius: float = 20.0             # Memory cells for avoidance radius
+    habituation_enabled: bool = True           # Enable disturbance habituation
     
     # === Disturbance Sources ===
     turbines: str = "off"
@@ -75,8 +84,8 @@ class SimulationParameters:
     psm_angle: float = 20.0            # Max turning angle after PSM step
     
     # === Memory ===
-    r_s: float = 0.04                  # Satiation memory decay rate
-    r_r: float = 0.04                  # Reference memory decay rate
+    r_s: float = 0.03                  # Satiation memory decay rate (DEPONS 3.2)
+    r_r: float = 0.03                  # Reference memory decay rate (DEPONS 3.2)
     r_u: float = 0.1                   # Food replenishment rate
     
     # === Movement ===
@@ -88,7 +97,7 @@ class SimulationParameters:
     corr_angle_bathy: float = -0.008   # b1: depth effect on turning angle
     corr_angle_salinity: float = 0.93  # b2: salinity effect on turning angle
     corr_angle_base_sd: float = -14.0  # b3: intercept for turning angle
-    mean_disp_dist: float = 1.05       # Dispersal distance per step (km)
+    mean_disp_dist: float = 2.0        # Dispersal distance per step (km) (DEPONS 3.2)
     max_mov: float = 1.73              # Max movement distance (km)
     
     # === Random Components (TRACE Table 2) ===
@@ -106,11 +115,11 @@ class SimulationParameters:
     energy_init_sd: float = 1.0
     
     # === Deterrence ===
-    deter_coeff: float = 0.07          # c: deterrence coefficient
-    deter_threshold: float = 158.0     # RT: minimum received level (dB) - Java default
+    deter_coeff: float = 0.012          # c: deterrence coefficient (DEPONS 3.2)
+    deter_threshold: float = 152.0     # RT: minimum received level (dB) - Java default (DEPONS 3.2)
     deter_decay: float = 50.0          # Psi_deter: decay rate (%)
-    deter_time: int = 5                # tdeter: deterrence duration (steps) - Java default
-    deter_max_distance: float = 50.0   # Max deterrence distance (km) - Java default 50*1000m
+    deter_time: int = 0                # tdeter: deterrence duration (steps) - Java default (DEPONS 3.2)
+    deter_max_distance: float = 1000.0  # Max deterrence distance (km) - Java default 50*1000m (DEPONS 3.2)
     deter_min_distance_ships: float = 0.1  # Min deterrence distance for ships (km)
 
     # Probabilistic deterrence response
@@ -160,8 +169,8 @@ class SimulationParameters:
     cship_dist_x_noise_night: float = 0.0
     
     # === Sound Propagation ===
-    alpha_hat: float = 0.0             # Absorption coefficient
-    beta_hat: float = 20.0             # Spreading loss factor
+    alpha_hat: float = 0.00027         # Absorption coefficient (DEPONS 3.2)
+    beta_hat: float = 14.72            # Spreading loss factor (DEPONS 3.2)
     
     # === Reproduction ===
     conceive_prob: float = 0.68        # h: probability of becoming pregnant
@@ -181,8 +190,8 @@ class SimulationParameters:
 
     # === Survival/Mortality ===
     # Starvation mortality formula: yearlySurvProb = 1 - (m_mort_prob_const * exp(-energy * x_survival_const))
-    m_mort_prob_const: float = 0.5     # M_MORT_PROB_CONST in DEPONS
-    x_survival_const: float = 0.15     # xSurvivalProbConst in DEPONS
+    m_mort_prob_const: float = 1.0     # M_MORT_PROB_CONST in DEPONS SimulationConstants (DEPONS 3.2)
+    x_survival_const: float = 0.4      # xSurvivalProbConst / beta in DEPONS parameters.xml (DEPONS 3.2)
     # Age-dependent annual mortality rates
     mortality_juvenile: float = 0.15   # Annual mortality for age < 1 year
     mortality_adult: float = 0.05      # Annual mortality for 1 <= age <= 20
@@ -225,8 +234,8 @@ class SimulationParameters:
             raise ValueError("deter_threshold must be non-negative")
         if self.deter_max_distance <= 0:
             raise ValueError("deter_max_distance must be positive")
-        if not 0 <= self.m_mort_prob_const <= 1:
-            raise ValueError("m_mort_prob_const must be between 0 and 1")
+        if not 0 < self.m_mort_prob_const <= 1:
+            raise ValueError("m_mort_prob_const must be between 0 (exclusive) and 1 (inclusive)")
         if self.x_survival_const < 0:
             raise ValueError("x_survival_const must be non-negative")
         if not 0 <= self.bycatch_prob <= 1:

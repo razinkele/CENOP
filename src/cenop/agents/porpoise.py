@@ -622,9 +622,9 @@ class Porpoise(Agent):
             
         # Check starvation (DEPONS Porpoise.java lines 741-759)
         # DEPONS formula: yearlySurvProb = 1 - (m_mort_prob_const * exp(-energyLevel * x_survival_const))
-        # Uses x_survival_const (0.15) for energy-survival mapping
-        m_mort_prob_const = getattr(params, 'm_mort_prob_const', 0.5)
-        x_survival_const = getattr(params, 'x_survival_const', 0.15)
+        # Uses x_survival_const (0.4) for energy-survival mapping (DEPONS 3.2)
+        m_mort_prob_const = params.m_mort_prob_const
+        x_survival_const = params.x_survival_const
         yearly_survival = 1.0 - (m_mort_prob_const * np.exp(-self.energy_level * x_survival_const))
         
         # Convert to per-day survival (360 days per year)

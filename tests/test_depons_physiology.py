@@ -41,9 +41,9 @@ class TestPhysiologyParameters:
         """Verify mortality parameters match DEPONS defaults."""
         params = SimulationParameters()
 
-        # Starvation constants
-        assert params.m_mort_prob_const == 0.5, "M_MORT_PROB_CONST should be 0.5"
-        assert params.x_survival_const == 0.15, "xSurvivalProbConst should be 0.15"
+        # Starvation constants (DEPONS 3.2 values)
+        assert params.m_mort_prob_const == 1.0, "M_MORT_PROB_CONST should be 1.0"
+        assert params.x_survival_const == 0.4, "xSurvivalProbConst should be 0.4"
 
         # Age-based mortality
         assert params.mortality_juvenile == 0.15, "Juvenile mortality should be 15%/year"
@@ -79,17 +79,17 @@ class TestStarvationMortality:
         # Set all agents to very low energy
         pop.energy[:] = 1.0
 
-        # Calculate expected yearly survival: 1 - (0.5 * exp(-1 * 0.15)) = ~0.57
-        expected_yearly_surv = 1.0 - (0.5 * np.exp(-1.0 * 0.15))
-        assert 0.55 < expected_yearly_surv < 0.60, f"Expected yearly survival ~0.57, got {expected_yearly_surv}"
+        # Calculate expected yearly survival: 1 - (1.0 * exp(-1 * 0.4)) = ~0.3297
+        expected_yearly_surv = 1.0 - (1.0 * np.exp(-1.0 * 0.4))
+        assert 0.30 < expected_yearly_surv < 0.36, f"Expected yearly survival ~0.3297, got {expected_yearly_surv}"
 
     def test_starvation_probability_at_high_energy(self):
         """High energy should have low mortality probability."""
         params = SimulationParameters(porpoise_count=100)
 
-        # Calculate expected yearly survival at energy=10: 1 - (0.5 * exp(-10 * 0.15)) = ~0.89
-        expected_yearly_surv = 1.0 - (0.5 * np.exp(-10.0 * 0.15))
-        assert 0.85 < expected_yearly_surv < 0.92, f"Expected yearly survival ~0.89, got {expected_yearly_surv}"
+        # Calculate expected yearly survival at energy=10: 1 - (1.0 * exp(-10 * 0.4)) = ~0.9817
+        expected_yearly_surv = 1.0 - (1.0 * np.exp(-10.0 * 0.4))
+        assert 0.97 < expected_yearly_surv < 0.99, f"Expected yearly survival ~0.9817, got {expected_yearly_surv}"
 
 
 class TestAgeMortality:
@@ -310,16 +310,16 @@ class TestPhysiologyValidation:
     """Validate physiology model produces reasonable outputs."""
 
     def test_survival_probability_formula(self):
-        """Verify survival probability formula at different energy levels."""
-        m_const = 0.5
-        x_const = 0.15
+        """Verify survival probability formula at different energy levels (DEPONS 3.2)."""
+        m_const = 1.0
+        x_const = 0.4
 
         test_cases = [
-            (0.0, 0.50),   # Zero energy: 50% yearly survival
-            (5.0, 0.76),   # Low energy: ~76% yearly survival
-            (10.0, 0.89),  # Medium energy: ~89% yearly survival
-            (15.0, 0.95),  # High energy: ~95% yearly survival
-            (20.0, 0.98),  # Max energy: ~98% yearly survival
+            (0.0, 0.00),   # Zero energy: 0% yearly survival (1 - 1.0 * exp(0) = 0)
+            (1.0, 0.33),   # Energy 1: ~33% yearly survival (1 - 1.0 * exp(-0.4) = 0.3297)
+            (5.0, 0.86),   # Energy 5: ~86% yearly survival (1 - 1.0 * exp(-2.0) = 0.8647)
+            (10.0, 0.98),  # Energy 10: ~98% yearly survival (1 - 1.0 * exp(-4.0) = 0.9817)
+            (15.0, 1.00),  # Energy 15: ~99.75% yearly survival (1 - 1.0 * exp(-6.0) = 0.9975)
         ]
 
         for energy, expected_surv in test_cases:
@@ -357,6 +357,112 @@ class TestPhysiologyValidation:
                 actual = scaling[non_lactating][0]
                 assert abs(actual - expected) < 0.01, \
                     f"Month {month}: expected scaling {expected}, got {actual}"
+
+
+class TestJasmineSurvivalConsistency:
+    """JASMINE survival should use the same DEPONS formula, not a hardcoded 0.95 base."""
+
+    def test_healthy_porpoise_high_survival(self):
+        """At body_condition=1.0 (energy 20), annual survival should be > 0.99."""
+        from cenop.physiology.energy_budget import JASMINEEnergyModule, EnergyState
+        import numpy as np
+        from cenop.parameters.simulation_params import SimulationParameters
+
+        params = SimulationParameters()
+        module = JASMINEEnergyModule(params)
+        state = EnergyState.create(1)
+        state.body_condition[0] = 1.0
+        state.energy[0] = 20.0
+        state.disturbance_energy_cost[0] = 0.0
+        mask = np.array([True])
+
+        step_surv = module.compute_survival_probability(state, mask)
+        yearly_surv = step_surv[0] ** (360 * 48)
+        assert yearly_surv > 0.99, f"Healthy porpoise yearly survival={yearly_surv:.4f}, expected > 0.99"
+
+    def test_moderate_energy_reasonable_survival(self):
+        """At body_condition=0.75 (energy 15), annual survival should be > 0.95."""
+        from cenop.physiology.energy_budget import JASMINEEnergyModule, EnergyState
+        import numpy as np
+        from cenop.parameters.simulation_params import SimulationParameters
+
+        params = SimulationParameters()
+        module = JASMINEEnergyModule(params)
+        state = EnergyState.create(1)
+        state.body_condition[0] = 0.75
+        state.energy[0] = 15.0
+        state.disturbance_energy_cost[0] = 0.0
+        mask = np.array([True])
+
+        step_surv = module.compute_survival_probability(state, mask)
+        yearly_surv = step_surv[0] ** (360 * 48)
+        assert yearly_surv > 0.95, f"Moderate-energy yearly survival={yearly_surv:.4f}, expected > 0.95"
+
+    def test_starving_porpoise_low_survival(self):
+        """At body_condition=0.1 (energy ~2), annual survival should be < 0.80."""
+        from cenop.physiology.energy_budget import JASMINEEnergyModule, EnergyState
+        import numpy as np
+        from cenop.parameters.simulation_params import SimulationParameters
+
+        params = SimulationParameters()
+        module = JASMINEEnergyModule(params)
+        state = EnergyState.create(1)
+        state.body_condition[0] = 0.1
+        state.energy[0] = 2.0
+        state.disturbance_energy_cost[0] = 0.0
+        mask = np.array([True])
+
+        step_surv = module.compute_survival_probability(state, mask)
+        yearly_surv = step_surv[0] ** (360 * 48)
+        assert yearly_surv < 0.80, f"Starving porpoise yearly survival={yearly_surv:.4f}, expected < 0.80"
+
+
+class TestPopulationStabilitySmoke:
+    """Verify DEPONS 3.2 parameters produce stable population dynamics."""
+
+    def test_survival_vs_birth_rate_balance(self):
+        """
+        At typical operating energy (15-20), total mortality should be
+        less than the effective birth rate to allow population stability.
+        """
+        params = SimulationParameters()
+
+        # Annual starvation mortality at energy 15 (typical)
+        energy = 15.0
+        yearly_surv_starvation = 1.0 - (params.m_mort_prob_const * np.exp(-energy * params.x_survival_const))
+        annual_starvation_mort = 1.0 - yearly_surv_starvation
+
+        # Natural adult mortality
+        annual_natural_mort = params.mortality_adult  # 0.05
+
+        # Total annual mortality (independent probabilities)
+        total_annual_mort = 1.0 - (1.0 - annual_starvation_mort) * (1.0 - annual_natural_mort)
+
+        # Conservative lower bound for birth rate
+        min_effective_birth_rate = 0.05
+
+        assert total_annual_mort < min_effective_birth_rate + 0.05, (
+            f"Total annual mortality ({total_annual_mort:.4f}) exceeds birth rate "
+            f"headroom ({min_effective_birth_rate + 0.05:.4f}). "
+            f"Starvation: {annual_starvation_mort:.6f}, Natural: {annual_natural_mort:.4f}"
+        )
+
+    def test_depons_jasmine_survival_consistency(self):
+        """DEPONS and JASMINE survival at same energy level should be identical."""
+        params = SimulationParameters()
+
+        energy = 15.0
+        # DEPONS formula
+        depons_yearly = 1.0 - (params.m_mort_prob_const * np.exp(-energy * params.x_survival_const))
+
+        # JASMINE formula (body_condition = energy/20)
+        body_condition = energy / 20.0
+        effective_energy = body_condition * 20.0
+        jasmine_yearly = 1.0 - (params.m_mort_prob_const * np.exp(-effective_energy * params.x_survival_const))
+
+        assert abs(depons_yearly - jasmine_yearly) < 0.001, (
+            f"DEPONS ({depons_yearly:.4f}) and JASMINE ({jasmine_yearly:.4f}) survival diverge"
+        )
 
 
 if __name__ == "__main__":

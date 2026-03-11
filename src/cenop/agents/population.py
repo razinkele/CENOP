@@ -1177,8 +1177,8 @@ class PorpoisePopulation:
         Uses parameters from SimulationParameters for all mortality constants.
         """
         # Energy-based starvation mortality (parameterized)
-        m_mort_prob_const = getattr(self.params, 'm_mort_prob_const', 0.5)
-        x_survival_const = getattr(self.params, 'x_survival_const', 0.15)
+        m_mort_prob_const = getattr(self.params, 'm_mort_prob_const', 1.0)
+        x_survival_const = getattr(self.params, 'x_survival_const', 0.4)
 
         yearly_surv_prob = np.where(
             self.energy > 0,

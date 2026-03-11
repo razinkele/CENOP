@@ -1099,7 +1099,13 @@ class PorpoisePopulation:
         )
 
     def _update_energy_jasmine(self, mask: np.ndarray) -> None:
-        """JASMINE energy path: delegates to energy module."""
+        """JASMINE energy path: delegates to energy module (legacy combined path, kept for reference).
+
+        NOTE: The simulation step() now uses the split path (_apply_food_intake_jasmine /
+        _apply_bmr_cost_jasmine) to match Java's starvation-check ordering:
+          food intake → starvation check → BMR cost
+        This combined method is preserved for test compatibility and is no longer called by step().
+        """
         from cenop.physiology.energy_budget import EnergyContext
         from cenop.behavior.states import BehaviorState
 
@@ -1168,6 +1174,193 @@ class PorpoisePopulation:
 
         # Clamp energy
         np.clip(self.energy, 0, 20.0, out=self.energy)
+
+    def _build_energy_context(self, mask: np.ndarray) -> tuple:
+        """Build EnergyContext and food_available for JASMINE path.
+
+        Returns (context, food_available) tuple.
+        Also syncs population energy → _energy_state.
+        """
+        from cenop.physiology.energy_budget import EnergyContext
+        from cenop.behavior.states import BehaviorState
+
+        # Sync population energy → module state
+        self._energy_state.energy[:] = self.energy
+
+        # Food availability
+        fract_to_eat = np.clip((20.0 - self.energy) / 10.0, 0.0, 0.99)
+        if self.landscape is not None and hasattr(self.landscape, 'eat_food'):
+            food_available = self._eat_food_vectorized(mask, fract_to_eat)
+        else:
+            food_available = fract_to_eat * np.random.uniform(0.1, 0.5, self.count)
+
+        # Behavioral state
+        if self._behavior_state is not None:
+            behavioral_state = self._behavior_state.state.copy()
+        else:
+            behavioral_state = np.full(self.count, BehaviorState.FORAGING.value, dtype=np.int32)
+
+        current_month = self._get_current_month()
+
+        # Water temperature
+        water_temp = np.full(self.count, 10.0, dtype=np.float32)
+        if self.landscape is not None and hasattr(self.landscape, 'get_temperature'):
+            positions = np.column_stack((self.x, self.y))
+            water_temp = self.landscape.get_temperature(positions)
+
+        # Convert step_dist (cells/tick) to speed (m/s): cells * 400m/cell / 1800s/tick
+        speed_ms = self._step_dist * 400.0 / 1800.0
+
+        context = EnergyContext(
+            food_available=food_available,
+            food_quality=np.ones(self.count, dtype=np.float32),
+            current_speed=speed_ms,
+            behavioral_state=behavioral_state,
+            water_temperature=water_temp,
+            current_month=current_month,
+            is_disturbed=self.deter_strength > 0,
+            deterrence_magnitude=self.deter_strength,
+            is_lactating=self.with_calf,
+            is_pregnant=(self.days_since_mating > 0) & (self.days_since_mating < 300),
+        )
+        return context, food_available
+
+    def _apply_food_intake_jasmine(self, mask: np.ndarray) -> None:
+        """Phase 1 of split JASMINE energy update: food intake only.
+
+        Builds the EnergyContext (including eating food from landscape), computes
+        food intake via compute_food_intake(), applies it to energy, and stores
+        the context and food_available for use by _apply_bmr_cost_jasmine().
+
+        After this method the population energy reflects post-food, pre-BMR values —
+        matching Java's ordering so that starvation is checked at the right moment.
+        """
+        context, food_available = self._build_energy_context(mask)
+
+        # Compute food intake only
+        intake = self._energy_module.compute_food_intake(self._energy_state, context, mask)
+
+        # Apply food intake to module state and sync to population
+        self._energy_state.energy[mask] += intake[mask]
+        np.clip(self._energy_state.energy, 0, 20.0, out=self._energy_state.energy)
+        self.energy[:] = self._energy_state.energy
+
+        # Store for BMR phase
+        self._pending_energy_context = context
+        self._pending_food_available = food_available
+        self._pending_food_intake = intake
+
+        # Dashboard metric: food gained
+        n_active = int(np.sum(mask))
+        if n_active > 0:
+            self.avg_food_gained = float(np.mean(intake[mask]))
+        else:
+            self.avg_food_gained = 0.0
+
+    def _apply_bmr_cost_jasmine(self, mask: np.ndarray) -> None:
+        """Phase 2 of split JASMINE energy update: BMR + activity costs.
+
+        Uses the context built by _apply_food_intake_jasmine(). Deducts BMR/activity
+        costs, syncs energy back to population, updates PSM, energy history, dispersal.
+        Must be called after _check_mortality() so that only surviving agents pay BMR.
+        """
+        context = getattr(self, '_pending_energy_context', None)
+        food_available = getattr(self, '_pending_food_available', None)
+        if context is None or food_available is None:
+            # Fallback: no pending context (shouldn't happen in normal flow)
+            return
+
+        # Sync population energy → module state (may have changed due to mortality zeroing)
+        self._energy_state.energy[:] = self.energy
+
+        # Compute BMR + activity cost
+        cost = self._energy_module.compute_bmr_cost(self._energy_state, context, mask)
+
+        # Apply cost
+        self._energy_state.energy[mask] -= cost[mask]
+        np.clip(self._energy_state.energy, 0, 20.0, out=self._energy_state.energy)
+
+        # Also track disturbance costs in energy_state
+        if hasattr(self._energy_state, 'disturbance_energy_cost'):
+            disturbance_cost = np.where(
+                context.is_disturbed[mask],
+                0.002 * context.deterrence_magnitude[mask],
+                0.0
+            ).astype(np.float32)
+            self._energy_state.disturbance_energy_cost[mask] += disturbance_cost
+
+        # Sync module state → population energy
+        self.energy[:] = self._energy_state.energy
+
+        # Update distance traveled for energy module tracking
+        self._energy_state.distance_traveled[mask] = self._step_dist[mask] * 400.0  # cells → meters
+
+        # Dashboard metric: energy cost
+        n_active = int(np.sum(mask))
+        if n_active > 0:
+            self.avg_energy_cost = float(np.mean(cost[mask]))
+        else:
+            self.avg_energy_cost = 0.0
+
+        # PSM, energy history, and dispersal
+        self._update_psm(mask, food_available)
+        self._update_energy_history(mask)
+        self._update_dispersal(mask)
+
+        # Clamp energy
+        np.clip(self.energy, 0, 20.0, out=self.energy)
+
+        # Clear pending state
+        self._pending_energy_context = None
+        self._pending_food_available = None
+        self._pending_food_intake = None
+
+    def _apply_food_intake(self, mask: np.ndarray) -> None:
+        """Dispatch food intake phase (DEPONS or JASMINE)."""
+        if self._energy_module is not None:
+            self._apply_food_intake_jasmine(mask)
+        else:
+            # DEPONS inline path: food + PSM, leave BMR for _apply_bmr_cost
+            fract_to_eat = np.clip((20.0 - self.energy) / 10.0, 0.0, 0.99)
+            if self.landscape is not None and hasattr(self.landscape, 'eat_food'):
+                food_gained = self._eat_food_vectorized(mask, fract_to_eat)
+            else:
+                food_gained = fract_to_eat * np.random.uniform(0.1, 0.5, self.count)
+            self.energy[mask] += food_gained[mask]
+            np.clip(self.energy, 0, 20.0, out=self.energy)
+            # Store for BMR phase
+            self._pending_food_available = food_gained
+            n_active = int(np.sum(mask))
+            if n_active > 0:
+                self.avg_food_gained = float(np.mean(food_gained[mask]))
+            else:
+                self.avg_food_gained = 0.0
+
+    def _apply_bmr_cost(self, mask: np.ndarray) -> None:
+        """Dispatch BMR cost phase (DEPONS or JASMINE)."""
+        if self._energy_module is not None:
+            self._apply_bmr_cost_jasmine(mask)
+        else:
+            # DEPONS inline path: BMR + swimming cost
+            current_month = self._get_current_month()
+            scaling_factor = self._get_energy_scaling(current_month, mask)
+            bmr_cost = 0.001 * scaling_factor * self.params.e_use_per_30_min
+            swimming_cost = (10.0 ** self.prev_log_mov) * 0.001 * scaling_factor * 0.0  # E_USE_PER_KM = 0
+            total_cost = bmr_cost + swimming_cost
+            self.energy[mask] -= total_cost[mask]
+            n_active = int(np.sum(mask))
+            food_gained = getattr(self, '_pending_food_available', np.zeros(self.count))
+            if n_active > 0:
+                self.avg_energy_cost = float(np.mean(total_cost[mask]))
+            else:
+                self.avg_energy_cost = 0.0
+            # PSM, energy history, and dispersal
+            self._update_psm(mask, food_gained)
+            self._update_energy_history(mask)
+            self._update_dispersal(mask)
+            # Clamp energy
+            np.clip(self.energy, 0, 20.0, out=self.energy)
+            self._pending_food_available = None
 
     def _check_mortality(self, mask: np.ndarray, active_before: int) -> None:
         """
@@ -1308,14 +1501,21 @@ class PorpoisePopulation:
         """
         Main simulation step for the entire population.
 
-        Orchestrates all sub-steps in sequence:
+        Orchestrates all sub-steps in sequence matching Java DEPONS 3.2 ordering:
         1. Movement calculations (CRW, deterrence, social)
         2. Land avoidance (DEPONS pattern)
         3. Position updates
-        4. Energy dynamics (food, BMR, PSM)
-        5. Mortality (starvation, age-based, bycatch)
+        4a. Food intake (energy gain from foraging)
+        4b. Starvation check on post-food, pre-BMR energy (Java ordering)
+        4c. BMR cost (PSM, energy history, dispersal — after mortality so dead agents excluded)
+        5. Disturbance memory update (JASMINE)
         6. Aging
         7. Reproduction
+
+        The food → starvation → BMR ordering matches Java Porpoise.java where starvation
+        is evaluated after food gain but before metabolic costs are subtracted. This means
+        a starving animal that just ate sees higher energy at the starvation check, improving
+        survival compared to the previous Python ordering (food + BMR → starvation).
 
         Args:
             deterrence_vectors: Tuple of (dx_array, dy_array) for deterrence
@@ -1341,21 +1541,24 @@ class PorpoisePopulation:
         if self._behavior_fsm is not None:
             self._update_behavior_fsm(mask)
 
-        # 4. Energy dynamics
-        self._update_energy_dynamics(mask)
+        # 4a. Food intake (post-food energy is used for starvation check below)
+        self._apply_food_intake(mask)
+
+        # 4b. Starvation check on post-food, pre-BMR energy (Java ordering)
+        self._check_mortality(mask, active_before)
+
+        # 4c. BMR cost — use updated active_mask so dead agents are excluded
+        self._apply_bmr_cost(self.active_mask)
 
         # 4.5 Disturbance memory update (JASMINE)
         if self._memory_module is not None:
-            self._update_disturbance_memory(mask)
+            self._update_disturbance_memory(self.active_mask)
 
-        # 5. Mortality
-        self._check_mortality(mask, active_before)
+        # 5. Aging
+        self._update_aging(self.active_mask)
 
-        # 6. Aging
-        self._update_aging(mask)
-
-        # 7. Reproduction
-        self._handle_reproduction(mask)
+        # 6. Reproduction
+        self._handle_reproduction(self.active_mask)
 
     def to_dataframe(self) -> pd.DataFrame:
         """Export active agents to DataFrame for UI helpers."""

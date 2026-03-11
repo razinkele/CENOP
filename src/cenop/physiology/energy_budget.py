@@ -401,6 +401,53 @@ class DEPONSEnergyModule(EnergyModule):
         )
         return step_surv.astype(np.float32)
 
+    def compute_food_intake(
+        self,
+        state: EnergyState,
+        context: EnergyContext,
+        mask: np.ndarray,
+    ) -> np.ndarray:
+        """Compute food energy intake only (phase 1 of 2).
+
+        Returns array of energy gained from food per agent.
+        food_available is already hunger-weighted from eat_food_vectorized.
+        """
+        count = len(state.energy)
+        intake = np.zeros(count, dtype=np.float32)
+        if np.any(mask):
+            intake[mask] = context.food_available[mask]
+        return intake
+
+    def compute_bmr_cost(
+        self,
+        state: EnergyState,
+        context: EnergyContext,
+        mask: np.ndarray,
+    ) -> np.ndarray:
+        """Compute BMR and activity costs only (phase 2 of 2).
+
+        Returns array of total energy cost per agent.
+        """
+        count = len(state.energy)
+        total_cost = np.zeros(count, dtype=np.float32)
+
+        if np.any(mask):
+            scaling = self._get_seasonal_scaling(context.current_month, int(np.sum(mask)))
+            bmr = 0.001 * scaling * self.e_use_per_30_min
+            bmr = np.where(context.is_lactating[mask], bmr * self.e_lact, bmr)
+
+            activity = context.current_speed[mask] * 0.0001 * scaling
+
+            disturbance = np.where(
+                context.is_disturbed[mask],
+                0.002 * context.deterrence_magnitude[mask] * scaling,
+                0.0
+            ).astype(np.float32)
+
+            total_cost[mask] = bmr + activity + disturbance
+
+        return total_cost
+
     def _get_seasonal_scaling(self, month: int, count: int) -> np.ndarray:
         """Get seasonal energy scaling factor.
 

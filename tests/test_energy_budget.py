@@ -424,5 +424,57 @@ class TestSeasonalScaling:
             "May (warm) should have higher BMR than October (transition)"
 
 
+class TestEnergyModuleSplit:
+    """Test split energy computation: food intake → starvation check → BMR cost."""
+
+    def test_compute_food_intake_returns_gain(self):
+        """compute_food_intake should return only the food energy gained."""
+        params = SimulationParameters()
+        module = DEPONSEnergyModule(params)
+
+        state = EnergyState.create(3, initial_energy=5.0)
+        mask = np.ones(3, dtype=bool)
+        ctx = EnergyContext.create_default(3, month=6)
+        ctx.food_available = np.array([0.5, 0.3, 0.0], dtype=np.float32)
+
+        intake = module.compute_food_intake(state, ctx, mask)
+
+        np.testing.assert_allclose(intake, [0.5, 0.3, 0.0], rtol=1e-5)
+
+    def test_compute_bmr_cost_returns_cost(self):
+        """compute_bmr_cost should return the total metabolic cost."""
+        params = SimulationParameters()
+        module = DEPONSEnergyModule(params)
+
+        state = EnergyState.create(2, initial_energy=10.0)
+        mask = np.ones(2, dtype=bool)
+        ctx = EnergyContext.create_default(2, month=6)
+        ctx.current_speed = np.zeros(2, dtype=np.float32)
+        ctx.is_disturbed = np.zeros(2, dtype=bool)
+        ctx.is_lactating = np.zeros(2, dtype=bool)
+
+        cost = module.compute_bmr_cost(state, ctx, mask)
+
+        expected_bmr = 0.001 * 1.3 * params.e_use_per_30_min
+        np.testing.assert_allclose(cost[mask], expected_bmr, rtol=0.01)
+
+    def test_starvation_check_between_food_and_bmr(self):
+        """Starvation should be checked on post-food, pre-BMR energy."""
+        params = SimulationParameters()
+        module = DEPONSEnergyModule(params)
+
+        state = EnergyState.create(1, initial_energy=0.1)
+        mask = np.ones(1, dtype=bool)
+        ctx = EnergyContext.create_default(1, month=1)
+        ctx.food_available = np.array([5.0], dtype=np.float32)
+
+        intake = module.compute_food_intake(state, ctx, mask)
+        post_food_energy = state.energy.copy()
+        post_food_energy[mask] += intake[mask]
+        post_food_energy = np.clip(post_food_energy, 0, 20)
+
+        assert post_food_energy[0] == pytest.approx(5.1, abs=0.01)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

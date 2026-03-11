@@ -467,6 +467,37 @@ class TestMortalityAlignment:
         assert deaths_total < 5, \
             f"Expected near-zero deaths at max energy, got {deaths_total}"
 
+    def test_lactating_mother_dies_at_zero_energy(self):
+        """Lactating mother with energy=0 should die after abandoning calf.
+        Java ref: Porpoise.java:766-776
+        """
+        params = SimulationParameters()
+        pop = PorpoisePopulation(count=5, params=params)
+        pop.active_mask[:] = True
+        pop.energy[:] = 0.0
+        pop.with_calf[:3] = True
+        pop.with_calf[3:] = False
+        mask = pop.active_mask.copy()
+
+        np.random.seed(0)
+        pop._check_mortality(mask, 5)
+
+        assert np.all(~pop.active_mask), "All agents at energy=0 should die"
+        assert np.all(~pop.with_calf[:3]), "Calves should be abandoned before death"
+
+    def test_initial_energy_is_normal_distribution(self):
+        """Initial energy should be N(10, 1) not constant 10.0."""
+        np.random.seed(42)
+        params = SimulationParameters()
+        pop = PorpoisePopulation(count=1000, params=params)
+
+        assert pop.energy.std() > 0.5, \
+            f"Energy should have variation (std={pop.energy.std():.3f})"
+        assert abs(pop.energy.mean() - 10.0) < 0.2, \
+            f"Mean energy should be ~10.0, got {pop.energy.mean():.2f}"
+        assert np.all(pop.energy >= 0)
+        assert np.all(pop.energy <= 20)
+
     def test_max_age_death(self):
         """Porpoises older than max_age (30) should die unconditionally."""
         params = SimulationParameters()

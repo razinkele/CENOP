@@ -81,7 +81,9 @@ class PorpoisePopulation:
         self.age = np.zeros(count, dtype=np.float32)
         
         # Energy
-        self.energy = np.full(count, 10.0, dtype=np.float32)
+        self.energy = np.random.normal(
+            params.energy_init_mean, params.energy_init_sd, count
+        ).clip(0, 20).astype(np.float32)
         
         # Reproduction
         self.mating_day = np.full(count, -99, dtype=np.int16)
@@ -1390,10 +1392,13 @@ class PorpoisePopulation:
         starvation_check = np.random.random(self.count)
         starving = (starvation_check > step_surv_prob) & mask
 
-        # Lactating mothers abandon calf before dying
-        abandon_calf = starving & self.with_calf
-        self.with_calf[abandon_calf] = False
-        starved = starving & ~abandon_calf
+        # Two-step starvation logic (Java Porpoise.java:766-776):
+        # if (!this.withLactCalf || this.energyLevel <= 0) { die(); }
+        # if (this.withLactCalf) { this.withLactCalf = false; }
+        was_with_calf = starving & self.with_calf
+        self.with_calf[was_with_calf] = False  # abandon calf first
+        # Die if: not lactating, or energy <= 0
+        starved = starving & ((self.energy <= 0) | ~was_with_calf)
 
         # Max-age death (Java Porpoise.java:1144)
         max_age = getattr(self.params, 'max_age', 30.0)

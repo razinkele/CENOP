@@ -1366,7 +1366,7 @@ class PorpoisePopulation:
         """
         Check and apply mortality (DEPONS Pattern).
 
-        Handles starvation, age-based natural mortality, and bycatch.
+        Handles starvation, max-age death, and bycatch (DEPONS 3.2).
         Uses parameters from SimulationParameters for all mortality constants.
         """
         # Energy-based starvation mortality (parameterized)
@@ -1395,42 +1395,27 @@ class PorpoisePopulation:
         self.with_calf[abandon_calf] = False
         starved = starving & ~abandon_calf
 
-        # Age-dependent natural mortality (parameterized)
-        annual_juvenile_mortality = getattr(self.params, 'mortality_juvenile', 0.15)  # age < 1
-        annual_adult_mortality = getattr(self.params, 'mortality_adult', 0.05)        # 1 <= age <= 20
-        annual_elderly_mortality = getattr(self.params, 'mortality_elderly', 0.15)    # age > 20
-
-        # NOTE: Linear per-tick conversion (rate / ticks_per_year) is an approximation.
-        # The exact compound formula would be: 1 - (1 - annual_rate)^(1/17280).
-        # For the small rates used here (0.05-0.15), the linear approximation error
-        # is <0.4% and matches the DEPONS Java implementation's approach.
-        per_tick_juvenile = annual_juvenile_mortality / 360.0 / 48.0
-        per_tick_adult = annual_adult_mortality / 360.0 / 48.0
-        per_tick_elderly = annual_elderly_mortality / 360.0 / 48.0
-
-        daily_mortality_prob = np.where(
-            self.age < 1, per_tick_juvenile,
-            np.where(self.age > 20, per_tick_elderly, per_tick_adult)
-        )
-        natural_death = (np.random.random(self.count) < daily_mortality_prob) & mask
+        # Max-age death (Java Porpoise.java:1144)
+        max_age = getattr(self.params, 'max_age', 30.0)
+        old_age = mask & (self.age > max_age)
 
         # Bycatch mortality (already parameterized)
         bycatch_prob = getattr(self.params, 'bycatch_prob', 0.0) / 360.0 / 48.0
         bycatch = (self.rng.random(self.count) < bycatch_prob) & mask
 
         # Apply deaths
-        all_deaths = starved | natural_death | bycatch
+        all_deaths = starved | old_age | bycatch
         if np.any(all_deaths):
             death_count = int(np.sum(all_deaths))
             starved_count = int(np.sum(starved))
-            natural_count = int(np.sum(natural_death))
+            old_age_count = int(np.sum(old_age))
             bycatch_count = int(np.sum(bycatch))
             self.active_mask[all_deaths] = False
             if self._debug_instrumentation or death_count > 0:
                 active_after = int(np.sum(self.active_mask))
                 logger.debug(
-                    "[INSTR] tick=%d deaths=%d starved=%d natural=%d bycatch=%d active_before=%d active_after=%d",
-                    self._global_tick, death_count, starved_count, natural_count, bycatch_count,
+                    "[INSTR] tick=%d deaths=%d starved=%d old_age=%d bycatch=%d active_before=%d active_after=%d",
+                    self._global_tick, death_count, starved_count, old_age_count, bycatch_count,
                     active_before, active_after
                 )
 

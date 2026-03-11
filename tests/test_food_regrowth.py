@@ -72,3 +72,54 @@ class TestLogisticFoodRegrowth:
         landscape.replenish_food(0.1)
         # Cells at/above K should remain unchanged
         np.testing.assert_array_equal(landscape._food_value, values_before)
+
+
+class TestPhase1Integration:
+    """Smoke test: Phase 1 changes produce stable population."""
+
+    def test_population_stable_100_days(self):
+        """Run 100-day simulation and verify population stability.
+
+        With logistic food regrowth + correct mortality, population should
+        remain within ±30% of initial count over 100 simulated days.
+        """
+        from cenop.agents.population import PorpoisePopulation
+        from cenop.parameters.simulation_params import SimulationParameters
+
+        np.random.seed(42)
+        params = SimulationParameters()
+        landscape = create_homogeneous_landscape(width=200, height=200, food_prob=0.5)
+        pop = PorpoisePopulation(count=200, params=params, landscape=landscape)
+
+        initial_count = int(np.sum(pop.active_mask))
+
+        for day in range(100):
+            for tick in range(48):
+                pop.step()
+
+            # Daily food replenishment
+            landscape.replenish_food(
+                rate=params.food_growth_rate,
+                max_u=params.max_u,
+                regrowth_qualifier=params.regrowth_food_qualifier,
+            )
+
+        final_count = int(np.sum(pop.active_mask))
+        ratio = final_count / initial_count
+
+        assert 0.7 < ratio < 1.3, \
+            f"Population ratio {ratio:.2f} ({initial_count}→{final_count}) outside ±30% stability band"
+
+
+class TestFoodInitialization:
+    def test_food_init_from_maxent(self):
+        """Food should be initialized from maxEnt when entropy available.
+        For homogeneous landscape with food_prob=0.5 and no maxEnt rasters,
+        fallback should still produce food_value = food_prob."""
+        landscape = create_homogeneous_landscape(width=10, height=10, food_prob=0.5)
+        assert np.allclose(landscape._food_value, 0.5)
+
+    def test_food_zero_where_food_prob_zero(self):
+        """Cells with food_prob=0 should have food_value=0."""
+        landscape = create_homogeneous_landscape(width=10, height=10, food_prob=0.0)
+        assert np.all(landscape._food_value == 0.0)

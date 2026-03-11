@@ -286,14 +286,96 @@ class CellData:
 
         return actual_eaten
 
-    def replenish_food(self, rate: float) -> None:
-        """Replenish food across all cells."""
+    def replenish_food(
+        self,
+        rate: float,
+        max_u: float = 1.0,
+        regrowth_qualifier: float = 0.001,
+        max_ent: Optional[np.ndarray] = None,
+        mean_max_ent_in_quarter: float = 1.0,
+    ) -> None:
+        """Replenish food across all cells using DEPONS 3.2 logistic regrowth.
+
+        Formula (per active cell): F += rU * F * (1 - F/K)
+        where K = max_u * max_ent / mean_max_ent_in_quarter.
+
+        The first iteration is always applied.  If the resulting delta
+        exceeds *regrowth_qualifier* the step is repeated 47 more times
+        (48 total), matching the DEPONS 3.2 inner-loop behaviour.
+
+        Args:
+            rate: Per-step growth rate (rU in DEPONS).
+            max_u: Scaling factor for carrying capacity (default 1.0).
+            regrowth_qualifier: Delta threshold that triggers 47 extra
+                iterations (default 0.001).
+            max_ent: Optional 2-D array of MaxEnt values to use as the
+                spatial capacity numerator.  If *None* the current-month
+                entropy layer is used; if that is also absent, food_prob
+                is used instead.
+            mean_max_ent_in_quarter: Denominator for the capacity
+                calculation (default 1.0).
+        """
         self._ensure_loaded()
         if self._food_value is None or self._food_prob is None:
             return
-        # Food regenerates towards food_prob level
-        diff = self._food_prob - self._food_value
-        self._food_value += rate * diff
+
+        # --- Determine max_ent layer (2-D) --------------------------------
+        if max_ent is None:
+            if self._entropy is not None:
+                month_idx = (self._current_month - 1) % 12
+                ent_layer = self._entropy[month_idx]
+            else:
+                ent_layer = self._food_prob
+        else:
+            ent_layer = max_ent
+
+        # --- Carrying capacity K (per cell) --------------------------------
+        # Guard against zero denominator
+        safe_denom = mean_max_ent_in_quarter if mean_max_ent_in_quarter > 0.0 else 1.0
+        k_vals = max_u * ent_layer / safe_denom
+
+        # --- Active mask: cells where food_prob > 0 and K > 0 -------------
+        active = (self._food_prob > 0.0) & (k_vals > 0.0)
+
+        food = self._food_value.copy()
+
+        # --- Floor: bump very-low cells to 0.01 before regrowth -----------
+        floor_mask = active & (food < 0.01)
+        food[floor_mask] = 0.01
+
+        # --- Guard: skip cells already at or above capacity ---------------
+        active = active & (food < k_vals)
+
+        if not np.any(active):
+            self._food_value[:] = food
+            return
+
+        # --- First logistic iteration -------------------------------------
+        food_after_1 = food.copy()
+        food_after_1[active] = (
+            food[active]
+            + rate * food[active] * (1.0 - food[active] / k_vals[active])
+        )
+
+        # --- Per-cell delta check -----------------------------------------
+        delta_mask = active & (np.abs(food_after_1 - food) > regrowth_qualifier)
+
+        # Apply first iteration result
+        food[active] = food_after_1[active]
+
+        # --- 47 extra iterations where delta was large --------------------
+        if np.any(delta_mask):
+            f_sub = food[delta_mask]
+            k_sub = k_vals[delta_mask]
+            for _ in range(47):
+                f_sub = f_sub + rate * f_sub * (1.0 - f_sub / k_sub)
+            food[delta_mask] = f_sub
+
+        # --- Clip to capacity and write back ------------------------------
+        food[active | delta_mask] = np.minimum(
+            food[active | delta_mask], k_vals[active | delta_mask]
+        )
+        self._food_value[:] = food
         
     def get_block(self, x: float, y: float) -> int:
         """Get block ID at position."""
@@ -388,22 +470,59 @@ def load_bathymetry_from_asc(filepath: str) -> Tuple[np.ndarray, LandscapeMetada
         Tuple of (depth array, metadata)
     """
     with open(filepath, 'r') as f:
-        # Read header
-        ncols = int(f.readline().split()[1])
-        nrows = int(f.readline().split()[1])
-        xllcorner = float(f.readline().split()[1])
-        yllcorner = float(f.readline().split()[1])
-        cellsize = float(f.readline().split()[1])
+        # Read header with validation
+        expected_headers = ['ncols', 'nrows', 'xllcorner', 'yllcorner', 'cellsize']
+        header_values = {}
+
+        for expected in expected_headers:
+            line = f.readline()
+            if not line:
+                raise ValueError(
+                    f"ASC header incomplete: missing '{expected}' "
+                    f"(file: {filepath})"
+                )
+            parts = line.split()
+            if len(parts) < 2:
+                raise ValueError(
+                    f"ASC header malformed: expected '{expected} <value>', "
+                    f"got '{line.strip()}' (file: {filepath})"
+                )
+            header_values[expected] = parts[1]
+
+        try:
+            ncols = int(header_values['ncols'])
+            nrows = int(header_values['nrows'])
+            xllcorner = float(header_values['xllcorner'])
+            yllcorner = float(header_values['yllcorner'])
+            cellsize = float(header_values['cellsize'])
+        except ValueError as e:
+            raise ValueError(
+                f"ASC header has non-numeric value: {e} (file: {filepath})"
+            ) from e
+
+        # NODATA line (optional)
         nodata_line = f.readline().split()
         nodata_value = float(nodata_line[1]) if len(nodata_line) > 1 else -9999.0
-        
-        # Read data - each row contains space-separated values
+
+        # Read data with validation
         data = []
-        for line in f:
-            values = [float(v) for v in line.split()]
+        for line_num, line in enumerate(f, start=7):
+            try:
+                values = [float(v) for v in line.split()]
+            except ValueError as e:
+                raise ValueError(
+                    f"ASC data has non-numeric value at line {line_num}: {e} "
+                    f"(file: {filepath})"
+                ) from e
             data.extend(values)
-        
-        # Reshape to 2D array (nrows x ncols)
+
+        expected_count = nrows * ncols
+        if len(data) != expected_count:
+            raise ValueError(
+                f"ASC data values count mismatch: expected {expected_count} "
+                f"({nrows}x{ncols}), got {len(data)} (file: {filepath})"
+            )
+
         depth_array = np.array(data).reshape((nrows, ncols))
         
         # Replace nodata values with land indicator (-10)

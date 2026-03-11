@@ -99,8 +99,19 @@ class CellData:
         self._entropy = data['entropy']
         self._salinity = data['salinity']
         
-        # Initialize food values from food probability
-        self._food_value = self._food_prob.copy()
+        # Initialize food from maxEnt (Java CellData.java:256-268)
+        if self._entropy is not None:
+            month_idx = 0  # Start at January
+            max_ent = self._entropy[month_idx]
+            max_u = 1.0
+            mean_max_ent = 1.0
+            self._food_value = np.where(
+                (self._food_prob > 0) & (max_ent > 0),
+                max_u * max_ent / mean_max_ent,
+                0.0
+            ).astype(np.float32)
+        else:
+            self._food_value = self._food_prob.copy()
         
         self._loaded = True
         
@@ -410,6 +421,18 @@ class CellData:
     def set_month(self, month: int) -> None:
         """Set the current month for lookups."""
         self._current_month = max(1, min(12, month))
+
+    def get_quarter_of_year(self, tick: int, shift_quarter: bool = True) -> int:
+        """Compute quarter index (0-3) from tick, matching Java SimulationTime.java:88-95."""
+        effective_tick = tick + (30 * 48 if shift_quarter else 0)
+        return int((effective_tick / (3 * 30 * 48)) % 4)
+
+    def get_current_max_ent(self) -> Optional[np.ndarray]:
+        """Get the maxEnt array for the current month."""
+        if self._entropy is None:
+            return None
+        month_idx = (self._current_month - 1) % 12
+        return self._entropy[month_idx]
         
     def get_depths_vectorized(self, positions: np.ndarray) -> np.ndarray:
         """

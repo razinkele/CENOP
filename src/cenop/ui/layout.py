@@ -320,7 +320,7 @@ def create_help_modal():
 <div class="help-content">
     <h2>CENOP-JASMINE User Manual</h2>
     <p><strong>CENOP-JASMINE</strong> (CETacean Noise-Population Model with JASMINE Extensions) is a Python translation
-    of the DEPONS 3.0 model for simulating how harbour porpoise population dynamics are affected by disturbances
+    of the DEPONS 3.2 model for simulating how harbour porpoise population dynamics are affected by disturbances
     from offshore wind farm construction and ship noise.</p>
     <p>The <strong>JASMINE</strong> (Just Another Simulation Model In Nature Environments) extension adds research-grade
     features including physics-based movement, dynamic energy budgets, and learned avoidance behaviors.</p>
@@ -328,7 +328,7 @@ def create_help_modal():
     <h2>Simulation Modes</h2>
     <table class="param-table">
         <tr><th>Mode</th><th>Description</th><th>Use Case</th></tr>
-        <tr><td><strong>DEPONS</strong></td><td>Regulatory-compatible empirical models validated against DEPONS 3.0</td><td>Environmental impact assessments</td></tr>
+        <tr><td><strong>DEPONS</strong></td><td>Regulatory-compatible empirical models validated against DEPONS 3.2</td><td>Environmental impact assessments</td></tr>
         <tr><td><strong>JASMINE</strong></td><td>Physics-based movement, Dynamic Energy Budget (DEB), learned avoidance</td><td>Research and hypothesis testing</td></tr>
     </table>
     <div class="tip">
@@ -357,12 +357,154 @@ def create_help_modal():
         <tr><td>NorthSea</td><td>North Sea with real bathymetry (2088x2175 @ 400m)</td><td>Scenarios 1-3</td></tr>
     </table>
 
+    <h2>Landscape Layers</h2>
+    <p>The <strong>Landscape</strong> tab provides a spatial viewer for all environmental data layers loaded from
+    ASCII grid files (<code>.asc</code>). Each cell in the grid represents a 400m &times; 400m area.
+    This cell size is <strong>mandatory</strong> &mdash; DEPONS requires all landscape grids to use exactly 400&nbsp;m
+    resolution (<code>REQUIRED_CELL_SIZE = 400</code> in DEPONS). The <code>cellsize</code> header in each
+    ASC file is validated at load time; grids with a different resolution will be rejected.
+    Movement distances, coordinate conversions, and the persistent spatial memory system all assume
+    400&nbsp;m cells.</p>
+    <p>Layers can be inspected individually with summary statistics (min, max, mean, coverage).
+    Each layer is loaded from files in the landscape data directory (e.g., <code>data/Kattegat/</code>).
+    Some layers actively drive the simulation; others are loaded for visualisation and analysis only.</p>
+
+    <table class="param-table">
+        <tr><th>Layer</th><th>File(s)</th><th>Role in Simulation</th><th>Time&nbsp;Varying</th></tr>
+        <tr><td>Bathymetry</td><td><code>bathy.asc</code></td><td>Active &mdash; movement, land masking</td><td>No</td></tr>
+        <tr><td>Salinity</td><td><code>salinity01.asc</code>&ndash;<code>salinity12.asc</code></td><td>Active &mdash; movement</td><td>Monthly</td></tr>
+        <tr><td>Food Probability</td><td><code>patches.asc</code></td><td>Active &mdash; food system</td><td>No</td></tr>
+        <tr><td>Prey (MaxEnt)</td><td><code>prey01.asc</code>&ndash;<code>prey12.asc</code></td><td>Visualisation only *</td><td>Monthly</td></tr>
+        <tr><td>Distance to Coast</td><td><code>disttocoast.asc</code></td><td>Visualisation only</td><td>No</td></tr>
+        <tr><td>Sediment Type</td><td><code>sediment.asc</code></td><td>Visualisation only **</td><td>No</td></tr>
+        <tr><td>Blocks</td><td><code>blocks.asc</code></td><td>Visualisation only</td><td>No</td></tr>
+    </table>
+    <p class="small text-muted">* In DEPONS, MaxEnt modulates food carrying capacity per month. CENOP currently uses Food Probability as the sole carrying capacity; MaxEnt integration is planned.<br/>
+    ** In DEPONS, sediment feeds the Weston flux ship-noise propagation model. CENOP currently uses a simpler &alpha;/&beta; spreading-loss model that does not require sediment data.</p>
+
+    <h3>Bathymetry (Depth) &mdash; <span style="color: var(--accent-green);">Active</span></h3>
+    <p>Water depth in metres below sea level, sourced from EMODnet or equivalent hydrographic surveys.
+    This is one of the most important layers &mdash; it directly drives three simulation mechanisms:</p>
+    <ul>
+        <li><strong>Land masking</strong> &mdash; cells with depth &lt; <code>min_depth</code> (default 1&nbsp;m) are treated as land.
+            Porpoises cannot enter them and are deflected left or right towards deeper water.</li>
+        <li><strong>CRW movement</strong> &mdash; depth modulates both step length and turning angle every tick through the
+            coefficients <code>a1</code> (step&ndash;depth) and <code>b1</code> (angle&ndash;depth). Porpoises take
+            shorter, more tortuous steps in shallow water.</li>
+        <li><strong>Dispersal depth gate</strong> &mdash; during PSM dispersal, a stricter minimum depth
+            (<code>min_depth_dispersal</code>, default 4&nbsp;m) applies, keeping dispersing porpoises in deeper waters.</li>
+    </ul>
+    <p><strong>File:</strong> <code>bathy.asc</code> &nbsp;|&nbsp; <strong>Units:</strong> metres below sea level &nbsp;|&nbsp;
+    <strong>Colour scheme:</strong> blue gradient (dark&nbsp;=&nbsp;deep, light&nbsp;=&nbsp;shallow) &nbsp;|&nbsp;
+    <strong>NODATA:</strong> <code>-9999</code> (land)</p>
+
+    <h3>Salinity &mdash; <span style="color: var(--accent-green);">Active</span></h3>
+    <p>Monthly sea-surface salinity fields (12 layers, one per month), typically derived from
+    oceanographic models or satellite observations. Salinity varies seasonally due to river
+    discharge, precipitation, and ocean circulation.</p>
+    <p><strong>Use in simulation:</strong> salinity modulates CRW movement every tick through
+    coefficients <code>a2</code> (step&ndash;salinity) and <code>b2</code> (angle&ndash;salinity).
+    In the Kattegat calibration (<code>b2&nbsp;=&nbsp;0.93</code>), high salinity strongly increases
+    turning angle variability. Salinity gradients (e.g., the Baltic&ndash;North Sea transition)
+    act as natural habitat boundaries that porpoises tend not to cross.</p>
+    <p><strong>Files:</strong> <code>salinity01.asc</code> through <code>salinity12.asc</code>
+    (one per calendar month) &nbsp;|&nbsp; <strong>Units:</strong> PSU (Practical Salinity Units) &nbsp;|&nbsp;
+    <strong>Colour scheme:</strong> blue gradient &nbsp;|&nbsp;
+    <strong>Monthly:</strong> use the month slider to view seasonal variation</p>
+
+    <h3>Food Probability &mdash; <span style="color: var(--accent-green);">Active</span></h3>
+    <p>A static spatial layer defining <em>where</em> food can exist and the <em>carrying capacity</em>
+    of each cell. Cells with value &gt;&nbsp;0 are food patches; cells with value&nbsp;0 are permanently
+    barren.</p>
+    <p><strong>Use in simulation:</strong></p>
+    <ul>
+        <li><strong>Food initialisation</strong> &mdash; at simulation start, each cell's food level is set
+            equal to its food probability value.</li>
+        <li><strong>Foraging</strong> &mdash; porpoises consume food from their current cell each tick, reducing
+            the local food level. The amount eaten depends on the porpoise's hunger (energy deficit).</li>
+        <li><strong>Replenishment</strong> &mdash; depleted cells regenerate food towards the food probability
+            level at rate <code>r_u</code> (default 0.1) per tick:
+            <code>food += r_u &times; (food_prob &minus; food)</code>. The food probability value thus acts as the
+            equilibrium carrying capacity for each cell.</li>
+    </ul>
+    <p><strong>File:</strong> <code>patches.asc</code> &nbsp;|&nbsp; <strong>Units:</strong> probability / relative capacity (0&ndash;1) &nbsp;|&nbsp;
+    <strong>Colour scheme:</strong> green gradient &nbsp;|&nbsp;
+    <strong>NODATA:</strong> <code>-9999</code> (land)</p>
+
+    <h3>Prey (MaxEnt) &mdash; <span style="color: var(--accent-amber);">Visualisation only</span></h3>
+    <p>Monthly predictions of relative prey density from <strong>Maximum Entropy</strong> (MaxEnt) species
+    distribution models. These are generated externally using satellite tracking data combined with
+    environmental covariates (depth, distance to coast, sediment type, sea surface temperature,
+    chlorophyll concentration).</p>
+    <p><strong>Role in DEPONS (upstream):</strong> in the original DEPONS Java model, MaxEnt values set the
+    monthly carrying capacity of each food patch. Food grows logistically towards
+    <code>maxU &times; maxEnt / meanMaxEntInQuarter</code>, so cells with high MaxEnt hold more food.
+    The 12 monthly layers shift prey distribution spatially across the year, capturing seasonal
+    productivity cycles. Dispersal targets also require <code>maxEnt &gt; 0</code>.</p>
+    <p><strong>Current status in CENOP:</strong> the MaxEnt data is loaded and available for spatial
+    inspection in the Landscape viewer, but it does <em>not</em> yet modulate the food system at runtime.
+    CENOP currently uses Food Probability (<code>patches.asc</code>) as the sole carrying capacity.
+    Integration of MaxEnt-driven seasonal food dynamics is planned for a future release.</p>
+    <p><strong>Files:</strong> <code>prey01.asc</code> through <code>prey12.asc</code>
+    (one per calendar month; also accepts DEPONS long-form naming: <code>prey0000_01.asc</code>) &nbsp;|&nbsp;
+    <strong>Units:</strong> relative habitat suitability (0&ndash;1) &nbsp;|&nbsp;
+    <strong>Colour scheme:</strong> green gradient &nbsp;|&nbsp;
+    <strong>Monthly:</strong> use the month slider to compare seasonal prey distribution</p>
+
+    <h3>Distance to Coast &mdash; <span style="color: var(--accent-amber);">Visualisation only</span></h3>
+    <p>Euclidean distance from each cell to the nearest coastline.</p>
+    <p><strong>Role in DEPONS:</strong> distance to coast is used as an environmental covariate in the
+    external MaxEnt prey distribution models that generate the Prey layers. It is not directly
+    referenced by the DEPONS movement or foraging algorithms.</p>
+    <p><strong>Current status in CENOP:</strong> loaded and displayed in the Landscape viewer for
+    spatial context and habitat characterisation (e.g., comparing porpoise density across distance
+    bands). Not referenced by any simulation logic.</p>
+    <p><strong>File:</strong> <code>disttocoast.asc</code> &nbsp;|&nbsp; <strong>Units:</strong> kilometres &nbsp;|&nbsp;
+    <strong>Colour scheme:</strong> yellow&ndash;red gradient &nbsp;|&nbsp;
+    <strong>NODATA:</strong> <code>-9999</code> (land)</p>
+
+    <h3>Sediment Type &mdash; <span style="color: var(--accent-amber);">Visualisation only</span></h3>
+    <p>Seabed grain size on the phi (&phi;) scale &mdash; a logarithmic classification of sediment particle
+    diameter. Negative values indicate coarse material (rock, gravel), values near zero are sand,
+    and positive values are silt or clay.</p>
+    <p><strong>Role in DEPONS:</strong> sediment feeds into the <em>Weston flux</em> acoustic propagation model
+    (<code>WestonFlux.java</code>) that calculates transmission loss for ship noise. The grain size
+    determines sound speed ratio, density ratio, and attenuation coefficient of the seabed, which
+    together control how far ship noise propagates through the water column. Sediment is also a key
+    covariate in the external MaxEnt prey models (sandeels prefer coarse sand substrates).</p>
+    <p><strong>Current status in CENOP:</strong> loaded and displayed in the Landscape viewer.
+    CENOP uses a simpler &alpha;/&beta; spreading-loss formula for sound propagation that does not
+    require sediment data. Not referenced by any simulation logic.</p>
+    <p><strong>File:</strong> <code>sediment.asc</code> &nbsp;|&nbsp; <strong>Units:</strong> phi (&phi;) scale &nbsp;|&nbsp;
+    <strong>Colour scheme:</strong> categorical &nbsp;|&nbsp;
+    <strong>NODATA:</strong> <code>-9999</code> (land)</p>
+
+    <h3>Blocks &mdash; <span style="color: var(--accent-amber);">Visualisation only</span></h3>
+    <p>A spatial classification layer that divides the landscape into numbered reporting regions
+    (e.g., ICES statistical rectangles or management areas). Each cell is assigned an integer
+    block ID.</p>
+    <p><strong>Role in DEPONS:</strong> blocks serve as spatial output regions. The <code>Block</code> agent
+    in DEPONS counts how many porpoises occupy each block at each time step, enabling density maps
+    and comparisons with field survey data by region.</p>
+    <p><strong>Current status in CENOP:</strong> loaded and displayed in the Landscape viewer for
+    spatial reference. Block-based porpoise counting is not yet implemented in the CENOP output
+    pipeline. Not referenced by any simulation logic.</p>
+    <p><strong>File:</strong> <code>blocks.asc</code> &nbsp;|&nbsp; <strong>Units:</strong> integer region IDs &nbsp;|&nbsp;
+    <strong>Colour scheme:</strong> categorical &nbsp;|&nbsp;
+    <strong>NODATA:</strong> <code>-9999</code> (land/unclassified)</p>
+
+    <div class="tip">
+        <strong>Tip:</strong> In the Landscape tab, select a layer from the dropdown and click "Load Layer"
+        to visualise it on the map. For monthly layers (Salinity, Prey), use the month slider to compare
+        seasonal patterns. Hover over cells for tooltip values.
+    </div>
+
     <h2>Wind Turbine Scenarios</h2>
     <p>Turbine scenarios define the location and construction timing of offshore wind farms.
     Each turbine generates pile-driving noise during construction that deters porpoises.</p>
     <div class="note">
         <strong>Note:</strong> The noise overlay (red shading) shows areas where received sound levels
-        exceed the deterrence threshold (158 dB). Porpoises avoid these areas during pile-driving.
+        exceed the deterrence threshold (152 dB). Porpoises avoid these areas during pile-driving.
     </div>
 
     <h2>Dashboard Visualizations</h2>
@@ -415,8 +557,8 @@ def create_help_modal():
     <h3>Energy Tab</h3>
     <table class="param-table">
         <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
-        <tr><td>rS (Satiation)</td><td>0.04</td><td>Decay rate for satiation memory</td></tr>
-        <tr><td>rR (Reference)</td><td>0.04</td><td>Decay rate for reference memory</td></tr>
+        <tr><td>rS (Satiation)</td><td>0.03</td><td>Decay rate for satiation memory</td></tr>
+        <tr><td>rR (Reference)</td><td>0.03</td><td>Decay rate for reference memory</td></tr>
         <tr><td>rU (Replenishment)</td><td>0.1</td><td>Rate at which depleted food patches recover</td></tr>
     </table>
 
@@ -490,7 +632,7 @@ def create_help_modal():
     </ul>
 
     <h2>Scientific Background</h2>
-    <p>CENOP-JASMINE is based on the DEPONS 3.0 model (Nabe-Nielsen et al., 2018) with JASMINE extensions. Key features:</p>
+    <p>CENOP-JASMINE is based on the DEPONS 3.2 model (Nabe-Nielsen et al., 2018) with JASMINE extensions. Key features:</p>
     <ul>
         <li><strong>Agent-based</strong> - Each porpoise is an individual with its own state</li>
         <li><strong>Spatially explicit</strong> - 400m x 400m grid cells</li>
@@ -504,7 +646,7 @@ def create_help_modal():
 
     <h2>Model Validation</h2>
     <ul>
-        <li><strong>DEPONS mode</strong> - Validated against DEPONS 3.0 for regulatory compliance</li>
+        <li><strong>DEPONS mode</strong> - Validated against DEPONS 3.2 for regulatory compliance</li>
         <li><strong>JASMINE mode</strong> - Research-grade, designed for exploring advanced behavioral hypotheses</li>
     </ul>
 

@@ -330,10 +330,6 @@ class DEPONSEnergyModule(EnergyModule):
             # Lactation multiplier
             bmr = np.where(context.is_lactating[mask], bmr * self.e_lact, bmr)
 
-            # Warm water multiplier (June-October)
-            if 6 <= context.current_month <= 10:
-                bmr = bmr * self.e_warm
-
             energy_bmr[mask] = bmr
 
             # Activity cost (swimming) - currently minimal in DEPONS
@@ -406,15 +402,20 @@ class DEPONSEnergyModule(EnergyModule):
         return step_surv.astype(np.float32)
 
     def _get_seasonal_scaling(self, month: int, count: int) -> np.ndarray:
-        """Get seasonal energy scaling factor."""
-        # DEPONS seasonal variation
-        # Peak in summer (Jun-Aug), lower in winter
-        seasonal_factors = {
-            1: 1.0, 2: 1.0, 3: 1.0, 4: 1.1, 5: 1.15,
-            6: 1.2, 7: 1.25, 8: 1.2, 9: 1.15, 10: 1.1,
-            11: 1.0, 12: 1.0
-        }
-        return np.full(count, seasonal_factors.get(month, 1.0), dtype=np.float32)
+        """Get seasonal energy scaling factor.
+
+        DEPONS 3-state step function:
+        - Months 5-9 (May-Sep): e_warm (1.3)
+        - Months 4, 10 (Apr, Oct): 1.15 (transition)
+        - Months 1-3, 11-12: 1.0 (winter)
+        """
+        if 5 <= month <= 9:
+            factor = self.e_warm
+        elif month in (4, 10):
+            factor = 1.15
+        else:
+            factor = 1.0
+        return np.full(count, factor, dtype=np.float32)
 
     def get_mode(self) -> EnergyMode:
         return EnergyMode.DEPONS

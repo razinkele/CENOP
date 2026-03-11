@@ -370,5 +370,59 @@ class TestDoubleHungerFix:
                                    err_msg="energy_intake should equal food_available (already hunger-weighted)")
 
 
+class TestSeasonalScaling:
+    """Test seasonal energy scaling matches Java Porpoise.java 3-state step function."""
+
+    def test_warm_months_5_to_9(self):
+        """Months 5-9 (May-Sep) should use e_warm=1.3."""
+        params = SimulationParameters()
+        module = DEPONSEnergyModule(params)
+
+        for month in [5, 6, 7, 8, 9]:
+            scaling = module._get_seasonal_scaling(month, 1)
+            assert scaling[0] == pytest.approx(params.e_warm, abs=1e-5), \
+                f"Month {month} should use e_warm={params.e_warm}"
+
+    def test_transition_months_4_and_10(self):
+        """Months 4 (Apr) and 10 (Oct) should use 1.15 transition."""
+        params = SimulationParameters()
+        module = DEPONSEnergyModule(params)
+
+        for month in [4, 10]:
+            scaling = module._get_seasonal_scaling(month, 1)
+            assert scaling[0] == pytest.approx(1.15, abs=1e-5), \
+                f"Month {month} should use transition scaling 1.15"
+
+    def test_winter_months(self):
+        """Months 1-3, 11-12 should use scaling=1.0."""
+        params = SimulationParameters()
+        module = DEPONSEnergyModule(params)
+
+        for month in [1, 2, 3, 11, 12]:
+            scaling = module._get_seasonal_scaling(month, 1)
+            assert scaling[0] == pytest.approx(1.0, abs=1e-5), \
+                f"Month {month} should use winter scaling 1.0"
+
+    def test_warm_water_bmr_uses_correct_months(self):
+        """The warm-water multiplier should use months 5-9, not 6-10."""
+        params = SimulationParameters()
+        module = DEPONSEnergyModule(params)
+
+        state = EnergyState.create(1, initial_energy=10.0)
+        mask = np.ones(1, dtype=bool)
+        ctx = EnergyContext.create_default(1, month=5)
+        ctx.food_available = np.zeros(1)
+
+        result_may = module.compute_energy_update(state, ctx, mask)
+
+        ctx_oct = EnergyContext.create_default(1, month=10)
+        ctx_oct.food_available = np.zeros(1)
+        result_oct = module.compute_energy_update(state, ctx_oct, mask)
+
+        # May (warm, 1.3) > October (transition, 1.15) BMR
+        assert result_may.energy_bmr[0] > result_oct.energy_bmr[0], \
+            "May (warm) should have higher BMR than October (transition)"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

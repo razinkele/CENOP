@@ -317,9 +317,9 @@ class DEPONSEnergyModule(EnergyModule):
         energy_disturbance = np.zeros(count, dtype=np.float32)
 
         if np.any(mask):
-            # Food intake - hungry porpoises eat more
-            hunger = np.clip((self.ENERGY_MAX - state.energy[mask]) / 10.0, 0.0, 0.99)
-            energy_intake[mask] = hunger * context.food_available[mask]
+            # Food intake — food_available is already hunger-weighted by eat_food_vectorized
+            # (hunger fraction applied during food consumption, not here)
+            energy_intake[mask] = context.food_available[mask]
 
             # Seasonal scaling
             scaling = self._get_seasonal_scaling(context.current_month, int(np.sum(mask)))

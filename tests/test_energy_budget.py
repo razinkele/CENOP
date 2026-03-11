@@ -104,18 +104,21 @@ class TestDEPONSEnergyModule:
         assert result.energy_bmr.shape == (20,)
         assert result.net_energy_change.shape == (20,)
 
-    def test_hungry_agents_eat_more(self, module, state, context, mask):
-        """Hungry agents should have higher food intake."""
-        # Set different hunger levels
-        state.energy[:10] = 5.0   # Very hungry
-        state.energy[10:] = 18.0  # Nearly full
+    def test_food_intake_equals_food_available(self, module, state, context, mask):
+        """energy_intake should equal food_available directly (no hunger re-weighting).
 
-        context.food_available[:] = 1.0  # Food available
+        The hunger fraction is applied upstream in eat_food_vectorized before
+        food_available reaches this module. DEPONSEnergyModule must NOT apply
+        hunger again, otherwise the fraction would be applied twice.
+        """
+        context.food_available[:10] = 0.4   # Less food (e.g. hungry agents ate less)
+        context.food_available[10:] = 0.8   # More food
 
         result = module.compute_energy_update(state, context, mask)
 
-        # Hungry agents should have higher intake
-        assert np.mean(result.energy_intake[:10]) > np.mean(result.energy_intake[10:])
+        # energy_intake should exactly mirror food_available
+        np.testing.assert_allclose(result.energy_intake[:10], 0.4, rtol=1e-5)
+        np.testing.assert_allclose(result.energy_intake[10:], 0.8, rtol=1e-5)
 
     def test_energy_clamped_to_bounds(self, module, state, context, mask):
         """Energy should stay within [0, 20]."""
@@ -340,6 +343,31 @@ class TestEnergyStatistics:
         stats = module.get_statistics(state, mask)
 
         assert stats['mean_energy'] == 10.0  # Only active agents
+
+
+class TestDoubleHungerFix:
+    """Test that hunger fraction is not applied twice."""
+
+    def test_food_intake_equals_food_available_in_depons(self):
+        """In DEPONS mode, energy_intake should equal food_available directly.
+
+        The hunger fraction is already applied during eat_food_vectorized,
+        so DEPONSEnergyModule should NOT multiply by hunger again.
+        """
+        params = SimulationParameters()
+        module = DEPONSEnergyModule(params)
+
+        state = EnergyState.create(5, initial_energy=15.0)
+        mask = np.ones(5, dtype=bool)
+        food = np.full(5, 0.3, dtype=np.float32)
+
+        ctx = EnergyContext.create_default(5, month=6)
+        ctx.food_available = food
+
+        result = module.compute_energy_update(state, ctx, mask)
+
+        np.testing.assert_allclose(result.energy_intake[mask], food[mask], rtol=1e-5,
+                                   err_msg="energy_intake should equal food_available (already hunger-weighted)")
 
 
 if __name__ == "__main__":

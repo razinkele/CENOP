@@ -302,8 +302,13 @@ class TestDEPONSTrajectoryComparison:
             # - Females dying during breeding season
             # - Energy-limited breeding
             # - Stochastic birth events
-            # Allow wider range for test stability
-            assert 0.2 < reproduction_rate < 1.0, f"Reproduction rate {reproduction_rate:.1%} outside expected range"
+            # Allow wider range for test stability.
+            # Note: After fixing the double hunger fraction bug (Task 5), agents
+            # receive correct (single) hunger weighting, resulting in lower mean
+            # energy and slightly reduced reproduction rates (~19% in homogeneous
+            # landscape). The lower bound is set to 0.1 to sanity-check that
+            # some reproduction occurs without being sensitive to the bug fix.
+            assert 0.1 < reproduction_rate < 1.0, f"Reproduction rate {reproduction_rate:.1%} outside expected range"
 
 
 class TestFoodSystemParameters:

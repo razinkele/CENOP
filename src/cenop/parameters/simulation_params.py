@@ -86,7 +86,6 @@ class SimulationParameters:
     # === Memory ===
     r_s: float = 0.03                  # Satiation memory decay rate (DEPONS 3.2)
     r_r: float = 0.03                  # Reference memory decay rate (DEPONS 3.2)
-    r_u: float = 0.1                   # Food replenishment rate
     
     # === Movement ===
     inertia_const: float = 0.001       # k: tendency to keep moving with CRW
@@ -200,7 +199,10 @@ class SimulationParameters:
     bycatch_prob: float = 0.0          # Annual bycatch probability
     
     # === Food ===
-    u_min: float = 0.001               # Minimum food level in patch
+    max_u: float = 1.0                     # maxU: Maximum utility of a food patch (hardcoded in Java)
+    food_growth_rate: float = 0.1          # rU: Logistic food growth rate per day (DEPONS 3.2)
+    regrowth_food_qualifier: float = 0.001 # Umin: threshold for 48x compounding
+    u_min: float = 0.001                   # Minimum food level in patch
     
     # === Landscape ===
     wrap_border_homo: bool = True      # Wrap border for homogeneous landscape

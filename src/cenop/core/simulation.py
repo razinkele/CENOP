@@ -528,7 +528,7 @@ class Simulation:
             # Replenish food for vectorized path (_daily_tasks only does this
             # for scalar _porpoises which is empty in vectorized mode)
             if self._cell_data is not None and self.population_manager is not None:
-                self._cell_data.replenish_food(self.params.r_u)
+                self._cell_data.replenish_food(self.params.food_growth_rate)
 
         # 10. Monthly tasks (at month boundary)
         if self.time_manager.is_month_boundary():
@@ -578,7 +578,7 @@ class Simulation:
         
         # Replenish food across landscape
         if self._cell_data is not None:
-            self._cell_data.replenish_food(self.params.r_u)
+            self._cell_data.replenish_food(self.params.food_growth_rate)
         
     def _monthly_tasks(self) -> None:
         """Execute monthly tasks."""

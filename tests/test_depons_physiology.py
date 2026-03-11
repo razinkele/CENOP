@@ -306,6 +306,18 @@ class TestDEPONSTrajectoryComparison:
             assert 0.2 < reproduction_rate < 1.0, f"Reproduction rate {reproduction_rate:.1%} outside expected range"
 
 
+class TestFoodSystemParameters:
+    """Test that food system parameters match DEPONS 3.2 defaults."""
+
+    def test_food_system_parameters(self):
+        """Verify food system parameters match DEPONS 3.2 defaults."""
+        params = SimulationParameters()
+
+        assert params.max_u == 1.0, "maxU should be 1.0 (hardcoded in Java)"
+        assert params.food_growth_rate == 0.1, "rU food growth rate should be 0.1"
+        assert params.regrowth_food_qualifier == 0.001, "Umin threshold should be 0.001"
+
+
 class TestPhysiologyValidation:
     """Validate physiology model produces reasonable outputs."""
 

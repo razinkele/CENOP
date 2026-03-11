@@ -187,7 +187,7 @@ def create_simulation_from_inputs(input) -> Simulation:
         # Memory & Energy
         r_s=input.param_rS(),
         r_r=input.param_rR(),
-        r_u=input.param_rU(),
+        food_growth_rate=input.param_rU(),
         
         # Survival
         bycatch_prob=input.bycatch_prob(),

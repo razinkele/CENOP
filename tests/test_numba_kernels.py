@@ -198,3 +198,49 @@ class TestCRWAngleStepKernel:
         assert out_pres_angle[0] != 0.0  # Active agent computed
         assert out_pres_angle[1] == 0.0  # Masked agent zero
         assert out_log_mov[1] == 2.0     # Unchanged
+
+
+class TestTurnPositionKernel:
+    """Test turn_position_kernel computes correct positions after turning."""
+
+    def test_basic_turn(self):
+        """Turn by 90 degrees should rotate displacement vector."""
+        from cenop.optimizations.kernels import turn_position_kernel
+
+        n = 2
+        x = np.array([10.0, 10.0], dtype=np.float64)
+        y = np.array([10.0, 10.0], dtype=np.float64)
+        heading = np.array([0.0, 0.0], dtype=np.float64)
+        step_dist = np.array([4.0, 4.0], dtype=np.float64)
+
+        out_x = np.zeros(n, dtype=np.float64)
+        out_y = np.zeros(n, dtype=np.float64)
+        out_heading = np.zeros(n, dtype=np.float64)
+
+        turn_position_kernel(x, y, heading, step_dist, 90.0, 20, 20, out_x, out_y, out_heading)
+
+        # heading = (0 + 90) % 360 = 90, rads = pi/2
+        # dx = sin(pi/2) * 4 = 4, dy = cos(pi/2) * 4 ≈ 0
+        np.testing.assert_array_almost_equal(out_heading, [90.0, 90.0])
+        np.testing.assert_array_almost_equal(out_x, [14.0, 14.0], decimal=4)
+        np.testing.assert_array_almost_equal(out_y, [10.0, 10.0], decimal=4)
+
+    def test_boundary_reflection_during_turn(self):
+        """Positions beyond boundary after turn should be reflected."""
+        from cenop.optimizations.kernels import turn_position_kernel
+
+        n = 1
+        x = np.array([18.0], dtype=np.float64)
+        y = np.array([10.0], dtype=np.float64)
+        heading = np.array([0.0], dtype=np.float64)
+        step_dist = np.array([4.0], dtype=np.float64)
+
+        out_x = np.zeros(n, dtype=np.float64)
+        out_y = np.zeros(n, dtype=np.float64)
+        out_heading = np.zeros(n, dtype=np.float64)
+
+        # Turn 90 degrees: dx = sin(pi/2)*4 = 4, new_x = 22 > 19 (max)
+        turn_position_kernel(x, y, heading, step_dist, 90.0, 20, 20, out_x, out_y, out_heading)
+
+        # Should be reflected: 2*19 - 22 = 16
+        assert out_x[0] == pytest.approx(16.0, abs=0.1)

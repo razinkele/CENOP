@@ -42,6 +42,7 @@ try:
     from cenop.optimizations.kernels import reflect_boundaries_kernel as _reflect_kernel
     from cenop.optimizations.kernels import crw_angle_step_kernel as _crw_kernel
     from cenop.optimizations.kernels import seed_numba_rng as _seed_numba_rng
+    from cenop.optimizations.kernels import turn_position_kernel as _turn_kernel
     _HAS_KERNELS = True
 except ImportError:
     _HAS_KERNELS = False
@@ -2292,6 +2293,30 @@ class PorpoisePopulation:
         Returns:
             Heading array after turning
         """
+        if _HAS_KERNELS:
+            _out_x = np.empty(len(self.x), dtype=np.float64)
+            _out_y = np.empty(len(self.x), dtype=np.float64)
+            out_heading = np.empty(len(self.x), dtype=np.float64)
+            _turn_kernel(
+                self.x.astype(np.float64), self.y.astype(np.float64),
+                self.heading.astype(np.float64), self._step_dist.astype(np.float64),
+                float(turn_delta), world_w, world_h,
+                _out_x, _out_y, out_heading,
+            )
+            np.copyto(out_x, _out_x)
+            np.copyto(out_y, _out_y)
+            # Get cell indices
+            np.copyto(out_xi, out_x.astype(np.int32))
+            np.copyto(out_yi, out_y.astype(np.int32))
+            np.clip(out_xi, 0, world_w - 1, out=out_xi)
+            np.clip(out_yi, 0, world_h - 1, out=out_yi)
+            # Depth lookup stays in Python
+            if hasattr(self.landscape, '_depth') and self.landscape._depth is not None:
+                np.copyto(out_depths, self.landscape._depth[out_yi, out_xi])
+            else:
+                out_depths.fill(20.0)
+            return out_heading
+
         heading = (self.heading + turn_delta) % 360
         rads = np.radians(heading)
 

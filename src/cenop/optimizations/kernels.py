@@ -187,6 +187,58 @@ def crw_angle_step_kernel(
         prev_log_mov[i] = log_mov
 
 
+@njit(cache=True)
+def turn_position_kernel(
+    x, y, heading, step_dist,
+    turn_delta,
+    world_w, world_h,
+    out_x, out_y, out_heading,
+):
+    """
+    Compute new positions after turning by turn_delta degrees.
+
+    For each agent: turn heading, compute displacement, add to position,
+    reflect at boundaries.  Writes results to out_x, out_y, out_heading.
+    """
+    max_x = float(world_w - 1)
+    max_y = float(world_h - 1)
+    n = x.shape[0]
+
+    for i in range(n):
+        h = (heading[i] + turn_delta) % 360.0
+        out_heading[i] = h
+
+        rads = h * np.pi / 180.0
+        dx_i = np.sin(rads) * step_dist[i]
+        dy_i = np.cos(rads) * step_dist[i]
+
+        nx = x[i] + dx_i
+        ny = y[i] + dy_i
+
+        # Reflect X
+        if nx < 0.0:
+            nx = -nx
+        elif nx > max_x:
+            nx = 2.0 * max_x - nx
+        if nx < 0.0:
+            nx = 0.0
+        elif nx > max_x:
+            nx = max_x
+
+        # Reflect Y
+        if ny < 0.0:
+            ny = -ny
+        elif ny > max_y:
+            ny = 2.0 * max_y - ny
+        if ny < 0.0:
+            ny = 0.0
+        elif ny > max_y:
+            ny = max_y
+
+        out_x[i] = nx
+        out_y[i] = ny
+
+
 def warmup_kernels():
     """Pre-compile all kernels with small dummy data to avoid first-call latency."""
     if not NUMBA_AVAILABLE:
@@ -211,4 +263,11 @@ def warmup_kernels():
     crw_angle_step_kernel(pa, plm, dep, sal, ra, rl, m, opa, olm,
                           0.0, 0.0, 0.0, 1.0, 0.5, 0.0, 0.0, 3.0,
                           0.0, 4.0, 0.0, 1.0)
+    # Warmup turn_position kernel
+    ox = np.zeros(3, dtype=np.float64)
+    oy = np.zeros(3, dtype=np.float64)
+    oh = np.zeros(3, dtype=np.float64)
+    sd = np.ones(3, dtype=np.float64)
+    hd = np.zeros(3, dtype=np.float64)
+    turn_position_kernel(x, y, hd, sd, 90.0, 20, 20, ox, oy, oh)
     return True

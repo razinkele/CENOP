@@ -1,14 +1,21 @@
 """
 GIS Editor renderers.
 
-Handles loading spatial data layers and sending them to the deck.gl
-iframe in the Landscape tab via postMessage.
+Handles loading spatial data layers and rendering them via the
+shiny-deckgl MapWidget in the Landscape tab.
 """
 
-import json
 import logging
 import numpy as np
 from shiny import render, ui, reactive
+from shiny_deckgl import deck_legend_control, scale_widget
+
+from cenop.ui.tabs.landscape_editor import gis_map
+from cenop.server.map_layers import (
+    build_grid_bitmap_layer,
+    GIS_COLOR_SCHEMES,
+    CATEGORICAL_COLORS,
+)
 
 logger = logging.getLogger("CENOP")
 
@@ -49,18 +56,17 @@ def register_gis_editor_renderers(input, output, session, state):
             return ui.input_slider("gis_month", "Month", min=1, max=12, value=1, step=1)
         return ui.div()
 
-    @render.ui
+    @reactive.effect
     @reactive.event(input.gis_load, ignore_none=True)
-    def gis_data_sender():
-        """Load selected layer from CellData and send to iframe via postMessage."""
+    async def _gis_load_layer():
+        """Load selected layer from CellData and render via MapWidget."""
         layer_key = input.gis_layer()
         if layer_key not in LAYER_CONFIG:
-            return ui.div()
+            return
 
         attr_name, scheme, is_monthly = LAYER_CONFIG[layer_key]
         display_name = LAYER_DISPLAY_NAMES.get(layer_key, layer_key)
 
-        # Always use the current sidebar selection (not the dashboard-loaded one)
         landscape_name = input.landscape()
 
         # Load CellData (cached per landscape)
@@ -78,13 +84,13 @@ def register_gis_editor_renderers(input, output, session, state):
             except Exception as e:
                 logger.error("GIS editor: failed to load landscape '%s': %s", landscape_name, e)
                 ui.notification_show(f"Error loading landscape: {e}", type="error")
-                return ui.div()
+                return
 
         cell_data = _gis_cell_data_cache["cell_data"]
         raw = getattr(cell_data, attr_name, None)
         if raw is None:
             ui.notification_show(f"Layer '{display_name}' not available for this landscape.", type="warning")
-            return ui.div()
+            return
 
         # For monthly layers, select the month slice
         if is_monthly:
@@ -104,32 +110,14 @@ def register_gis_editor_renderers(input, output, session, state):
 
         grid_height, grid_width = data_array.shape
 
-        # Adaptive sample to cap ~15k points for performance
-        total_cells = grid_height * grid_width
-        max_points = 15000
-        sample_step = max(1, int((total_cells / max_points) ** 0.5))
+        from cenop.ui.sidebar import LANDSCAPE_CRS, LANDSCAPE_BOUNDS
+        source_crs = LANDSCAPE_CRS.get(landscape_name, "EPSG:3035")
+        meta = cell_data.metadata
 
-        # Get landscape bounds for coordinate conversion
-        from cenop.ui.sidebar import LANDSCAPE_BOUNDS
         bounds = LANDSCAPE_BOUNDS.get(landscape_name, (53.27, 54.79, 4.83, 7.13))
         lat_min, lat_max, lon_min, lon_max = bounds
 
-        # Build data points
-        points = []
-        for row in range(0, grid_height, sample_step):
-            for col in range(0, grid_width, sample_step):
-                val = float(data_array[row, col])
-                if np.isnan(val) or val == -9999.0:
-                    continue
-                lat = lat_min + (row / grid_height) * (lat_max - lat_min)
-                lon = lon_min + (col / grid_width) * (lon_max - lon_min)
-                points.append({"position": [lon, lat], "value": round(val, 4)})
-
-        if not points:
-            ui.notification_show("No valid data found for this layer.", type="warning")
-            return ui.div()
-
-        # Compute stats for the full array (not just sampled)
+        # Compute stats
         valid_mask = ~np.isnan(data_array) & (data_array != -9999.0)
         valid_vals = data_array[valid_mask]
         if len(valid_vals) > 0:
@@ -138,53 +126,57 @@ def register_gis_editor_renderers(input, output, session, state):
         else:
             d_min, d_max = 0.0, 1.0
 
-        # Store stats in reactive state for the stats panel
+        # Build unified bitmap + tooltip layers
+        layers = build_grid_bitmap_layer(
+            f"gis-{layer_key}", data_array, meta, source_crs, scheme,
+        )
+
+        # Count tooltip points for stats display
+        tooltip_layer = layers[1]
+        sampled_count = len(tooltip_layer.get("data", []))
+
         state.gis_stats.set({
             "min": d_min,
             "max": d_max,
             "mean": float(np.mean(valid_vals)) if len(valid_vals) > 0 else 0.0,
             "std": float(np.std(valid_vals)) if len(valid_vals) > 0 else 0.0,
             "coverage": f"{len(valid_vals)}/{data_array.size}",
-            "sampled": len(points),
+            "sampled": sampled_count,
             "layer": display_name,
         })
 
-        cell_deg_lat = (lat_max - lat_min) / grid_height * sample_step
-        cell_deg_lon = (lon_max - lon_min) / grid_width * sample_step
+        # Build legend
+        if scheme == "categorical":
+            legend_entries = [{"label": display_name, "color": [31, 119, 180], "shape": "rect"}]
+        else:
+            colors = GIS_COLOR_SCHEMES.get(scheme, GIS_COLOR_SCHEMES["viridis"])
+            legend_entries = [
+                {"label": f"{d_min:.2f}", "color": colors[0], "shape": "rect"},
+                {"label": f"{d_max:.2f}", "color": colors[-1], "shape": "rect"},
+            ]
 
-        data_json = json.dumps(points)
+        # Push layers + widgets to map
+        await gis_map.update(
+            session,
+            layers=layers,
+            widgets=[scale_widget(placement="bottom-left")],
+        )
 
-        js_code = f'''
-        <script>
-            (function() {{
-                function sendGISData() {{
-                    var iframe = document.getElementById('gis-editor-map-frame');
-                    if (iframe && iframe.contentWindow) {{
-                        iframe.contentWindow.postMessage({{
-                            type: 'setGISBounds',
-                            latMin: {lat_min}, latMax: {lat_max},
-                            lonMin: {lon_min}, lonMax: {lon_max}
-                        }}, '*');
-                        iframe.contentWindow.postMessage({{
-                            type: 'setGISLayerData',
-                            data: {data_json},
-                            scheme: '{scheme}',
-                            dataMin: {d_min},
-                            dataMax: {d_max},
-                            cellDegLat: {cell_deg_lat},
-                            cellDegLon: {cell_deg_lon},
-                            layerName: '{display_name}'
-                        }}, '*');
-                        console.log('GIS data sent:', {len(points)}, 'points');
-                    }} else {{
-                        setTimeout(sendGISData, 100);
-                    }}
-                }}
-                setTimeout(sendGISData, 300);
-            }})();
-        </script>
-        '''
-        return ui.HTML(js_code)
+        # Legend is a MapLibre control — must use set_controls, not update
+        await gis_map.set_controls(session, [
+            deck_legend_control(
+                legend_entries,
+                position="bottom-left",
+                title=display_name,
+            ),
+        ])
+
+        # Fly to landscape bounds
+        center_lat = (lat_min + lat_max) / 2
+        center_lon = (lon_min + lon_max) / 2
+        await gis_map.fly_to(session, longitude=center_lon, latitude=center_lat, zoom=7)
+
+        logger.info("GIS layer '%s': bitmap rendered, %d tooltip points", display_name, sampled_count)
 
     @render.ui
     def gis_layer_stats():

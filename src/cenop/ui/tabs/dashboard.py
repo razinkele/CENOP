@@ -4,8 +4,9 @@ Dashboard Tab UI
 
 from shiny import ui
 from shiny_deckgl import (
-    MapWidget, CARTO_DARK,
+    MapWidget, CARTO_POSITRON,
     zoom_widget, compass_widget, scale_widget,
+    deck_legend_control,
 )
 
 # Module-level widget instance — shared between UI and server
@@ -18,10 +19,10 @@ sim_map = MapWidget(
         "pitch": 0,
         "bearing": 0,
     },
-    style=CARTO_DARK,
+    style=CARTO_POSITRON,
     tooltip={
         "html": "<b>{layerType}</b><br/>{info}",
-        "style": {"backgroundColor": "#1e1e1e", "color": "#fff", "fontSize": "12px"},
+        "style": {"backgroundColor": "#fff", "color": "#333", "fontSize": "12px"},
     },
 )
 
@@ -68,7 +69,16 @@ def dashboard_tab():
         ),
         # Full-width map card (dark zone) — now using shiny-deckgl MapWidget
         ui.card(
-            ui.card_header("Spatial Distribution"),
+            ui.card_header(
+                ui.div(
+                    "Spatial Distribution",
+                    ui.input_switch(
+                        "blade_animation", "Animate blades",
+                        value=True,
+                    ),
+                    style="display: flex; justify-content: space-between; align-items: center; width: 100%;",
+                ),
+            ),
             sim_map.ui(width="100%", height="620px"),
             height="calc(100vh - 280px)",
             class_="ocean-card"

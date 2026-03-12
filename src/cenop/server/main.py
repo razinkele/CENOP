@@ -28,12 +28,11 @@ from .renderers.chart_helpers import (
     no_data_placeholder
 )
 
-from shiny_deckgl import zoom_widget, compass_widget, scale_widget, deck_legend_control
+from shiny_deckgl import zoom_widget, compass_widget, scale_widget, deck_legend_control, bitmap_layer, scatterplot_layer
 from cenop.ui.tabs.dashboard import sim_map
 from cenop.server.map_layers import (
     build_porpoise_layer,
-    build_depth_heatmap,
-    build_foraging_heatmap,
+    build_grid_bitmap_layer,
     build_noise_construction_layer,
     build_noise_operational_layer,
     build_turbine_pole_layer,
@@ -286,12 +285,11 @@ def server(input, output, session):
 
     # --- shiny-deckgl layer cache ---
     _layer_cache: dict[str, dict] = {}
-    _blade_rotation = [0.0]
 
     # Legend entries for deck_legend_control (matches layer IDs)
     _legend_entries = [
         {
-            "layer_id": "depth-heatmap",
+            "layer_id": "depth-bitmap",
             "label": "Bathymetry",
             "colors": [
                 [1, 31, 75], [3, 56, 108], [15, 94, 156],
@@ -300,7 +298,7 @@ def server(input, output, session):
             "shape": "rect",
         },
         {
-            "layer_id": "foraging-heatmap",
+            "layer_id": "foraging-bitmap",
             "label": "Foraging",
             "colors": [
                 [8, 48, 20], [20, 100, 40], [40, 160, 60],
@@ -337,8 +335,10 @@ def server(input, output, session):
     async def _push_all_layers():
         """Combine cached layers, legend, and push to MapWidget."""
         layers = [
-            _layer_cache.get("depth-heatmap", build_depth_heatmap([])),
-            _layer_cache.get("foraging-heatmap", build_foraging_heatmap([])),
+            _layer_cache.get("depth-bitmap", bitmap_layer("depth-bitmap", "", [], visible=False)),
+            _layer_cache.get("depth-tooltip", scatterplot_layer("depth-tooltip", [], visible=False)),
+            _layer_cache.get("foraging-bitmap", bitmap_layer("foraging-bitmap", "", [], visible=False)),
+            _layer_cache.get("foraging-tooltip", scatterplot_layer("foraging-tooltip", [], visible=False)),
             _layer_cache.get("noise-construction", build_noise_construction_layer([])),
             _layer_cache.get("noise-operational", build_noise_operational_layer([])),
             _layer_cache.get("turbine-poles", build_turbine_pole_layer([])),
@@ -1305,10 +1305,11 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(state.landscape_load_counter)
     async def _update_depth_layer():
-        """Rebuild depth heatmap when landscape is loaded."""
+        """Rebuild depth bitmap when landscape is loaded."""
         loaded_name = state.landscape_loaded_name()
         if not loaded_name:
-            _layer_cache["depth-heatmap"] = build_depth_heatmap([])
+            _layer_cache["depth-bitmap"] = bitmap_layer("depth-bitmap", "", [], visible=False)
+            _layer_cache["depth-tooltip"] = scatterplot_layer("depth-tooltip", [], visible=False)
             return
 
         try:
@@ -1322,45 +1323,37 @@ def server(input, output, session):
 
             depth = landscape._depth
             if depth is None:
-                _layer_cache["depth-heatmap"] = build_depth_heatmap([])
+                _layer_cache["depth-bitmap"] = bitmap_layer("depth-bitmap", "", [], visible=False)
+                _layer_cache["depth-tooltip"] = scatterplot_layer("depth-tooltip", [], visible=False)
                 return
-            rows, cols = depth.shape
-            meta = landscape.metadata
 
             from cenop.ui.sidebar import LANDSCAPE_CRS, LANDSCAPE_BOUNDS
             source_crs = LANDSCAPE_CRS.get(loaded_name, "EPSG:3035")
 
-            total_cells = rows * cols
-            max_points = 15000
-            sample_step = max(1, int((total_cells / max_points) ** 0.5))
+            layers = build_grid_bitmap_layer(
+                "depth", depth, landscape.metadata, source_crs, "viridis",
+            )
+            _layer_cache["depth-bitmap"] = layers[0]
+            _layer_cache["depth-tooltip"] = layers[1]
 
-            points = []
-            for r in range(0, rows, sample_step):
-                for c in range(0, cols, sample_step):
-                    d = float(depth[r, c])
-                    if d <= 0:
-                        continue
-                    lon, lat = grid_to_lonlat(c, r, meta, source_crs)
-                    points.append([lon, lat, d])
-
-            _layer_cache["depth-heatmap"] = build_depth_heatmap(points)
             bounds = LANDSCAPE_BOUNDS.get(loaded_name, (54.5, 56.5, 19.5, 22.5))
             lat_min, lat_max, lon_min, lon_max = bounds
             center_lat = (lat_min + lat_max) / 2
             center_lon = (lon_min + lon_max) / 2
             await sim_map.fly_to(session, longitude=center_lon, latitude=center_lat, zoom=6)
             await _push_all_layers()
-            logger.info(f"Depth heatmap: {len(points)} points (step={sample_step})")
+            logger.info("Depth bitmap rendered for '%s'", loaded_name)
         except Exception as e:
             logger.error(f"Error building depth layer: {e}", exc_info=True)
     
     @reactive.effect
     @reactive.event(state.landscape_load_counter)
     async def _update_foraging_layer():
-        """Rebuild foraging heatmap when landscape is loaded."""
+        """Rebuild foraging bitmap when landscape is loaded."""
         loaded_name = state.landscape_loaded_name()
         if not loaded_name:
-            _layer_cache["foraging-heatmap"] = build_foraging_heatmap([])
+            _layer_cache["foraging-bitmap"] = bitmap_layer("foraging-bitmap", "", [], visible=False)
+            _layer_cache["foraging-tooltip"] = scatterplot_layer("foraging-tooltip", [], visible=False)
             return
 
         try:
@@ -1374,30 +1367,21 @@ def server(input, output, session):
 
             food = landscape._food_prob
             if food is None:
-                _layer_cache["foraging-heatmap"] = build_foraging_heatmap([])
+                _layer_cache["foraging-bitmap"] = bitmap_layer("foraging-bitmap", "", [], visible=False)
+                _layer_cache["foraging-tooltip"] = scatterplot_layer("foraging-tooltip", [], visible=False)
                 return
-            rows, cols = food.shape
-            meta = landscape.metadata
 
             from cenop.ui.sidebar import LANDSCAPE_CRS
             source_crs = LANDSCAPE_CRS.get(loaded_name, "EPSG:3035")
 
-            total_cells = rows * cols
-            max_points = 15000
-            sample_step = max(1, int((total_cells / max_points) ** 0.5))
+            layers = build_grid_bitmap_layer(
+                "foraging", food, landscape.metadata, source_crs, "green",
+            )
+            _layer_cache["foraging-bitmap"] = layers[0]
+            _layer_cache["foraging-tooltip"] = layers[1]
 
-            points = []
-            for r in range(0, rows, sample_step):
-                for c in range(0, cols, sample_step):
-                    f = float(food[r, c])
-                    if f < 0.1:
-                        continue
-                    lon, lat = grid_to_lonlat(c, r, meta, source_crs)
-                    points.append([lon, lat, f])
-
-            _layer_cache["foraging-heatmap"] = build_foraging_heatmap(points)
             await _push_all_layers()
-            logger.info(f"Foraging heatmap: {len(points)} points (step={sample_step})")
+            logger.info("Foraging bitmap rendered for '%s'", loaded_name)
         except Exception as e:
             logger.error(f"Error building foraging layer: {e}", exc_info=True)
     
@@ -1473,7 +1457,10 @@ def server(input, output, session):
             state.turbine_count.set(len(turbine_data))
             _layer_cache["_turbine_data_raw"] = turbine_data
             _layer_cache["turbine-poles"] = build_turbine_pole_layer(turbine_data)
-            _layer_cache["turbine-blades"] = build_turbine_blade_layer(turbine_data, _blade_rotation[0])
+            animate = _safe_input(input, "blade_animation", True)
+            _layer_cache["turbine-blades"] = build_turbine_blade_layer(
+                turbine_data, client_animated=animate
+            )
             await _push_all_layers()
             logger.info(f"Turbine layers: {len(turbine_data)} turbines loaded")
         except Exception as e:
@@ -1504,7 +1491,11 @@ def server(input, output, session):
 
             _layer_cache["_turbine_data_raw"] = updated
             _layer_cache["turbine-poles"] = build_turbine_pole_layer(updated)
-            _layer_cache["turbine-blades"] = build_turbine_blade_layer(updated, _blade_rotation[0])
+            animate = _safe_input(input, "blade_animation", True)
+            _layer_cache["turbine-blades"] = build_turbine_blade_layer(
+                updated, client_animated=animate
+            )
+            await _push_dynamic_layers("turbine-poles", "turbine-blades")
         except Exception as e:
             logger.error(f"Error updating turbine phases: {e}", exc_info=True)
 
@@ -1516,6 +1507,7 @@ def server(input, output, session):
         if not raw:
             _layer_cache["noise-construction"] = build_noise_construction_layer([])
             _layer_cache["noise-operational"] = build_noise_operational_layer([])
+            await _push_dynamic_layers("noise-construction", "noise-operational")
             return
 
         sim = state.simulation()
@@ -1549,7 +1541,8 @@ def server(input, output, session):
 
         _layer_cache["noise-construction"] = build_noise_construction_layer(construction_noise)
         _layer_cache["noise-operational"] = build_noise_operational_layer(operational_noise)
-    
+        await _push_dynamic_layers("noise-construction", "noise-operational")
+
     @reactive.effect
     @reactive.event(state.map_update_counter)
     async def _update_porpoise_layer():
@@ -1594,16 +1587,25 @@ def server(input, output, session):
             logger.error(f"Error updating porpoise layer: {e}", exc_info=True)
 
     @reactive.effect
-    async def _animate_turbine_blades():
-        """Animate turbine blades for operational turbines."""
-        reactive.invalidate_later(0.1)
+    @reactive.event(input.blade_animation, state.turbine_load_counter)
+    async def _manage_blade_animation():
+        """Start or stop client-side blade animation based on toggle."""
+        from cenop.server.map_layers import BLADE_ANIMATION_JS, BLADE_ANIMATION_STOP_JS
+
+        animate = input.blade_animation()
         raw = _layer_cache.get("_turbine_data_raw", [])
         has_operational = any(t.get("phase") == "operational" for t in raw)
-        if not has_operational:
-            return
-        _blade_rotation[0] = (_blade_rotation[0] + 4) % 360
-        _layer_cache["turbine-blades"] = build_turbine_blade_layer(raw, _blade_rotation[0])
-        await _push_all_layers()
+
+        if animate and has_operational:
+            _layer_cache["turbine-blades"] = build_turbine_blade_layer(
+                raw, client_animated=True
+            )
+            await _push_dynamic_layers("turbine-blades")
+            await session.send_custom_message("eval_js", BLADE_ANIMATION_JS)
+        else:
+            _layer_cache["turbine-blades"] = build_turbine_blade_layer(raw, rotation=0)
+            await _push_dynamic_layers("turbine-blades")
+            await session.send_custom_message("eval_js", BLADE_ANIMATION_STOP_JS)
     
     # =========================================================================
     # Population Tab Renderers

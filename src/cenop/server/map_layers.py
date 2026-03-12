@@ -158,9 +158,10 @@ def grid_to_rgba_image(
 def array_to_base64_png(rgba: np.ndarray) -> str:
     """Encode an RGBA image array as a base64 PNG data URI.
 
-    The Y-axis is flipped so that array row 0 (north in ASC convention)
-    becomes the bottom row of the PNG (since bitmap_layer uses
-    [west, south, east, north] bounds and PNG pixel (0,0) is top-left).
+    The Y-axis is flipped so that array row 0 (south, after loader flipud)
+    becomes the bottom row of the PNG.  PNG pixel (0,0) is top-left,
+    so after the flip PNG row 0 = north, matching the bitmap_layer bounds
+    [west, south, east, north] where the top of the image is north.
 
     Args:
         rgba: uint8 NumPy array of shape (H, W, 4).
@@ -172,7 +173,7 @@ def array_to_base64_png(rgba: np.ndarray) -> str:
     import io
     from PIL import Image
 
-    # Flip vertically: ASC row 0 = north → PNG bottom row
+    # Flip vertically: row 0 = south → PNG bottom row, so PNG top = north
     flipped = np.flipud(rgba)
     img = Image.fromarray(flipped, mode="RGBA")
     buf = io.BytesIO()
@@ -333,13 +334,11 @@ window._cenopBladeAnimRunning = false;
 """
 
 
-def compute_grid_bounds(metadata, source_crs: str) -> list[list[float]]:
-    """Compute WGS84 corner coordinates for an ASC grid.
+def compute_grid_bounds(metadata, source_crs: str) -> list[float]:
+    """Compute WGS84 bounding box for an ASC grid.
 
-    Transforms the grid's four corners from the native CRS to WGS84
-    and returns them in deck.gl's four-corner format for bitmap_layer.
-    This correctly handles grids in projections like EPSG:3035 (LAEA)
-    that are rotated relative to WGS84 latitude/longitude axes.
+    Samples many points along all four grid edges to find the accurate
+    WGS84 bounding box, accounting for non-linear projection distortion.
 
     Args:
         metadata: LandscapeMetadata with xllcorner, yllcorner, ncols,
@@ -347,26 +346,124 @@ def compute_grid_bounds(metadata, source_crs: str) -> list[list[float]]:
         source_crs: EPSG string for the grid's native CRS.
 
     Returns:
-        Four corners as [[SW_lon, SW_lat], [NW_lon, NW_lat],
-        [NE_lon, NE_lat], [SE_lon, SE_lat]] in WGS84 degrees.
+        [west, south, east, north] in WGS84 degrees.
     """
     from cenop.server.main import _get_transformer
 
     transformer = _get_transformer(source_crs)
 
-    # Grid corners in projected CRS
     x_min = metadata.xllcorner
     y_min = metadata.yllcorner
     x_max = metadata.xllcorner + metadata.ncols * metadata.cellsize
     y_max = metadata.yllcorner + metadata.nrows * metadata.cellsize
 
-    # Transform corners: SW, NW, NE, SE (deck.gl bitmap_layer order)
-    lons, lats = transformer.transform(
-        [x_min, x_min, x_max, x_max],
-        [y_min, y_max, y_max, y_min],
-    )
+    # Sample along all 4 edges for accurate bbox (edges curve in WGS84)
+    n = 100
+    edge_xs = np.concatenate([
+        np.linspace(x_min, x_max, n),  # south edge
+        np.linspace(x_min, x_max, n),  # north edge
+        np.full(n, x_min),             # west edge
+        np.full(n, x_max),             # east edge
+    ])
+    edge_ys = np.concatenate([
+        np.full(n, y_min),
+        np.full(n, y_max),
+        np.linspace(y_min, y_max, n),
+        np.linspace(y_min, y_max, n),
+    ])
+    lons, lats = transformer.transform(edge_xs, edge_ys)
 
-    return [[lons[i], lats[i]] for i in range(4)]
+    return [float(np.min(lons)), float(np.min(lats)),
+            float(np.max(lons)), float(np.max(lats))]
+
+
+def reproject_grid_to_wgs84(
+    data: np.ndarray,
+    metadata,
+    source_crs: str,
+    nodata: float = -9999.0,
+) -> tuple[np.ndarray, list[float]]:
+    """Reproject grid data to Web Mercator-aligned WGS84 pixel space.
+
+    For each pixel in the output grid, inverse-transforms to the source CRS
+    and samples the input via nearest-neighbor. Pixels are spaced equally in
+    Web Mercator Y (not WGS84 latitude) so that deck.gl's linear texture
+    interpolation in Mercator screen space reproduces the correct positions.
+
+    The output array follows the same convention as the input: row 0 = south.
+
+    Args:
+        data: 2D array in source CRS (row 0 = south after loader flipud).
+        metadata: LandscapeMetadata with grid geometry.
+        source_crs: EPSG string for the grid's native CRS.
+        nodata: NODATA sentinel value.
+
+    Returns:
+        (reprojected_data, bounds) where bounds is [west, south, east, north].
+    """
+    from pyproj import Transformer
+
+    inv = Transformer.from_crs("EPSG:4326", source_crs, always_xy=True)
+
+    # Compute WGS84 bounding box
+    bounds = compute_grid_bounds(metadata, source_crs)
+    west, south, east, north = bounds
+
+    # Output resolution: match source cellsize at grid center latitude
+    center_lat = (south + north) / 2
+    m_per_deg_lat = 111320.0
+    m_per_deg_lon = 111320.0 * np.cos(np.radians(center_lat))
+
+    res_lat = metadata.cellsize / m_per_deg_lat
+    res_lon = metadata.cellsize / m_per_deg_lon
+
+    out_h = max(1, int(np.ceil((north - south) / res_lat)))
+    out_w = max(1, int(np.ceil((east - west) / res_lon)))
+
+    # Sample latitudes at equal Web Mercator Y intervals so the bitmap
+    # aligns with deck.gl's Mercator-projected basemap.  Longitude is
+    # unaffected (Mercator X is linear with longitude).
+    def _lat_to_merc_y(lat):
+        return np.log(np.tan(np.pi / 4 + np.radians(lat) / 2))
+
+    def _merc_y_to_lat(y):
+        return np.degrees(2 * np.arctan(np.exp(y)) - np.pi / 2)
+
+    merc_south = _lat_to_merc_y(south)
+    merc_north = _lat_to_merc_y(north)
+    merc_ys = np.linspace(merc_south, merc_north, out_h + 1)
+    # Pixel centers = midpoints of Mercator Y bins
+    merc_centers = (merc_ys[:-1] + merc_ys[1:]) / 2
+    out_lats = _merc_y_to_lat(merc_centers)
+
+    out_lons = np.linspace(west + res_lon / 2, east - res_lon / 2, out_w)
+
+    lon_grid, lat_grid = np.meshgrid(out_lons, out_lats)
+
+    # Inverse transform: WGS84 → source CRS
+    src_x, src_y = inv.transform(lon_grid.ravel(), lat_grid.ravel())
+    src_x = src_x.reshape(out_h, out_w)
+    src_y = src_y.reshape(out_h, out_w)
+
+    # Source grid indices (nearest neighbor)
+    x_min = metadata.xllcorner
+    y_min = metadata.yllcorner
+    col_f = (src_x - x_min) / metadata.cellsize - 0.5
+    row_f = (src_y - y_min) / metadata.cellsize - 0.5
+
+    col_nn = np.floor(col_f + 0.5).astype(int)
+    row_nn = np.floor(row_f + 0.5).astype(int)
+
+    in_bounds = ((col_nn >= 0) & (col_nn < metadata.ncols) &
+                 (row_nn >= 0) & (row_nn < metadata.nrows))
+
+    out_data = np.full((out_h, out_w), nodata, dtype=data.dtype)
+    # Clip indices to valid range (in_bounds already filters, clip is safety)
+    r_safe = np.clip(row_nn, 0, data.shape[0] - 1)
+    c_safe = np.clip(col_nn, 0, data.shape[1] - 1)
+    out_data[in_bounds] = data[r_safe[in_bounds], c_safe[in_bounds]]
+
+    return out_data, bounds
 
 
 def build_grid_bitmap_layer(
@@ -401,10 +498,14 @@ def build_grid_bitmap_layer(
             scatterplot_layer(f"{layer_id}-tooltip", [], visible=False),
         ]
 
-    # Generate RGBA image and encode as PNG
-    rgba = grid_to_rgba_image(data, scheme, nodata=nodata)
+    # Reproject to WGS84 pixel space to eliminate projection distortion
+    reproj_data, bounds = reproject_grid_to_wgs84(
+        data, metadata, source_crs, nodata=nodata,
+    )
+
+    # Generate RGBA image from reprojected data and encode as PNG
+    rgba = grid_to_rgba_image(reproj_data, scheme, nodata=nodata)
     image_uri = array_to_base64_png(rgba)
-    bounds = compute_grid_bounds(metadata, source_crs)
 
     bmp = bitmap_layer(
         f"{layer_id}-bitmap",
@@ -415,6 +516,7 @@ def build_grid_bitmap_layer(
     )
 
     # Build tooltip scatter layer with adaptive sampling
+    # (uses original grid + per-point transform — no distortion issue)
     from cenop.server.main import grid_to_lonlat
 
     h, w = data.shape

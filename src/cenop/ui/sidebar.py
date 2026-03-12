@@ -27,13 +27,25 @@ LANDSCAPE_TURBINE_COMPATIBILITY: dict[str, dict[str, str]] = {
 }
 
 # Geographic bounds for each landscape (lat_min, lat_max, lon_min, lon_max)
-# Used for map centering and coordinate transformations
+# Used for map centering only (NOT for coordinate transforms — use grid_to_lonlat)
 LANDSCAPE_BOUNDS = {
     "Homogeneous": (53.27, 54.79, 4.83, 7.13),  # Default North Sea bounds
     "CentralBaltic": (51.2, 55.3, 16.2, 23.7),  # Central Baltic - actual grid extent
     "Kattegat": (53.90, 57.41, 9.45, 13.49),    # Kattegat / Inner Danish Waters - 600x1000 @ 400m
     "Lithuania": (54.20, 57.28, 17.49, 21.70),   # Lithuanian EEZ expanded - 215x375 grid at 1km
     "NorthSea": (50.62, 59.06, -1.95, 9.89),    # DEPONS North Sea - 2088x2175 @ 400m
+}
+
+# Source CRS for each landscape's ASC grid files
+# Most DEPONS landscapes use EPSG:3035 (ETRS89-LAEA), Kattegat uses EPSG:25832 (ETRS89/UTM 32N)
+LANDSCAPE_CRS = {
+    "Homogeneous": "EPSG:3035",
+    "CentralBaltic": "EPSG:3035",
+    "Kattegat": "EPSG:25832",
+    "Lithuania": "EPSG:3035",
+    "NorthSea": "EPSG:3035",
+    "Gemini": "EPSG:3035",
+    "DanTysk": "EPSG:3035",
 }
 
 # Tooltips for sidebar parameters
@@ -160,15 +172,6 @@ def create_sidebar():
             id="social_comm_accordion",
             open=False,
         ),
-
-        ui.tags.hr(),
-
-        ui.h5("Map Layers"),
-        ui.input_checkbox("layer_depth", "Depth heatmap", value=False),
-        ui.input_checkbox("layer_foraging", "Foraging heatmap", value=False),
-        ui.input_checkbox("layer_noise", "Noise contours", value=True),
-        ui.input_checkbox("layer_turbines", "Wind turbines", value=True),
-        ui.input_checkbox("layer_porpoises", "Porpoises", value=True),
 
         ui.tags.hr(),
 

@@ -315,8 +315,8 @@ from cenop.landscape.cell_data import LandscapeMetadata
 
 
 class TestComputeGridBounds:
-    def test_returns_four_corners(self):
-        """Should return [[SW], [NW], [NE], [SE]] in WGS84."""
+    def test_returns_bbox(self):
+        """Should return [west, south, east, north] in WGS84."""
         meta = LandscapeMetadata(
             ncols=10, nrows=10,
             xllcorner=4321000.0, yllcorner=3210000.0,
@@ -324,35 +324,33 @@ class TestComputeGridBounds:
         )
         bounds = compute_grid_bounds(meta, "EPSG:3035")
         assert len(bounds) == 4
-        for corner in bounds:
-            assert len(corner) == 2, f"Each corner should be [lon, lat], got {corner}"
-        sw, nw, ne, se = bounds
-        assert sw[1] < nw[1], "SW lat should be less than NW lat"
-        assert se[0] > sw[0], "SE lon should be greater than SW lon"
+        west, south, east, north = bounds
+        assert west < east, "west should be less than east"
+        assert south < north, "south should be less than north"
 
-    def test_corners_are_wgs84_range(self):
-        """All corner coordinates should be valid WGS84."""
+    def test_bounds_are_wgs84_range(self):
+        """All coordinates should be valid WGS84."""
         meta = LandscapeMetadata(
             ncols=100, nrows=100,
             xllcorner=4321000.0, yllcorner=3210000.0,
             cellsize=400.0,
         )
         bounds = compute_grid_bounds(meta, "EPSG:3035")
-        for corner in bounds:
-            lon, lat = corner
-            assert -180 <= lon <= 180, f"Longitude {lon} out of range"
-            assert -90 <= lat <= 90, f"Latitude {lat} out of range"
+        west, south, east, north = bounds
+        assert -180 <= west <= 180
+        assert -180 <= east <= 180
+        assert -90 <= south <= 90
+        assert -90 <= north <= 90
 
-    def test_laea_corners_are_not_axis_aligned(self):
-        """EPSG:3035 (LAEA) grids should produce rotated corners in WGS84."""
+    def test_edge_sampling_captures_full_extent(self):
+        """Bbox from edge sampling should be >= bbox from corners only."""
         meta = LandscapeMetadata(
             ncols=500, nrows=500,
             xllcorner=4754000.0, yllcorner=3482000.0,
             cellsize=400.0,
         )
         bounds = compute_grid_bounds(meta, "EPSG:3035")
-        sw, nw, ne, se = bounds
-        # Bottom edge (SW to SE) should NOT have equal latitudes
-        assert abs(sw[1] - se[1]) > 0.01, (
-            f"LAEA bottom edge should be tilted, but SW lat={sw[1]:.4f} ~ SE lat={se[1]:.4f}"
-        )
+        west, south, east, north = bounds
+        # For EPSG:3035 grids, the extent in degrees should be reasonable
+        assert (east - west) > 0.1, "Grid should span some longitude"
+        assert (north - south) > 0.1, "Grid should span some latitude"

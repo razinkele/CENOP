@@ -33,7 +33,7 @@ def seed_numba_rng(seed):
     np.random.seed(seed)
 
 
-@njit(cache=True)
+@njit(cache=True, parallel=True)
 def reflect_boundaries_kernel(
     new_x: np.ndarray,
     new_y: np.ndarray,
@@ -54,7 +54,7 @@ def reflect_boundaries_kernel(
     max_y = float(world_h - 1)
     n = new_x.shape[0]
 
-    for i in range(n):
+    for i in prange(n):
         if mask[i]:
             if new_x[i] < 0.0:
                 new_x[i] = -new_x[i]
@@ -68,7 +68,7 @@ def reflect_boundaries_kernel(
         elif new_x[i] > max_x:
             new_x[i] = max_x
 
-    for i in range(n):
+    for i in prange(n):
         if mask[i]:
             if new_y[i] < 0.0:
                 new_y[i] = -new_y[i]
@@ -187,7 +187,7 @@ def crw_angle_step_kernel(
         prev_log_mov[i] = log_mov
 
 
-@njit(cache=True)
+@njit(cache=True, parallel=True)
 def turn_position_kernel(
     x, y, heading, step_dist,
     turn_delta,
@@ -204,7 +204,7 @@ def turn_position_kernel(
     max_y = float(world_h - 1)
     n = x.shape[0]
 
-    for i in range(n):
+    for i in prange(n):
         h = (heading[i] + turn_delta) % 360.0
         out_heading[i] = h
 
@@ -239,6 +239,160 @@ def turn_position_kernel(
         out_y[i] = ny
 
 
+@njit(cache=True)
+def eat_food_kernel(
+    food_grid,   # 2D float32 array (rows, cols) — modified in-place
+    x_indices,   # 1D int32 — column indices per agent
+    y_indices,   # 1D int32 — row indices per agent
+    fraction,    # 1D float32 — fraction to eat per agent
+    food_eaten,  # 1D float32 — output: actual food eaten per agent
+    min_food,    # float — minimum food floor (ADD_ARTIFICIAL_FOOD)
+):
+    """
+    Eat food from grid cells — two-pass proportional-sharing kernel.
+
+    Preserves the same semantics as the original np.add.at implementation:
+    agents in the same cell get proportional shares of available food,
+    independent of processing order. This avoids the full-grid allocation
+    that was the #1 bottleneck.
+
+    Pass 1: Compute per-agent demand and accumulate per-cell total demand.
+    Pass 2: For each agent, if cell demand <= supply, eat full amount;
+            otherwise, eat proportional share of supply (matching DEPONS
+            Java semantics: eat first, floor after).
+
+    Modifies food_grid and food_eaten in-place.
+    """
+    rows = food_grid.shape[0]
+    cols = food_grid.shape[1]
+    n = x_indices.shape[0]
+
+    # --- Pass 1: accumulate per-cell demand ---
+    demand_grid = np.zeros((rows, cols), dtype=np.float32)
+    agent_demand = np.empty(n, dtype=np.float32)
+
+    for i in range(n):
+        row = y_indices[i]
+        col = x_indices[i]
+        demand = food_grid[row, col] * fraction[i]
+        agent_demand[i] = demand
+        demand_grid[row, col] += demand
+
+    # --- Pass 2: distribute proportionally ---
+    for i in range(n):
+        row = y_indices[i]
+        col = x_indices[i]
+        current = food_grid[row, col]
+        total_demand = demand_grid[row, col]
+
+        if total_demand <= 0.0:
+            food_eaten[i] = 0.0
+            continue
+
+        # Match DEPONS Java: agents eat from full cell food, floor
+        # is enforced AFTER consumption (not subtracted beforehand).
+        available = current
+        if available < 0.0:
+            available = 0.0
+
+        if total_demand <= available:
+            # No competition: everyone gets what they asked for
+            food_eaten[i] = agent_demand[i]
+        else:
+            # Competition: proportional share of available food
+            share = agent_demand[i] / total_demand
+            food_eaten[i] = available * share
+
+    # --- Update grid: subtract actual total eaten per cell ---
+    for i in range(n):
+        row = y_indices[i]
+        col = x_indices[i]
+        food_grid[row, col] -= food_eaten[i]
+
+    # --- Enforce minimum food floor (only touched cells) ---
+    for i in range(n):
+        row = y_indices[i]
+        col = x_indices[i]
+        if food_grid[row, col] < min_food:
+            food_grid[row, col] = min_food
+
+
+@njit(cache=True, parallel=True)
+def depons_bmr_cost_kernel(
+    speed,              # 1D float32 — current speed in m/s
+    scaling,            # 1D float32 — seasonal scaling factor (pre-computed)
+    is_lactating,       # 1D bool
+    is_disturbed,       # 1D bool
+    deter_magnitude,    # 1D float32
+    mask,               # 1D bool
+    out_total_cost,     # 1D float32 — output
+    e_use_per_30_min,   # float — BMR parameter
+    e_lact,             # float — lactation multiplier
+):
+    """
+    DEPONS BMR + activity + disturbance cost kernel.
+
+    Matches DEPONSEnergyModule.compute_bmr_cost() exactly:
+    - BMR: 0.001 * scaling * e_use_per_30_min (* e_lact if lactating)
+    - Activity: speed * 0.0001 * scaling
+    - Disturbance: 0.002 * deter_magnitude * scaling (if disturbed)
+    """
+    n = speed.shape[0]
+    for i in prange(n):
+        if not mask[i]:
+            out_total_cost[i] = 0.0
+            continue
+
+        bmr = 0.001 * scaling[i] * e_use_per_30_min
+        if is_lactating[i]:
+            bmr *= e_lact
+
+        activity = speed[i] * 0.0001 * scaling[i]
+
+        disturbance = 0.0
+        if is_disturbed[i]:
+            disturbance = 0.002 * deter_magnitude[i] * scaling[i]
+
+        out_total_cost[i] = bmr + activity + disturbance
+
+
+@njit(cache=True)
+def social_accumulate_kernel(
+    idx_i, idx_j, dx_ij, dy_ij, dist, p_i, p_j,
+    ux_total, uy_total, sw_total,
+):
+    """
+    Fused social vector accumulation: unit-vector + weighting + accumulation.
+
+    Replaces separate NumPy unit-vector computation, weighting, and the
+    accumulate_social_totals helper in a single pass over pairs.
+
+    For each pair (i, j):
+    - i gets unit vector towards j, weighted by p_i
+    - j gets unit vector towards i (reversed), weighted by p_j
+
+    dist should already include eps (caller adds 1e-6).
+    """
+    n = idx_i.shape[0]
+    for k in range(n):
+        i = idx_i[k]
+        j = idx_j[k]
+        d = dist[k]
+
+        ux = dx_ij[k] / d
+        uy = dy_ij[k] / d
+
+        # i hears j (towards j)
+        ux_total[i] += ux * p_i[k]
+        uy_total[i] += uy * p_i[k]
+        sw_total[i] += p_i[k]
+
+        # j hears i (towards i = reverse direction)
+        ux_total[j] -= ux * p_j[k]
+        uy_total[j] -= uy * p_j[k]
+        sw_total[j] += p_j[k]
+
+
 def warmup_kernels():
     """Pre-compile all kernels with small dummy data to avoid first-call latency."""
     if not NUMBA_AVAILABLE:
@@ -270,4 +424,32 @@ def warmup_kernels():
     sd = np.ones(3, dtype=np.float64)
     hd = np.zeros(3, dtype=np.float64)
     turn_position_kernel(x, y, hd, sd, 90.0, 20, 20, ox, oy, oh)
+    # Warmup eat_food kernel
+    fg = np.ones((2, 2), dtype=np.float32) * 100.0
+    xi = np.array([0, 1], dtype=np.int32)
+    yi = np.array([0, 0], dtype=np.int32)
+    fr = np.array([0.1, 0.2], dtype=np.float32)
+    fe = np.zeros(2, dtype=np.float32)
+    eat_food_kernel(fg, xi, yi, fr, fe, 0.01)
+    # Warmup BMR cost kernel
+    spd = np.ones(2, dtype=np.float32)
+    scl = np.ones(2, dtype=np.float32)
+    lac = np.array([False, True])
+    dis = np.array([False, True])
+    dmg = np.array([0.0, 0.5], dtype=np.float32)
+    msk = np.array([True, True])
+    cost = np.zeros(2, dtype=np.float32)
+    depons_bmr_cost_kernel(spd, scl, lac, dis, dmg, msk, cost, 4.5, 1.4)
+    # Warmup social accumulate kernel
+    si = np.array([0, 1], dtype=np.int64)
+    sj = np.array([1, 0], dtype=np.int64)
+    sdx = np.array([1.0, -1.0], dtype=np.float64)
+    sdy = np.array([0.0, 0.0], dtype=np.float64)
+    sdi = np.array([1.0, 1.0], dtype=np.float64)
+    spi = np.array([0.5, 0.5], dtype=np.float64)
+    spj = np.array([0.5, 0.5], dtype=np.float64)
+    sux = np.zeros(2, dtype=np.float64)
+    suy = np.zeros(2, dtype=np.float64)
+    ssw = np.zeros(2, dtype=np.float64)
+    social_accumulate_kernel(si, sj, sdx, sdy, sdi, spi, spj, sux, suy, ssw)
     return True

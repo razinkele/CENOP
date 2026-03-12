@@ -244,3 +244,363 @@ class TestTurnPositionKernel:
 
         # Should be reflected: 2*19 - 22 = 16
         assert out_x[0] == pytest.approx(16.0, abs=0.1)
+
+
+class TestEatFoodKernel:
+    """Test eat_food_kernel with proportional-sharing semantics."""
+
+    def test_basic_eating(self):
+        """Single agent eats fraction of food in its cell."""
+        from cenop.optimizations.kernels import eat_food_kernel
+
+        food_grid = np.array([[10.0, 20.0], [30.0, 40.0]], dtype=np.float32)
+        x = np.array([1], dtype=np.int32)  # column
+        y = np.array([0], dtype=np.int32)  # row
+        fraction = np.array([0.5], dtype=np.float32)
+        food_eaten = np.zeros(1, dtype=np.float32)
+
+        eat_food_kernel(food_grid, x, y, fraction, food_eaten, 0.01)
+
+        # Food at [0,1] was 20.0, ate 50% = 10.0
+        assert food_eaten[0] == pytest.approx(10.0, abs=0.01)
+        assert food_grid[0, 1] == pytest.approx(10.0, abs=0.01)
+
+    def test_same_cell_proportional_sharing(self):
+        """Two agents in same cell should get proportional shares (order-independent)."""
+        from cenop.optimizations.kernels import eat_food_kernel
+
+        food_grid = np.array([[100.0]], dtype=np.float32)
+        x = np.array([0, 0], dtype=np.int32)
+        y = np.array([0, 0], dtype=np.int32)
+        # Both want 60%: total demand = 120% > available
+        fraction = np.array([0.6, 0.6], dtype=np.float32)
+        food_eaten = np.zeros(2, dtype=np.float32)
+
+        eat_food_kernel(food_grid, x, y, fraction, food_eaten, 0.01)
+
+        # Total demand: 60 + 60 = 120, available: 100 (full cell food)
+        # Each gets proportional share: 60/120 * 100 = 50.0
+        assert food_eaten[0] == pytest.approx(food_eaten[1], abs=0.1), \
+            "Equal-fraction agents should get equal shares (proportional)"
+        assert food_eaten[0] + food_eaten[1] == pytest.approx(100.0, abs=0.1)
+        # Grid floors to min_food after depletion
+        assert food_grid[0, 0] == pytest.approx(0.01, abs=0.01)
+
+    def test_same_cell_no_overdepletion(self):
+        """When demand < supply, agents get exactly what they asked for."""
+        from cenop.optimizations.kernels import eat_food_kernel
+
+        food_grid = np.array([[100.0]], dtype=np.float32)
+        x = np.array([0, 0], dtype=np.int32)
+        y = np.array([0, 0], dtype=np.int32)
+        fraction = np.array([0.2, 0.3], dtype=np.float32)
+        food_eaten = np.zeros(2, dtype=np.float32)
+
+        eat_food_kernel(food_grid, x, y, fraction, food_eaten, 0.01)
+
+        # Total demand: 20 + 30 = 50, available: 100, no competition
+        assert food_eaten[0] == pytest.approx(20.0, abs=0.01)
+        assert food_eaten[1] == pytest.approx(30.0, abs=0.01)
+        assert food_grid[0, 0] == pytest.approx(50.0, abs=0.01)
+
+    def test_order_independence(self):
+        """Result should be the same regardless of agent ordering."""
+        from cenop.optimizations.kernels import eat_food_kernel
+
+        # Forward order
+        grid1 = np.array([[100.0]], dtype=np.float32)
+        x = np.array([0, 0], dtype=np.int32)
+        y = np.array([0, 0], dtype=np.int32)
+        frac_fwd = np.array([0.7, 0.5], dtype=np.float32)
+        eaten_fwd = np.zeros(2, dtype=np.float32)
+        eat_food_kernel(grid1, x, y, frac_fwd, eaten_fwd, 0.01)
+
+        # Reverse order
+        grid2 = np.array([[100.0]], dtype=np.float32)
+        frac_rev = np.array([0.5, 0.7], dtype=np.float32)
+        eaten_rev = np.zeros(2, dtype=np.float32)
+        eat_food_kernel(grid2, x, y, frac_rev, eaten_rev, 0.01)
+
+        # Agent asking for 0.7 should get same amount in both orderings
+        assert eaten_fwd[0] == pytest.approx(eaten_rev[1], abs=0.01), \
+            "Proportional sharing should be order-independent"
+        assert grid1[0, 0] == pytest.approx(grid2[0, 0], abs=0.01)
+
+    def test_minimum_food_floor(self):
+        """Food should never drop below the minimum floor."""
+        from cenop.optimizations.kernels import eat_food_kernel
+
+        food_grid = np.array([[0.05]], dtype=np.float32)
+        x = np.array([0], dtype=np.int32)
+        y = np.array([0], dtype=np.int32)
+        fraction = np.array([0.99], dtype=np.float32)
+        food_eaten = np.zeros(1, dtype=np.float32)
+
+        eat_food_kernel(food_grid, x, y, fraction, food_eaten, 0.01)
+
+        assert food_grid[0, 0] >= 0.01
+
+
+class TestDEPONSBmrCostKernel:
+    """Test DEPONS BMR cost kernel matches Python implementation."""
+
+    def test_basic_cost(self):
+        """BMR + activity + disturbance should sum correctly."""
+        from cenop.optimizations.kernels import depons_bmr_cost_kernel
+
+        n = 2
+        speed = np.array([0.5, 1.0], dtype=np.float32)
+        scaling = np.array([1.0, 1.2], dtype=np.float32)
+        is_lactating = np.array([False, True])
+        is_disturbed = np.array([False, True])
+        deter_magnitude = np.array([0.0, 0.5], dtype=np.float32)
+        mask = np.array([True, True])
+        out_cost = np.zeros(n, dtype=np.float32)
+
+        depons_bmr_cost_kernel(
+            speed, scaling, is_lactating, is_disturbed, deter_magnitude,
+            mask, out_cost, 4.5, 1.4,
+        )
+
+        assert out_cost[0] > 0
+        assert out_cost[1] > out_cost[0], "Lactating + disturbed should cost more"
+
+    def test_mask_skips_inactive(self):
+        """Masked agents should have zero cost."""
+        from cenop.optimizations.kernels import depons_bmr_cost_kernel
+
+        n = 2
+        speed = np.array([1.0, 1.0], dtype=np.float32)
+        scaling = np.ones(n, dtype=np.float32)
+        is_lactating = np.array([False, False])
+        is_disturbed = np.array([False, False])
+        deter_magnitude = np.zeros(n, dtype=np.float32)
+        mask = np.array([True, False])
+        out_cost = np.zeros(n, dtype=np.float32)
+
+        depons_bmr_cost_kernel(
+            speed, scaling, is_lactating, is_disturbed, deter_magnitude,
+            mask, out_cost, 4.5, 1.4,
+        )
+
+        assert out_cost[0] > 0
+        assert out_cost[1] == 0.0
+
+    def test_equivalence_with_python(self):
+        """Numba kernel must match DEPONSEnergyModule.compute_bmr_cost output."""
+        from cenop.optimizations.kernels import depons_bmr_cost_kernel
+        from cenop.physiology.energy_budget import DEPONSEnergyModule, EnergyState, EnergyContext
+        from cenop.parameters.simulation_params import SimulationParameters
+
+        n = 50
+        rng = np.random.default_rng(42)
+        params = SimulationParameters()
+        module = DEPONSEnergyModule(params)
+
+        speed = rng.uniform(0, 2, n).astype(np.float32)
+        is_lact = rng.choice([True, False], n)
+        is_dist = rng.choice([True, False], n)
+        deter_mag = (rng.uniform(0, 1, n) * is_dist).astype(np.float32)
+        mask = np.ones(n, dtype=bool)
+
+        # Python path
+        state = EnergyState.create(n)
+        context = EnergyContext(
+            food_available=np.zeros(n, dtype=np.float32),
+            food_quality=np.ones(n, dtype=np.float32),
+            current_speed=speed,
+            behavioral_state=np.ones(n, dtype=np.int32),
+            water_temperature=np.full(n, 10.0, dtype=np.float32),
+            current_month=6,
+            is_disturbed=is_dist,
+            deterrence_magnitude=deter_mag,
+            is_lactating=is_lact,
+            is_pregnant=np.zeros(n, dtype=bool),
+        )
+        py_cost = module.compute_bmr_cost(state, context, mask)
+
+        # Get seasonal scaling that Python used
+        scaling = module._get_seasonal_scaling(6, n).astype(np.float32)
+
+        # Numba path
+        nb_cost = np.zeros(n, dtype=np.float32)
+        depons_bmr_cost_kernel(
+            speed, scaling, is_lact, is_dist, deter_mag,
+            mask, nb_cost, module.e_use_per_30_min, module.e_lact,
+        )
+
+        np.testing.assert_allclose(nb_cost[mask], py_cost[mask], atol=1e-6)
+
+
+class TestSocialAccumulateKernel:
+    """Test fused social vector accumulation kernel."""
+
+    def test_basic_accumulation(self):
+        """Two pairs of agents should accumulate correct social vectors."""
+        from cenop.optimizations.kernels import social_accumulate_kernel
+
+        count = 4
+        # Pair (0,1) and (2,3)
+        idx_i = np.array([0, 2], dtype=np.int64)
+        idx_j = np.array([1, 3], dtype=np.int64)
+        dx_ij = np.array([1.0, 0.0], dtype=np.float64)
+        dy_ij = np.array([0.0, 1.0], dtype=np.float64)
+        dist = np.array([1.0, 1.0], dtype=np.float64)  # already has eps added
+        p_i = np.array([0.8, 0.6], dtype=np.float64)
+        p_j = np.array([0.7, 0.5], dtype=np.float64)
+
+        ux_total = np.zeros(count, dtype=np.float64)
+        uy_total = np.zeros(count, dtype=np.float64)
+        sw_total = np.zeros(count, dtype=np.float64)
+
+        social_accumulate_kernel(idx_i, idx_j, dx_ij, dy_ij, dist, p_i, p_j,
+                                ux_total, uy_total, sw_total)
+
+        # Agent 0 hears agent 1: ux += (1/1)*0.8 = 0.8
+        assert ux_total[0] == pytest.approx(0.8, abs=0.01)
+        # Agent 1 hears agent 0: ux += (-1/1)*0.7 = -0.7
+        assert ux_total[1] == pytest.approx(-0.7, abs=0.01)
+        # Agent 2 hears agent 3: uy += (1/1)*0.6 = 0.6
+        assert uy_total[2] == pytest.approx(0.6, abs=0.01)
+        # sw_total: each agent accumulates the probability
+        assert sw_total[0] == pytest.approx(0.8, abs=0.01)
+        assert sw_total[1] == pytest.approx(0.7, abs=0.01)
+        assert sw_total[2] == pytest.approx(0.6, abs=0.01)
+        assert sw_total[3] == pytest.approx(0.5, abs=0.01)
+
+    def test_multiple_neighbors(self):
+        """Agent with multiple neighbors should accumulate all contributions."""
+        from cenop.optimizations.kernels import social_accumulate_kernel
+
+        count = 3
+        # Agent 0 is paired with both agent 1 and agent 2
+        idx_i = np.array([0, 0], dtype=np.int64)
+        idx_j = np.array([1, 2], dtype=np.int64)
+        dx_ij = np.array([1.0, 0.0], dtype=np.float64)
+        dy_ij = np.array([0.0, 1.0], dtype=np.float64)
+        dist = np.array([1.0, 1.0], dtype=np.float64)
+        p_i = np.array([1.0, 1.0], dtype=np.float64)
+        p_j = np.array([1.0, 1.0], dtype=np.float64)
+
+        ux_total = np.zeros(count, dtype=np.float64)
+        uy_total = np.zeros(count, dtype=np.float64)
+        sw_total = np.zeros(count, dtype=np.float64)
+
+        social_accumulate_kernel(idx_i, idx_j, dx_ij, dy_ij, dist, p_i, p_j,
+                                ux_total, uy_total, sw_total)
+
+        # Agent 0: ux from pair0=(1/1)*1=1, ux from pair1=(0/1)*1=0 → total=1
+        assert ux_total[0] == pytest.approx(1.0, abs=0.01)
+        # Agent 0: uy from pair0=(0/1)*1=0, uy from pair1=(1/1)*1=1 → total=1
+        assert uy_total[0] == pytest.approx(1.0, abs=0.01)
+        # Agent 0 heard 2 neighbors
+        assert sw_total[0] == pytest.approx(2.0, abs=0.01)
+
+    def test_equivalence_with_numpy(self):
+        """Kernel should match the NumPy unit-vector + accumulation approach."""
+        from cenop.optimizations.kernels import social_accumulate_kernel
+
+        rng = np.random.default_rng(99)
+        count = 100
+        n_pairs = 200
+        idx_i = rng.integers(0, count, n_pairs).astype(np.int64)
+        idx_j = rng.integers(0, count, n_pairs).astype(np.int64)
+        dx_ij = rng.uniform(-10, 10, n_pairs)
+        dy_ij = rng.uniform(-10, 10, n_pairs)
+        dist = np.hypot(dx_ij, dy_ij) + 1e-6
+        p_i = rng.uniform(0, 1, n_pairs)
+        p_j = rng.uniform(0, 1, n_pairs)
+
+        # Kernel path
+        ux_k = np.zeros(count, dtype=np.float64)
+        uy_k = np.zeros(count, dtype=np.float64)
+        sw_k = np.zeros(count, dtype=np.float64)
+        social_accumulate_kernel(idx_i, idx_j, dx_ij, dy_ij, dist, p_i, p_j,
+                                ux_k, uy_k, sw_k)
+
+        # NumPy reference path (matching existing population.py logic)
+        ux_ij = dx_ij / dist
+        uy_ij = dy_ij / dist
+        ux_contrib_i = ux_ij * p_i
+        uy_contrib_i = uy_ij * p_i
+        ux_contrib_j = -ux_ij * p_j
+        uy_contrib_j = -uy_ij * p_j
+
+        ux_ref = np.zeros(count, dtype=np.float64)
+        uy_ref = np.zeros(count, dtype=np.float64)
+        sw_ref = np.zeros(count, dtype=np.float64)
+        np.add.at(ux_ref, idx_i, ux_contrib_i)
+        np.add.at(ux_ref, idx_j, ux_contrib_j)
+        np.add.at(uy_ref, idx_i, uy_contrib_i)
+        np.add.at(uy_ref, idx_j, uy_contrib_j)
+        np.add.at(sw_ref, idx_i, p_i)
+        np.add.at(sw_ref, idx_j, p_j)
+
+        np.testing.assert_allclose(ux_k, ux_ref, atol=1e-10)
+        np.testing.assert_allclose(uy_k, uy_ref, atol=1e-10)
+        np.testing.assert_allclose(sw_k, sw_ref, atol=1e-10)
+
+
+class TestParallelEquivalence:
+    """Verify parallel kernels produce same results across runs."""
+
+    def test_reflect_parallel_deterministic(self):
+        """Parallel reflect should produce consistent results."""
+        from cenop.optimizations.kernels import reflect_boundaries_kernel
+
+        rng = np.random.default_rng(123)
+        n = 1000
+        x1 = rng.uniform(-10, 30, n).astype(np.float64)
+        y1 = rng.uniform(-10, 30, n).astype(np.float64)
+        dx1 = rng.uniform(-5, 5, n).astype(np.float64)
+        dy1 = rng.uniform(-5, 5, n).astype(np.float64)
+        mask = rng.choice([True, False], n)
+
+        x2, y2, dx2, dy2 = x1.copy(), y1.copy(), dx1.copy(), dy1.copy()
+
+        reflect_boundaries_kernel(x1, y1, dx1, dy1, 20, 20, mask)
+        reflect_boundaries_kernel(x2, y2, dx2, dy2, 20, 20, mask)
+
+        np.testing.assert_allclose(x1, x2, atol=1e-10)
+        np.testing.assert_allclose(y1, y2, atol=1e-10)
+
+    def test_turn_position_parallel_deterministic(self):
+        """Parallel turn_position should produce consistent results."""
+        from cenop.optimizations.kernels import turn_position_kernel
+
+        rng = np.random.default_rng(456)
+        n = 1000
+        x = rng.uniform(0, 19, n).astype(np.float64)
+        y = rng.uniform(0, 19, n).astype(np.float64)
+        heading = rng.uniform(0, 360, n).astype(np.float64)
+        step_dist = rng.uniform(0.1, 5, n).astype(np.float64)
+
+        ox1, oy1, oh1 = np.zeros(n, np.float64), np.zeros(n, np.float64), np.zeros(n, np.float64)
+        ox2, oy2, oh2 = np.zeros(n, np.float64), np.zeros(n, np.float64), np.zeros(n, np.float64)
+
+        turn_position_kernel(x, y, heading, step_dist, 45.0, 20, 20, ox1, oy1, oh1)
+        turn_position_kernel(x, y, heading, step_dist, 45.0, 20, 20, ox2, oy2, oh2)
+
+        np.testing.assert_allclose(ox1, ox2, atol=1e-10)
+        np.testing.assert_allclose(oy1, oy2, atol=1e-10)
+
+    def test_bmr_cost_parallel_deterministic(self):
+        """Parallel BMR cost should produce consistent results."""
+        from cenop.optimizations.kernels import depons_bmr_cost_kernel
+
+        rng = np.random.default_rng(789)
+        n = 1000
+        speed = rng.uniform(0, 2, n).astype(np.float32)
+        scaling = rng.uniform(0.8, 1.3, n).astype(np.float32)
+        is_lact = rng.choice([True, False], n)
+        is_dist = rng.choice([True, False], n)
+        deter_mag = rng.uniform(0, 1, n).astype(np.float32)
+        mask = rng.choice([True, False], n, p=[0.9, 0.1])
+
+        out1 = np.zeros(n, dtype=np.float32)
+        out2 = np.zeros(n, dtype=np.float32)
+
+        depons_bmr_cost_kernel(speed, scaling, is_lact, is_dist, deter_mag, mask, out1, 4.5, 1.4)
+        depons_bmr_cost_kernel(speed, scaling, is_lact, is_dist, deter_mag, mask, out2, 4.5, 1.4)
+
+        np.testing.assert_allclose(out1, out2, atol=1e-10)

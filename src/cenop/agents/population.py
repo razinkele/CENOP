@@ -43,6 +43,7 @@ try:
     from cenop.optimizations.kernels import crw_angle_step_kernel as _crw_kernel
     from cenop.optimizations.kernels import seed_numba_rng as _seed_numba_rng
     from cenop.optimizations.kernels import turn_position_kernel as _turn_kernel
+    from cenop.optimizations.kernels import social_accumulate_kernel as _social_kernel
     _HAS_KERNELS = True
 except ImportError:
     _HAS_KERNELS = False
@@ -450,31 +451,24 @@ class PorpoisePopulation:
                     p_i = response_probability_from_rl(rl_pairs, threshold, slope)
                     p_j = response_probability_from_rl(rl_pairs, threshold, slope)
 
-                # Unit vectors for i's listener (pointing towards callers)
-                ux_ij = dx_ij / dist
-                uy_ij = dy_ij / dist
-
-                # For j's listener, vectors are reversed
-                # Just use multipliers later instead of allocating new arrays?
-                # No, we need explicit vectors for accumulator.
-                ux_ji = -ux_ij
-                uy_ji = -uy_ij
-
-                # Weighted contributions
-                ux_contrib_i = ux_ij * p_i
-                uy_contrib_i = uy_ij * p_i
-                ux_contrib_j = ux_ji * p_j
-                uy_contrib_j = uy_ji * p_j
-
-                # Accumulate per-agent contributions using a Numba-accelerated accumulator (fallback to bincount)
-                # Use float64 accumulators for precision, but inputs can be float32
+                # Accumulate per-agent social vectors (unit-vector + weighting + accumulation)
                 ux_total = np.zeros(self.count, dtype=np.float64)
                 uy_total = np.zeros(self.count, dtype=np.float64)
                 sw_total = np.zeros(self.count, dtype=np.float64)
-                
-                if _HAS_NUMBA_HELPERS and _accumulate_social_totals is not None:
-                    # Numba will compile a specialization for the input types (float32)
-                    # We pass the arrays directly without casting to float64
+
+                if _HAS_KERNELS:
+                    # Fused kernel: unit-vector, weighting, and accumulation in one pass
+                    _social_kernel(idx_i, idx_j, dx_ij.astype(np.float64),
+                                   dy_ij.astype(np.float64), dist.astype(np.float64),
+                                   p_i.astype(np.float64), p_j.astype(np.float64),
+                                   ux_total, uy_total, sw_total)
+                elif _HAS_NUMBA_HELPERS and _accumulate_social_totals is not None:
+                    ux_ij = dx_ij / dist
+                    uy_ij = dy_ij / dist
+                    ux_contrib_i = ux_ij * p_i
+                    uy_contrib_i = uy_ij * p_i
+                    ux_contrib_j = -ux_ij * p_j
+                    uy_contrib_j = -uy_ij * p_j
                     try:
                         _accumulate_social_totals(
                             np.int64(self.count), idx_i, idx_j,
@@ -482,13 +476,17 @@ class PorpoisePopulation:
                             ux_total, uy_total, sw_total
                         )
                     except (TypeError, ValueError) as e:
-                        # Fallback if numba call fails
                         logger.debug("Numba social accumulator fallback: %s", e)
                         ux_total = np.bincount(np.concatenate([idx_i, idx_j]), weights=np.concatenate([ux_contrib_i, ux_contrib_j]), minlength=self.count)
                         uy_total = np.bincount(np.concatenate([idx_i, idx_j]), weights=np.concatenate([uy_contrib_i, uy_contrib_j]), minlength=self.count)
                         sw_total = np.bincount(np.concatenate([idx_i, idx_j]), weights=np.concatenate([p_i, p_j]), minlength=self.count)
                 else:
-                    # Fallback to bincount if no numba
+                    ux_ij = dx_ij / dist
+                    uy_ij = dy_ij / dist
+                    ux_contrib_i = ux_ij * p_i
+                    uy_contrib_i = uy_ij * p_i
+                    ux_contrib_j = -ux_ij * p_j
+                    uy_contrib_j = -uy_ij * p_j
                     ux_total = np.bincount(np.concatenate([idx_i, idx_j]), weights=np.concatenate([ux_contrib_i, ux_contrib_j]), minlength=self.count)
                     uy_total = np.bincount(np.concatenate([idx_i, idx_j]), weights=np.concatenate([uy_contrib_i, uy_contrib_j]), minlength=self.count)
                     sw_total = np.bincount(np.concatenate([idx_i, idx_j]), weights=np.concatenate([p_i, p_j]), minlength=self.count)

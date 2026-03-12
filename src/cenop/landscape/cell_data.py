@@ -282,6 +282,14 @@ class CellData:
         i_arr = np.clip(y.astype(np.int32), 0, self.height - 1)
         j_arr = np.clip(x.astype(np.int32), 0, self.width - 1)
 
+        # Try Numba kernel first
+        try:
+            from cenop.optimizations.kernels import eat_food_kernel
+            eat_food_kernel(self._food_value, j_arr, i_arr, fraction.astype(np.float32), food_eaten, 0.01)
+            return food_eaten
+        except ImportError:
+            pass
+
         # Get current food at each position
         current_food = self._food_value[i_arr, j_arr]
 

@@ -33,6 +33,21 @@ from shiny import App
 from cenop.ui.layout import app_ui
 from cenop.server.main import server
 
+# Warm up Numba kernels at startup to avoid first-call compilation latency
+try:
+    from cenop.optimizations.kernels import warmup_kernels
+    warmup_kernels()
+    logger.info("Numba kernels warmed up successfully")
+except ImportError:
+    logger.info("Numba kernels not available, using NumPy fallbacks")
+
+try:
+    from cenop.optimizations.numba_helpers import warmup_numba
+    warmup_numba()
+    logger.info("Numba helpers warmed up successfully")
+except ImportError:
+    pass
+
 # Static files directory for logo and icon
 APP_DIR = Path(__file__).parent / "static"
 

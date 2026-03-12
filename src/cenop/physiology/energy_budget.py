@@ -433,6 +433,22 @@ class DEPONSEnergyModule(EnergyModule):
 
         if np.any(mask):
             scaling = self._get_seasonal_scaling(context.current_month, int(np.sum(mask)))
+
+            try:
+                from cenop.optimizations.kernels import depons_bmr_cost_kernel
+                full_scaling = np.ones(count, dtype=np.float32)
+                full_scaling[mask] = scaling.astype(np.float32)
+                depons_bmr_cost_kernel(
+                    context.current_speed, full_scaling,
+                    context.is_lactating, context.is_disturbed,
+                    context.deterrence_magnitude,
+                    mask, total_cost,
+                    self.e_use_per_30_min, self.e_lact,
+                )
+                return total_cost
+            except ImportError:
+                pass
+
             bmr = 0.001 * scaling * self.e_use_per_30_min
             bmr = np.where(context.is_lactating[mask], bmr * self.e_lact, bmr)
 

@@ -38,6 +38,12 @@ except ImportError:
     _weighted_direction_sum = None
     _HAS_NUMBA_HELPERS = False
 
+try:
+    from cenop.optimizations.kernels import reflect_boundaries_kernel as _reflect_kernel
+    _HAS_KERNELS = True
+except ImportError:
+    _HAS_KERNELS = False
+
 logger = logging.getLogger('cenop.agents.population')
 
 
@@ -1117,8 +1123,12 @@ class PorpoisePopulation:
         that heading recalculation (done in the caller where needed)
         points inward.
 
-        Reference: DEPONS Porpoise.forward() bounce logic.
+        Uses Numba kernel when available, pure NumPy fallback otherwise.
         """
+        if _HAS_KERNELS:
+            _reflect_kernel(new_x, new_y, dx, dy, world_w, world_h, mask)
+            return
+
         max_x = world_w - 1.0
         max_y = world_h - 1.0
 
@@ -1131,7 +1141,6 @@ class PorpoisePopulation:
         if np.any(over_x):
             new_x[over_x] = 2.0 * max_x - new_x[over_x]
             dx[over_x]    = -dx[over_x]
-        # Safety clamp (double-bounce edge case)
         np.clip(new_x, 0, max_x, out=new_x)
 
         # --- Y reflection ---

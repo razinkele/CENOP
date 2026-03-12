@@ -57,7 +57,7 @@ class TestPhysiologyParameters:
         # Life history
         assert params.maturity_age == 3.44, "Maturity age should be 3.44 years"
         assert params.max_age == 30.0, "Max age should be 30 years"
-        assert params.max_breeding_age == 20.0, "Max breeding age should be 20 years"
+        assert params.max_breeding_age == 30.0, "Max breeding age should equal max_age (effectively removed per DEPONS 3.2 spec)"
 
         # Breeding
         assert params.conceive_prob == 0.68, "Conception probability should be 0.68"

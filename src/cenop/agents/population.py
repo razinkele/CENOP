@@ -90,6 +90,8 @@ class PorpoisePopulation:
         self.days_since_mating = np.full(count, -99, dtype=np.int16)
         self.days_since_birth = np.full(count, -99, dtype=np.int16)
         self.with_calf = np.zeros(count, dtype=bool)
+        # Pregnancy FSM (DEPONS 3.2: 0=immature, 1=pregnant, 2=ready-to-mate)
+        self.pregnancy_status = np.zeros(count, dtype=np.int8)
         
         # Deterrence status
         self.deter_strength = np.zeros(count, dtype=np.float32)
@@ -594,6 +596,30 @@ class PorpoisePopulation:
         mating_days = np.random.normal(225, 20, self.count).astype(np.int16)
         # Apply only to females, others stay -99
         self.mating_day = np.where(self.is_female, mating_days, -99)
+
+        # Initialize pregnancy state (Java Porpoise.java:165-178)
+        maturity_age = self.params.maturity_age
+        mature_females = self.is_female & (self.age >= maturity_age) & self.active_mask
+
+        # All mature females start as ready-to-mate (status=2)
+        self.pregnancy_status[mature_females] = 2
+
+        # Some conceive with probability conceive_prob → pregnant (status=1)
+        conceive_roll = np.random.random(self.count)
+        conceives = mature_females & (conceive_roll < self.params.conceive_prob)
+        self.pregnancy_status[conceives] = 1
+        self.days_since_mating[conceives] = 0
+
+        # Pregnant females get random days_since_mating representing progress into gestation
+        n_conceives = int(np.sum(conceives))
+        if n_conceives > 0:
+            initial_dsm = (360 - np.round(np.random.normal(225, 20, n_conceives))).astype(np.int16)
+            initial_dsm = np.clip(initial_dsm, 0, 360)
+            self.days_since_mating[conceives] = initial_dsm
+
+        # Failed conceive → set back to immature (status=0)
+        failed = mature_females & ~conceives
+        self.pregnancy_status[failed] = 0
 
     # === Step Sub-Methods (P1.5 Refactoring) ===
 
@@ -1400,13 +1426,20 @@ class PorpoisePopulation:
         # Die if: not lactating, or energy <= 0
         starved = starving & ((self.energy <= 0) | ~was_with_calf)
 
-        # Max-age death (Java Porpoise.java:1144)
-        max_age = getattr(self.params, 'max_age', 30.0)
-        old_age = mask & (self.age > max_age)
+        # Bycatch + max-age: daily schedule (Java Porpoise.java:1137-1153)
+        # Only check on day boundaries (tick % 48 == 0)
+        bycatch = np.zeros(self.count, dtype=bool)
+        old_age = np.zeros(self.count, dtype=bool)
+        if self._global_tick % 48 == 0:
+            bycatch_annual = getattr(self.params, 'bycatch_prob', 0.0)
+            if bycatch_annual > 0:
+                # Java: dailySurvivalProb = exp(log(1 - bycatchProb) / 360)
+                daily_surv = np.exp(np.log(1 - bycatch_annual) / 360)
+                bycatch = (self.rng.random(self.count) > daily_surv) & mask
 
-        # Bycatch mortality (already parameterized)
-        bycatch_prob = getattr(self.params, 'bycatch_prob', 0.0) / 360.0 / 48.0
-        bycatch = (self.rng.random(self.count) < bycatch_prob) & mask
+            # Max-age also daily (Java: same updMortality method)
+            max_age = getattr(self.params, 'max_age', 30.0)
+            old_age = mask & (self.age > max_age)
 
         # Apply deaths
         all_deaths = starved | old_age | bycatch
@@ -1429,63 +1462,99 @@ class PorpoisePopulation:
         self.age[mask] += 1.0 / 360.0 / 48.0  # Age in years per tick (360 days/year, consistent with DEPONS)
 
     def _handle_reproduction(self, mask: np.ndarray) -> None:
-        """
-        Handle reproduction during breeding season.
+        """Handle reproduction — delegates to pregnancy FSM on day boundaries.
 
-        Mature females (age 4-20) can give birth during days 195-255.
+        Called every tick from step(), but only runs FSM on day boundary (tick%48==0).
+        Java ref: Porpoise.java:1124-1128 — if (updMortality()) { updPregnancyStatus(); }
         """
-        # Update day of year
-        if hasattr(self, '_day_of_year'):
-            self._day_of_year = (self._day_of_year + 1) % (360 * 48)
-        else:
-            self._day_of_year = 0
+        # Update day-of-year counter every tick
+        self._day_of_year = (self._day_of_year + 1) % (360 * 48)
 
+        # Only run pregnancy FSM once per day
+        if self._global_tick % 48 != 0:
+            return
+
+        self._update_pregnancy_status(mask)
+
+    def rerandomize_mating_days(self) -> None:
+        """Re-draw mating days for all active females. Called yearly.
+
+        Java ref: YearlyTask.java:99 — p.setRandomMatingDay() for each porpoise
+        Porpoise.java:1237-1241 — matingDay = round(N(tmating_mean, tmating_sd))
+        """
+        females = self.is_female & self.active_mask
+        n_females = int(np.sum(females))
+        if n_females > 0:
+            new_days = np.round(np.random.normal(
+                self.params.mating_day_mean, self.params.mating_day_sd, n_females
+            )).astype(np.int16)
+            self.mating_day[females] = new_days
+
+    def _update_pregnancy_status(self, mask: np.ndarray) -> None:
+        """Update pregnancy FSM — called once per day (Java Porpoise.java:1155-1231)."""
+        female_mask = mask & self.is_female
+
+        # 0 → 2: Immature to ready-to-mate
+        immature = female_mask & (self.pregnancy_status == 0) & (self.age >= self.params.maturity_age)
+        self.pregnancy_status[immature] = 2
+
+        # 2 → 1: Ready to pregnant on mating day
         current_day = self._day_of_year // 48
+        ready = female_mask & (self.pregnancy_status == 2) & (self.mating_day == current_day)
+        if np.any(ready):
+            conceive_roll = np.random.random(self.count)
+            conceives = ready & (conceive_roll < self.params.conceive_prob)
+            self.pregnancy_status[conceives] = 1
+            self.days_since_mating[conceives] = 0
 
-        # Breeding season: days 195-255
-        if not (195 <= current_day <= 255):
-            return
+        # 1 → 2 + birth: Pregnant gives birth at gestation_time
+        giving_birth = female_mask & (self.pregnancy_status == 1) & \
+                       (self.days_since_mating == self.params.gestation_time)
+        if np.any(giving_birth):
+            self.pregnancy_status[giving_birth] = 2
+            self.with_calf[giving_birth] = True
+            self.days_since_mating[giving_birth] = -99
+            self.days_since_birth[giving_birth] = 0
 
-        # Eligible females: maturity_age to max_breeding_age, not already with calf
-        maturity_age = getattr(self.params, 'maturity_age', 3.44)
-        max_breeding_age = getattr(self.params, 'max_breeding_age', 20.0)
-        eligible = mask & self.is_female & (self.age >= maturity_age) & (self.age <= max_breeding_age) & ~self.with_calf
+        # Weaning: at nursing_time, create female calf, end lactation
+        weaning = female_mask & self.with_calf & \
+                  (self.days_since_birth == self.params.nursing_time)
+        if np.any(weaning):
+            calf_roll = np.random.random(self.count)
+            creates_calf = weaning & (calf_roll > 0.5)
 
-        # Per-tick birth probability (~60% over 60-day season)
-        birth_prob = 0.0003
-        giving_birth = (np.random.random(self.count) < birth_prob) & eligible
+            n_calves = int(np.sum(creates_calf))
+            if n_calves > 0:
+                inactive_slots = np.where(~self.active_mask)[0]
+                slots_to_use = min(n_calves, len(inactive_slots))
+                if slots_to_use > 0:
+                    new_slots = inactive_slots[:slots_to_use]
+                    mother_indices = np.where(creates_calf)[0][:slots_to_use]
 
-        if not np.any(giving_birth):
-            return
+                    self.active_mask[new_slots] = True
+                    self.x[new_slots] = self.x[mother_indices]
+                    self.y[new_slots] = self.y[mother_indices]
+                    self.heading[new_slots] = self.heading[mother_indices]
+                    self.age[new_slots] = 0.0
+                    self.is_female[new_slots] = True
+                    self.energy[new_slots] = np.random.normal(
+                        self.params.energy_init_mean, self.params.energy_init_sd, slots_to_use
+                    ).clip(0, 20).astype(np.float32)
+                    self.pregnancy_status[new_slots] = 0
+                    self.with_calf[new_slots] = False
+                    self.days_since_mating[new_slots] = -99
+                    self.days_since_birth[new_slots] = -99
+                    self.mating_day[new_slots] = -99
 
-        # Find inactive slots for new calves
-        inactive_slots = np.where(~self.active_mask)[0]
-        birth_count = int(np.sum(giving_birth))
-        mother_indices = np.where(giving_birth)[0]
-        inactive_before = int(len(inactive_slots))
+            self.with_calf[weaning] = False
+            self.days_since_birth[weaning] = -99
 
-        slots_to_use = min(birth_count, len(inactive_slots))
-        if slots_to_use > 0:
-            new_slots = inactive_slots[:slots_to_use]
-            mothers = mother_indices[:slots_to_use]
+        # Increment counters
+        pregnant = female_mask & (self.pregnancy_status == 1)
+        self.days_since_mating[pregnant] += 1
 
-            # Activate new calves
-            self.active_mask[new_slots] = True
-            self.x[new_slots] = self.x[mothers]
-            self.y[new_slots] = self.y[mothers]
-            self.heading[new_slots] = self.heading[mothers]
-            self.age[new_slots] = 0.0
-            self.is_female[new_slots] = np.random.choice([True, False], size=int(slots_to_use))
-            self.energy[new_slots] = 10.0
-            self.with_calf[mothers] = True
-            self.with_calf[new_slots] = False
-
-            if self._debug_instrumentation or birth_count > 0:
-                created = int(slots_to_use)
-                logger.debug(
-                    "[INSTR] tick=%d births_attempted=%d births_created=%d inactive_slots_before=%d",
-                    self._global_tick, birth_count, created, inactive_before
-                )
+        lactating = female_mask & self.with_calf
+        self.days_since_birth[lactating] += 1
 
     def step(self, deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]] = None, ambient_rl: Optional[np.ndarray] = None):
         """

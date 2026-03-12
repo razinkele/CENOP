@@ -604,6 +604,10 @@ class Simulation:
         # Age all porpoises by 1 year
         for porpoise in self._porpoises:
             porpoise.age += 1.0
+
+        # Re-randomize mating days (Java YearlyTask.java:99)
+        if hasattr(self, 'population_manager') and self.population_manager is not None:
+            self.population_manager.rerandomize_mating_days()
             
     def _record_history(self) -> None:
         """Record current state to history."""

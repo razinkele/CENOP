@@ -181,7 +181,7 @@ class SimulationParameters:
     # === Life History ===
     max_age: float = 30.0              # Maximum age (years)
     maturity_age: float = 3.44         # Age of maturity (years) - DEPONS default
-    max_breeding_age: float = 20.0     # Maximum breeding age (years)
+    max_breeding_age: float = 30.0  # Set to max_age (effectively removed per spec 2.5)
 
     # === Environment ===
     min_depth: float = 1.0             # wmin: minimum water depth (m)

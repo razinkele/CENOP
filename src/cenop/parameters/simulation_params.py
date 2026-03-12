@@ -119,8 +119,15 @@ class SimulationParameters:
     deter_threshold: float = 152.0     # RT: minimum received level (dB) - Java default (DEPONS 3.2)
     deter_decay: float = 50.0          # Psi_deter: decay rate (%)
     deter_time: int = 0                # tdeter: deterrence duration (steps) - Java default (DEPONS 3.2)
-    deter_max_distance: float = 1000.0  # Max deterrence distance (km) - Java default 50*1000m (DEPONS 3.2)
+    deter_max_distance: float = 50.0    # Max deterrence distance (km) — Java 50000m (DEPONS 3.2)
     deter_min_distance_ships: float = 0.1  # Min deterrence distance for ships (km)
+    deter_ships_min_db: float = 70.0   # Tships: minimum RL to trigger ship deterrence (dB)
+
+    # WestonFlux bathymetry parameters (None = use simple TL formula)
+    weston_flux_depth: float | None = None       # Water depth at source (m)
+    weston_flux_grain_size: float | None = None   # Sediment grain size (phi scale)
+    weston_flux_temperature: float | None = None  # Water temperature (°C)
+    weston_flux_salinity: float | None = None     # Salinity (PSU)
 
     # Probabilistic deterrence response
     deter_probabilistic: bool = True  # Use sigmoid-based probability instead of binary threshold

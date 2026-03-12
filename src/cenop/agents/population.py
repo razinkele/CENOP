@@ -111,7 +111,7 @@ class PorpoisePopulation:
 
         # === PSM and Dispersal State (Phase 2) ===
         # Energy history for dispersal trigger (5 days = 5*48 ticks)
-        self._energy_history = np.zeros((count, 5), dtype=np.float32)  # Last 5 daily averages
+        self._energy_history = np.zeros((count, 10), dtype=np.float32)  # Last 10 daily averages (need 8 for energy-based stop)
         self._energy_ticks_today = np.zeros(count, dtype=np.float32)   # Energy sum for current day
         self._tick_counter = 0  # Track ticks for daily updates
         self._last_energy_update_tick = -1  # last global tick when energy was accumulated
@@ -129,7 +129,8 @@ class PorpoisePopulation:
         self.dispersal_distance_traveled = np.zeros(count, dtype=np.float32)
         self.dispersal_start_x = np.zeros(count, dtype=np.float32)
         self.dispersal_start_y = np.zeros(count, dtype=np.float32)
-        
+        self._prev_step_heading = np.zeros(count, dtype=np.float32)
+
         # PSM instances - one per porpoise (list for object storage)
         world_w = self.params.world_width
         world_h = self.params.world_height
@@ -766,6 +767,10 @@ class PorpoisePopulation:
         # Update reference memory (stores food, computes veTotal and vt)
         self._update_reference_memory(mask)
 
+        # Save dispersal heading before CRW composition overwrites it
+        _disp_mask = mask & self.is_dispersing
+        _saved_disp_heading = self.heading[_disp_mask].copy() if np.any(_disp_mask) else None
+
         # Compute CRW unit direction vector from heading
         np.radians(self.heading, out=self._rads)
         np.sin(self._rads, out=self._dx)
@@ -801,6 +806,10 @@ class PorpoisePopulation:
         new_heading = np.degrees(np.arctan2(total_dx, total_dy)) % 360
         self.heading[mask] = new_heading[mask]
 
+        # Restore dispersal heading — dispersing agents skip CRW composition
+        if _saved_disp_heading is not None:
+            self.heading[_disp_mask] = _saved_disp_heading
+
         # Store total turn for next step (Java Porpoise.java:583)
         total_turn = (self.heading - pre_movement_heading + 180) % 360 - 180
         self.prev_angle[mask] = total_turn[mask]
@@ -808,6 +817,13 @@ class PorpoisePopulation:
         # Step distance: presMov / 4.0 (Java Porpoise.java:589)
         np.power(10.0, self._log_mov, out=self._step_dist)
         self._step_dist /= 4.0
+
+        # Override step distance for dispersing agents (Java AbstractPSMDispersal.java:210)
+        dispersing = mask & self.is_dispersing
+        if np.any(dispersing):
+            disp_step = getattr(self.params, 'mean_disp_dist', 2.0) / 0.4
+            self._step_dist[dispersing] = disp_step
+            self.dispersal_distance_traveled[dispersing] += disp_step
 
         # Final dx/dy for actual movement from composite heading
         np.radians(self.heading, out=self._rads)
@@ -817,36 +833,53 @@ class PorpoisePopulation:
         self._dy *= self._step_dist
 
     def _apply_dispersal_heading(self, mask: np.ndarray) -> None:
-        """Apply reduced turning for dispersing porpoises (PSM-Type2)."""
+        """Apply PSM-Type2 dispersal heading using the dispersal module formula.
+
+        Delegates to the same formula as PSMType2Dispersal.get_dispersal_move():
+        - angleDelta = U(-psm_angle, +psm_angle) * SSLogis(distLogX)
+        - distLogX = 3 * distPercent - 1.5
+        - newHeading = previousStepHeading + angleDelta
+        """
+        from cenop.behavior.dispersal import sslogis
+
         dispersing = mask & self.is_dispersing
         if not np.any(dispersing):
             return
 
-        # Calculate distance progress for logistic dampening
-        dx_disp = self.x - self.dispersal_start_x
-        dy_disp = self.y - self.dispersal_start_y
+        n = int(np.sum(dispersing))
+        psm_angle = getattr(self.params, 'psm_type2_random_angle', 20.0)
+        psm_log = getattr(self.params, 'psm_log', 0.6)
+
+        # Random angle delta: U(-psm_angle, +psm_angle)
+        delta = np.random.uniform(-psm_angle, psm_angle, n)
+
+        # Distance-based logistic scaling (DispersalPSMType2.java:77)
+        target_dist = self.dispersal_target_distance[dispersing]
+        dx_disp = self.x[dispersing] - self.dispersal_start_x[dispersing]
+        dy_disp = self.y[dispersing] - self.dispersal_start_y[dispersing]
         dist_traveled = np.sqrt(dx_disp**2 + dy_disp**2)
 
-        # Safe division: avoid divide by zero
         with np.errstate(divide='ignore', invalid='ignore'):
-            dist_perc = np.where(
-                self.dispersal_target_distance > 0,
-                dist_traveled / self.dispersal_target_distance,
-                0.0
-            )
-        dist_perc = np.nan_to_num(dist_perc, nan=0.0, posinf=1.0, neginf=0.0)
-        dist_perc = np.clip(dist_perc, 0.0, 2.0)
+            dist_percent = np.where(target_dist > 0, dist_traveled / target_dist, 0.0)
+        dist_percent = np.nan_to_num(dist_percent, nan=0.0, posinf=1.0, neginf=0.0)
+        dist_percent = np.clip(dist_percent, 0.0, 10.0)
 
-        # Logistic dampening: as progress -> 1, turning -> 0
-        dist_log_x = 3 * dist_perc - 1.5
-        dist_log_x = np.clip(dist_log_x, -100, 100)  # Prevent overflow
-        log_mult = 1.0 / (1.0 + np.exp(0.6 * dist_log_x))
+        dist_log_x = 3 * dist_percent - 1.5
 
-        # Reduce turning angle for dispersing porpoises
-        dampened_angle = self._pres_angle * log_mult * 0.3  # 70% reduction base
-        self.heading[dispersing] -= self._pres_angle[dispersing]  # Remove normal turn
-        self.heading[dispersing] += dampened_angle[dispersing]  # Add dampened
+        # SSLogis: phi1 / (1 + exp((phi2 - x) / phi3))
+        # Vectorized version of sslogis(dist_log_x, 1.0, 0.0, psm_log)
+        dist_log_x = np.clip(dist_log_x, -100, 100)
+        logistic = 1.0 / (1.0 + np.exp((0.0 - dist_log_x) / psm_log))
+
+        # Scale angle by logistic
+        delta = delta * logistic
+
+        # New heading from previous step heading (not CRW heading)
+        self.heading[dispersing] = self._prev_step_heading[dispersing] + delta
         self.heading[dispersing] %= 360.0
+
+        # Update prev_step_heading for next tick
+        self._prev_step_heading[dispersing] = self.heading[dispersing]
 
     def _update_movement_jasmine(
         self,
@@ -1860,15 +1893,13 @@ class PorpoisePopulation:
     def _update_psm(self, mask: np.ndarray, food_gained: np.ndarray) -> None:
         """
         Update Persistent Spatial Memory (Vectorized).
-        
-        Records food obtained at current location for dispersal targeting directly into
-        the vectorized PSM buffer.
-        
-        Args:
-            mask: Active porpoise mask
-            food_gained: Array of food gained this tick
+
+        Only records ticks where food was actually consumed
+        (Java PersistentSpatialMemory.java:119).
         """
-        active_idx = np.where(mask)[0]
+        # Gate: only count agents that actually gained food
+        food_positive = food_gained > 0
+        active_idx = np.where(mask & food_positive)[0]
         if len(active_idx) == 0:
             return
             
@@ -2020,6 +2051,7 @@ class PorpoisePopulation:
         self.dispersal_start_x[idx] = self.x[idx]
         self.dispersal_start_y[idx] = self.y[idx]
         self.dispersal_distance_traveled[idx] = 0.0
+        self._prev_step_heading[idx] = self.heading[idx]
         
         # Use vectorized PSM buffer scan
         mem_slice = self.psm_buffer[idx] # (rows, cols, 2)
@@ -2132,23 +2164,45 @@ class PorpoisePopulation:
 
         
     def _update_dispersal(self, mask: np.ndarray) -> None:
-        """
-        Update dispersal progress for dispersing porpoises.
-        
-        Check if target distance reached and end dispersal if so.
-        """
+        """Update dispersal progress for dispersing porpoises."""
         dispersing = mask & self.is_dispersing
         if not np.any(dispersing):
             return
-            
-        # Calculate distance from start
+
+        # --- Deterrence deactivates dispersal (Java Porpoise.java:1277-1278) ---
+        deterred = dispersing & (self.deter_strength > 0)
+        if np.any(deterred):
+            self.is_dispersing[deterred] = False
+            self.dispersal_distance_traveled[deterred] = 0.0
+            self.days_declining_energy[deterred] = 0
+            dispersing = mask & self.is_dispersing
+
+        if not np.any(dispersing):
+            return
+
+        # --- Energy-based stop (Java Porpoise.java:1105-1118) ---
+        # Check at day boundary (every 48 ticks)
+        if self._tick_counter == 0 and self._global_tick > 0:
+            today = self._energy_history[dispersing, 0]
+            past_min = np.min(self._energy_history[dispersing, 1:8], axis=1)
+            recovering = today > past_min
+            if np.any(recovering):
+                disp_indices = np.where(dispersing)[0]
+                stop_indices = disp_indices[recovering]
+                self.is_dispersing[stop_indices] = False
+                self.dispersal_distance_traveled[stop_indices] = 0.0
+                self.days_declining_energy[stop_indices] = 0
+                dispersing = mask & self.is_dispersing
+
+        if not np.any(dispersing):
+            return
+
+        # --- Distance completion check ---
         dx = self.x - self.dispersal_start_x
         dy = self.y - self.dispersal_start_y
         distances = np.sqrt(dx**2 + dy**2)
-        
-        # Check for completion (95% of target distance - PSM-Type2 rule)
+
         completed = dispersing & (distances >= 0.95 * self.dispersal_target_distance)
-        
         if np.any(completed):
             self.is_dispersing[completed] = False
             self.dispersal_distance_traveled[completed] = 0.0

@@ -8,6 +8,7 @@ Translates from: Turbine.java (258 lines)
 
 from __future__ import annotations
 
+import logging
 import numpy as np
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional, List, Tuple
@@ -22,6 +23,8 @@ from cenop.behavior.sound import (
     calculate_deterrence_vector,
     response_probability_from_rl,
 )
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from cenop.parameters.simulation_params import SimulationParameters
@@ -262,22 +265,33 @@ class Turbine(Agent):
 
                 cols = line.split()
                 if len(cols) < 4:
+                    logger.warning("Turbine file line %d: expected >= 4 columns, got %d — skipping", i + 2, len(cols))
                     continue
 
-                name = cols[0]
-                utm_x = float(cols[1])
-                utm_y = float(cols[2])
-                impact = float(cols[3])
+                try:
+                    name = cols[0]
+                    utm_x = float(cols[1])
+                    utm_y = float(cols[2])
+                    impact = float(cols[3])
+                except ValueError as e:
+                    logger.warning("Turbine file line %d: invalid numeric value (%s) — skipping", i + 2, e)
+                    continue
 
                 # Convert UTM to grid coordinates
                 grid_x = (utm_x - utm_origin_x) / cell_size
                 grid_y = (utm_y - utm_origin_y) / cell_size
 
-                raw_start = int(cols[4]) if len(cols) > 4 else 0
-                raw_end = int(cols[5]) if len(cols) > 5 else 2147483647
+                try:
+                    raw_start = int(cols[4]) if len(cols) > 4 else 0
+                    raw_end = int(cols[5]) if len(cols) > 5 else 2147483647
+                except ValueError as e:
+                    logger.warning("Turbine file line %d: invalid tick value (%s) — using defaults", i + 2, e)
+                    raw_start = 0
+                    raw_end = 2147483647
+
                 start_tick = raw_start * day_to_tick
                 end_tick = raw_end * day_to_tick
-                    
+
                 turbine = cls(
                     id=i,
                     x=grid_x,
@@ -435,10 +449,10 @@ class TurbineManager:
                 continue
                 
             # If probabilistic response enabled, compute probability and scale strength
-            if getattr(params, 'deter_probabilistic', False):
+            if params.deter_probabilistic:
                 # Compute response probability for masked distances
                 p = response_probability_from_rl(
-                    rl, threshold, getattr(params, 'deter_response_slope', 0.2)
+                    rl, threshold, params.deter_response_slope
                 )
                 # p has same shape as d_masked
             else:
@@ -465,12 +479,9 @@ class TurbineManager:
                 s_final = s_final * p_full
             
             s = s_final[full_mask]
-            d = dist_m[full_mask]
-            
-            # Normalized direction vector * strength * coeff
-            # (dx_m / dist_m) is unit vector X component
-            vec_x = (dx_m[full_mask] / d) * s * deter_coeff
-            vec_y = (dy_m[full_mask] / d) * s * deter_coeff
+            # DEPONS 3.2: raw displacement, NOT unit vector (Porpoise.java:1290-1292)
+            vec_x = dx_m[full_mask] * s * deter_coeff
+            vec_y = dy_m[full_mask] * s * deter_coeff
             
             total_dx[full_mask] += vec_x
             total_dy[full_mask] += vec_y

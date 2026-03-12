@@ -232,11 +232,22 @@ class ShipNoise:
 class ShipDeterrenceModel:
     """
     Ship deterrence probability and magnitude model.
-    
-    Based on DEPONS ship deterrence equations with day/night variation.
+
+    Based on DEPONS 3.2 ship deterrence equations with day/night variation.
+    Inputs are standardized before applying model coefficients (Java Ship.java:349-398).
     Translates from: Ship.java deterrence calculations
     """
-    
+
+    # Standardization constants — full precision (Java Ship.java:349-398)
+    STD_PROB_DAY = {'dist_mean': 5.801812, 'dist_sd': 2.602801,
+                    'noise_mean': 65.95304, 'noise_sd': 18.25469}
+    STD_PROB_NIGHT = {'dist_mean': 6.243703, 'dist_sd': 2.548173,
+                      'noise_mean': 68.9993, 'noise_sd': 14.81663}
+    STD_MAG_DAY = {'dist_mean': 5.311561, 'dist_sd': 2.698996,
+                   'noise_mean': 69.28605, 'noise_sd': 17.09946}
+    STD_MAG_NIGHT = {'dist_mean': 6.442084, 'dist_sd': 2.48903,
+                     'noise_mean': 68.86555, 'noise_sd': 15.09977}
+
     def __init__(
         self,
         # Day coefficients - probability
@@ -288,41 +299,31 @@ class ShipDeterrenceModel:
         distance_km: float,
         is_day: bool = True
     ) -> float:
-        """
-        Calculate probability of deterrence response.
-        
-        Uses logistic model:
-        P = exp(linear) / (1 + exp(linear))
-        
-        where linear = intercept + noise*SPL + dist*D + noise_x_dist*SPL*D
-        
-        Args:
-            spl: Sound pressure level at porpoise location (dB)
-            distance_km: Distance from ship (km)
-            is_day: True for daytime, False for nighttime
-            
-        Returns:
-            Probability of deterrence response (0-1)
+        """Calculate probability of deterrence response.
+
+        Inputs are standardized using dataset means/SDs (Java Ship.java:349-398).
         """
         if is_day:
+            std = self.STD_PROB_DAY
             linear = (
                 self.pship_int_day +
-                self.pship_noise_day * spl +
-                self.pship_dist_day * distance_km +
-                self.pship_dist_x_noise_day * spl * distance_km
+                self.pship_noise_day * ((spl - std['noise_mean']) / std['noise_sd']) +
+                self.pship_dist_day * ((distance_km - std['dist_mean']) / std['dist_sd']) +
+                self.pship_dist_x_noise_day * ((spl - std['noise_mean']) / std['noise_sd']) *
+                    ((distance_km - std['dist_mean']) / std['dist_sd'])
             )
         else:
+            std = self.STD_PROB_NIGHT
             linear = (
                 self.pship_int_night +
-                self.pship_noise_night * spl +
-                self.pship_dist_night * distance_km +
-                self.pship_dist_x_noise_night * spl * distance_km
+                self.pship_noise_night * ((spl - std['noise_mean']) / std['noise_sd']) +
+                self.pship_dist_night * ((distance_km - std['dist_mean']) / std['dist_sd']) +
+                self.pship_dist_x_noise_night * ((spl - std['noise_mean']) / std['noise_sd']) *
+                    ((distance_km - std['dist_mean']) / std['dist_sd'])
             )
-            
-        # Logistic function with overflow protection
-        # Use scipy.special.expit or manual clipping
-        linear_clipped = np.clip(linear, -500, 500)  # Prevent overflow
-        prob = 1.0 / (1.0 + np.exp(-linear_clipped))  # Equivalent to exp(x)/(1+exp(x))
+
+        linear_clipped = np.clip(linear, -500, 500)
+        prob = 1.0 / (1.0 + np.exp(-linear_clipped))
         return float(np.clip(prob, 0.0, 1.0))
         
     def calculate_deterrence_magnitude(
@@ -331,34 +332,25 @@ class ShipDeterrenceModel:
         distance_km: float,
         is_day: bool = True
     ) -> float:
-        """
-        Calculate magnitude/strength of deterrence response.
-        
-        Uses linear model with coefficients.
-        
-        Args:
-            spl: Sound pressure level at porpoise location (dB)
-            distance_km: Distance from ship (km)
-            is_day: True for daytime, False for nighttime
-            
-        Returns:
-            Deterrence magnitude (arbitrary units)
-        """
+        """Calculate deterrence magnitude with standardized inputs."""
         if is_day:
+            std = self.STD_MAG_DAY
             magnitude = (
                 self.cship_int_day +
-                self.cship_noise_day * spl +
-                self.cship_dist_day * distance_km +
-                self.cship_dist_x_noise_day * spl * distance_km
+                self.cship_noise_day * ((spl - std['noise_mean']) / std['noise_sd']) +
+                self.cship_dist_day * ((distance_km - std['dist_mean']) / std['dist_sd']) +
+                self.cship_dist_x_noise_day * ((spl - std['noise_mean']) / std['noise_sd']) *
+                    ((distance_km - std['dist_mean']) / std['dist_sd'])
             )
         else:
+            std = self.STD_MAG_NIGHT
             magnitude = (
                 self.cship_int_night +
-                self.cship_noise_night * spl +
-                self.cship_dist_night * distance_km +
-                self.cship_dist_x_noise_night * spl * distance_km
+                self.cship_noise_night * ((spl - std['noise_mean']) / std['noise_sd']) +
+                self.cship_dist_night * ((distance_km - std['dist_mean']) / std['dist_sd']) +
+                self.cship_dist_x_noise_night * ((spl - std['noise_mean']) / std['noise_sd']) *
+                    ((distance_km - std['dist_mean']) / std['dist_sd'])
             )
-            
         return max(0.0, magnitude)
 
 
@@ -415,16 +407,12 @@ def calculate_deterrence_vector(
         (dx, dy) deterrence vector components
     """
     # Vector from source to porpoise (away from source)
+    # DEPONS 3.2 (Porpoise.java:1290-1292): raw displacement, NO normalization.
+    # The magnitude encodes distance — farther porpoises get larger displacement.
     dx = porpoise_x - source_x
     dy = porpoise_y - source_y
-    
-    # Normalize
-    distance = np.sqrt(dx**2 + dy**2)
-    if distance > 0:
-        dx /= distance
-        dy /= distance
-    
-    # Scale by strength and coefficient
+
+    # Scale by strength and coefficient (no division by distance)
     return (
         strength * dx * deter_coeff,
         strength * dy * deter_coeff

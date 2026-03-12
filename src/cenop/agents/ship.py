@@ -25,6 +25,7 @@ from cenop.behavior.sound import (
     calculate_deterrence_vector,
     response_probability_from_rl,
 )
+from cenop.behavior.weston_flux import weston_flux_tl
 
 if TYPE_CHECKING:
     from cenop.parameters.simulation_params import SimulationParameters
@@ -32,23 +33,43 @@ if TYPE_CHECKING:
 
 
 class VesselClass(Enum):
-    """Types of vessels with different noise characteristics."""
-    
-    CARGO = "cargo"
-    TANKER = "tanker"
-    PASSENGER = "passenger"
+    """Types of vessels with different noise characteristics.
+
+    Extended to 13 JOMOPANS classes (DEPONS 3.2).
+    """
+    BULKER = "bulker"
+    CARGO = "cargo"                    # Maps to CONTAINERSHIP in JOMOPANS
+    CHEMICAL_TANKER = "chemical_tanker"
+    CONTAINER = "container"            # = Java CONTAINERSHIP
+    CRUISE = "cruise"
+    DREDGER = "dredger"
     FISHING = "fishing"
+    GOVERNMENT = "government"          # = Java GOVERNMENT_RESEARCH
+    NAVAL = "naval"
+    PASSENGER = "passenger"
+    RECREATIONAL = "recreational"
+    TANKER = "tanker"
     TUG = "tug"
+    VEHICLE_CARRIER = "vehicle_carrier"
     OTHER = "other"
 
 
-# Base source levels by vessel class (dB re 1 µPa @ 1m)
+# Base source levels by vessel class (dB re 1 µPa @ 1m) — fallback when JOMOPANS not used
 VESSEL_BASE_LEVELS = {
+    VesselClass.BULKER: 177.0,
     VesselClass.CARGO: 175.0,
-    VesselClass.TANKER: 177.0,
-    VesselClass.PASSENGER: 172.0,
+    VesselClass.CHEMICAL_TANKER: 177.0,
+    VesselClass.CONTAINER: 175.0,
+    VesselClass.CRUISE: 172.0,
+    VesselClass.DREDGER: 170.0,
     VesselClass.FISHING: 165.0,
+    VesselClass.GOVERNMENT: 168.0,
+    VesselClass.NAVAL: 170.0,
+    VesselClass.PASSENGER: 172.0,
+    VesselClass.RECREATIONAL: 168.0,
+    VesselClass.TANKER: 177.0,
     VesselClass.TUG: 170.0,
+    VesselClass.VEHICLE_CARRIER: 175.0,
     VesselClass.OTHER: 168.0,
 }
 
@@ -269,11 +290,25 @@ class Ship(Agent):
             return (False, 0.0, 0.0, distance_km)
             
         # Calculate received level
-        spl = self.get_received_level(
-            porpoise_x, porpoise_y,
-            params.alpha_hat, params.beta_hat, cell_size
-        )
-        
+        wf_depth = getattr(params, 'weston_flux_depth', None)
+        if wf_depth is not None:
+            sl = self.get_source_level()
+            tl = weston_flux_tl(distance_m, wf_depth,
+                                params.weston_flux_grain_size,
+                                params.weston_flux_temperature,
+                                params.weston_flux_salinity)
+            spl = sl - tl
+        else:
+            spl = self.get_received_level(
+                porpoise_x, porpoise_y,
+                params.alpha_hat, params.beta_hat, cell_size
+            )
+
+        # Tships gate: skip deterrence below minimum RL (Java Ship.java:228)
+        tships = getattr(params, 'deter_ships_min_db', 70.0)
+        if spl <= tships:
+            return (False, 0.0, 0.0, distance_km)
+
         # Calculate deterrence probability
         prob = self.deterrence_model.calculate_deterrence_probability(
             spl, distance_km, is_day
@@ -437,7 +472,16 @@ class ShipManager:
             
             # 4. Transmission Loss & Strength
             d_masked = dist_m[in_range_mask]
-            tl = params.beta_hat * np.log10(d_masked) + params.alpha_hat * d_masked
+            wf_depth = getattr(params, 'weston_flux_depth', None)
+            if wf_depth is not None:
+                # WestonFlux physics-based TL (DEPONS 3.2)
+                wf_gs = params.weston_flux_grain_size
+                wf_temp = params.weston_flux_temperature
+                wf_sal = params.weston_flux_salinity
+                tl = np.array([weston_flux_tl(d, wf_depth, wf_gs, wf_temp, wf_sal)
+                               for d in d_masked])
+            else:
+                tl = params.beta_hat * np.log10(d_masked) + params.alpha_hat * d_masked
             rl = source_level - tl
             str_val = rl - params.deter_threshold
             
@@ -452,9 +496,9 @@ class ShipManager:
                 continue
             
             # Probabilistic scaling
-            if getattr(params, 'deter_probabilistic', False):
+            if params.deter_probabilistic:
                 p = response_probability_from_rl(
-                    rl, params.deter_threshold, getattr(params, 'deter_response_slope', 0.2)
+                    rl, params.deter_threshold, params.deter_response_slope
                 )
             else:
                 p = None
@@ -478,10 +522,9 @@ class ShipManager:
             strength_full[in_range_mask] = s_final
             
             s = strength_full[full_mask]
-            d = dist_m[full_mask]
-            
-            vec_x = (dx_m[full_mask] / d) * s * params.deter_coeff
-            vec_y = (dy_m[full_mask] / d) * s * params.deter_coeff
+            # DEPONS 3.2: raw displacement, NOT unit vector (Porpoise.java:1290-1292)
+            vec_x = dx_m[full_mask] * s * params.deter_coeff
+            vec_y = dy_m[full_mask] * s * params.deter_coeff
             
             total_dx[full_mask] += vec_x
             total_dy[full_mask] += vec_y
@@ -582,10 +625,15 @@ class ShipManager:
                 elif current_route is not None:
                     parts = line.split()
                     if len(parts) >= 2:
-                        utm_x = float(parts[0])
-                        utm_y = float(parts[1])
-                        speed = float(parts[2]) if len(parts) > 2 else 10.0
-                        pause = int(parts[3]) if len(parts) > 3 else 0
+                        try:
+                            utm_x = float(parts[0])
+                            utm_y = float(parts[1])
+                            speed = float(parts[2]) if len(parts) > 2 else 10.0
+                            pause = int(parts[3]) if len(parts) > 3 else 0
+                        except ValueError as e:
+                            logger.warning("Route file: invalid value in route '%s' (%s) — skipping waypoint",
+                                         current_route.name, e)
+                            continue
                         
                         grid_x = (utm_x - utm_origin_x) / cell_size
                         grid_y = (utm_y - utm_origin_y) / cell_size
@@ -616,10 +664,14 @@ class ShipManager:
                 if len(parts) < 4:
                     continue
                     
-                name = parts[0]
-                vessel_type_str = parts[1].lower()
-                length = float(parts[2])
-                route_name = parts[3]
+                try:
+                    name = parts[0]
+                    vessel_type_str = parts[1].lower()
+                    length = float(parts[2])
+                    route_name = parts[3]
+                except (ValueError, IndexError) as e:
+                    logger.warning("Ships file line %d: invalid data (%s) — skipping", i + 2, e)
+                    continue
                 
                 # Parse vessel type
                 vessel_type = VesselClass.OTHER
@@ -632,8 +684,12 @@ class ShipManager:
                 route = routes.get(route_name, Route())
                 
                 # Optional timing
-                tick_start = int(parts[4]) if len(parts) > 4 else 0
-                tick_end = int(parts[5]) if len(parts) > 5 else 2147483647
+                try:
+                    tick_start = int(parts[4]) if len(parts) > 4 else 0
+                    tick_end = int(parts[5]) if len(parts) > 5 else 2147483647
+                except ValueError:
+                    tick_start = 0
+                    tick_end = 2147483647
                 
                 # Initial position from first buoy
                 x, y = 0.0, 0.0

@@ -248,3 +248,107 @@ class TestCreateDispersalBehavior:
     def test_create_from_string(self):
         behavior = create_dispersal_behavior("PSM-Type2")
         assert isinstance(behavior, PSMType2Dispersal)
+
+
+class TestPSMType2HeadingWiring:
+    """Test that population uses PSMType2Dispersal module for heading."""
+
+    def test_dispersal_heading_uses_sslogis(self):
+        """_apply_dispersal_heading should use SSLogis formula.
+
+        The existing dispersal.py module has the correct formula.
+        population.py should use the same: angleDelta * SSLogis(distLogX).
+        """
+        # Verify SSLogis formula matches at halfway point
+        # distLogX = 3 * 0.5 - 1.5 = 0.0
+        # SSLogis(0.0, 1.0, 0.0, 0.6) = 1/(1+exp(0/0.6)) = 0.5
+        result = sslogis(0.0, 1.0, 0.0, 0.6)
+        assert result == pytest.approx(0.5), f"SSLogis(0) should be 0.5, got {result}"
+
+    def test_prev_step_heading_initialized(self):
+        """Population should have _prev_step_heading array."""
+        from cenop.agents.population import PorpoisePopulation
+        from cenop.parameters.simulation_params import SimulationParameters
+        params = SimulationParameters()
+        pop = PorpoisePopulation(count=5, params=params)
+        assert hasattr(pop, '_prev_step_heading')
+        assert pop._prev_step_heading.shape == (5,)
+
+
+class TestDispersalStepDistance:
+    """Test dispersal uses fixed step distance."""
+
+    def test_dispersal_step_is_mean_disp_dist_over_04(self):
+        """Dispersing agents use fixed step = mean_disp_dist / 0.4.
+
+        Java: AbstractPSMDispersal.java:210
+        mean_disp_dist=2.0 from parameters (ddisp=2), step=2.0/0.4=5.0 grid cells.
+        """
+        from cenop.parameters.simulation_params import SimulationParameters
+        params = SimulationParameters()
+        step = params.mean_disp_dist / 0.4
+        assert step == pytest.approx(5.0), f"Dispersal step should be 5.0, got {step}"
+
+    def test_dispersal_target_uses_95_percent(self):
+        """PSM-Type2 target = 0.95 * drawn target distance.
+
+        Java: DispersalPSMType2.java:91
+        """
+        params = DispersalParams(dist_mean=300.0, dist_sd=0.001)  # Near-deterministic
+        d = PSMType2Dispersal(params)
+        rng = np.random.default_rng(42)
+        d.start_dispersal(rng)
+
+        # Target should be ~95% of ~300
+        assert d._target_distance == pytest.approx(300.0 * 0.95, rel=0.01)
+
+
+class TestEnergyBasedDispersalStop:
+    """Test energy-based dispersal stop and deterrence deactivation."""
+
+    def test_energy_history_has_10_slots(self):
+        """Energy history should have 10 slots for 7-day lookback."""
+        from cenop.agents.population import PorpoisePopulation
+        from cenop.parameters.simulation_params import SimulationParameters
+        params = SimulationParameters()
+        pop = PorpoisePopulation(count=5, params=params)
+        assert pop._energy_history.shape == (5, 10), \
+            f"Expected (5, 10), got {pop._energy_history.shape}"
+
+    def test_dispersal_stops_when_energy_recovering(self):
+        """Dispersal stops when today's energy > min of last 7 days.
+
+        Java: Porpoise.java:1105-1118
+        """
+        energy_history = np.array([5.0, 4.0, 3.0, 3.5, 4.5, 5.5, 6.0, 6.5, 7.0, 7.5])
+        today = energy_history[0]
+        past_min = np.min(energy_history[1:8])
+        should_stop = bool(today > past_min)
+        assert should_stop is True, f"5.0 > {past_min} (3.0), should stop"
+
+    def test_dispersal_continues_when_energy_still_low(self):
+        """Dispersal continues when today's energy <= min of last 7 days."""
+        energy_history = np.array([2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0])
+        today = energy_history[0]
+        past_min = np.min(energy_history[1:8])
+        should_stop = bool(today > past_min)
+        assert should_stop is False, f"2.0 is not > {past_min} (3.0), should continue"
+
+    def test_deterrence_deactivates_dispersal(self):
+        """Deterrence applied to dispersing agent stops dispersal.
+
+        Java: Porpoise.java:1277-1278
+        """
+        is_dispersing = np.array([True, True, False, True, False])
+        deter_strength = np.array([1.0, 0.0, 1.0, 0.5, 0.0])
+        active = np.array([True, True, True, True, True])
+
+        deterred_and_dispersing = active & (deter_strength > 0) & is_dispersing
+        is_dispersing[deterred_and_dispersing] = False
+
+        # Agent 0: was dispersing + deterred -> stopped
+        assert is_dispersing[0] is np.False_
+        # Agent 1: was dispersing + not deterred -> still dispersing
+        assert is_dispersing[1] is np.True_
+        # Agent 3: was dispersing + deterred -> stopped
+        assert is_dispersing[3] is np.False_

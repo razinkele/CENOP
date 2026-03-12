@@ -13,10 +13,13 @@ Coverage: Central Baltic Sea
 - Grid: 450x460 cells at 1km resolution
 """
 
+import logging
 import numpy as np
 from pathlib import Path
 import requests
 from io import BytesIO
+
+logger = logging.getLogger(__name__)
 
 try:
     from osgeo import gdal, osr
@@ -146,8 +149,8 @@ def download_emodnet_alternative(bbox, output_path):
                 count += 1
                 if count % 100 == 0:
                     print(f"  Sampled {count}/{total_points} points...")
-            except:
-                pass
+            except (requests.RequestException, ValueError, KeyError) as e:
+                logger.debug("Failed to sample depth at (%.4f, %.4f): %s", lat, lon, e)
     
     print(f"Sampled {len(sampled_depths)} valid depth points")
     

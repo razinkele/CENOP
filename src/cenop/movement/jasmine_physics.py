@@ -141,12 +141,12 @@ class JASMINEPhysicsMovement(MovementModule):
         self.current_coupling = self.CURRENT_COUPLING
 
         # Time step (default 30 min = 1800 seconds)
-        self.dt = getattr(params, 'dt_seconds', 1800)
+        self.dt = params.dt_seconds
 
         # Behavioral weights
-        self.prey_weight = getattr(params, 'prey_attraction_weight', 1.0)
-        self.social_weight = getattr(params, 'social_weight', 0.5)
-        self.avoidance_weight = getattr(params, 'avoidance_weight', 2.0)
+        self.prey_weight = params.prey_attraction_weight
+        self.social_weight = params.social_weight
+        self.avoidance_weight = params.avoidance_weight
 
     def compute_step(
         self,

@@ -46,6 +46,17 @@ class SimulationConstants:
     IGNORE_DETER_STUCK_TIME: int = 0
     IGNORE_DETER_NUMBER_OF_STEPS_IGNORE: int = 0
     
+    # Default porpoise body parameters
+    DEFAULT_BODY_MASS_KG: float = 50.0       # Adult harbour porpoise ~50 kg
+    DEFAULT_FAT_FRACTION: float = 0.10       # Fat reserve as fraction of body mass
+    DEFAULT_BODY_CONDITION: float = 0.5      # Initial body condition index
+
+    # Numerical stability
+    MIN_DISTANCE_M: float = 1.0              # Minimum distance to prevent log(0)
+
+    # Unit conversions
+    KM_TO_M: float = 1000.0                  # Kilometers to meters
+
     # Coordinate conversion
     @staticmethod
     def utm_to_grid(utm_coord: float, origin: float) -> float:

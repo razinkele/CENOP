@@ -270,9 +270,9 @@ class JASMINEMemoryModule(DisturbanceMemoryModule):
         super().__init__(params)
 
         # Extract parameters
-        self.decay_rate = getattr(params, 'memory_decay_rate', self.DEFAULT_DECAY_RATE)
-        self.avoidance_radius = getattr(params, 'avoidance_radius', self.AVOIDANCE_RADIUS)
-        self.habituation_enabled = getattr(params, 'habituation_enabled', True)
+        self.decay_rate = params.memory_decay_rate
+        self.avoidance_radius = params.avoidance_radius
+        self.habituation_enabled = params.habituation_enabled
 
         # Grid dimensions (will be set on first use)
         self._cells_per_row = 0

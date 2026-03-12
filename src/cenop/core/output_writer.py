@@ -163,22 +163,22 @@ class OutputWriter:
         """Open all output files and write headers."""
         if self._is_open:
             return
-            
-        if self.config.population:
-            self._open_population_file()
-            
-        if self.config.porpoise_statistics:
-            self._open_statistics_file()
-            
-        if self.config.dispersal:
-            self._open_dispersal_file()
-            
-        if self.config.mortality:
-            self._open_mortality_file()
-            
-        if self.config.energy:
-            self._open_energy_file()
-            
+
+        try:
+            if self.config.population:
+                self._open_population_file()
+            if self.config.porpoise_statistics:
+                self._open_statistics_file()
+            if self.config.dispersal:
+                self._open_dispersal_file()
+            if self.config.mortality:
+                self._open_mortality_file()
+            if self.config.energy:
+                self._open_energy_file()
+        except Exception:
+            self.close()  # Clean up any already-opened files
+            raise
+
         self._is_open = True
         
     def close(self) -> None:
@@ -190,11 +190,19 @@ class OutputWriter:
             self._mortality_file,
             self._energy_file
         ]
-        
+
         for f in files:
             if f is not None:
-                f.close()
-                
+                try:
+                    f.close()
+                except OSError as e:
+                    logger.warning("Error closing output file: %s", e)
+
+        self._population_file = None
+        self._statistics_file = None
+        self._dispersal_file = None
+        self._mortality_file = None
+        self._energy_file = None
         self._is_open = False
         
     def _open_population_file(self) -> None:

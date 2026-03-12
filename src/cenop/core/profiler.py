@@ -179,26 +179,28 @@ class SimulationProfiler:
     def print_report(self) -> None:
         """Print a formatted profiling report."""
         results = self.get_results()
-        
-        print("\n" + "="*60)
-        print("CENOP Simulation Performance Report")
-        print("="*60)
-        print(f"Total ticks profiled: {self.tick_count}")
-        print(f"Total time: {self.total_time:.3f}s")
-        print(f"Average time per tick: {self.total_time/self.tick_count*1000:.3f}ms")
-        print(f"Ticks per second: {self.tick_count/self.total_time:.1f}")
-        print("-"*60)
-        print(f"{'Section':<25} {'Total(s)':<12} {'Calls':<10} {'Avg(ms)':<12} {'%Total':<8}")
-        print("-"*60)
-        
-        # Sort by total time
+
+        lines = [
+            "",
+            "=" * 60,
+            "CENOP Simulation Performance Report",
+            "=" * 60,
+            f"Total ticks profiled: {self.tick_count}",
+            f"Total time: {self.total_time:.3f}s",
+            f"Average time per tick: {self.total_time/self.tick_count*1000:.3f}ms",
+            f"Ticks per second: {self.tick_count/self.total_time:.1f}",
+            "-" * 60,
+            f"{'Section':<25} {'Total(s)':<12} {'Calls':<10} {'Avg(ms)':<12} {'%Total':<8}",
+            "-" * 60,
+        ]
+
         sorted_results = sorted(results.values(), key=lambda x: x.total_time, reverse=True)
-        
         for r in sorted_results:
             pct = r.total_time / self.total_time * 100 if self.total_time > 0 else 0
-            print(f"{r.name:<25} {r.total_time:<12.4f} {r.call_count:<10} {r.avg_time*1000:<12.4f} {pct:<8.1f}")
-            
-        print("="*60)
+            lines.append(f"{r.name:<25} {r.total_time:<12.4f} {r.call_count:<10} {r.avg_time*1000:<12.4f} {pct:<8.1f}")
+
+        lines.append("=" * 60)
+        logger.info("\n".join(lines))
 
 
 def profile_with_cprofile(
@@ -239,7 +241,6 @@ def benchmark_population_sizes(
     results = {}
     
     for size in sizes:
-        print(f"Benchmarking population size: {size}")
         logger.info("Benchmarking population size: %d", size)
         
         params = SimulationParameters(
@@ -264,7 +265,6 @@ def benchmark_population_sizes(
         ticks_per_sec = ticks / elapsed
         results[size] = ticks_per_sec
         
-        print(f"  {ticks_per_sec:.1f} ticks/sec ({elapsed:.3f}s for {ticks} ticks)")
         logger.info("  %.1f ticks/sec (%.3fs for %d ticks)", ticks_per_sec, elapsed, ticks)
         
     return results
@@ -319,23 +319,22 @@ def timed(func: Callable) -> Callable:
         start = time.perf_counter()
         result = func(*args, **kwargs)
         elapsed = time.perf_counter() - start
-        print(f"{func.__name__}: {elapsed*1000:.3f}ms")
         logger.debug("%s: %.3fms", func.__name__, elapsed * 1000)
         return result
     return wrapper
 
 
 if __name__ == "__main__":
-    # Quick performance check
-    print("Running CENOP performance benchmark...")
-    
+    logging.basicConfig(level=logging.INFO)
+    logger.info("Running CENOP performance benchmark...")
+
     results = benchmark_population_sizes()
-    
-    print("\nSummary:")
-    print("-" * 40)
+
+    summary_lines = ["\nSummary:", "-" * 40]
     for size, tps in results.items():
-        status = "✅" if tps >= 10 else "⚠️"
-        print(f"{status} Population {size}: {tps:.1f} ticks/sec")
-        
+        status = "OK" if tps >= 10 else "SLOW"
+        summary_lines.append(f"{status} Population {size}: {tps:.1f} ticks/sec")
+
     max_realtime = estimate_realtime_capacity()
-    print(f"\nEstimated max real-time population: {max_realtime}")
+    summary_lines.append(f"\nEstimated max real-time population: {max_realtime}")
+    logger.info("\n".join(summary_lines))

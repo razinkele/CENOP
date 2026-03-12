@@ -98,9 +98,9 @@ class HybridBehaviorFSM:
             self.mode = FSMMode.JASMINE
 
         # Extract parameters
-        self.t_disp = getattr(params, 't_disp', 3)
-        self.recovery_ticks = getattr(params, 'disturbance_recovery_ticks', 48)
-        self.min_memory_cells = getattr(params, 'min_memory_cells', 50)
+        self.t_disp = params.t_disp
+        self.recovery_ticks = params.disturbance_recovery_ticks
+        self.min_memory_cells = params.min_memory_cells
 
         # Statistics
         self._stats: Dict[str, int] = {

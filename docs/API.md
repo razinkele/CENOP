@@ -1015,6 +1015,17 @@ for result in results:
 
 ## Version History
 
+- **v2.1.0**: DEPONS 3.2 full sync + Numba optimization
+  - Algorithmically aligned with DEPONS 3.2 Java implementation
+  - Pregnancy finite state machine with daily mortality schedule
+  - PSM-Type2 dispersal with SSLogis heading dampening
+  - Reference memory with vectorized attraction computation
+  - CRW rejection sampling (3 loops: angle, distance-modulated angle, step length)
+  - Ship deterrence with JOMOPANS 13-class source levels and Weston flux TL
+  - Numba JIT kernels for 7 hot-path operations with prange parallelism
+  - Logistic food regrowth with proportional-sharing consumption
+  - 502 automated tests
+
 - **v2.0.0**: CENOP-JASMINE merge
   - Added JASMINE simulation mode
   - Hybrid behavioral FSM (5 states)

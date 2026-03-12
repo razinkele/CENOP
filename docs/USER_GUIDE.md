@@ -4,7 +4,7 @@
 
 A web-based simulation tool for assessing the impact of offshore wind farm construction on harbor porpoise populations, with advanced research-grade behavioral modeling.
 
-**Version 2.0** | Python Shiny Implementation of DEPONS 3.0 + JASMINE Extensions
+**Version 2.0** | Python Shiny Implementation aligned with DEPONS 3.2 + JASMINE Extensions
 
 ---
 
@@ -38,8 +38,9 @@ The JASMINE (Just Another Simulation Model In Nature Environments) extension add
 - **Energy Budget Modeling**: Tracks individual energy reserves and their effect on survival
 - **Deterrence Response**: Models porpoise avoidance of noise sources (threshold: 158 dB)
 - **Persistent Spatial Memory (PSM)**: Porpoises remember good foraging locations
-- **DEPONS Compatibility**: Outputs match the original Java model format
-- **Vectorized Performance**: NumPy-based simulation supports 1000+ porpoises in real-time
+- **DEPONS 3.2 Alignment**: Algorithms match the DEPONS 3.2 Java implementation
+- **Numba JIT Performance**: Hot-path kernels compiled to machine code with prange parallelism
+- **Vectorized Architecture**: NumPy SoA + Numba kernels support 1000+ porpoises in real-time
 
 #### JASMINE Extensions (Research Mode)
 - **Behavioral State Machine**: Five behavioral states (FORAGING, TRAVELING, RESTING, DISPERSING, DISTURBED) with configurable transitions
@@ -55,11 +56,12 @@ The JASMINE (Just Another Simulation Model In Nature Environments) extension add
 CENOP-JASMINE supports two simulation modes:
 
 ### DEPONS Mode (Default)
-- Regulatory-compatible empirical models
-- Validated against DEPONS 3.0 Java implementation
+- Regulatory-compatible empirical models aligned with DEPONS 3.2
+- Pregnancy FSM, daily mortality, PSM-Type2 dispersal, deterrence, reference memory
+- CRW with rejection sampling (3 loops: angle, distance-modulated angle, step length)
 - Suitable for environmental impact assessments
-- Simple energy model (0-20 scale)
-- Immediate deterrence response (no memory)
+- Simple energy model (0-20 scale) with seasonal scaling
+- Immediate deterrence response
 
 ### JASMINE Mode (Research)
 - Physics-based movement and bioenergetics
@@ -145,11 +147,12 @@ The interface is divided into three main areas:
 
 ### Main View Tabs
 
-1. **Dashboard**: Interactive map and population charts
+1. **Dashboard**: Interactive DeckGL map and population charts
 2. **Model Settings**: Advanced parameter configuration
 3. **Population**: Age/energy histograms and vital statistics
 4. **Disturbance**: Dispersal and deterrence monitoring
-5. **Export**: Download results and about information
+5. **Landscape**: Spatial viewer for all environmental data layers
+6. **Export**: Download results as CSV
 
 ---
 
@@ -460,10 +463,9 @@ writer.finalize()
 
 ### Model Validation
 
-**DEPONS Mode** has been validated against:
-- Original DEPONS 3.0 Java model outputs
-- Empirical porpoise tracking data
-- Published population estimates
+**DEPONS Mode** is algorithmically aligned with:
+- DEPONS 3.2 Java implementation (pregnancy FSM, dispersal, deterrence, reference memory, CRW rejection sampling)
+- 502 automated tests verifying algorithm equivalence
 
 **JASMINE Mode** is research-grade and designed for:
 - Exploring advanced behavioral hypotheses
@@ -475,7 +477,7 @@ writer.finalize()
 
 - 1 tick = 30 minutes
 - 48 ticks = 1 day
-- 17,280 ticks = 1 year (360 days)
+- 17,280 ticks = 1 year (360 days, DEPONS convention)
 
 ### Spatial Resolution
 
@@ -503,7 +505,7 @@ writer.finalize()
 If using CENOP-JASMINE in publications, please cite:
 ```
 CENOP-JASMINE: Cetacean Noise Operations Planner with JASMINE Extensions
-A Python Shiny implementation of DEPONS 3.0 with research-grade behavioral modeling
+A Python Shiny implementation aligned with DEPONS 3.2 with research-grade behavioral modeling
 Arturas Razinkovas-Baziukas, Klaipeda University, 2024-2026
 ```
 

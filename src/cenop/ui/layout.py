@@ -324,11 +324,15 @@ def create_help_modal():
     from offshore wind farm construction and ship noise.</p>
     <p>The <strong>JASMINE</strong> (Just Another Simulation Model In Nature Environments) extension adds research-grade
     features including physics-based movement, dynamic energy budgets, and learned avoidance behaviors.</p>
+    <p>The simulation engine uses a <strong>Structure-of-Arrays (SoA)</strong> architecture with
+    <strong>Numba JIT-compiled kernels</strong> for hot-path operations (boundary reflection, CRW movement,
+    food consumption, energy costs, social vector accumulation), achieving sub-millisecond per-kernel
+    performance for populations of 500+ agents.</p>
 
     <h2>Simulation Modes</h2>
     <table class="param-table">
         <tr><th>Mode</th><th>Description</th><th>Use Case</th></tr>
-        <tr><td><strong>DEPONS</strong></td><td>Regulatory-compatible empirical models validated against DEPONS 3.2</td><td>Environmental impact assessments</td></tr>
+        <tr><td><strong>DEPONS</strong></td><td>Regulatory-compatible empirical models aligned with DEPONS 3.2 algorithms</td><td>Environmental impact assessments</td></tr>
         <tr><td><strong>JASMINE</strong></td><td>Physics-based movement, Dynamic Energy Budget (DEB), learned avoidance</td><td>Research and hypothesis testing</td></tr>
     </table>
     <div class="tip">
@@ -640,13 +644,19 @@ def create_help_modal():
         <li><strong>Dual-mode</strong> - DEPONS for regulatory, JASMINE for research</li>
         <li><strong>Energy-based mortality</strong> - Survival depends on energy reserves</li>
         <li><strong>Persistent Spatial Memory</strong> - Porpoises remember good foraging areas</li>
+        <li><strong>Reference Memory</strong> - Vectorized attraction to previously visited food-rich areas</li>
         <li><strong>Learned Avoidance</strong> (JASMINE) - Porpoises remember disturbance zones</li>
         <li><strong>Habituation</strong> (JASMINE) - Reduced response to repeated exposure</li>
     </ul>
 
+    <h2>Performance</h2>
+    <p>CENOP uses Numba JIT-compiled kernels for simulation hot paths, achieving sub-millisecond
+    performance per kernel call for populations of 500 agents. Three independent kernels
+    (boundary reflection, turn position, BMR cost) run in parallel using <code>prange</code>.</p>
+
     <h2>Model Validation</h2>
     <ul>
-        <li><strong>DEPONS mode</strong> - Validated against DEPONS 3.2 for regulatory compliance</li>
+        <li><strong>DEPONS mode</strong> - Algorithmically aligned with DEPONS 3.2 (pregnancy FSM, dispersal, deterrence, reference memory, CRW rejection sampling)</li>
         <li><strong>JASMINE mode</strong> - Research-grade, designed for exploring advanced behavioral hypotheses</li>
     </ul>
 

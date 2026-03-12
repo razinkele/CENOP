@@ -40,6 +40,8 @@ except ImportError:
 
 try:
     from cenop.optimizations.kernels import reflect_boundaries_kernel as _reflect_kernel
+    from cenop.optimizations.kernels import crw_angle_step_kernel as _crw_kernel
+    from cenop.optimizations.kernels import seed_numba_rng as _seed_numba_rng
     _HAS_KERNELS = True
 except ImportError:
     _HAS_KERNELS = False
@@ -676,62 +678,110 @@ class PorpoisePopulation:
             self._depths.fill(30.0)  # Default depth
             self._salinity_vals.fill(30.0)  # Default salinity
 
-        # === Calculate Turning Angle (Full DEPONS CRW) ===
-        # DEPONS formula: angleTmp = b0 * prevAngle + N(0,4)
-        #                 presAngle = angleTmp * (b1*depth + b2*salinity + b3)
-        np.copyto(self._rand_angle, np.random.normal(self.params.r2_mean, self.params.r2_sd, self.count))
-
-        # angleTmp = b0 * prevAngle + R2
-        np.multiply(self.params.corr_angle_base, self.prev_angle, out=self._pres_angle)
-        self._pres_angle += self._rand_angle
-
-        # Environmental modulation: (b1*depth + b2*salinity + b3)
-        np.multiply(self.params.corr_angle_bathy, self._depths, out=self._env_mod_angle)
-        self._env_mod_angle += self.params.corr_angle_salinity * self._salinity_vals
-        self._env_mod_angle += self.params.corr_angle_base_sd
-
-        # presAngle = angleTmp * env_modulation
-        self._pres_angle *= self._env_mod_angle
-
-        # Rejection sampling for turning angle (Java Porpoise.java:332-360)
-        violations = np.abs(self._pres_angle) > 180
-        retry = 0
-        while np.any(violations & mask) and retry < 200:
-            idx = np.where(violations & mask)[0]
-            new_rand = np.random.normal(self.params.r2_mean, self.params.r2_sd, len(idx))
-            angle_tmp = self.params.corr_angle_base * self.prev_angle[idx] + new_rand
-            self._pres_angle[idx] = angle_tmp * (
-                self.params.corr_angle_bathy * self._depths[idx]
-                + self.params.corr_angle_salinity * self._salinity_vals[idx]
-                + self.params.corr_angle_base_sd
+        # === Calculate Turning Angle + Step Length (Full DEPONS CRW) ===
+        if _HAS_KERNELS:
+            # Numba kernel: computes pres_angle and log_mov with rejection sampling
+            # Seed Numba's internal RNG from NumPy's RNG for reproducibility
+            _seed_numba_rng(np.random.randint(0, 2**31))
+            np.copyto(self._rand_angle, np.random.normal(self.params.r2_mean, self.params.r2_sd, self.count))
+            np.copyto(self._rand_len, np.random.normal(self.params.r1_mean, self.params.r1_sd, self.count))
+            _crw_kernel(
+                self.prev_angle, self.prev_log_mov,
+                self._depths, self._salinity_vals,
+                self._rand_angle, self._rand_len, mask,
+                self._pres_angle, self._log_mov,
+                self.params.corr_angle_base, self.params.corr_angle_bathy,
+                self.params.corr_angle_salinity, self.params.corr_angle_base_sd,
+                self.params.corr_logmov_length, self.params.corr_logmov_bathy,
+                self.params.corr_logmov_salinity, self.params.max_mov,
+                self.params.r2_mean, self.params.r2_sd,
+                self.params.r1_mean, self.params.r1_sd,
             )
-            violations = np.abs(self._pres_angle) > 180
-            retry += 1
-        # Emergency fallback: clamp to ±90 (Java Porpoise.java:354)
-        if np.any(violations & mask):
-            self._pres_angle[violations & mask] = np.sign(self._pres_angle[violations & mask]) * 90
+        else:
+            # --- Turning Angle (NumPy fallback) ---
+            # DEPONS formula: angleTmp = b0 * prevAngle + N(0,4)
+            #                 presAngle = angleTmp * (b1*depth + b2*salinity + b3)
+            np.copyto(self._rand_angle, np.random.normal(self.params.r2_mean, self.params.r2_sd, self.count))
 
-        # Second angle loop: distance-dependent modulation (Java Porpoise.java:374-393)
-        max_mov_value = np.power(10.0, self.params.max_mov)
-        prev_mov = np.power(10.0, self.prev_log_mov)
-        needs_modulation = mask & (prev_mov <= max_mov_value)
-        if np.any(needs_modulation):
+            # angleTmp = b0 * prevAngle + R2
+            np.multiply(self.params.corr_angle_base, self.prev_angle, out=self._pres_angle)
+            self._pres_angle += self._rand_angle
+
+            # Environmental modulation: (b1*depth + b2*salinity + b3)
+            np.multiply(self.params.corr_angle_bathy, self._depths, out=self._env_mod_angle)
+            self._env_mod_angle += self.params.corr_angle_salinity * self._salinity_vals
+            self._env_mod_angle += self.params.corr_angle_base_sd
+
+            # presAngle = angleTmp * env_modulation
+            self._pres_angle *= self._env_mod_angle
+
+            # Rejection sampling for turning angle (Java Porpoise.java:332-360)
+            violations = np.abs(self._pres_angle) > 180
             retry = 0
-            violations2 = np.ones(self.count, dtype=bool)
-            while np.any(violations2 & needs_modulation) and retry < 200:
-                idx = np.where(violations2 & needs_modulation)[0]
-                rnd = np.random.uniform(0, 20, len(idx))
-                new_angle = (np.abs(self._pres_angle[idx]) + rnd
-                             - rnd * prev_mov[idx] / max_mov_value)
-                self._pres_angle[idx] = np.sign(self._pres_angle[idx]) * new_angle
-                violations2 = np.abs(self._pres_angle) >= 180
-                retry += 1
-            # Fallback: random(0,20) + 90 (Java Porpoise.java:389)
-            if np.any(violations2 & needs_modulation):
-                fb_idx = np.where(violations2 & needs_modulation)[0]
-                self._pres_angle[fb_idx] = np.sign(self._pres_angle[fb_idx]) * (
-                    np.random.uniform(0, 20, len(fb_idx)) + 90
+            while np.any(violations & mask) and retry < 200:
+                idx = np.where(violations & mask)[0]
+                new_rand = np.random.normal(self.params.r2_mean, self.params.r2_sd, len(idx))
+                angle_tmp = self.params.corr_angle_base * self.prev_angle[idx] + new_rand
+                self._pres_angle[idx] = angle_tmp * (
+                    self.params.corr_angle_bathy * self._depths[idx]
+                    + self.params.corr_angle_salinity * self._salinity_vals[idx]
+                    + self.params.corr_angle_base_sd
                 )
+                violations = np.abs(self._pres_angle) > 180
+                retry += 1
+            # Emergency fallback: clamp to +/-90 (Java Porpoise.java:354)
+            if np.any(violations & mask):
+                self._pres_angle[violations & mask] = np.sign(self._pres_angle[violations & mask]) * 90
+
+            # Second angle loop: distance-dependent modulation (Java Porpoise.java:374-393)
+            max_mov_value = np.power(10.0, self.params.max_mov)
+            prev_mov = np.power(10.0, self.prev_log_mov)
+            needs_modulation = mask & (prev_mov <= max_mov_value)
+            if np.any(needs_modulation):
+                retry = 0
+                violations2 = np.ones(self.count, dtype=bool)
+                while np.any(violations2 & needs_modulation) and retry < 200:
+                    idx = np.where(violations2 & needs_modulation)[0]
+                    rnd = np.random.uniform(0, 20, len(idx))
+                    new_angle = (np.abs(self._pres_angle[idx]) + rnd
+                                 - rnd * prev_mov[idx] / max_mov_value)
+                    self._pres_angle[idx] = np.sign(self._pres_angle[idx]) * new_angle
+                    violations2 = np.abs(self._pres_angle) >= 180
+                    retry += 1
+                # Fallback: random(0,20) + 90 (Java Porpoise.java:389)
+                if np.any(violations2 & needs_modulation):
+                    fb_idx = np.where(violations2 & needs_modulation)[0]
+                    self._pres_angle[fb_idx] = np.sign(self._pres_angle[fb_idx]) * (
+                        np.random.uniform(0, 20, len(fb_idx)) + 90
+                    )
+
+            # --- Step Length (NumPy fallback) ---
+            # DEPONS formula: log10_mov = a0 * prev_log_mov + a1*depth + a2*salinity + R1
+            np.copyto(self._rand_len, np.random.normal(self.params.r1_mean, self.params.r1_sd, self.count))
+            np.multiply(self.params.corr_logmov_length, self.prev_log_mov, out=self._log_mov)
+            self._log_mov += self.params.corr_logmov_bathy * self._depths
+            self._log_mov += self.params.corr_logmov_salinity * self._salinity_vals
+            self._log_mov += self._rand_len
+
+            # Rejection sampling for step length (Java Porpoise.java:367-391)
+            violations = self._log_mov > self.params.max_mov
+            retry = 0
+            while np.any(violations & mask) and retry < 200:
+                idx = np.where(violations & mask)[0]
+                new_rand = np.random.normal(self.params.r1_mean, self.params.r1_sd, len(idx))
+                self._log_mov[idx] = (
+                    self.params.corr_logmov_length * self.prev_log_mov[idx]
+                    + self.params.corr_logmov_bathy * self._depths[idx]
+                    + self.params.corr_logmov_salinity * self._salinity_vals[idx]
+                    + new_rand
+                )
+                violations = self._log_mov > self.params.max_mov
+                retry += 1
+            # Emergency fallback: clamp to maxMov (Java Porpoise.java:387)
+            if np.any(violations & mask):
+                self._log_mov[violations & mask] = self.params.max_mov
+
+            self.prev_log_mov[mask] = self._log_mov[mask]
 
         # Capture pre-movement heading for prev_angle computation (Task 6)
         pre_movement_heading = self.heading.copy()
@@ -741,34 +791,6 @@ class PorpoisePopulation:
 
         # Apply dispersal heading override for dispersing porpoises
         self._apply_dispersal_heading(mask)
-
-        # === Calculate Step Length (Full DEPONS CRW) ===
-        # DEPONS formula: log10_mov = a0 * prev_log_mov + a1*depth + a2*salinity + R1
-        np.copyto(self._rand_len, np.random.normal(self.params.r1_mean, self.params.r1_sd, self.count))
-        np.multiply(self.params.corr_logmov_length, self.prev_log_mov, out=self._log_mov)
-        self._log_mov += self.params.corr_logmov_bathy * self._depths
-        self._log_mov += self.params.corr_logmov_salinity * self._salinity_vals
-        self._log_mov += self._rand_len
-
-        # Rejection sampling for step length (Java Porpoise.java:367-391)
-        violations = self._log_mov > self.params.max_mov
-        retry = 0
-        while np.any(violations & mask) and retry < 200:
-            idx = np.where(violations & mask)[0]
-            new_rand = np.random.normal(self.params.r1_mean, self.params.r1_sd, len(idx))
-            self._log_mov[idx] = (
-                self.params.corr_logmov_length * self.prev_log_mov[idx]
-                + self.params.corr_logmov_bathy * self._depths[idx]
-                + self.params.corr_logmov_salinity * self._salinity_vals[idx]
-                + new_rand
-            )
-            violations = self._log_mov > self.params.max_mov
-            retry += 1
-        # Emergency fallback: clamp to maxMov (Java Porpoise.java:387)
-        if np.any(violations & mask):
-            self._log_mov[violations & mask] = self.params.max_mov
-
-        self.prev_log_mov[mask] = self._log_mov[mask]
 
         # Update reference memory (stores food, computes veTotal and vt)
         self._update_reference_memory(mask)

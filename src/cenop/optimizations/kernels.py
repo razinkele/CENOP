@@ -28,6 +28,12 @@ except ImportError:
 
 
 @njit(cache=True)
+def seed_numba_rng(seed):
+    """Seed Numba's internal RNG for reproducibility."""
+    np.random.seed(seed)
+
+
+@njit(cache=True)
 def reflect_boundaries_kernel(
     new_x: np.ndarray,
     new_y: np.ndarray,
@@ -77,6 +83,110 @@ def reflect_boundaries_kernel(
             new_y[i] = max_y
 
 
+@njit(cache=True)
+def crw_angle_step_kernel(
+    prev_angle,       # float64[n] — previous turning angle (read)
+    prev_log_mov,     # float64[n] — previous log step length (read+write)
+    depths,           # float64[n] — depth at each agent's position
+    salinity,         # float64[n] — salinity at each agent's position
+    rand_angle,       # float64[n] — pre-generated N(r2_mean, r2_sd)
+    rand_len,         # float64[n] — pre-generated N(r1_mean, r1_sd)
+    mask,             # bool[n]
+    out_pres_angle,   # float64[n] — output: turning angle
+    out_log_mov,      # float64[n] — output: log step length
+    # CRW parameters
+    corr_angle_base, corr_angle_bathy, corr_angle_salinity, corr_angle_base_sd,
+    corr_logmov_length, corr_logmov_bathy, corr_logmov_salinity, max_mov,
+    r2_mean, r2_sd, r1_mean, r1_sd,
+):
+    """
+    CRW angle + step length kernel with rejection sampling.
+
+    Implements DEPONS 3.2 CRW (Java Porpoise.java:332-393):
+    1. Turning angle with rejection sampling (max 200 retries)
+    2. Distance-dependent angle modulation with rejection loop
+    3. Step length with rejection sampling (max 200 retries)
+
+    Outputs pres_angle and log_mov. Does NOT compute dx/dy (those
+    come later after heading composition with vt, deterrence, social).
+    """
+    n = prev_angle.shape[0]
+    max_retries = 200
+
+    for i in range(n):
+        if not mask[i]:
+            out_pres_angle[i] = 0.0
+            out_log_mov[i] = prev_log_mov[i]
+            continue
+
+        # === Angle calculation ===
+        env_mod = (corr_angle_bathy * depths[i]
+                   + corr_angle_salinity * salinity[i]
+                   + corr_angle_base_sd)
+        angle_tmp = corr_angle_base * prev_angle[i] + rand_angle[i]
+        pres_angle = angle_tmp * env_mod
+
+        # Rejection sampling for angle (Java Porpoise.java:332-360)
+        retry = 0
+        while abs(pres_angle) > 180.0 and retry < max_retries:
+            new_rand = np.random.normal(r2_mean, r2_sd)
+            angle_tmp = corr_angle_base * prev_angle[i] + new_rand
+            pres_angle = angle_tmp * env_mod
+            retry += 1
+
+        # Emergency fallback: +/-90 (Java Porpoise.java:354)
+        if abs(pres_angle) > 180.0:
+            if pres_angle > 0:
+                pres_angle = 90.0
+            else:
+                pres_angle = -90.0
+
+        # Distance-dependent modulation (Java Porpoise.java:374-393)
+        max_mov_value = 10.0 ** max_mov
+        prev_mov_value = 10.0 ** prev_log_mov[i]
+
+        if prev_mov_value <= max_mov_value:
+            retry = 0
+            while abs(pres_angle) >= 180.0 and retry < max_retries:
+                rnd = np.random.uniform(0.0, 20.0)
+                new_angle = abs(pres_angle) + rnd - rnd * prev_mov_value / max_mov_value
+                if pres_angle >= 0:
+                    pres_angle = new_angle
+                else:
+                    pres_angle = -new_angle
+                retry += 1
+
+            if abs(pres_angle) >= 180.0:
+                rnd = np.random.uniform(0.0, 20.0)
+                if pres_angle >= 0:
+                    pres_angle = rnd + 90.0
+                else:
+                    pres_angle = -(rnd + 90.0)
+
+        out_pres_angle[i] = pres_angle
+
+        # === Step length calculation ===
+        log_mov = (corr_logmov_length * prev_log_mov[i]
+                   + corr_logmov_bathy * depths[i]
+                   + corr_logmov_salinity * salinity[i]
+                   + rand_len[i])
+
+        retry = 0
+        while log_mov > max_mov and retry < max_retries:
+            new_rand = np.random.normal(r1_mean, r1_sd)
+            log_mov = (corr_logmov_length * prev_log_mov[i]
+                       + corr_logmov_bathy * depths[i]
+                       + corr_logmov_salinity * salinity[i]
+                       + new_rand)
+            retry += 1
+
+        if log_mov > max_mov:
+            log_mov = max_mov
+
+        out_log_mov[i] = log_mov
+        prev_log_mov[i] = log_mov
+
+
 def warmup_kernels():
     """Pre-compile all kernels with small dummy data to avoid first-call latency."""
     if not NUMBA_AVAILABLE:
@@ -87,4 +197,18 @@ def warmup_kernels():
     dy = np.array([1.0, -1.0, 1.0], dtype=np.float64)
     mask = np.array([True, True, True])
     reflect_boundaries_kernel(x, y, dx, dy, 20, 20, mask)
+    # Warmup CRW angle+step kernel
+    n = 3
+    pa = np.zeros(n, dtype=np.float64)
+    plm = np.ones(n, dtype=np.float64)
+    dep = np.full(n, 30.0, dtype=np.float64)
+    sal = np.full(n, 30.0, dtype=np.float64)
+    ra = np.zeros(n, dtype=np.float64)
+    rl = np.zeros(n, dtype=np.float64)
+    m = np.ones(n, dtype=np.bool_)
+    opa = np.zeros(n, dtype=np.float64)
+    olm = np.zeros(n, dtype=np.float64)
+    crw_angle_step_kernel(pa, plm, dep, sal, ra, rl, m, opa, olm,
+                          0.0, 0.0, 0.0, 1.0, 0.5, 0.0, 0.0, 3.0,
+                          0.0, 4.0, 0.0, 1.0)
     return True

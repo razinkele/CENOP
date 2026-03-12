@@ -190,6 +190,22 @@ class CellData:
             return 0.5
         i, j = self._get_indices(x, y)
         return float(self._food_value[i, j])
+
+    def get_food_levels_vectorized(self, positions: np.ndarray) -> np.ndarray:
+        """Get food levels for multiple positions at once.
+
+        Args:
+            positions: (N, 2) array of (x, y) positions
+
+        Returns:
+            (N,) array of food levels
+        """
+        self._ensure_loaded()
+        if self._food_value is None:
+            return np.full(len(positions), 0.5, dtype=np.float32)
+        j = np.clip(positions[:, 0].astype(int), 0, self.width - 1)
+        i = np.clip(positions[:, 1].astype(int), 0, self.height - 1)
+        return self._food_value[i, j].astype(np.float32)
         
     def remove_food(self, x: float, y: float, amount: float) -> None:
         """Remove food from a cell."""

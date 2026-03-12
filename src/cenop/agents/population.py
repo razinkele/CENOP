@@ -98,6 +98,17 @@ class PorpoisePopulation:
         # Tracks any porpoise deterred at least once during the reporting period
         self._was_deterred = np.zeros(count, dtype=bool)
 
+        # Reference memory circular buffers (DEPONS 3.2 — 120 entries per agent)
+        _REF_MEM_SIZE = params.ref_mem_size if hasattr(params, 'ref_mem_size') else 120
+        self._stored_util = np.zeros((count, _REF_MEM_SIZE), dtype=np.float32)
+        self._pos_history_x = np.zeros((count, _REF_MEM_SIZE), dtype=np.float32)
+        self._pos_history_y = np.zeros((count, _REF_MEM_SIZE), dtype=np.float32)
+        self._mem_ptr = np.zeros(count, dtype=np.int16)   # Current write index
+        self._mem_count = np.zeros(count, dtype=np.int16)  # Entries stored
+        self._ve_total = np.zeros(count, dtype=np.float32)  # Expected food value
+        self._vt_x = np.zeros(count, dtype=np.float32)  # Attraction vector x
+        self._vt_y = np.zeros(count, dtype=np.float32)  # Attraction vector y
+
         # === PSM and Dispersal State (Phase 2) ===
         # Energy history for dispersal trigger (5 days = 5*48 ticks)
         self._energy_history = np.zeros((count, 5), dtype=np.float32)  # Last 5 daily averages
@@ -649,6 +660,10 @@ class PorpoisePopulation:
             positions = np.column_stack((self.x, self.y))
             np.copyto(self._depths, self.landscape.get_depths_vectorized(positions))
             np.copyto(self._salinity_vals, self.landscape.get_salinities_vectorized(positions))
+            # Kattegat salinity override (Java Porpoise.java:339-345)
+            landscape_name = getattr(self.landscape, 'landscape_name', '')
+            if landscape_name == 'Kattegat':
+                self._salinity_vals[:] = 34.069105813295
         else:
             # Default values when no landscape (homogeneous case)
             self._depths.fill(30.0)  # Default depth
@@ -671,16 +686,54 @@ class PorpoisePopulation:
         # presAngle = angleTmp * env_modulation
         self._pres_angle *= self._env_mod_angle
 
-        # Wrap angles > 180 or < -180
-        np.clip(self._pres_angle, -180, 180, out=self._pres_angle)
+        # Rejection sampling for turning angle (Java Porpoise.java:332-360)
+        violations = np.abs(self._pres_angle) > 180
+        retry = 0
+        while np.any(violations & mask) and retry < 200:
+            idx = np.where(violations & mask)[0]
+            new_rand = np.random.normal(self.params.r2_mean, self.params.r2_sd, len(idx))
+            angle_tmp = self.params.corr_angle_base * self.prev_angle[idx] + new_rand
+            self._pres_angle[idx] = angle_tmp * (
+                self.params.corr_angle_bathy * self._depths[idx]
+                + self.params.corr_angle_salinity * self._salinity_vals[idx]
+                + self.params.corr_angle_base_sd
+            )
+            violations = np.abs(self._pres_angle) > 180
+            retry += 1
+        # Emergency fallback: clamp to ±90 (Java Porpoise.java:354)
+        if np.any(violations & mask):
+            self._pres_angle[violations & mask] = np.sign(self._pres_angle[violations & mask]) * 90
+
+        # Second angle loop: distance-dependent modulation (Java Porpoise.java:374-393)
+        max_mov_value = np.power(10.0, self.params.max_mov)
+        prev_mov = np.power(10.0, self.prev_log_mov)
+        needs_modulation = mask & (prev_mov <= max_mov_value)
+        if np.any(needs_modulation):
+            retry = 0
+            violations2 = np.ones(self.count, dtype=bool)
+            while np.any(violations2 & needs_modulation) and retry < 200:
+                idx = np.where(violations2 & needs_modulation)[0]
+                rnd = np.random.uniform(0, 20, len(idx))
+                new_angle = (np.abs(self._pres_angle[idx]) + rnd
+                             - rnd * prev_mov[idx] / max_mov_value)
+                self._pres_angle[idx] = np.sign(self._pres_angle[idx]) * new_angle
+                violations2 = np.abs(self._pres_angle) >= 180
+                retry += 1
+            # Fallback: random(0,20) + 90 (Java Porpoise.java:389)
+            if np.any(violations2 & needs_modulation):
+                fb_idx = np.where(violations2 & needs_modulation)[0]
+                self._pres_angle[fb_idx] = np.sign(self._pres_angle[fb_idx]) * (
+                    np.random.uniform(0, 20, len(fb_idx)) + 90
+                )
+
+        # Capture pre-movement heading for prev_angle computation (Task 6)
+        pre_movement_heading = self.heading.copy()
 
         self.heading[mask] += self._pres_angle[mask]
         self.heading[mask] %= 360.0
 
         # Apply dispersal heading override for dispersing porpoises
         self._apply_dispersal_heading(mask)
-
-        self.prev_angle[mask] = self._pres_angle[mask]
 
         # === Calculate Step Length (Full DEPONS CRW) ===
         # DEPONS formula: log10_mov = a0 * prev_log_mov + a1*depth + a2*salinity + R1
@@ -690,37 +743,78 @@ class PorpoisePopulation:
         self._log_mov += self.params.corr_logmov_salinity * self._salinity_vals
         self._log_mov += self._rand_len
 
-        # Clip max speed
-        np.minimum(self._log_mov, self.params.max_mov, out=self._log_mov)
+        # Rejection sampling for step length (Java Porpoise.java:367-391)
+        violations = self._log_mov > self.params.max_mov
+        retry = 0
+        while np.any(violations & mask) and retry < 200:
+            idx = np.where(violations & mask)[0]
+            new_rand = np.random.normal(self.params.r1_mean, self.params.r1_sd, len(idx))
+            self._log_mov[idx] = (
+                self.params.corr_logmov_length * self.prev_log_mov[idx]
+                + self.params.corr_logmov_bathy * self._depths[idx]
+                + self.params.corr_logmov_salinity * self._salinity_vals[idx]
+                + new_rand
+            )
+            violations = self._log_mov > self.params.max_mov
+            retry += 1
+        # Emergency fallback: clamp to maxMov (Java Porpoise.java:387)
+        if np.any(violations & mask):
+            self._log_mov[violations & mask] = self.params.max_mov
+
         self.prev_log_mov[mask] = self._log_mov[mask]
 
-        # Convert to distance (10^log_mov) / 4.0 (for 400m cell adjustment)
-        np.power(10.0, self._log_mov, out=self._step_dist)
-        self._step_dist /= 4.0
+        # Update reference memory (stores food, computes veTotal and vt)
+        self._update_reference_memory(mask)
 
-        # Determine new positions
+        # Compute CRW unit direction vector from heading
         np.radians(self.heading, out=self._rads)
         np.sin(self._rads, out=self._dx)
-        self._dx *= self._step_dist
         np.cos(self._rads, out=self._dy)
-        self._dy *= self._step_dist
 
-        # Apply deterrence if exists
+        # Heading composition (Java Porpoise.java:556-566)
+        # crwContrib = inertiaConst + presMov * veTotal
+        np.power(10.0, self._log_mov, out=self._step_dist)
+        pres_mov = self._step_dist  # reuse buffer, will overwrite below
+        crw_contrib = self.params.inertia_const + pres_mov * self._ve_total
+
+        # totalD = (dx,dy) * crwContrib + vt + deterVt
+        total_dx = self._dx * crw_contrib + self._vt_x
+        total_dy = self._dy * crw_contrib + self._vt_y
+
+        # Apply deterrence vectors
         if deterrence_vectors is not None:
             d_dx, d_dy = deterrence_vectors
             self.deter_strength[mask] = np.abs(d_dx[mask]) + np.abs(d_dy[mask])
-            # Accumulate "was deterred" flag for reporting period
             self._was_deterred |= (self.deter_strength > 0) & mask
-            self._dx[mask] += d_dx[mask]
-            self._dy[mask] += d_dy[mask]
+            total_dx[mask] += d_dx[mask]
+            total_dy[mask] += d_dy[mask]
         else:
             self.deter_strength[mask] = 0.0
 
         # Social communication & cohesion
         if getattr(self.params, 'communication_enabled', False):
             soc_dx, soc_dy = self._compute_social_vectors(mask, ambient_rl)
-            self._dx[mask] += soc_dx[mask]
-            self._dy[mask] += soc_dy[mask]
+            total_dx[mask] += soc_dx[mask]
+            total_dy[mask] += soc_dy[mask]
+
+        # facePoint: new heading from composite vector (Java Porpoise.java:567)
+        new_heading = np.degrees(np.arctan2(total_dx, total_dy)) % 360
+        self.heading[mask] = new_heading[mask]
+
+        # Store total turn for next step (Java Porpoise.java:583)
+        total_turn = (self.heading - pre_movement_heading + 180) % 360 - 180
+        self.prev_angle[mask] = total_turn[mask]
+
+        # Step distance: presMov / 4.0 (Java Porpoise.java:589)
+        np.power(10.0, self._log_mov, out=self._step_dist)
+        self._step_dist /= 4.0
+
+        # Final dx/dy for actual movement from composite heading
+        np.radians(self.heading, out=self._rads)
+        np.sin(self._rads, out=self._dx)
+        self._dx *= self._step_dist
+        np.cos(self._rads, out=self._dy)
+        self._dy *= self._step_dist
 
     def _apply_dispersal_heading(self, mask: np.ndarray) -> None:
         """Apply reduced turning for dispersing porpoises (PSM-Type2)."""
@@ -893,8 +987,9 @@ class PorpoisePopulation:
         if not np.any(self._on_land):
             return
 
-        # Try turning to avoid land (DEPONS pattern)
-        for turn_angle in [40, 70, 120]:
+        # Try turning to avoid land (DEPONS pattern with random jitter)
+        for base_angle in [40, 70, 120]:
+            turn_angle = base_angle + np.random.uniform(0, 10)
             np.copyto(self._still_blocked, self._on_land)
 
             # Compute positions for both turn directions
@@ -935,6 +1030,39 @@ class PorpoisePopulation:
 
             # Mark as no longer blocked
             self._on_land[use_right | use_left] = False
+
+        # Backtrack fallback (Java Porpoise.java:505-533)
+        still_blocked = np.where(self._on_land)[0]
+        for idx in still_blocked:
+            n_hist = min(int(self._mem_count[idx]), 20)
+            ptr = int(self._mem_ptr[idx])
+            for h in range(n_hist):
+                buf_idx = (ptr - 1 - h) % self._stored_util.shape[1]
+                px = float(self._pos_history_x[idx, buf_idx])
+                py = float(self._pos_history_y[idx, buf_idx])
+                if self.landscape.get_depth(px, py) > 0:
+                    self._new_x[idx] = px
+                    self._new_y[idx] = py
+                    self._on_land[idx] = False
+                    break
+
+        # Deepest-neighbor fallback (Java Porpoise.java:962-976)
+        still_blocked2 = np.where(self._on_land)[0]
+        for idx in still_blocked2:
+            best_depth = -9999.0
+            best_x, best_y = float(self.x[idx]), float(self.y[idx])
+            for dx_off in [-1, 0, 1]:
+                for dy_off in [-1, 0, 1]:
+                    nx = float(self.x[idx]) + dx_off
+                    ny = float(self.y[idx]) + dy_off
+                    d = self.landscape.get_depth(nx, ny)
+                    if d > best_depth:
+                        best_depth = d
+                        best_x, best_y = nx, ny
+            self._new_x[idx] = best_x
+            self._new_y[idx] = best_y
+            if best_depth > 0:
+                self._on_land[idx] = False
 
         # For any still blocked, stay in place and turn around
         self._new_x[self._on_land] = self.x[self._on_land]
@@ -986,8 +1114,21 @@ class PorpoisePopulation:
 
     def _apply_positions(self, mask: np.ndarray) -> None:
         """Apply final positions and update adaptive neighbor recompute."""
+        # Save pre-move positions for post-move depth check
+        pre_move_x = self.x.copy()
+        pre_move_y = self.y.copy()
+
         self.x[mask] = self._new_x[mask]
         self.y[mask] = self._new_y[mask]
+
+        # Post-move depth check (Java Porpoise.java:639-660)
+        if self.landscape is not None:
+            post_positions = np.column_stack((self.x, self.y))
+            post_depths = self.landscape.get_depths_vectorized(post_positions)
+            on_land = mask & (post_depths <= 0)
+            if np.any(on_land):
+                self.x[on_land] = pre_move_x[on_land]
+                self.y[on_land] = pre_move_y[on_land]
 
         # Adaptive neighbor recompute based on displacement
         try:
@@ -1460,6 +1601,61 @@ class PorpoisePopulation:
     def _update_aging(self, mask: np.ndarray) -> None:
         """Update aging for active agents (continuous small increments)."""
         self.age[mask] += 1.0 / 360.0 / 48.0  # Age in years per tick (360 days/year, consistent with DEPONS)
+
+    def _update_reference_memory(self, mask: np.ndarray) -> None:
+        """Update reference memory: record food and position, compute veTotal and vt.
+
+        Called every tick before movement heading computation.
+        Java ref: FastRefMemTurn.java:53-64 (store), Porpoise.java:688-705 (veTotal)
+        """
+        from cenop.behavior.ref_mem import (
+            get_ref_mem_strength_table, get_work_mem_strength_table,
+            compute_ve_total, compute_attraction_vector,
+        )
+
+        if self.landscape is None:
+            return
+
+        active = np.where(mask)[0]
+        if len(active) == 0:
+            return
+
+        mem_size = self._stored_util.shape[1]
+
+        # IMPORTANT: Java computes vt and veTotal BEFORE storing current position
+        # (Porpoise.java:264-277 — refMemTurn + getExpFoodVal before posList.add)
+
+        # 1. Compute veTotal FIRST (uses existing buffer, before new entry)
+        work_table = get_work_mem_strength_table(self.params.r_s, mem_size)
+        self._ve_total = compute_ve_total(
+            self._stored_util, self._mem_ptr, self._mem_count, work_table, mask
+        )
+
+        # 2. Compute attraction vector vt FIRST (uses existing buffer)
+        ref_table = get_ref_mem_strength_table(self.params.r_r, mem_size)
+        world_w = self.landscape.width if self.landscape else 0
+        world_h = self.landscape.height if self.landscape else 0
+        new_vt_x, new_vt_y = compute_attraction_vector(
+            self._stored_util, self._pos_history_x, self._pos_history_y,
+            self._mem_ptr, self._mem_count,
+            self.x, self.y, ref_table, mask, world_w, world_h,
+        )
+        # Java: if refMemTurn returns null, keep previous vt (Porpoise.java:266-267)
+        has_history = self._mem_count >= 2
+        update = mask & has_history
+        self._vt_x[update] = new_vt_x[update]
+        self._vt_y[update] = new_vt_y[update]
+
+        # 3. NOW store current food and position in circular buffer (vectorized)
+        positions = np.column_stack((self.x[mask], self.y[mask]))
+        food_levels = self.landscape.get_food_levels_vectorized(positions)
+
+        ptrs = self._mem_ptr[active]
+        self._stored_util[active, ptrs] = food_levels
+        self._pos_history_x[active, ptrs] = self.x[active]
+        self._pos_history_y[active, ptrs] = self.y[active]
+        self._mem_ptr[active] = (ptrs + 1) % mem_size
+        self._mem_count[active] = np.minimum(self._mem_count[active] + 1, mem_size)
 
     def _handle_reproduction(self, mask: np.ndarray) -> None:
         """Handle reproduction — delegates to pregnancy FSM on day boundaries.

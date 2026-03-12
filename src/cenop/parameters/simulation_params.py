@@ -86,7 +86,8 @@ class SimulationParameters:
     # === Memory ===
     r_s: float = 0.03                  # Satiation memory decay rate (DEPONS 3.2)
     r_r: float = 0.03                  # Reference memory decay rate (DEPONS 3.2)
-    
+    ref_mem_size: int = 120             # Reference memory buffer size (entries per agent)
+
     # === Movement ===
     inertia_const: float = 0.001       # k: tendency to keep moving with CRW
     corr_logmov_length: float = 0.35   # a0: autoregressive for log10(d/100)

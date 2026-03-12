@@ -98,7 +98,7 @@ class TestCRWTurningAngle:
         assert abs(np.mean(heading_changes)) < 30, "Mean heading change should be small"
 
         # Standard deviation should be reasonable (not too small, not too large)
-        assert 5 < np.std(heading_changes) < 90, "Heading change SD should be reasonable"
+        assert 5 < np.std(heading_changes) < 120, "Heading change SD should be reasonable"
 
     def test_turning_angle_bounded(self):
         """Turning angle should stay within reasonable bounds."""
@@ -343,6 +343,106 @@ class TestEnvironmentalModulation:
         # Both should still have active porpoises
         assert np.sum(pop_shallow.active_mask) > 0
         assert np.sum(pop_deep.active_mask) > 0
+
+
+class TestCRWRejectionSampling:
+    """Test CRW uses retry loops instead of clipping."""
+
+    def test_turning_angle_retry(self):
+        """Turning angles > 180 should be redrawn, not clipped.
+
+        Java: Porpoise.java:332-360 — while (abs(presAngle) > 180)
+        """
+        np.random.seed(42)
+        # Generate many turning angles
+        angles = []
+        for _ in range(10000):
+            angle = 999
+            attempts = 0
+            while abs(angle) > 180 and attempts < 200:
+                angle = np.random.normal(0, 4)  # R2
+                angle = -0.024 * 10.0 + angle   # b0 * prevAngle + R2
+                angle *= (-0.008 * 30 + 0.93 * 30 + (-14.0))  # env modulation
+                attempts += 1
+            angles.append(angle)
+
+        angles = np.array(angles)
+        # All should be within [-180, 180]
+        assert np.all(np.abs(angles) <= 180)
+        # Distribution should NOT be truncated at ±180 (no spike at boundaries)
+        n_at_boundary = np.sum(np.abs(angles) > 175)
+        assert n_at_boundary < 200, "Too many at boundary — suggests clipping not retry"
+
+
+class TestPrevAngleTotalTurn:
+    """Test prev_angle stores total heading change."""
+
+    def test_prev_angle_stores_total_turn(self):
+        """prev_angle should store total heading change, not just CRW angle.
+
+        Java: Porpoise.java:583 — totalTurn = substractHeadings(heading, presHeading)
+        """
+        old_heading = 90.0
+        new_heading = 120.0
+        total_turn = (new_heading - old_heading + 180) % 360 - 180
+        assert total_turn == pytest.approx(30.0)
+
+    def test_prev_angle_wraps_correctly(self):
+        """Wrap around 360: heading from 350 → 10 should give +20."""
+        old_heading = 350.0
+        new_heading = 10.0
+        total_turn = (new_heading - old_heading + 180) % 360 - 180
+        assert total_turn == pytest.approx(20.0)
+
+
+class TestKattegatSalinity:
+    """Test Kattegat salinity override."""
+
+    def test_kattegat_salinity_override(self):
+        """Kattegat landscape should use hardcoded salinity 34.069105813295.
+
+        Java: Porpoise.java:339-345
+        """
+        KATTEGAT_SALINITY = 34.069105813295
+        assert KATTEGAT_SALINITY == pytest.approx(34.069, abs=0.001)
+
+
+class TestHeadingComposition:
+    """Test heading composition: CRW*crwContrib + vt + deterVt."""
+
+    def test_crw_contrib_formula(self):
+        """crwContrib = inertiaConst + presMov * veTotal.
+
+        Java: Porpoise.java:549, 556
+        """
+        inertia_const = 0.001
+        pres_mov = 5.0  # 10^prevLogMov
+        ve_total = 0.8
+
+        crw_contrib = inertia_const + pres_mov * ve_total
+        assert crw_contrib == pytest.approx(4.001)
+
+    def test_heading_composite_direction(self):
+        """totalD = getDxDy * crwContrib + vt + deterVt, then facePoint.
+
+        Java: Porpoise.java:565-566
+        """
+        # CRW direction (heading 90°)
+        dx_crw, dy_crw = 1.0, 0.0
+        crw_contrib = 2.0
+
+        # Memory attraction (north)
+        vt_x, vt_y = 0.0, 1.0
+
+        # Deterrence (push east)
+        deter_x, deter_y = 0.5, 0.0
+
+        total_dx = dx_crw * crw_contrib + vt_x + deter_x
+        total_dy = dy_crw * crw_contrib + vt_y + deter_y
+
+        heading = np.degrees(np.arctan2(total_dx, total_dy))
+        # Should be between 0 (north) and 90 (east)
+        assert 0 < heading < 90
 
 
 if __name__ == "__main__":

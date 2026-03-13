@@ -696,6 +696,25 @@ def create_app_ui():
         style="display: inline-flex; align-items: center; margin-right: 1rem;"
     )
     
+    # JS handler to sync legend checkboxes with actual layer visibility.
+    # Unchecks specific checkboxes by label text in the deck-legend-ctrl.
+    legend_sync_js = """
+        Shiny.addCustomMessageHandler("cenop_sync_legend", function(payload) {
+            var hidden = payload.hidden_labels || [];
+            var ctrl = document.querySelector('.deck-legend-ctrl');
+            if (!ctrl) return;
+            var rows = ctrl.querySelectorAll('.deck-legend-row');
+            rows.forEach(function(row) {
+                var label = row.querySelector('.deck-legend-label');
+                var cb = row.querySelector('.deck-legend-cb');
+                if (label && cb && hidden.indexOf(label.textContent) >= 0) {
+                    cb.checked = false;
+                    cb.dispatchEvent(new Event('change'));
+                }
+            });
+        });
+    """
+
     return ui.page_navbar(
         head_includes(),
         dashboard_tab(),
@@ -712,7 +731,7 @@ def create_app_ui():
         sidebar=create_sidebar(),
         title=title_with_logo,
         theme=shinyswatch.theme.flatly,
-        header=ui.tags.style(CUSTOM_CSS),
+        header=ui.TagList(ui.tags.style(CUSTOM_CSS), ui.tags.script(legend_sync_js)),
         fillable=True
     )
 

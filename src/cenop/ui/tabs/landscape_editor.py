@@ -6,7 +6,7 @@ using a shiny-deckgl MapWidget.
 """
 
 from shiny import ui
-from shiny_deckgl import MapWidget, CARTO_POSITRON
+from shiny_deckgl import MapWidget, CARTO_POSITRON, fullscreen_widget
 
 # Module-level widget instance — shared between UI and server
 gis_map = MapWidget(

@@ -28,7 +28,7 @@ from .renderers.chart_helpers import (
     no_data_placeholder
 )
 
-from shiny_deckgl import zoom_widget, compass_widget, scale_widget, deck_legend_control, bitmap_layer, scatterplot_layer
+from shiny_deckgl import zoom_widget, compass_widget, scale_widget, fullscreen_widget, bitmap_layer, scatterplot_layer
 from cenop.ui.tabs.dashboard import sim_map
 from cenop.server.map_layers import (
     build_porpoise_layer,
@@ -286,54 +286,8 @@ def server(input, output, session):
     # --- shiny-deckgl layer cache ---
     _layer_cache: dict[str, dict] = {}
 
-    # Legend entries for deck_legend_control (matches layer IDs)
-    _legend_entries = [
-        {
-            "layer_id": "depth-bitmap",
-            "label": "Bathymetry",
-            "colors": [
-                [1, 31, 75], [3, 56, 108], [15, 94, 156],
-                [46, 134, 193], [86, 180, 233], [166, 216, 247],
-            ],
-            "shape": "rect",
-        },
-        {
-            "layer_id": "foraging-bitmap",
-            "label": "Foraging",
-            "colors": [
-                [8, 48, 20], [20, 100, 40], [40, 160, 60],
-                [80, 200, 80], [140, 230, 100], [200, 255, 140],
-            ],
-            "shape": "rect",
-        },
-        {
-            "layer_id": "noise-construction",
-            "label": "Construction noise",
-            "color": [255, 60, 60, 160],
-            "shape": "circle",
-        },
-        {
-            "layer_id": "noise-operational",
-            "label": "Operational noise",
-            "color": [255, 200, 60, 120],
-            "shape": "circle",
-        },
-        {
-            "layer_id": "turbine-poles",
-            "label": "Wind turbines",
-            "color": [50, 160, 240],
-            "shape": "rect",
-        },
-        {
-            "layer_id": "porpoises",
-            "label": "Porpoises",
-            "color": [0, 150, 255],
-            "shape": "circle",
-        },
-    ]
-
     async def _push_all_layers():
-        """Combine cached layers, legend, and push to MapWidget."""
+        """Combine cached layers and push to MapWidget."""
         layers = [
             _layer_cache.get("depth-bitmap", bitmap_layer("depth-bitmap", "", [], visible=False)),
             _layer_cache.get("depth-tooltip", scatterplot_layer("depth-tooltip", [], visible=False)),
@@ -352,15 +306,28 @@ def server(input, output, session):
                 zoom_widget(placement="top-right"),
                 compass_widget(placement="top-right"),
                 scale_widget(placement="bottom-left"),
-                deck_legend_control(
-                    _legend_entries,
-                    position="bottom-right",
-                    show_checkbox=True,
-                    collapsed=False,
-                    title="Layers",
-                ),
+                fullscreen_widget(placement="top-left"),
             ],
         )
+        # Sync legend checkboxes with actual layer visibility.
+        # The legend control renders before layers exist, so checkboxes default
+        # to checked. After pushing layers, uncheck layers with no data via JS.
+        _legend_layer_map = {
+            "Bathymetry": "depth-bitmap",
+            "Foraging": "foraging-bitmap",
+            "Construction noise": "noise-construction",
+            "Operational noise": "noise-operational",
+            "Wind turbines": "turbine-poles",
+            "Porpoises": "porpoises",
+        }
+        hidden = [
+            label for label, lid in _legend_layer_map.items()
+            if _layer_cache.get(lid, {}).get("visible") is False
+        ]
+        if hidden:
+            await session.send_custom_message(
+                "cenop_sync_legend", {"hidden_labels": hidden}
+            )
 
     async def _push_dynamic_layers(*layer_ids: str):
         """Partial layer push — only sends specified layers by ID.
@@ -1377,6 +1344,9 @@ def server(input, output, session):
             layers = build_grid_bitmap_layer(
                 "foraging", food, landscape.metadata, source_crs, "green",
             )
+            # Foraging starts hidden — user can toggle via legend checkbox
+            layers[0]["visible"] = False
+            layers[1]["visible"] = False
             _layer_cache["foraging-bitmap"] = layers[0]
             _layer_cache["foraging-tooltip"] = layers[1]
 

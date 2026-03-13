@@ -47,6 +47,7 @@ if "shiny_deckgl" not in sys.modules:
     _shiny_deckgl.scale_widget = MagicMock(name="scale_widget")
     _shiny_deckgl.zoom_widget = MagicMock(name="zoom_widget")
     _shiny_deckgl.compass_widget = MagicMock(name="compass_widget")
+    _shiny_deckgl.fullscreen_widget = MagicMock(name="fullscreen_widget")
     _shiny_deckgl.head_includes = MagicMock(name="head_includes")
 
     # MapWidget mock with .ui(), .update(), .fly_to() methods

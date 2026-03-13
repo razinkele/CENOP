@@ -8,7 +8,7 @@ shiny-deckgl MapWidget in the Landscape tab.
 import logging
 import numpy as np
 from shiny import render, ui, reactive
-from shiny_deckgl import deck_legend_control, scale_widget
+from shiny_deckgl import deck_legend_control, scale_widget, fullscreen_widget
 
 from cenop.ui.tabs.landscape_editor import gis_map
 from cenop.server.map_layers import (
@@ -159,7 +159,10 @@ def register_gis_editor_renderers(input, output, session, state):
         await gis_map.update(
             session,
             layers=layers,
-            widgets=[scale_widget(placement="bottom-left")],
+            widgets=[
+                scale_widget(placement="bottom-left"),
+                fullscreen_widget(placement="top-left"),
+            ],
         )
 
         # Legend is a MapLibre control — must use set_controls, not update

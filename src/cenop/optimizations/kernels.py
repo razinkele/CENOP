@@ -247,6 +247,7 @@ def eat_food_kernel(
     fraction,    # 1D float32 — fraction to eat per agent
     food_eaten,  # 1D float32 — output: actual food eaten per agent
     min_food,    # float — minimum food floor (ADD_ARTIFICIAL_FOOD)
+    demand_grid, # 2D float32 array (rows, cols) — pre-allocated buffer
 ):
     """
     Eat food from grid cells — two-pass proportional-sharing kernel.
@@ -261,6 +262,9 @@ def eat_food_kernel(
             otherwise, eat proportional share of supply (matching DEPONS
             Java semantics: eat first, floor after).
 
+    demand_grid must be pre-allocated with shape matching food_grid;
+    it is zeroed at the start of each call and used as scratch space.
+
     Modifies food_grid and food_eaten in-place.
     """
     rows = food_grid.shape[0]
@@ -268,7 +272,7 @@ def eat_food_kernel(
     n = x_indices.shape[0]
 
     # --- Pass 1: accumulate per-cell demand ---
-    demand_grid = np.zeros((rows, cols), dtype=np.float32)
+    demand_grid[:, :] = 0.0
     agent_demand = np.empty(n, dtype=np.float32)
 
     for i in range(n):
@@ -430,7 +434,8 @@ def warmup_kernels():
     yi = np.array([0, 0], dtype=np.int32)
     fr = np.array([0.1, 0.2], dtype=np.float32)
     fe = np.zeros(2, dtype=np.float32)
-    eat_food_kernel(fg, xi, yi, fr, fe, 0.01)
+    dg = np.zeros((2, 2), dtype=np.float32)
+    eat_food_kernel(fg, xi, yi, fr, fe, 0.01, dg)
     # Warmup BMR cost kernel
     spd = np.ones(2, dtype=np.float32)
     scl = np.ones(2, dtype=np.float32)

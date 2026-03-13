@@ -349,8 +349,9 @@ class DEPONSEnergyModule(EnergyModule):
         # Energy balance
         energy_balance = np.where(net_change >= 0, 1, -1).astype(np.float32)
 
-        # Survival probability
-        survival_prob = self.compute_survival_probability(state, mask)
+        # Survival probability — skipped here; computed lazily via
+        # compute_survival_probability() when actually needed (e.g. mortality check).
+        survival_prob = np.zeros(count, dtype=np.float32)
 
         return EnergyResult(
             energy_intake=energy_intake,
@@ -464,21 +465,23 @@ class DEPONSEnergyModule(EnergyModule):
 
         return total_cost
 
-    def _get_seasonal_scaling(self, month: int, count: int) -> np.ndarray:
+    def _get_seasonal_scaling(self, month: int, count: int) -> np.float32:
         """Get seasonal energy scaling factor.
 
         DEPONS 3-state step function:
         - Months 5-9 (May-Sep): e_warm (1.3)
         - Months 4, 10 (Apr, Oct): 1.15 (transition)
         - Months 1-3, 11-12: 1.0 (winter)
+
+        Returns a scalar np.float32 that broadcasts with arrays.
+        The count parameter is retained for backward compatibility.
         """
         if 5 <= month <= 9:
-            factor = self.e_warm
+            return np.float32(self.e_warm)
         elif month in (4, 10):
-            factor = 1.15
+            return np.float32(1.15)
         else:
-            factor = 1.0
-        return np.full(count, factor, dtype=np.float32)
+            return np.float32(1.0)
 
     def get_mode(self) -> EnergyMode:
         return EnergyMode.DEPONS
@@ -621,8 +624,9 @@ class JASMINEEnergyModule(EnergyModule):
         # Energy balance indicator
         energy_balance = np.where(net_change >= 0, 1, -1).astype(np.float32)
 
-        # Survival probability
-        survival_prob = self.compute_survival_probability(state, mask)
+        # Survival probability — skipped here; computed lazily via
+        # compute_survival_probability() when actually needed (e.g. mortality check).
+        survival_prob = np.zeros(count, dtype=np.float32)
 
         return EnergyResult(
             energy_intake=energy_intake,

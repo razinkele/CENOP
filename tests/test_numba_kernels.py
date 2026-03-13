@@ -258,8 +258,9 @@ class TestEatFoodKernel:
         y = np.array([0], dtype=np.int32)  # row
         fraction = np.array([0.5], dtype=np.float32)
         food_eaten = np.zeros(1, dtype=np.float32)
+        demand_grid = np.zeros_like(food_grid)
 
-        eat_food_kernel(food_grid, x, y, fraction, food_eaten, 0.01)
+        eat_food_kernel(food_grid, x, y, fraction, food_eaten, 0.01, demand_grid)
 
         # Food at [0,1] was 20.0, ate 50% = 10.0
         assert food_eaten[0] == pytest.approx(10.0, abs=0.01)
@@ -275,8 +276,9 @@ class TestEatFoodKernel:
         # Both want 60%: total demand = 120% > available
         fraction = np.array([0.6, 0.6], dtype=np.float32)
         food_eaten = np.zeros(2, dtype=np.float32)
+        demand_grid = np.zeros_like(food_grid)
 
-        eat_food_kernel(food_grid, x, y, fraction, food_eaten, 0.01)
+        eat_food_kernel(food_grid, x, y, fraction, food_eaten, 0.01, demand_grid)
 
         # Total demand: 60 + 60 = 120, available: 100 (full cell food)
         # Each gets proportional share: 60/120 * 100 = 50.0
@@ -295,8 +297,9 @@ class TestEatFoodKernel:
         y = np.array([0, 0], dtype=np.int32)
         fraction = np.array([0.2, 0.3], dtype=np.float32)
         food_eaten = np.zeros(2, dtype=np.float32)
+        demand_grid = np.zeros_like(food_grid)
 
-        eat_food_kernel(food_grid, x, y, fraction, food_eaten, 0.01)
+        eat_food_kernel(food_grid, x, y, fraction, food_eaten, 0.01, demand_grid)
 
         # Total demand: 20 + 30 = 50, available: 100, no competition
         assert food_eaten[0] == pytest.approx(20.0, abs=0.01)
@@ -313,13 +316,15 @@ class TestEatFoodKernel:
         y = np.array([0, 0], dtype=np.int32)
         frac_fwd = np.array([0.7, 0.5], dtype=np.float32)
         eaten_fwd = np.zeros(2, dtype=np.float32)
-        eat_food_kernel(grid1, x, y, frac_fwd, eaten_fwd, 0.01)
+        dg = np.zeros_like(grid1)
+        eat_food_kernel(grid1, x, y, frac_fwd, eaten_fwd, 0.01, dg)
 
         # Reverse order
         grid2 = np.array([[100.0]], dtype=np.float32)
         frac_rev = np.array([0.5, 0.7], dtype=np.float32)
         eaten_rev = np.zeros(2, dtype=np.float32)
-        eat_food_kernel(grid2, x, y, frac_rev, eaten_rev, 0.01)
+        dg2 = np.zeros_like(grid2)
+        eat_food_kernel(grid2, x, y, frac_rev, eaten_rev, 0.01, dg2)
 
         # Agent asking for 0.7 should get same amount in both orderings
         assert eaten_fwd[0] == pytest.approx(eaten_rev[1], abs=0.01), \
@@ -335,8 +340,9 @@ class TestEatFoodKernel:
         y = np.array([0], dtype=np.int32)
         fraction = np.array([0.99], dtype=np.float32)
         food_eaten = np.zeros(1, dtype=np.float32)
+        demand_grid = np.zeros_like(food_grid)
 
-        eat_food_kernel(food_grid, x, y, fraction, food_eaten, 0.01)
+        eat_food_kernel(food_grid, x, y, fraction, food_eaten, 0.01, demand_grid)
 
         assert food_grid[0, 0] >= 0.01
 
@@ -420,7 +426,7 @@ class TestDEPONSBmrCostKernel:
         py_cost = module.compute_bmr_cost(state, context, mask)
 
         # Get seasonal scaling that Python used
-        scaling = module._get_seasonal_scaling(6, n).astype(np.float32)
+        scaling = np.full(n, float(module._get_seasonal_scaling(6, n)), dtype=np.float32)
 
         # Numba path
         nb_cost = np.zeros(n, dtype=np.float32)

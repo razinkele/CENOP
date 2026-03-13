@@ -380,7 +380,7 @@ class TestSeasonalScaling:
 
         for month in [5, 6, 7, 8, 9]:
             scaling = module._get_seasonal_scaling(month, 1)
-            assert scaling[0] == pytest.approx(params.e_warm, abs=1e-5), \
+            assert float(scaling) == pytest.approx(params.e_warm, abs=1e-5), \
                 f"Month {month} should use e_warm={params.e_warm}"
 
     def test_transition_months_4_and_10(self):
@@ -390,7 +390,7 @@ class TestSeasonalScaling:
 
         for month in [4, 10]:
             scaling = module._get_seasonal_scaling(month, 1)
-            assert scaling[0] == pytest.approx(1.15, abs=1e-5), \
+            assert float(scaling) == pytest.approx(1.15, abs=1e-5), \
                 f"Month {month} should use transition scaling 1.15"
 
     def test_winter_months(self):
@@ -400,7 +400,7 @@ class TestSeasonalScaling:
 
         for month in [1, 2, 3, 11, 12]:
             scaling = module._get_seasonal_scaling(month, 1)
-            assert scaling[0] == pytest.approx(1.0, abs=1e-5), \
+            assert float(scaling) == pytest.approx(1.0, abs=1e-5), \
                 f"Month {month} should use winter scaling 1.0"
 
     def test_warm_water_bmr_uses_correct_months(self):

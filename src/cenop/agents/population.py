@@ -240,6 +240,30 @@ class PorpoisePopulation:
         self._env_mod_angle = np.zeros(count, dtype=np.float32)  # b1*depth + b2*salinity + b3
         self._scaling_factor = np.zeros(count, dtype=np.float32)
 
+        # === Pre-allocated reference memory workspace ===
+        _REF_MEM_SIZE_INIT = params.ref_mem_size if hasattr(params, 'ref_mem_size') else 120
+        from cenop.behavior.ref_mem import RefMemWorkspace
+        self._ref_mem_workspace = RefMemWorkspace.create(count, _REF_MEM_SIZE_INIT)
+
+        # === Pre-allocated buffers to eliminate per-tick .copy() calls ===
+        self._pre_move_x = np.zeros(count, dtype=np.float32)
+        self._pre_move_y = np.zeros(count, dtype=np.float32)
+        self._orig_dx = np.zeros(count, dtype=np.float32)
+        self._orig_dy = np.zeros(count, dtype=np.float32)
+        self._pre_heading = np.zeros(count, dtype=np.float32)
+        self._positions = np.zeros((count, 2), dtype=np.float32)  # Reusable (N,2) buffer
+
+        # === Pre-allocated float64 buffers for Numba turn_position_kernel ===
+        self._f64_x = np.zeros(count, dtype=np.float64)
+        self._f64_y = np.zeros(count, dtype=np.float64)
+        self._f64_heading = np.zeros(count, dtype=np.float64)
+        self._f64_step = np.zeros(count, dtype=np.float64)
+        self._f64_out_x = np.zeros(count, dtype=np.float64)
+        self._f64_out_y = np.zeros(count, dtype=np.float64)
+        self._f64_out_heading = np.zeros(count, dtype=np.float64)
+        # All-true mask for turn_position fallback path
+        self._all_mask = np.ones(count, dtype=bool)
+
         # === Pre-allocated arrays for land avoidance loop ===
         self._on_land = np.zeros(count, dtype=bool)
         self._still_blocked = np.zeros(count, dtype=bool)
@@ -664,10 +688,11 @@ class PorpoisePopulation:
         # === Get environmental variables from landscape ===
         # DEPONS CRW uses depth and salinity to modulate movement
         if self.landscape is not None:
-            # Build positions array for vectorized lookup
-            positions = np.column_stack((self.x, self.y))
-            np.copyto(self._depths, self.landscape.get_depths_vectorized(positions))
-            np.copyto(self._salinity_vals, self.landscape.get_salinities_vectorized(positions))
+            # Build positions array for vectorized lookup (reuse pre-allocated buffer)
+            self._positions[:, 0] = self.x
+            self._positions[:, 1] = self.y
+            np.copyto(self._depths, self.landscape.get_depths_vectorized(self._positions))
+            np.copyto(self._salinity_vals, self.landscape.get_salinities_vectorized(self._positions))
             # Kattegat salinity override (Java Porpoise.java:339-345)
             landscape_name = getattr(self.landscape, 'landscape_name', '')
             if landscape_name == 'Kattegat':
@@ -783,7 +808,7 @@ class PorpoisePopulation:
             self.prev_log_mov[mask] = self._log_mov[mask]
 
         # Capture pre-movement heading for prev_angle computation (Task 6)
-        pre_movement_heading = self.heading.copy()
+        np.copyto(self._pre_heading, self.heading)
 
         self.heading[mask] += self._pres_angle[mask]
         self.heading[mask] %= 360.0
@@ -805,9 +830,9 @@ class PorpoisePopulation:
 
         # Heading composition (Java Porpoise.java:556-566)
         # crwContrib = inertiaConst + presMov * veTotal
+        # Compute 10^log_mov once and reuse for both crwContrib and step distance
         np.power(10.0, self._log_mov, out=self._step_dist)
-        pres_mov = self._step_dist  # reuse buffer, will overwrite below
-        crw_contrib = self.params.inertia_const + pres_mov * self._ve_total
+        crw_contrib = self.params.inertia_const + self._step_dist * self._ve_total
 
         # totalD = (dx,dy) * crwContrib + vt + deterVt
         total_dx = self._dx * crw_contrib + self._vt_x
@@ -838,11 +863,11 @@ class PorpoisePopulation:
             self.heading[_disp_mask] = _saved_disp_heading
 
         # Store total turn for next step (Java Porpoise.java:583)
-        total_turn = (self.heading - pre_movement_heading + 180) % 360 - 180
+        total_turn = (self.heading - self._pre_heading + 180) % 360 - 180
         self.prev_angle[mask] = total_turn[mask]
 
         # Step distance: presMov / 4.0 (Java Porpoise.java:589)
-        np.power(10.0, self._log_mov, out=self._step_dist)
+        # _step_dist already holds 10^log_mov from heading composition above
         self._step_dist /= 4.0
 
         # Override step distance for dispersing agents (Java AbstractPSMDispersal.java:210)
@@ -1012,15 +1037,15 @@ class PorpoisePopulation:
         world_h = self.landscape.height if self.landscape else self.params.world_height
         # Save original dx/dy to detect which agents got reflected
         # (_reflect_boundaries flips dx/dy signs for reflected agents)
-        orig_dx = self._dx.copy()
-        orig_dy = self._dy.copy()
-        
+        np.copyto(self._orig_dx, self._dx)
+        np.copyto(self._orig_dy, self._dy)
+
         self._reflect_boundaries(self._new_x, self._new_y, self._dx, self._dy,
                                  world_w, world_h, mask)
 
         # Recalculate heading ONLY for agents whose displacement was reflected
         # (DEPONS Porpoise.forward(): setHeading + setPrevAngle(0) after bounce)
-        reflected = mask & ((self._dx != orig_dx) | (self._dy != orig_dy))
+        reflected = mask & ((self._dx != self._orig_dx) | (self._dy != self._orig_dy))
         if np.any(reflected):
             self.heading[reflected] = np.degrees(
                 np.arctan2(self._dx[reflected], self._dy[reflected])
@@ -1091,38 +1116,52 @@ class PorpoisePopulation:
             # Mark as no longer blocked
             self._on_land[use_right | use_left] = False
 
-        # Backtrack fallback (Java Porpoise.java:505-533)
+        # Backtrack fallback (Java Porpoise.java:505-533) — vectorized
         still_blocked = np.where(self._on_land)[0]
-        for idx in still_blocked:
-            n_hist = min(int(self._mem_count[idx]), 20)
-            ptr = int(self._mem_ptr[idx])
-            for h in range(n_hist):
-                buf_idx = (ptr - 1 - h) % self._stored_util.shape[1]
-                px = float(self._pos_history_x[idx, buf_idx])
-                py = float(self._pos_history_y[idx, buf_idx])
-                if self.landscape.get_depth(px, py) > 0:
-                    self._new_x[idx] = px
-                    self._new_y[idx] = py
-                    self._on_land[idx] = False
+        if len(still_blocked) > 0 and hasattr(self.landscape, '_depth') and self.landscape._depth is not None:
+            depth_grid = self.landscape._depth
+            mem_size = self._stored_util.shape[1]
+            max_hist = 20
+            for h in range(max_hist):
+                remaining = np.where(self._on_land)[0]
+                if len(remaining) == 0:
                     break
+                valid = remaining[self._mem_count[remaining] > h]
+                if len(valid) == 0:
+                    continue
+                buf_idx = (self._mem_ptr[valid].astype(np.int32) - 1 - h) % mem_size
+                px = self._pos_history_x[valid, buf_idx]
+                py = self._pos_history_y[valid, buf_idx]
+                xi = np.clip(px.astype(np.int32), 0, self.landscape.width - 1)
+                yi = np.clip(py.astype(np.int32), 0, self.landscape.height - 1)
+                depths_at = depth_grid[yi, xi]
+                found = depths_at > 0
+                found_idx = valid[found]
+                self._new_x[found_idx] = px[found]
+                self._new_y[found_idx] = py[found]
+                self._on_land[found_idx] = False
 
-        # Deepest-neighbor fallback (Java Porpoise.java:962-976)
+        # Deepest-neighbor fallback (Java Porpoise.java:962-976) — vectorized
         still_blocked2 = np.where(self._on_land)[0]
-        for idx in still_blocked2:
-            best_depth = -9999.0
-            best_x, best_y = float(self.x[idx]), float(self.y[idx])
+        if len(still_blocked2) > 0 and hasattr(self.landscape, '_depth') and self.landscape._depth is not None:
+            depth_grid = self.landscape._depth
+            best_depth = np.full(len(still_blocked2), -9999.0, dtype=np.float32)
+            best_x = self.x[still_blocked2].copy()
+            best_y = self.y[still_blocked2].copy()
             for dx_off in [-1, 0, 1]:
                 for dy_off in [-1, 0, 1]:
-                    nx = float(self.x[idx]) + dx_off
-                    ny = float(self.y[idx]) + dy_off
-                    d = self.landscape.get_depth(nx, ny)
-                    if d > best_depth:
-                        best_depth = d
-                        best_x, best_y = nx, ny
-            self._new_x[idx] = best_x
-            self._new_y[idx] = best_y
-            if best_depth > 0:
-                self._on_land[idx] = False
+                    nx = self.x[still_blocked2] + dx_off
+                    ny = self.y[still_blocked2] + dy_off
+                    xi = np.clip(nx.astype(np.int32), 0, self.landscape.width - 1)
+                    yi = np.clip(ny.astype(np.int32), 0, self.landscape.height - 1)
+                    d = depth_grid[yi, xi]
+                    better = d > best_depth
+                    best_depth[better] = d[better]
+                    best_x[better] = nx[better]
+                    best_y[better] = ny[better]
+            self._new_x[still_blocked2] = best_x
+            self._new_y[still_blocked2] = best_y
+            self._on_land[still_blocked2] = best_depth <= 0
 
         # For any still blocked, stay in place and turn around
         self._new_x[self._on_land] = self.x[self._on_land]
@@ -1177,21 +1216,22 @@ class PorpoisePopulation:
 
     def _apply_positions(self, mask: np.ndarray) -> None:
         """Apply final positions and update adaptive neighbor recompute."""
-        # Save pre-move positions for post-move depth check
-        pre_move_x = self.x.copy()
-        pre_move_y = self.y.copy()
+        # Save pre-move positions for post-move depth check (reuse pre-allocated buffers)
+        np.copyto(self._pre_move_x, self.x)
+        np.copyto(self._pre_move_y, self.y)
 
         self.x[mask] = self._new_x[mask]
         self.y[mask] = self._new_y[mask]
 
         # Post-move depth check (Java Porpoise.java:639-660)
         if self.landscape is not None:
-            post_positions = np.column_stack((self.x, self.y))
-            post_depths = self.landscape.get_depths_vectorized(post_positions)
+            self._positions[:, 0] = self.x
+            self._positions[:, 1] = self.y
+            post_depths = self.landscape.get_depths_vectorized(self._positions)
             on_land = mask & (post_depths <= 0)
             if np.any(on_land):
-                self.x[on_land] = pre_move_x[on_land]
-                self.y[on_land] = pre_move_y[on_land]
+                self.x[on_land] = self._pre_move_x[on_land]
+                self.y[on_land] = self._pre_move_y[on_land]
 
         # Adaptive neighbor recompute based on displacement
         try:
@@ -1271,9 +1311,8 @@ class PorpoisePopulation:
         scaling_factor = self._get_energy_scaling(current_month, mask)
 
         bmr_cost = 0.001 * scaling_factor * self.params.e_use_per_30_min
-        swimming_cost = (10.0 ** self.prev_log_mov) * 0.001 * scaling_factor * 0.0  # E_USE_PER_KM = 0
-
-        total_cost = bmr_cost + swimming_cost
+        # E_USE_PER_KM = 0 in DEPONS, so swimming_cost is always zero
+        total_cost = bmr_cost
         self.energy[mask] -= total_cost[mask]
 
         # Expose per-step averages for dashboard
@@ -1362,8 +1401,9 @@ class PorpoisePopulation:
         # Water temperature
         water_temp = np.full(self.count, 10.0, dtype=np.float32)
         if self.landscape is not None and hasattr(self.landscape, 'get_temperature'):
-            positions = np.column_stack((self.x, self.y))
-            water_temp = self.landscape.get_temperature(positions)
+            self._positions[:, 0] = self.x
+            self._positions[:, 1] = self.y
+            water_temp = self.landscape.get_temperature(self._positions)
 
         # Convert step_dist (cells/tick) to speed (m/s): cells * 400m/cell / 1800s/tick
         speed_ms = self._step_dist * 400.0 / 1800.0
@@ -1437,8 +1477,9 @@ class PorpoisePopulation:
         # Water temperature
         water_temp = np.full(self.count, 10.0, dtype=np.float32)
         if self.landscape is not None and hasattr(self.landscape, 'get_temperature'):
-            positions = np.column_stack((self.x, self.y))
-            water_temp = self.landscape.get_temperature(positions)
+            self._positions[:, 0] = self.x
+            self._positions[:, 1] = self.y
+            water_temp = self.landscape.get_temperature(self._positions)
 
         # Convert step_dist (cells/tick) to speed (m/s): cells * 400m/cell / 1800s/tick
         speed_ms = self._step_dist * 400.0 / 1800.0
@@ -1691,7 +1732,8 @@ class PorpoisePopulation:
         # 1. Compute veTotal FIRST (uses existing buffer, before new entry)
         work_table = get_work_mem_strength_table(self.params.r_s, mem_size)
         self._ve_total = compute_ve_total(
-            self._stored_util, self._mem_ptr, self._mem_count, work_table, mask
+            self._stored_util, self._mem_ptr, self._mem_count, work_table, mask,
+            workspace=self._ref_mem_workspace,
         )
 
         # 2. Compute attraction vector vt FIRST (uses existing buffer)
@@ -1702,6 +1744,7 @@ class PorpoisePopulation:
             self._stored_util, self._pos_history_x, self._pos_history_y,
             self._mem_ptr, self._mem_count,
             self.x, self.y, ref_table, mask, world_w, world_h,
+            workspace=self._ref_mem_workspace,
         )
         # Java: if refMemTurn returns null, keep previous vt (Porpoise.java:266-267)
         has_history = self._mem_count >= 2
@@ -1710,8 +1753,11 @@ class PorpoisePopulation:
         self._vt_y[update] = new_vt_y[update]
 
         # 3. NOW store current food and position in circular buffer (vectorized)
-        positions = np.column_stack((self.x[mask], self.y[mask]))
-        food_levels = self.landscape.get_food_levels_vectorized(positions)
+        n_active = len(active)
+        pos_buf = np.empty((n_active, 2), dtype=np.float32)
+        pos_buf[:, 0] = self.x[active]
+        pos_buf[:, 1] = self.y[active]
+        food_levels = self.landscape.get_food_levels_vectorized(pos_buf)
 
         ptrs = self._mem_ptr[active]
         self._stored_util[active, ptrs] = food_levels
@@ -1996,11 +2042,13 @@ class PorpoisePopulation:
         candidates = mask & is_declining & (~self.is_dispersing)
         candidate_indices = np.where(candidates)[0]
 
-        for idx in candidate_indices:
-            # Check memory count from buffer
-            # Count cells with ticks > 0
-            visited_count = int(np.count_nonzero(self.psm_buffer[idx, :, :, 0]))
-            if visited_count >= min_memory_cells:
+        if len(candidate_indices) > 0:
+            # Vectorized memory count check: count cells with ticks > 0
+            visited_counts = np.count_nonzero(
+                self.psm_buffer[candidate_indices, :, :, 0], axis=(1, 2)
+            )
+            qualified = candidate_indices[visited_counts >= min_memory_cells]
+            for idx in qualified:
                 self._start_dispersal(idx)
 
     def _update_neighbor_recompute_interval(self, mean_disp_m: float) -> None:
@@ -2292,17 +2340,19 @@ class PorpoisePopulation:
             Heading array after turning
         """
         if _HAS_KERNELS:
-            _out_x = np.empty(len(self.x), dtype=np.float64)
-            _out_y = np.empty(len(self.x), dtype=np.float64)
-            out_heading = np.empty(len(self.x), dtype=np.float64)
+            # Reuse pre-allocated float64 buffers (avoids 24 temp allocations per tick)
+            np.copyto(self._f64_x, self.x)
+            np.copyto(self._f64_y, self.y)
+            np.copyto(self._f64_heading, self.heading)
+            np.copyto(self._f64_step, self._step_dist)
             _turn_kernel(
-                self.x.astype(np.float64), self.y.astype(np.float64),
-                self.heading.astype(np.float64), self._step_dist.astype(np.float64),
+                self._f64_x, self._f64_y,
+                self._f64_heading, self._f64_step,
                 float(turn_delta), world_w, world_h,
-                _out_x, _out_y, out_heading,
+                self._f64_out_x, self._f64_out_y, self._f64_out_heading,
             )
-            np.copyto(out_x, _out_x)
-            np.copyto(out_y, _out_y)
+            np.copyto(out_x, self._f64_out_x)
+            np.copyto(out_y, self._f64_out_y)
             # Get cell indices
             np.copyto(out_xi, out_x.astype(np.int32))
             np.copyto(out_yi, out_y.astype(np.int32))
@@ -2313,7 +2363,7 @@ class PorpoisePopulation:
                 np.copyto(out_depths, self.landscape._depth[out_yi, out_xi])
             else:
                 out_depths.fill(20.0)
-            return out_heading
+            return self._f64_out_heading
 
         heading = (self.heading + turn_delta) % 360
         rads = np.radians(heading)
@@ -2326,10 +2376,9 @@ class PorpoisePopulation:
         np.add(self.x, self._dx, out=out_x)
         np.add(self.y, self._dy, out=out_y)
 
-        # DEPONS-style reflection at boundaries
-        all_mask = np.ones(len(self.x), dtype=bool)
+        # DEPONS-style reflection at boundaries (reuse pre-allocated all-true mask)
         self._reflect_boundaries(out_x, out_y, self._dx, self._dy,
-                                 world_w, world_h, all_mask)
+                                 world_w, world_h, self._all_mask)
 
         # Get cell indices
         np.copyto(out_xi, out_x.astype(np.int32))

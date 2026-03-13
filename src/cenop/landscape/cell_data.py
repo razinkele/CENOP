@@ -80,6 +80,7 @@ class CellData:
         self._entropy: Optional[np.ndarray] = None  # Shape: (12, height, width)
         self._salinity: Optional[np.ndarray] = None  # Shape: (12, height, width)
         
+        self._demand_grid: Optional[np.ndarray] = None
         self._current_month: int = 1
         self._loaded: bool = False
         
@@ -285,7 +286,12 @@ class CellData:
         # Try Numba kernel first
         try:
             from cenop.optimizations.kernels import eat_food_kernel
-            eat_food_kernel(self._food_value, j_arr, i_arr, fraction.astype(np.float32), food_eaten, 0.01)
+            if self._demand_grid is None or self._demand_grid.shape != self._food_value.shape:
+                self._demand_grid = np.zeros_like(self._food_value)
+            eat_food_kernel(
+                self._food_value, j_arr, i_arr, fraction.astype(np.float32),
+                food_eaten, 0.01, self._demand_grid,
+            )
             return food_eaten
         except ImportError:
             pass
@@ -666,10 +672,11 @@ def create_landscape_from_depons(
     cell_data._blocks = np.zeros((metadata.nrows, metadata.ncols), dtype=int)
     cell_data._entropy = np.full((12, metadata.nrows, metadata.ncols), 0.5)
     cell_data._salinity = np.full((12, metadata.nrows, metadata.ncols), 30.0)
-    
+    cell_data._demand_grid = None
+
     cell_data._current_month = 1
     cell_data._loaded = True
-    
+
     return cell_data
 
 
@@ -732,7 +739,8 @@ def create_homogeneous_landscape(
     cell_data._blocks = np.zeros((height, width), dtype=int)
     cell_data._entropy = np.full((12, height, width), 0.5)
     cell_data._salinity = np.full((12, height, width), 30.0)
-    
+    cell_data._demand_grid = None
+
     cell_data._current_month = 1
     cell_data._loaded = True
     

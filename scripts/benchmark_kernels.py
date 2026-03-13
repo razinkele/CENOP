@@ -72,13 +72,15 @@ def main():
     benchmark("crw_angle_step", bench_crw)
 
     # eat_food
+    eat_demand = np.zeros((200, 200), dtype=np.float32)
+
     def bench_eat():
         grid = rng.uniform(0.1, 100, (200, 200)).astype(np.float32)
         x = rng.integers(0, 200, n).astype(np.int32)
         y = rng.integers(0, 200, n).astype(np.int32)
         frac = rng.uniform(0.1, 0.9, n).astype(np.float32)
         eaten = np.zeros(n, dtype=np.float32)
-        eat_food_kernel(grid, x, y, frac, eaten, 0.01)
+        eat_food_kernel(grid, x, y, frac, eaten, 0.01, eat_demand)
     benchmark("eat_food", bench_eat)
 
     # depons_bmr_cost

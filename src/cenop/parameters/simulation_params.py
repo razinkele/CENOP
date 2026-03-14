@@ -123,11 +123,9 @@ class SimulationParameters:
     deter_min_distance_ships: float = 0.1  # Min deterrence distance for ships (km)
     deter_ships_min_db: float = 70.0   # Tships: minimum RL to trigger ship deterrence (dB)
 
-    # WestonFlux bathymetry parameters (None = use simple TL formula)
-    weston_flux_depth: float | None = None       # Water depth at source (m)
-    weston_flux_grain_size: float | None = None   # Sediment grain size (phi scale)
-    weston_flux_temperature: float | None = None  # Water temperature (°C)
-    weston_flux_salinity: float | None = None     # Salinity (PSU)
+    # WestonFlux per-cell transmission loss (optional, off by default)
+    weston_flux_percell: bool = False              # Use per-cell depth/sediment/salinity for TL
+    weston_flux_default_temperature: float = 12.0  # Default water temperature (°C) when no grid
 
     # Probabilistic deterrence response
     deter_probabilistic: bool = True  # Use sigmoid-based probability instead of binary threshold

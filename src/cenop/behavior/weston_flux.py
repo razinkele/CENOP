@@ -12,6 +12,19 @@ method with range-independent bathymetry. Accounts for:
 
 import math
 
+try:
+    from numba import njit
+
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
+
+    def njit(*args, **kwargs):
+        def decorator(func):
+            return func
+
+        return decorator
+
 
 # Default frequency: 10^(12/10) * 1000 Hz ≈ 15848.93 Hz
 FREQUENCY = 10.0 ** (12.0 / 10.0) * 1000.0
@@ -21,6 +34,7 @@ SPEED_IN_SEDIMENT = 1700.0
 PH = 8.0
 
 
+@njit(cache=True)
 def weston_flux_tl(
     distance: float,
     depth: float,
@@ -28,6 +42,8 @@ def weston_flux_tl(
     temperature: float,
     salinity: float,
     frequency: float = FREQUENCY,
+    ph: float = 8.0,
+    c_s: float = 1700.0,
 ) -> float:
     """Calculate transmission loss using WestonFlux model.
 
@@ -47,13 +63,14 @@ def weston_flux_tl(
 
     ssp_ratio = _ssp_ratio(grain_size)
     beta_s = _beta(grain_size, ssp_ratio)
-    gamma_w = _gamma(frequency, temperature, salinity, PH, 0.0)
+    gamma_w = _gamma(frequency, temperature, salinity, ph, 0.0)
     rho_ratio = _rho_ratio(grain_size)
 
-    return _range_independent(distance, depth, frequency, SPEED_IN_SEDIMENT,
+    return _range_independent(distance, depth, frequency, c_s,
                               beta_s, gamma_w, ssp_ratio, rho_ratio)
 
 
+@njit(cache=True)
 def _range_independent(
     r: float, h: float, f: float, c_s: float,
     beta_s: float, gamma_w: float,
@@ -106,6 +123,7 @@ def _range_independent(
     return pl
 
 
+@njit(cache=True)
 def _ssp_ratio(grain_size: float) -> float:
     """Sound speed ratio (high frequency) from sediment grain size."""
     gs = grain_size
@@ -121,6 +139,7 @@ def _ssp_ratio(grain_size: float) -> float:
         return 1.0019 - 0.0024324 * 9.0  # Capped at 9
 
 
+@njit(cache=True)
 def _rho_ratio(grain_size: float) -> float:
     """Density ratio (high frequency) from sediment grain size."""
     gs = grain_size
@@ -136,6 +155,7 @@ def _rho_ratio(grain_size: float) -> float:
         return 1.1565 - 0.0012973 * 9.0
 
 
+@njit(cache=True)
 def _beta(grain_size: float, ssp_ratio_high: float) -> float:
     """Sediment attenuation coefficient (high frequency)."""
     gs = grain_size
@@ -155,12 +175,11 @@ def _beta(grain_size: float, ssp_ratio_high: float) -> float:
         return 1.490 * ssp_ratio_high * 0.0601
 
 
+@njit(cache=True)
 def _gamma(f: float, temp: float, salinity: float, ph: float,
            depth_at_source: float) -> float:
     """Water absorption coefficient (dB/m) using Francois-Garrison equation."""
-    e = math.e
-
-    f1 = 0.91 * (salinity / 35.0) ** 0.5 * e ** (temp / 33.0)
+    f1 = 0.91 * (salinity / 35.0) ** 0.5 * math.exp(temp / 33.0)
     f2 = 46.6 * math.exp(temp / 18.0)
 
     if temp <= 20:
@@ -176,7 +195,7 @@ def _gamma(f: float, temp: float, salinity: float, ph: float,
     f_khz = f / 1000.0
 
     y1 = (0.101 * (f1 * f_khz**2) / (f1**2 + f_khz**2)
-          * e ** ((ph - 8) / 0.57))
+          * math.exp((ph - 8) / 0.57))
     y2 = (0.56 * (1 + temp / 76.0) * (salinity / 35.0)
           * (f2 * f_khz**2) / (f2**2 + f_khz**2)
           * math.exp(-depth_at_source / 4900.0))

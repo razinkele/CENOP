@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import numpy as np
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, List, Optional, Tuple
@@ -26,6 +27,36 @@ from cenop.behavior.sound import (
     response_probability_from_rl,
 )
 from cenop.behavior.weston_flux import weston_flux_tl
+
+try:
+    from numba import njit
+
+    _NUMBA = True
+except ImportError:
+    _NUMBA = False
+
+
+def _compute_tl_percell(d_masked, depths, grain_sizes, salinities,
+                        temperature, beta_hat, alpha_hat):
+    """Compute per-porpoise TL using WestonFlux with NODATA fallback."""
+    n = len(d_masked)
+    tl = np.empty(n, dtype=np.float64)
+    for i in range(n):
+        if depths[i] > 0.0 and grain_sizes[i] != -9999.0:
+            tl[i] = weston_flux_tl(
+                d_masked[i], depths[i], grain_sizes[i],
+                temperature, salinities[i],
+            )
+        else:
+            d = d_masked[i]
+            if d < 1.0:
+                d = 1.0
+            tl[i] = beta_hat * math.log10(d) + alpha_hat * d
+    return tl
+
+
+if _NUMBA:
+    _compute_tl_percell = njit(cache=True)(_compute_tl_percell)
 
 if TYPE_CHECKING:
     from cenop.parameters.simulation_params import SimulationParameters
@@ -513,23 +544,10 @@ class ShipManager:
                 temperature = params.weston_flux_default_temperature
 
                 # Per-porpoise TL with NODATA fallback
-                tl = np.empty_like(d_masked)
-                for i in range(len(d_masked)):
-                    if depths[i] > 0 and grain_sizes[i] != -9999.0:
-                        tl[i] = weston_flux_tl(
-                            d_masked[i],
-                            depths[i],
-                            grain_sizes[i],
-                            temperature,
-                            salinities[i],
-                        )
-                    else:
-                        # NODATA fallback: simple formula
-                        tl[i] = (
-                            params.beta_hat
-                            * np.log10(max(d_masked[i], 1.0))
-                            + params.alpha_hat * d_masked[i]
-                        )
+                tl = _compute_tl_percell(
+                    d_masked, depths, grain_sizes, salinities,
+                    temperature, params.beta_hat, params.alpha_hat,
+                )
             else:
                 # Simple formula (default, fully vectorized)
                 tl = (

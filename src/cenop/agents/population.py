@@ -264,6 +264,18 @@ class PorpoisePopulation:
         # All-true mask for turn_position fallback path
         self._all_mask = np.ones(count, dtype=bool)
 
+        # === Pre-allocated energy/context buffers ===
+        self._water_temp = np.full(count, 10.0, dtype=np.float32)
+        self._food_quality = np.ones(count, dtype=np.float32)
+        self._behavioral_state_buf = np.full(
+            count, 0, dtype=np.int32
+        )  # 0 = FORAGING
+        self._speed_ms = np.zeros(count, dtype=np.float32)
+
+        # === Cached mortality constants (avoid per-tick getattr) ===
+        self._m_mort_prob_const = getattr(params, 'm_mort_prob_const', 1.0)
+        self._x_survival_const = getattr(params, 'x_survival_const', 0.4)
+
         # === Pre-allocated arrays for land avoidance loop ===
         self._on_land = np.zeros(count, dtype=bool)
         self._still_blocked = np.zeros(count, dtype=bool)
@@ -1394,25 +1406,29 @@ class PorpoisePopulation:
 
         # Behavioral state
         if self._behavior_state is not None:
-            behavioral_state = self._behavior_state.state.copy()
+            np.copyto(self._behavioral_state_buf, self._behavior_state.state)
+            behavioral_state = self._behavioral_state_buf
         else:
-            behavioral_state = np.full(self.count, BehaviorState.FORAGING.value, dtype=np.int32)
+            self._behavioral_state_buf.fill(BehaviorState.FORAGING.value)
+            behavioral_state = self._behavioral_state_buf
 
         current_month = self._get_current_month()
 
         # Water temperature
-        water_temp = np.full(self.count, 10.0, dtype=np.float32)
+        self._water_temp.fill(10.0)
+        water_temp = self._water_temp
         if self.landscape is not None and hasattr(self.landscape, 'get_temperature'):
             self._positions[:, 0] = self.x
             self._positions[:, 1] = self.y
             water_temp = self.landscape.get_temperature(self._positions)
 
         # Convert step_dist (cells/tick) to speed (m/s): cells * 400m/cell / 1800s/tick
-        speed_ms = self._step_dist * 400.0 / 1800.0
+        np.multiply(self._step_dist, 400.0 / 1800.0, out=self._speed_ms)
+        speed_ms = self._speed_ms
 
         context = EnergyContext(
             food_available=food_available,
-            food_quality=np.ones(self.count, dtype=np.float32),
+            food_quality=self._food_quality,
             current_speed=speed_ms,
             behavioral_state=behavioral_state,
             water_temperature=water_temp,
@@ -1470,25 +1486,29 @@ class PorpoisePopulation:
 
         # Behavioral state
         if self._behavior_state is not None:
-            behavioral_state = self._behavior_state.state.copy()
+            np.copyto(self._behavioral_state_buf, self._behavior_state.state)
+            behavioral_state = self._behavioral_state_buf
         else:
-            behavioral_state = np.full(self.count, BehaviorState.FORAGING.value, dtype=np.int32)
+            self._behavioral_state_buf.fill(BehaviorState.FORAGING.value)
+            behavioral_state = self._behavioral_state_buf
 
         current_month = self._get_current_month()
 
         # Water temperature
-        water_temp = np.full(self.count, 10.0, dtype=np.float32)
+        self._water_temp.fill(10.0)
+        water_temp = self._water_temp
         if self.landscape is not None and hasattr(self.landscape, 'get_temperature'):
             self._positions[:, 0] = self.x
             self._positions[:, 1] = self.y
             water_temp = self.landscape.get_temperature(self._positions)
 
         # Convert step_dist (cells/tick) to speed (m/s): cells * 400m/cell / 1800s/tick
-        speed_ms = self._step_dist * 400.0 / 1800.0
+        np.multiply(self._step_dist, 400.0 / 1800.0, out=self._speed_ms)
+        speed_ms = self._speed_ms
 
         context = EnergyContext(
             food_available=food_available,
-            food_quality=np.ones(self.count, dtype=np.float32),
+            food_quality=self._food_quality,
             current_speed=speed_ms,
             behavioral_state=behavioral_state,
             water_temperature=water_temp,
@@ -1645,8 +1665,8 @@ class PorpoisePopulation:
         Uses parameters from SimulationParameters for all mortality constants.
         """
         # Energy-based starvation mortality (parameterized)
-        m_mort_prob_const = getattr(self.params, 'm_mort_prob_const', 1.0)
-        x_survival_const = getattr(self.params, 'x_survival_const', 0.4)
+        m_mort_prob_const = self._m_mort_prob_const
+        x_survival_const = self._x_survival_const
 
         yearly_surv_prob = np.where(
             self.energy > 0,

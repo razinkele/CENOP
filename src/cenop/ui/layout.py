@@ -707,21 +707,25 @@ def create_help_modal():
     </ul>
 
     <h2>Performance</h2>
-    <p>CENOP uses <strong>7 Numba JIT-compiled kernels</strong> for simulation hot paths, all achieving
-    sub-millisecond performance for populations of 500+ agents:</p>
+    <p>CENOP uses <strong>10 Numba JIT-compiled kernels</strong> for simulation hot paths, all achieving
+    sub-millisecond performance for populations of 500+ agents. Overall: <strong>3.27&nbsp;ms/tick</strong>
+    for 500 porpoises on Kattegat (1.68&times; cumulative speedup).</p>
     <ul>
         <li><code>reflect_boundaries_kernel</code> &mdash; boundary reflection (<code>prange</code>)</li>
-        <li><code>crw_angle_step_kernel</code> &mdash; CRW angle and step length</li>
+        <li><code>crw_angle_step_kernel</code> &mdash; CRW angle and step length with rejection sampling</li>
         <li><code>turn_position_kernel</code> &mdash; position update (<code>prange</code>)</li>
         <li><code>eat_food_kernel</code> &mdash; food consumption with pre-allocated demand grid</li>
         <li><code>depons_bmr_cost_kernel</code> &mdash; basal metabolic cost (<code>prange</code>)</li>
         <li><code>social_accumulate_kernel</code> &mdash; social vector accumulation</li>
         <li><code>seed_numba_rng</code> &mdash; per-thread RNG seeding</li>
+        <li><code>regrow_food_kernel</code> &mdash; logistic food regrowth (<code>prange</code>)</li>
+        <li><code>compute_ve_total_kernel</code> &mdash; reference memory expected value (<code>prange</code>)</li>
+        <li><code>compute_attraction_kernel</code> &mdash; reference memory attraction vector (<code>prange</code>)</li>
     </ul>
-    <p>Three kernels (boundary reflection, turn position, BMR cost) run in parallel using
-    <code>prange</code>. Additional optimisations include pre-allocated float64 buffers for
-    position/heading arrays, a reusable <code>RefMemWorkspace</code> (~1.5&nbsp;MB/tick saved),
-    and vectorised land avoidance fallbacks.</p>
+    <p>Six kernels run in parallel using <code>prange</code>. WestonFlux transmission loss
+    (6 physics functions) is also <code>@njit</code> compiled. Additional optimisations include
+    pre-allocated float64 buffers, a reusable <code>RefMemWorkspace</code>,
+    land avoidance limited to blocked agents only, and cached mortality parameters.</p>
 
     <h2>Model Validation</h2>
     <ul>

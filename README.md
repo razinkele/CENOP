@@ -48,11 +48,13 @@ The JASMINE (Just Another Simulation Model In Nature Environments) extension add
 - **Physics-Based Movement:** Hydrodynamic drag, thrust-based propulsion, and ocean current advection
 
 ### Performance
-- 7 Numba JIT kernels: `reflect_boundaries`, `seed_numba_rng`, `crw_angle_step`, `turn_position`, `eat_food`, `depons_bmr_cost`, `social_accumulate`
-- Three kernels parallelized with `prange` (reflect, turn_position, BMR cost)
+- 10 Numba JIT kernels: `reflect_boundaries`, `seed_numba_rng`, `crw_angle_step`, `turn_position`, `eat_food`, `depons_bmr_cost`, `social_accumulate`, `regrow_food`, `compute_ve_total`, `compute_attraction`
+- Six kernels parallelized with `prange` (reflect, turn_position, BMR cost, regrow_food, compute_ve_total, compute_attraction)
+- WestonFlux transmission loss `@njit` compiled (all 6 physics functions)
 - Pre-allocated float64 buffers, RefMemWorkspace (~1.5 MB/tick saved), vectorized land avoidance
-- Sub-millisecond per-kernel performance for 500 agents
-- 502+ tests passing across 24 test files (unit, integration, equivalence, and parallel determinism tests)
+- Land avoidance optimized to only process blocked agents (typically <5%)
+- Sub-millisecond per-kernel performance for 500 agents (3.27 ms/tick total, 1.68x speedup)
+- 515+ tests passing across 24 test files (unit, integration, equivalence, and parallel determinism tests)
 
 ## Installation
 

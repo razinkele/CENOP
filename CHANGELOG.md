@@ -64,6 +64,43 @@ All notable changes to CENOP-JASMINE are documented in this file.
 - Removed dead `swimming_cost * 0.0` and redundant `10^log_mov`
 - Removed wasted `compute_survival_probability` from energy module `compute_energy_update`
 
+### Performance Optimization Pass 2 (3.27 ms/tick, 1.68x cumulative speedup)
+- Numba-compiled all 6 WestonFlux transmission loss functions (`@njit`)
+- Vectorized ship TL loop with `_compute_tl_percell` helper (also `@njit`)
+- Land avoidance only processes blocked agents (typically <5% of population)
+- Food regrowth `regrow_food_kernel` with `prange` parallelism (3.4x speedup)
+- Fixed CRW kernel dtype: 8 SoA arrays changed from float32→float64 to match kernel signatures
+- Fused reference memory into `prange` Numba kernels (`compute_ve_total_kernel`,
+  `compute_attraction_kernel`), eliminating ~960KB/tick intermediate array copies
+- Pre-allocated energy/context arrays (`_water_temp`, `_food_quality`,
+  `_behavioral_state_buf`, `_speed_ms`) and cached mortality params
+- Changed `_mem_ptr`/`_mem_count` from int16→int32, eliminating per-tick `.astype()` copies
+
+### Per-Cell WestonFlux Transmission Loss
+- Optional "Weston Flux TL" toggle in Settings > Basic tab
+- Reads depth, sediment grain size, and salinity per-porpoise from landscape grids
+- NODATA cells (depth ≤ 0 or grain_size == -9999) fall back to simple α/β formula
+- Disabled when sediment data unavailable
+
+### Porpoise Traces
+- Fixed porpoise layer visibility (`visible=True` for partial_update)
+- Expanded `get_porpoise_positions()` to 7 columns (id, x, y, energy, heading, age, is_dispersing)
+- Animated trace trails using shiny-deckgl `TripsLayer`
+- Sidebar controls: "Show porpoise traces" checkbox + trace length slider
+- Trail history collection in background thread (per-porpoise deque, thread-safe)
+- Trails colored by porpoise state (blue=adult, green=calf, red=dispersing, gray=senior)
+
+### Skip Visualization
+- "Skip visualization (fast run)" checkbox in sidebar
+- Bypasses position extraction, coordinate conversion, and trail collection
+- 25.7% end-to-end speedup (1.35x) measured via Playwright browser benchmark
+
+### Benchmarking
+- `scripts/benchmark_viz_overhead.py` with warm-up, multiple runs, std deviation,
+  `--all-scenarios` flag for 5-configuration comparison
+- `scripts/benchmark_kernels.py` for individual Numba kernel timing
+- Playwright-based end-to-end browser benchmark for real-world overhead
+
 ### Unified Grid Visualization
 - Replaced grid_layer/scatterplot rendering with bitmap+scatter pipeline
 - Server-side PNG generation (one pixel per grid cell, colour-mapped)
@@ -75,13 +112,19 @@ All notable changes to CENOP-JASMINE are documented in this file.
 - Updated in-app Help modal with all DEPONS 3.2 features
 - Added Reproduction & Mortality section (pregnancy FSM)
 - Added Reference Memory System section
-- Updated Performance section (3→7 kernels)
+- Updated Performance section (3→10 kernels, 6 with prange)
 - Updated Scientific Background and Model Validation sections
+- Updated sediment status: "Active when WestonFlux enabled"
+- Fixed distance-to-coast units (kilometres → metres)
+- Created CHANGELOG.md with full version history
+- Updated README.md, API.md, USER_GUIDE.md for v2.1
 
 ### Code Quality
-- 502+ automated tests across 24 test files
+- 515+ automated tests across 24 test files
 - Population stability smoke test
 - DEPONS/JASMINE survival consistency test
+- Per-cell WestonFlux integration tests (NODATA fallback, month selection)
+- Porpoise trails layer tests
 
 ## [2.0.0] - 2025
 

@@ -960,7 +960,7 @@ for result in results:
 
 ## Version History
 
-- **v2.1.0**: DEPONS 3.2 full sync + Numba optimization + unified grid visualization
+- **v2.1.0**: DEPONS 3.2 full sync + performance optimization + new features
   - Algorithmically aligned with DEPONS 3.2 across all 5 subsystems
   - Pregnancy FSM (immature → pregnant → ready-to-mate) with daily mortality schedule
   - Logistic food regrowth with 48-iteration compounding and MaxEnt carrying capacity
@@ -969,10 +969,14 @@ for result in results:
   - PSM-Type2 dispersal with SSLogis heading, energy-based stop, deterrence deactivation
   - Ship deterrence with JOMOPANS 13-class source levels and Weston flux TL
   - Deterrence vectors use raw displacement (not unit vectors), matching DEPONS Java
-  - 7 Numba JIT kernels with prange parallelism (reflect, turn_position, BMR cost)
-  - Pre-allocated buffers, RefMemWorkspace, vectorized land avoidance
+  - 10 Numba JIT kernels, 6 with prange parallelism (3.27 ms/tick, 1.68x speedup)
+  - WestonFlux @njit compiled, fused ref_mem kernels, food regrowth prange kernel
+  - Pre-allocated buffers, RefMemWorkspace, land avoidance for blocked agents only
+  - Per-cell WestonFlux TL option (reads sediment/depth/salinity from landscape grids)
+  - Porpoise trace trails using TripsLayer with age-based coloring
+  - Skip visualization toggle (25.7% end-to-end speedup)
   - Unified bitmap grid rendering (server-side PNG, one pixel per cell)
-  - 502+ automated tests across 24 test files
+  - 515+ automated tests across 24 test files
 
 - **v2.0.0**: CENOP-JASMINE merge
   - Added JASMINE simulation mode

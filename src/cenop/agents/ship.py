@@ -257,7 +257,9 @@ class Ship(Agent):
         porpoise_y: float,
         params: SimulationParameters,
         is_day: bool = True,
-        cell_size: float = 400.0
+        cell_size: float = 400.0,
+        cell_data=None,
+        month: int = 1,
     ) -> Tuple[bool, float, float, float]:
         """
         Calculate deterrence effect on a porpoise.
@@ -290,18 +292,30 @@ class Ship(Agent):
             return (False, 0.0, 0.0, distance_km)
             
         # Calculate received level
-        wf_depth = getattr(params, 'weston_flux_depth', None)
-        if wf_depth is not None:
-            sl = self.get_source_level()
-            tl = weston_flux_tl(distance_m, wf_depth,
-                                params.weston_flux_grain_size,
-                                params.weston_flux_temperature,
-                                params.weston_flux_salinity)
-            spl = sl - tl
+        if (params.weston_flux_percell
+                and cell_data is not None
+                and getattr(cell_data, '_sediment', None) is not None):
+            depth = cell_data.get_depth(porpoise_x, porpoise_y)
+            grain_size = cell_data.get_sediment(porpoise_x, porpoise_y)
+            if depth > 0 and grain_size != -9999.0:
+                salinity = cell_data.get_salinity(
+                    porpoise_x, porpoise_y, month
+                )
+                sl = self.get_source_level()
+                tl = weston_flux_tl(
+                    distance_m, depth, grain_size,
+                    params.weston_flux_default_temperature, salinity,
+                )
+                spl = sl - tl
+            else:
+                spl = self.get_received_level(
+                    porpoise_x, porpoise_y,
+                    params.alpha_hat, params.beta_hat, cell_size,
+                )
         else:
             spl = self.get_received_level(
                 porpoise_x, porpoise_y,
-                params.alpha_hat, params.beta_hat, cell_size
+                params.alpha_hat, params.beta_hat, cell_size,
             )
 
         # Tships gate: skip deterrence below minimum RL (Java Ship.java:228)
@@ -376,7 +390,9 @@ class ShipManager:
         porpoise_y: float,
         params: SimulationParameters,
         is_day: bool = True,
-        cell_size: float = 400.0
+        cell_size: float = 400.0,
+        cell_data=None,
+        month: int = 1,
     ) -> Tuple[float, float, float]:
         """
         Calculate aggregate deterrence from all ships.
@@ -399,7 +415,8 @@ class ShipManager:
         
         for ship in self.get_active_ships():
             should_deter, _, magnitude, _ = ship.calculate_deterrence(
-                porpoise_x, porpoise_y, params, is_day, cell_size
+                porpoise_x, porpoise_y, params, is_day, cell_size,
+                cell_data=cell_data, month=month,
             )
             
             if should_deter and magnitude > 0:

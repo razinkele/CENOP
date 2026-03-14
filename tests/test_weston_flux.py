@@ -127,6 +127,25 @@ class TestPerCellWestonFluxDeterrence:
             month_idx = ((month or 1) - 1) % 12
             return cd._salinity[month_idx, y, x]
 
+        def _get_depth(x, y):
+            xi = int(np.clip(x, 0, 9))
+            yi = int(np.clip(y, 0, 9))
+            return float(cd._depth[yi, xi])
+
+        def _get_sediment(x, y):
+            xi = int(np.clip(x, 0, 9))
+            yi = int(np.clip(y, 0, 9))
+            return float(cd._sediment[yi, xi])
+
+        def _get_salinity(x, y, month=None):
+            xi = int(np.clip(x, 0, 9))
+            yi = int(np.clip(y, 0, 9))
+            month_idx = ((month or 1) - 1) % 12
+            return float(cd._salinity[month_idx, yi, xi])
+
+        cd.get_depth = _get_depth
+        cd.get_sediment = _get_sediment
+        cd.get_salinity = _get_salinity
         cd.get_depths_vectorized = _get_depths
         cd.get_sediments_vectorized = _get_sediments
         cd.get_salinities_vectorized = _get_salinities
@@ -262,3 +281,27 @@ class TestPerCellWestonFluxDeterrence:
             cell_data=cell_data, month=12,
         )
         assert dx.shape == (1,)
+
+    def test_scalar_and_vectorized_consistent(self):
+        """Scalar calculate_deterrence should work with per-cell mode."""
+        from cenop.agents.ship import ShipManager, Ship
+
+        params = SimulationParameters(
+            ships_enabled=True, weston_flux_percell=True,
+            weston_flux_default_temperature=10.0,
+        )
+        mgr = ShipManager()
+        mgr.set_enabled(True)
+        ship = Ship(id=1, x=5.0, y=5.0)
+        ship.noise.base_source_level = 170.0
+        ship._is_active = True
+        mgr.ships.append(ship)
+
+        cell_data = self._make_landscape()
+
+        should_deter, prob, magnitude, dist = ship.calculate_deterrence(
+            5.0, 0.0, params, is_day=True, cell_size=400.0,
+            cell_data=cell_data, month=6,
+        )
+        assert isinstance(should_deter, bool)
+        assert dist > 0

@@ -383,14 +383,14 @@ def create_help_modal():
         <tr><td>Food Probability</td><td><code>patches.asc</code></td><td>Active &mdash; food system</td><td>No</td></tr>
         <tr><td>Prey (MaxEnt)</td><td><code>prey01.asc</code>&ndash;<code>prey12.asc</code></td><td>Active &mdash; food carrying capacity</td><td>Monthly</td></tr>
         <tr><td>Distance to Coast</td><td><code>disttocoast.asc</code></td><td>Visualisation only</td><td>No</td></tr>
-        <tr><td>Sediment Type</td><td><code>sediment.asc</code></td><td>Visualisation only *</td><td>No</td></tr>
+        <tr><td>Sediment Type</td><td><code>sediment.asc</code></td><td>Active when WestonFlux enabled *</td><td>No</td></tr>
         <tr><td>Blocks</td><td><code>blocks.asc</code></td><td>Visualisation only</td><td>No</td></tr>
     </table>
-    <p class="small text-muted">* In DEPONS, the per-cell sediment grid feeds the Weston flux ship-noise propagation model.
-    CENOP includes a Python port of WestonFlux (<code>weston_flux.py</code>), but it currently uses
-    a single global grain-size parameter rather than per-cell sediment data. The sediment grid
-    itself is loaded for visualisation only. When <code>weston_flux_depth</code> is not set (the default),
-    ship noise falls back to a simpler &alpha;/&beta; spreading-loss formula.</p>
+    <p class="small text-muted">* When the <strong>Weston Flux TL</strong> toggle is enabled in
+    Settings &gt; Basic, sediment grain size is read per-cell from the landscape grid and fed into
+    the physics-based WestonFlux transmission loss model for ship noise. Depth and salinity are
+    also read per-cell. When the toggle is off (default), ship noise uses a simpler
+    &alpha;/&beta; spreading-loss formula and the sediment grid is loaded for visualisation only.</p>
 
     <h3>Bathymetry (Depth) &mdash; <span style="color: var(--accent-green);">Active</span></h3>
     <p>Water depth in metres below sea level, sourced from EMODnet or equivalent hydrographic surveys.
@@ -485,10 +485,11 @@ def create_help_modal():
     together control how far ship noise propagates through the water column. Sediment is also a key
     covariate in the external MaxEnt prey models (sandeels prefer coarse sand substrates).</p>
     <p><strong>Current status in CENOP:</strong> loaded and displayed in the Landscape viewer.
-    CENOP includes a Weston flux transmission loss model (<code>weston_flux.py</code>) ported from DEPONS,
-    but it currently uses a single global <code>weston_flux_grain_size</code> parameter rather than
-    reading per-cell values from this grid. The sediment layer is not yet wired into the
-    per-cell sound propagation pipeline.</p>
+    When the <strong>Weston Flux TL</strong> toggle is enabled (Settings &gt; Basic tab),
+    per-cell grain size values from this grid are used by the WestonFlux physics-based
+    transmission loss model for ship noise propagation. Depth and salinity are also read
+    per-cell from their respective landscape grids. When the toggle is off (default),
+    ship noise uses a simpler &alpha;/&beta; spreading-loss formula.</p>
     <p><strong>File:</strong> <code>sediment.asc</code> &nbsp;|&nbsp; <strong>Units:</strong> phi (&phi;) scale &nbsp;|&nbsp;
     <strong>Colour scheme:</strong> categorical &nbsp;|&nbsp;
     <strong>NODATA:</strong> <code>-9999</code> (land)</p>

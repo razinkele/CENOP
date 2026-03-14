@@ -11,6 +11,12 @@ TOOLTIPS = {
     "random_seed": "Set a specific random seed for reproducible simulations. Use 0 for automatic random seed each run.",
     "tracked_porpoise_count": "Number of individual porpoises to track in detail for movement analysis and debugging.",
     "ships_enabled": "Enable/disable ship traffic in the simulation. Ships create underwater noise that can disturb porpoises.",
+    "weston_flux_percell": (
+        "Use physics-based Weston Flux transmission loss for ship noise. "
+        "Reads depth, sediment grain size, and salinity from the landscape "
+        "grids at each porpoise position. Requires sediment data (sediment.asc). "
+        "When off, uses simple spreading-loss formula."
+    ),
     "bycatch_prob": "Annual probability (0-1) that a porpoise dies from fishing net entanglement. DEPONS default: 0.018 for Kattegat.",
     
     # Movement/CRW parameters
@@ -192,11 +198,28 @@ def _basic_settings_panel():
                 ui.div(
                     ui.tags.label(
                         "Ship Traffic Enabled ",
-                        ui.tags.span("ⓘ", title=TOOLTIPS["ships_enabled"], 
+                        ui.tags.span("ⓘ", title=TOOLTIPS["ships_enabled"],
                                      style="cursor: help; color: #0d7377;"),
                     ),
                     ui.input_switch("ships_enabled", None, value=False),
                     class_="mb-3"
+                ),
+                ui.panel_conditional(
+                    "input.ships_enabled",
+                    ui.div(
+                        ui.tags.label(
+                            "Weston Flux TL ",
+                            ui.tags.span(
+                                "ⓘ",
+                                title=TOOLTIPS["weston_flux_percell"],
+                                style="cursor: help; color: #0d7377;",
+                            ),
+                        ),
+                        ui.input_switch(
+                            "weston_flux_percell", None, value=False
+                        ),
+                        class_="mb-3 ms-3",
+                    ),
                 ),
                 ui.div(
                     ui.tags.label(

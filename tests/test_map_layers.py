@@ -34,6 +34,7 @@ class TestBuildPorpoiseLayer:
         layer = build_porpoise_layer(positions)
         assert layer["id"] == "porpoises"
         assert layer["data"] == positions
+        assert layer["visible"] is True
 
     def test_layer_id_is_stable(self):
         """Layer ID must be stable for partial_update matching."""

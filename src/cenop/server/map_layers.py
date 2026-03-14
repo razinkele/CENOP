@@ -200,6 +200,7 @@ def build_porpoise_layer(positions: list[dict]) -> dict:
         getColor="@@=d.color || [0,150,255]",
         opacity=0.95,
         pickable=True,
+        visible=True,
     )
 
 

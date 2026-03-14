@@ -511,6 +511,26 @@ class CellData:
         
         return self._salinity[month_idx, y, x]
 
+    def get_sediments_vectorized(self, positions: np.ndarray) -> np.ndarray:
+        """
+        Get sediment grain sizes for multiple positions at once.
+
+        Args:
+            positions: Array of shape (N, 2) with [x, y] positions
+
+        Returns:
+            Array of sediment grain sizes with shape (N,).
+            Returns 1.0 (fine sand) for all positions if no sediment data loaded.
+        """
+        self._ensure_loaded()
+        if self._sediment is None:
+            return np.full(len(positions), 1.0)
+
+        x = np.clip(positions[:, 0].astype(int), 0, self.width - 1)
+        y = np.clip(positions[:, 1].astype(int), 0, self.height - 1)
+
+        return self._sediment[y, x]
+
 
 def load_bathymetry_from_asc(filepath: str) -> Tuple[np.ndarray, LandscapeMetadata]:
     """

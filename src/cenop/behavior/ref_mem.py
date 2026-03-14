@@ -143,6 +143,21 @@ def compute_ve_total(
 
     n_active = len(active)
 
+    # Try Numba fused kernel first
+    try:
+        from cenop.optimizations.kernels import compute_ve_total_kernel
+        out = np.zeros(n_active, dtype=np.float64)
+        compute_ve_total_kernel(
+            stored_util, mem_ptr.astype(np.int32),
+            mem_count.astype(np.int32),
+            work_mem_table.astype(np.float64),
+            active.astype(np.int64), out,
+        )
+        ve_total[active] = out.astype(np.float32)
+        return ve_total
+    except ImportError:
+        pass
+
     # Build ordered indices: (count, mem_size) — most recent first
     indices = _build_ordered_indices(mem_ptr, mem_count, mem_size, mask)
 
@@ -214,6 +229,24 @@ def compute_attraction_vector(
         return vt_x, vt_y
 
     n_active = len(active)
+
+    # Try Numba fused kernel first
+    try:
+        from cenop.optimizations.kernels import compute_attraction_kernel
+        out_x = np.zeros(n_active, dtype=np.float64)
+        out_y = np.zeros(n_active, dtype=np.float64)
+        compute_attraction_kernel(
+            stored_util, pos_history_x, pos_history_y,
+            mem_ptr.astype(np.int32), mem_count.astype(np.int32),
+            current_x, current_y,
+            ref_mem_table.astype(np.float64),
+            active.astype(np.int64), out_x, out_y,
+        )
+        vt_x[active] = out_x.astype(np.float32)
+        vt_y[active] = out_y.astype(np.float32)
+        return vt_x, vt_y
+    except ImportError:
+        pass
 
     # Build ordered indices
     indices = _build_ordered_indices(mem_ptr, mem_count, mem_size, mask)

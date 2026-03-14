@@ -412,6 +412,87 @@ def regrow_food_kernel(food, k_vals, rate, n_iter):
         food[i] = f
 
 
+@njit(cache=True, parallel=True)
+def compute_ve_total_kernel(
+    stored_util, mem_ptr, mem_count, work_mem_table,
+    active_indices, out_ve_total,
+):
+    """Fused veTotal: gather + weight + sum in one pass per agent.
+
+    Args:
+        stored_util: (n_agents, mem_size) float32
+        mem_ptr: (n_agents,) int32 — circular buffer write pointer
+        mem_count: (n_agents,) int32 — entries stored
+        work_mem_table: (mem_size,) float64 — decay weights
+        active_indices: (n_active,) int64 — indices of active agents
+        out_ve_total: (n_active,) float64 — output
+    """
+    mem_size = stored_util.shape[1]
+    for ai in prange(len(active_indices)):
+        agent = active_indices[ai]
+        n = min(int(mem_count[agent]), mem_size) - 1  # use n-1 entries
+        if n <= 0:
+            out_ve_total[ai] = 0.0
+            continue
+        ptr = int(mem_ptr[agent])
+        total = 0.0
+        for i in range(n):
+            buf_idx = (ptr - 1 - i) % mem_size
+            total += work_mem_table[i] * stored_util[agent, buf_idx]
+        out_ve_total[ai] = total
+
+
+@njit(cache=True, parallel=True)
+def compute_attraction_kernel(
+    stored_util, pos_history_x, pos_history_y,
+    mem_ptr, mem_count, current_x, current_y,
+    ref_mem_table, active_indices,
+    out_vt_x, out_vt_y,
+):
+    """Fused attraction vector: gather + direction + weight + sum per agent.
+
+    Args:
+        stored_util: (n_agents, mem_size) float32
+        pos_history_x, pos_history_y: (n_agents, mem_size) float32
+        mem_ptr: (n_agents,) int32
+        mem_count: (n_agents,) int32
+        current_x, current_y: (n_agents,) float32 — current positions
+        ref_mem_table: (mem_size,) float64 — decay weights
+        active_indices: (n_active,) int64 — indices of active agents
+        out_vt_x, out_vt_y: (n_active,) float64 — output
+    """
+    mem_size = stored_util.shape[1]
+    for ai in prange(len(active_indices)):
+        agent = active_indices[ai]
+        n = min(int(mem_count[agent]), mem_size)
+        cx = current_x[agent]
+        cy = current_y[agent]
+        ptr = int(mem_ptr[agent])
+        vx = 0.0
+        vy = 0.0
+        # Skip index 0 (most recent = current position)
+        for i in range(1, n):
+            buf_idx = (ptr - 1 - i) % mem_size
+            util = stored_util[agent, buf_idx]
+            if util == 0.0:
+                continue
+            px = pos_history_x[agent, buf_idx]
+            py = pos_history_y[agent, buf_idx]
+            dx = px - cx
+            dy = py - cy
+            dist = (dx * dx + dy * dy) ** 0.5
+            if dist < 1e-20:
+                weight = 9999.0 * util
+                # direction undefined at zero distance, skip
+                continue
+            else:
+                weight = util * ref_mem_table[i] / dist
+            vx += weight * dx / dist
+            vy += weight * dy / dist
+        out_vt_x[ai] = vx
+        out_vt_y[ai] = vy
+
+
 def warmup_kernels():
     """Pre-compile all kernels with small dummy data to avoid first-call latency."""
     if not NUMBA_AVAILABLE:
@@ -476,4 +557,21 @@ def warmup_kernels():
     rf = np.array([1.0, 2.0, 3.0], dtype=np.float64)
     rk = np.array([10.0, 10.0, 10.0], dtype=np.float64)
     regrow_food_kernel(rf, rk, 0.1, 2)
+    # Reference memory kernels
+    _su = np.zeros((2, 4), dtype=np.float32)
+    _mp = np.zeros(2, dtype=np.int32)
+    _mc = np.array([2, 2], dtype=np.int32)
+    _wt = np.ones(4, dtype=np.float64)
+    _ai = np.array([0, 1], dtype=np.int64)
+    _ov = np.zeros(2, dtype=np.float64)
+    compute_ve_total_kernel(_su, _mp, _mc, _wt, _ai, _ov)
+    _cx = np.zeros(2, dtype=np.float32)
+    _cy = np.zeros(2, dtype=np.float32)
+    _phx = np.zeros((2, 4), dtype=np.float32)
+    _phy = np.zeros((2, 4), dtype=np.float32)
+    _ovx = np.zeros(2, dtype=np.float64)
+    _ovy = np.zeros(2, dtype=np.float64)
+    compute_attraction_kernel(
+        _su, _phx, _phy, _mp, _mc, _cx, _cy, _wt, _ai, _ovx, _ovy
+    )
     return True

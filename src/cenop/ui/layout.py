@@ -386,9 +386,11 @@ def create_help_modal():
         <tr><td>Sediment Type</td><td><code>sediment.asc</code></td><td>Visualisation only *</td><td>No</td></tr>
         <tr><td>Blocks</td><td><code>blocks.asc</code></td><td>Visualisation only</td><td>No</td></tr>
     </table>
-    <p class="small text-muted">* Sediment feeds the Weston flux ship-noise propagation model.
-    CENOP includes a Python port of the DEPONS WestonFlux physics-based transmission loss model
-    (<code>weston_flux.py</code>), with fallback to a simpler &alpha;/&beta; spreading-loss formula.</p>
+    <p class="small text-muted">* In DEPONS, the per-cell sediment grid feeds the Weston flux ship-noise propagation model.
+    CENOP includes a Python port of WestonFlux (<code>weston_flux.py</code>), but it currently uses
+    a single global grain-size parameter rather than per-cell sediment data. The sediment grid
+    itself is loaded for visualisation only. When <code>weston_flux_depth</code> is not set (the default),
+    ship noise falls back to a simpler &alpha;/&beta; spreading-loss formula.</p>
 
     <h3>Bathymetry (Depth) &mdash; <span style="color: var(--accent-green);">Active</span></h3>
     <p>Water depth in metres below sea level, sourced from EMODnet or equivalent hydrographic surveys.
@@ -484,7 +486,9 @@ def create_help_modal():
     covariate in the external MaxEnt prey models (sandeels prefer coarse sand substrates).</p>
     <p><strong>Current status in CENOP:</strong> loaded and displayed in the Landscape viewer.
     CENOP includes a Weston flux transmission loss model (<code>weston_flux.py</code>) ported from DEPONS,
-    which uses sediment grain size for physics-based sound propagation when ship traffic is enabled.</p>
+    but it currently uses a single global <code>weston_flux_grain_size</code> parameter rather than
+    reading per-cell values from this grid. The sediment layer is not yet wired into the
+    per-cell sound propagation pipeline.</p>
     <p><strong>File:</strong> <code>sediment.asc</code> &nbsp;|&nbsp; <strong>Units:</strong> phi (&phi;) scale &nbsp;|&nbsp;
     <strong>Colour scheme:</strong> categorical &nbsp;|&nbsp;
     <strong>NODATA:</strong> <code>-9999</code> (land)</p>

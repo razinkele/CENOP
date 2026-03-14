@@ -357,6 +357,7 @@ def create_help_modal():
         <tr><th>Landscape</th><th>Description</th><th>Available Turbine Scenarios</th></tr>
         <tr><td>Homogeneous</td><td>Uniform test landscape (400x400 cells)</td><td>None</td></tr>
         <tr><td>Lithuania</td><td>Central Baltic / Lithuanian waters</td><td>Curonian Nord scenarios</td></tr>
+        <tr><td>CentralBaltic</td><td>Central Baltic Sea (Baltic Proper, 51–55°N)</td><td>None</td></tr>
         <tr><td>Kattegat</td><td>Kattegat / Inner Danish Waters (600x1000 @ 400m)</td><td>None</td></tr>
         <tr><td>NorthSea</td><td>North Sea with real bathymetry (2088x2175 @ 400m)</td><td>Scenarios 1-3</td></tr>
     </table>
@@ -378,20 +379,21 @@ def create_help_modal():
         <tr><td>Bathymetry</td><td><code>bathy.asc</code></td><td>Active &mdash; movement, land masking</td><td>No</td></tr>
         <tr><td>Salinity</td><td><code>salinity01.asc</code>&ndash;<code>salinity12.asc</code></td><td>Active &mdash; movement</td><td>Monthly</td></tr>
         <tr><td>Food Probability</td><td><code>patches.asc</code></td><td>Active &mdash; food system</td><td>No</td></tr>
-        <tr><td>Prey (MaxEnt)</td><td><code>prey01.asc</code>&ndash;<code>prey12.asc</code></td><td>Visualisation only *</td><td>Monthly</td></tr>
+        <tr><td>Prey (MaxEnt)</td><td><code>prey01.asc</code>&ndash;<code>prey12.asc</code></td><td>Active &mdash; food carrying capacity</td><td>Monthly</td></tr>
         <tr><td>Distance to Coast</td><td><code>disttocoast.asc</code></td><td>Visualisation only</td><td>No</td></tr>
-        <tr><td>Sediment Type</td><td><code>sediment.asc</code></td><td>Visualisation only **</td><td>No</td></tr>
+        <tr><td>Sediment Type</td><td><code>sediment.asc</code></td><td>Visualisation only *</td><td>No</td></tr>
         <tr><td>Blocks</td><td><code>blocks.asc</code></td><td>Visualisation only</td><td>No</td></tr>
     </table>
-    <p class="small text-muted">* In DEPONS, MaxEnt modulates food carrying capacity per month. CENOP currently uses Food Probability as the sole carrying capacity; MaxEnt integration is planned.<br/>
-    ** In DEPONS, sediment feeds the Weston flux ship-noise propagation model. CENOP currently uses a simpler &alpha;/&beta; spreading-loss model that does not require sediment data.</p>
+    <p class="small text-muted">* In DEPONS, sediment feeds the Weston flux ship-noise propagation model. CENOP currently uses a simpler &alpha;/&beta; spreading-loss model that does not require sediment data.</p>
 
     <h3>Bathymetry (Depth) &mdash; <span style="color: var(--accent-green);">Active</span></h3>
     <p>Water depth in metres below sea level, sourced from EMODnet or equivalent hydrographic surveys.
     This is one of the most important layers &mdash; it directly drives three simulation mechanisms:</p>
     <ul>
         <li><strong>Land masking</strong> &mdash; cells with depth &lt; <code>min_depth</code> (default 1&nbsp;m) are treated as land.
-            Porpoises cannot enter them and are deflected left or right towards deeper water.</li>
+            Porpoises cannot enter them; the model tries turning at 40&deg;, 70&deg;, and 120&deg; in both
+            directions, picking the deeper option. If no angle succeeds, it backtracks to the previous
+            position or moves to the deepest neighbouring cell.</li>
         <li><strong>CRW movement</strong> &mdash; depth modulates both step length and turning angle every tick through the
             coefficients <code>a1</code> (step&ndash;depth) and <code>b1</code> (angle&ndash;depth). Porpoises take
             shorter, more tortuous steps in shallow water.</li>
@@ -399,7 +401,7 @@ def create_help_modal():
             (<code>min_depth_dispersal</code>, default 4&nbsp;m) applies, keeping dispersing porpoises in deeper waters.</li>
     </ul>
     <p><strong>File:</strong> <code>bathy.asc</code> &nbsp;|&nbsp; <strong>Units:</strong> metres below sea level &nbsp;|&nbsp;
-    <strong>Colour scheme:</strong> blue gradient (dark&nbsp;=&nbsp;deep, light&nbsp;=&nbsp;shallow) &nbsp;|&nbsp;
+    <strong>Colour scheme:</strong> viridis (yellow&nbsp;=&nbsp;shallow, purple&nbsp;=&nbsp;deep) &nbsp;|&nbsp;
     <strong>NODATA:</strong> <code>-9999</code> (land)</p>
 
     <h3>Salinity &mdash; <span style="color: var(--accent-green);">Active</span></h3>
@@ -422,33 +424,33 @@ def create_help_modal():
     barren.</p>
     <p><strong>Use in simulation:</strong></p>
     <ul>
-        <li><strong>Food initialisation</strong> &mdash; at simulation start, each cell's food level is set
-            equal to its food probability value.</li>
+        <li><strong>Food initialisation</strong> &mdash; at simulation start, if MaxEnt data is available,
+            each cell's food level is set to <code>maxU &times; maxEnt / meanMaxEnt</code>;
+            otherwise it falls back to the food probability value.</li>
         <li><strong>Foraging</strong> &mdash; porpoises consume food from their current cell each tick, reducing
             the local food level. The amount eaten depends on the porpoise's hunger (energy deficit).</li>
-        <li><strong>Replenishment</strong> &mdash; depleted cells regenerate food towards the food probability
-            level at rate <code>r_u</code> (default 0.1) per tick:
-            <code>food += r_u &times; (food_prob &minus; food)</code>. The food probability value thus acts as the
-            equilibrium carrying capacity for each cell.</li>
+        <li><strong>Replenishment</strong> &mdash; depleted cells regenerate food once per day using logistic
+            growth: <code>F += rU &times; F &times; (1 &minus; F/K)</code>, where
+            <code>rU</code> (default 0.1) is the per-step growth rate and <code>K</code> is the carrying
+            capacity derived from MaxEnt (or food probability as fallback). If the first iteration's delta
+            exceeds a threshold, 47 more iterations are applied (48 total per day, matching DEPONS&nbsp;3.2).</li>
     </ul>
     <p><strong>File:</strong> <code>patches.asc</code> &nbsp;|&nbsp; <strong>Units:</strong> probability / relative capacity (0&ndash;1) &nbsp;|&nbsp;
     <strong>Colour scheme:</strong> green gradient &nbsp;|&nbsp;
     <strong>NODATA:</strong> <code>-9999</code> (land)</p>
 
-    <h3>Prey (MaxEnt) &mdash; <span style="color: var(--accent-amber);">Visualisation only</span></h3>
+    <h3>Prey (MaxEnt) &mdash; <span style="color: var(--accent-green);">Active</span></h3>
     <p>Monthly predictions of relative prey density from <strong>Maximum Entropy</strong> (MaxEnt) species
     distribution models. These are generated externally using satellite tracking data combined with
     environmental covariates (depth, distance to coast, sediment type, sea surface temperature,
     chlorophyll concentration).</p>
-    <p><strong>Role in DEPONS (upstream):</strong> in the original DEPONS Java model, MaxEnt values set the
-    monthly carrying capacity of each food patch. Food grows logistically towards
-    <code>maxU &times; maxEnt / meanMaxEntInQuarter</code>, so cells with high MaxEnt hold more food.
+    <p><strong>Use in simulation:</strong> MaxEnt values set the monthly carrying capacity of each food
+    patch, matching DEPONS&nbsp;3.2 behaviour. Food grows logistically towards
+    <code>K = maxU &times; maxEnt / meanMaxEntInQuarter</code>, so cells with high MaxEnt hold more food.
     The 12 monthly layers shift prey distribution spatially across the year, capturing seasonal
-    productivity cycles. Dispersal targets also require <code>maxEnt &gt; 0</code>.</p>
-    <p><strong>Current status in CENOP:</strong> the MaxEnt data is loaded and available for spatial
-    inspection in the Landscape viewer, but it does <em>not</em> yet modulate the food system at runtime.
-    CENOP currently uses Food Probability (<code>patches.asc</code>) as the sole carrying capacity.
-    Integration of MaxEnt-driven seasonal food dynamics is planned for a future release.</p>
+    productivity cycles. At initialisation, MaxEnt also determines each cell's starting food level.
+    When MaxEnt data is not available for a landscape, the food probability layer is used as fallback
+    carrying capacity.</p>
     <p><strong>Files:</strong> <code>prey01.asc</code> through <code>prey12.asc</code>
     (one per calendar month; also accepts DEPONS long-form naming: <code>prey0000_01.asc</code>) &nbsp;|&nbsp;
     <strong>Units:</strong> relative habitat suitability (0&ndash;1) &nbsp;|&nbsp;
@@ -696,23 +698,198 @@ def create_app_ui():
         style="display: inline-flex; align-items: center; margin-right: 1rem;"
     )
     
-    # JS handler to sync legend checkboxes with actual layer visibility.
-    # Unchecks specific checkboxes by label text in the deck-legend-ctrl.
-    legend_sync_js = """
-        Shiny.addCustomMessageHandler("cenop_sync_legend", function(payload) {
-            var hidden = payload.hidden_labels || [];
-            var ctrl = document.querySelector('.deck-legend-ctrl');
-            if (!ctrl) return;
-            var rows = ctrl.querySelectorAll('.deck-legend-row');
-            rows.forEach(function(row) {
-                var label = row.querySelector('.deck-legend-label');
-                var cb = row.querySelector('.deck-legend-cb');
-                if (label && cb && hidden.indexOf(label.textContent) >= 0) {
-                    cb.checked = false;
-                    cb.dispatchEvent(new Event('change'));
-                }
+    # Dynamic legend: server sends entries via cenop_legend_update,
+    # JS renders checkboxes and toggles layer visibility client-side.
+    LEGEND_CSS = """
+    .cenop-legend {
+        position: absolute; bottom: 10px; right: 10px; z-index: 2;
+        background: rgba(255,255,255,0.95); border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.18); font-family: sans-serif;
+        font-size: 12px; min-width: 150px; pointer-events: auto;
+        overflow: hidden;
+    }
+    .cenop-legend-header {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 6px 10px; cursor: pointer; user-select: none;
+        font-weight: 600; font-size: 12px; color: #333;
+        border: none; background: none; width: 100%; text-align: left;
+    }
+    .cenop-legend-header:hover { background: rgba(0,0,0,0.04); }
+    .cenop-legend-body { padding: 2px 0; }
+    .cenop-legend-body.collapsed { display: none; }
+    .cenop-legend-row {
+        display: flex; align-items: center; gap: 6px;
+        padding: 3px 10px; cursor: pointer;
+    }
+    .cenop-legend-row:hover { background: rgba(0,0,0,0.04); }
+    .cenop-legend-cb { margin: 0; cursor: pointer; }
+    .cenop-legend-swatch {
+        width: 14px; height: 14px; flex-shrink: 0; border-radius: 2px;
+    }
+    .cenop-legend-swatch.circle { border-radius: 50%; }
+    .cenop-legend-label { color: #333; white-space: nowrap; }
+    """
+
+    LEGEND_JS = """
+    (function() {
+        var COMPANIONS = {
+            'depth-bitmap': ['depth-tooltip'],
+            'foraging-bitmap': ['foraging-tooltip'],
+            'turbine-poles': ['turbine-blades']
+        };
+        var userOverrides = {};
+
+        function findMapInstance() {
+            var instances = window.__deckgl_instances || {};
+            for (var id in instances) return {id: id, inst: instances[id]};
+            return null;
+        }
+
+        function applyLayerVisibility(mapId, inst) {
+            if (!inst || !inst.overlay) return;
+            var visMap = {};
+            (inst.lastLayers || []).forEach(function(lp) {
+                visMap[lp.id] = lp.visible !== false;
             });
+            var deckLayers = inst.overlay.props.layers || [];
+            var newLayers = deckLayers.map(function(layer) {
+                if (layer.id in visMap) {
+                    return layer.clone({visible: visMap[layer.id]});
+                }
+                return layer;
+            });
+            inst.overlay.setProps({layers: newLayers});
+            inst.map.triggerRepaint();
+        }
+
+        function setLayerVisible(inst, layerId, visible) {
+            if (!inst || !inst.lastLayers) return;
+            inst.lastLayers = inst.lastLayers.map(function(lp) {
+                if (lp.id !== layerId) return lp;
+                return Object.assign({}, lp, {visible: visible});
+            });
+        }
+
+        function toggleBasemap(inst, visible) {
+            if (!inst || !inst.map) return;
+            var style = inst.map.getStyle();
+            if (!style || !style.layers) return;
+            style.layers.forEach(function(layer) {
+                inst.map.setLayoutProperty(
+                    layer.id, 'visibility', visible ? 'visible' : 'none'
+                );
+            });
+        }
+
+        function renderLegend(container, entries) {
+            container.textContent = '';
+
+            var header = document.createElement('button');
+            header.className = 'cenop-legend-header';
+            var titleSpan = document.createElement('span');
+            titleSpan.textContent = 'Layers';
+            var arrowSpan = document.createElement('span');
+            arrowSpan.className = 'cenop-legend-arrow';
+            arrowSpan.textContent = '\\u25BC';
+            header.appendChild(titleSpan);
+            header.appendChild(arrowSpan);
+
+            var body = document.createElement('div');
+            body.className = 'cenop-legend-body';
+
+            header.addEventListener('click', function() {
+                body.classList.toggle('collapsed');
+                arrowSpan.textContent = body.classList.contains('collapsed')
+                    ? '\\u25B6' : '\\u25BC';
+            });
+            container.appendChild(header);
+
+            entries.forEach(function(entry) {
+                var row = document.createElement('label');
+                row.className = 'cenop-legend-row';
+
+                var cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.className = 'cenop-legend-cb';
+                var checked = (entry.id in userOverrides)
+                    ? userOverrides[entry.id] : entry.checked !== false;
+                cb.checked = checked;
+
+                cb.addEventListener('change', function() {
+                    var vis = this.checked;
+                    userOverrides[entry.id] = vis;
+                    var m = findMapInstance();
+                    if (!m) return;
+                    if (entry.id === 'basemap') {
+                        toggleBasemap(m.inst, vis);
+                        return;
+                    }
+                    setLayerVisible(m.inst, entry.id, vis);
+                    (COMPANIONS[entry.id] || []).forEach(function(cid) {
+                        setLayerVisible(m.inst, cid, vis);
+                    });
+                    applyLayerVisibility(m.id, m.inst);
+                });
+
+                var swatch = document.createElement('span');
+                swatch.className = 'cenop-legend-swatch'
+                    + (entry.shape === 'circle' ? ' circle' : '');
+                if (entry.colors && entry.colors.length) {
+                    var stops = entry.colors.map(function(c) {
+                        return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
+                    });
+                    swatch.style.background =
+                        'linear-gradient(90deg,' + stops.join(',') + ')';
+                } else if (entry.color) {
+                    swatch.style.backgroundColor = entry.color;
+                }
+
+                var lbl = document.createElement('span');
+                lbl.className = 'cenop-legend-label';
+                lbl.textContent = entry.label;
+
+                row.appendChild(cb);
+                row.appendChild(swatch);
+                row.appendChild(lbl);
+                body.appendChild(row);
+            });
+            container.appendChild(body);
+
+            // Re-apply user overrides after server update
+            var m = findMapInstance();
+            if (m) {
+                var needRebuild = false;
+                entries.forEach(function(entry) {
+                    if (entry.id in userOverrides) {
+                        var vis = userOverrides[entry.id];
+                        if (entry.id === 'basemap') {
+                            toggleBasemap(m.inst, vis);
+                        } else {
+                            setLayerVisible(m.inst, entry.id, vis);
+                            (COMPANIONS[entry.id] || []).forEach(function(cid) {
+                                setLayerVisible(m.inst, cid, vis);
+                            });
+                            needRebuild = true;
+                        }
+                    }
+                });
+                if (needRebuild) applyLayerVisibility(m.id, m.inst);
+            }
+        }
+
+        Shiny.addCustomMessageHandler('cenop_legend_update', function(payload) {
+            var entries = payload.entries || [];
+            var mapEl = document.getElementById('sim_map');
+            if (!mapEl) return;
+            var container = mapEl.querySelector('.cenop-legend');
+            if (!container) {
+                container = document.createElement('div');
+                container.className = 'cenop-legend';
+                mapEl.appendChild(container);
+            }
+            renderLegend(container, entries);
         });
+    })();
     """
 
     return ui.page_navbar(
@@ -731,7 +908,11 @@ def create_app_ui():
         sidebar=create_sidebar(),
         title=title_with_logo,
         theme=shinyswatch.theme.flatly,
-        header=ui.TagList(ui.tags.style(CUSTOM_CSS), ui.tags.script(legend_sync_js)),
+        header=ui.TagList(
+            ui.tags.style(CUSTOM_CSS),
+            ui.tags.style(LEGEND_CSS),
+            ui.tags.script(LEGEND_JS),
+        ),
         fillable=True
     )
 

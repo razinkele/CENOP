@@ -469,7 +469,7 @@ def create_help_modal():
     <p><strong>Current status in CENOP:</strong> loaded and displayed in the Landscape viewer for
     spatial context and habitat characterisation (e.g., comparing porpoise density across distance
     bands). Not referenced by any simulation logic.</p>
-    <p><strong>File:</strong> <code>disttocoast.asc</code> &nbsp;|&nbsp; <strong>Units:</strong> kilometres &nbsp;|&nbsp;
+    <p><strong>File:</strong> <code>disttocoast.asc</code> &nbsp;|&nbsp; <strong>Units:</strong> metres &nbsp;|&nbsp;
     <strong>Colour scheme:</strong> yellow&ndash;red gradient &nbsp;|&nbsp;
     <strong>NODATA:</strong> <code>-9999</code> (land)</p>
 

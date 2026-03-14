@@ -155,7 +155,26 @@ def create_sidebar():
             ui.p("1% = slowest, 100% = fastest", class_="text-muted small mb-0"),
             class_="mb-3"
         ),
-        
+
+        # Porpoise trace controls
+        ui.div(
+            ui.input_checkbox(
+                "show_traces", "Show porpoise traces", value=False
+            ),
+            ui.panel_conditional(
+                "input.show_traces",
+                ui.input_slider(
+                    "trace_length_days",
+                    "Trace history (days)",
+                    min=1,
+                    max=7,
+                    value=2,
+                    step=1,
+                ),
+            ),
+            class_="mb-3",
+        ),
+
         ui.tags.hr(),
 
         # Social Communication controls

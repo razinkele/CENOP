@@ -90,7 +90,18 @@ def grid_to_lonlat(
     return lon, lat
 
 
-def run_simulation_loop(runner, result_queue, stop_event, throttle_value, throttle_lock, ticks_per_update_value, ticks_lock):
+def run_simulation_loop(
+    runner,
+    result_queue,
+    stop_event,
+    throttle_value,
+    throttle_lock,
+    ticks_per_update_value,
+    ticks_lock,
+    trace_enabled_value,
+    trace_length_value,
+    trace_lock,
+):
     """Background thread worker for simulation loop.
 
     Args:
@@ -101,10 +112,17 @@ def run_simulation_loop(runner, result_queue, stop_event, throttle_value, thrott
         throttle_lock: Threading lock to protect throttle_value access
         ticks_per_update_value: List with single int [1-48] for ticks per update (mutable for thread sharing)
         ticks_lock: Threading lock to protect ticks_per_update_value access
+        trace_enabled_value: List with single bool for trace toggle (mutable for thread sharing)
+        trace_length_value: List with single int for trace length in days (mutable for thread sharing)
+        trace_lock: Threading lock to protect trace settings access
     """
     import time
+    from collections import deque
+
     logger.debug("run_simulation_loop STARTED - max_ticks=%s", runner.max_ticks)
     loop_count = 0
+    trail_history: dict[int, deque] = {}
+    map_tick = 0
     try:
         while not runner.is_complete and not stop_event.is_set():
             loop_count += 1
@@ -159,6 +177,44 @@ def run_simulation_loop(runner, result_queue, stop_event, throttle_value, thrott
                     logger.debug("Coordinate transform failed: %s", e)
                     porpoise_positions = None
 
+            # Collect trail data if traces enabled
+            trail_data = None
+            if runner.should_update_map:
+                with trace_lock:
+                    traces_on = trace_enabled_value[0]
+                    max_ticks = trace_length_value[0] * 48  # days to ticks
+                if traces_on and porpoise_positions:
+                    map_tick += 1
+                    for row in porpoise_positions:
+                        pid = int(row[0])
+                        lon, lat = row[1], row[2]
+                        if pid not in trail_history:
+                            trail_history[pid] = deque(maxlen=max_ticks)
+                        elif trail_history[pid].maxlen != max_ticks:
+                            trail_history[pid] = deque(
+                                trail_history[pid], maxlen=max_ticks
+                            )
+                        trail_history[pid].append((lon, lat, map_tick))
+                    # Remove dead porpoises
+                    alive_ids = {int(row[0]) for row in porpoise_positions}
+                    dead_ids = set(trail_history.keys()) - alive_ids
+                    for pid in dead_ids:
+                        del trail_history[pid]
+                    # Serialize for queue
+                    trail_data = []
+                    for pid, trail in list(trail_history.items())[:1000]:
+                        if len(trail) >= 2:
+                            trail_data.append({
+                                "pid": pid,
+                                "path": [
+                                    [t[0], t[1], t[2]] for t in trail
+                                ],
+                                "timestamps": [t[2] for t in trail],
+                            })
+                elif not traces_on:
+                    trail_history.clear()
+                    map_tick = 0
+
             update = {
                 "type": "update",
                 "progress": runner.progress_percent,
@@ -166,7 +222,8 @@ def run_simulation_loop(runner, result_queue, stop_event, throttle_value, thrott
                 "total_births": runner.total_births,
                 "total_deaths": runner.total_deaths,
                 "should_update_map": runner.should_update_map,
-                "porpoise_positions": porpoise_positions
+                "porpoise_positions": porpoise_positions,
+                "porpoise_trails": trail_data,
             }
             result_queue.put(update)
 
@@ -429,7 +486,11 @@ def server(input, output, session):
     # Shared ticks per update value [1-48] for map update frequency
     ticks_per_update_value = [48]  # Default 48 ticks (1 day) per UI update
     ticks_lock = threading.Lock()  # Protects ticks_per_update_value access
-    
+    # Shared trace settings for thread-safe updates
+    trace_enabled_value = [False]
+    trace_length_value = [2]  # days
+    trace_lock = threading.Lock()
+
     # =========================================================================
     # Help Modal
     # =========================================================================
@@ -1077,8 +1138,13 @@ def server(input, output, session):
         # Start background thread
         sim_thread = threading.Thread(
             target=run_simulation_loop,
-            args=(runner, result_queue, stop_event, throttle_value, throttle_lock, ticks_per_update_value, ticks_lock),
-            daemon=True
+            args=(
+                runner, result_queue, stop_event,
+                throttle_value, throttle_lock,
+                ticks_per_update_value, ticks_lock,
+                trace_enabled_value, trace_length_value, trace_lock,
+            ),
+            daemon=True,
         )
         sim_thread.start()
         logger.info("Simulation thread started")
@@ -1104,7 +1170,24 @@ def server(input, output, session):
         with ticks_lock:
             ticks_per_update_value[0] = ticks_val
         logger.debug("Ticks per update changed: %s", ticks_val)
-    
+
+    @reactive.effect
+    def _sync_trace_settings():
+        """Sync trace toggle and slider to thread-safe flags."""
+        enabled = (
+            input.show_traces()
+            if hasattr(input, "show_traces")
+            else False
+        )
+        days = (
+            input.trace_length_days()
+            if hasattr(input, "trace_length_days")
+            else 2
+        )
+        with trace_lock:
+            trace_enabled_value[0] = bool(enabled)
+            trace_length_value[0] = int(days) if days else 2
+
     @reactive.effect
     def poll_simulation():
         """Poll for updates from the background simulation thread."""

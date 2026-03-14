@@ -4,7 +4,7 @@
 
 A web-based simulation tool for assessing the impact of offshore wind farm construction on harbor porpoise populations, with advanced research-grade behavioral modeling.
 
-**Version 2.0** | Python Shiny Implementation aligned with DEPONS 3.2 + JASMINE Extensions
+**Version 2.1** | Python Shiny Implementation aligned with DEPONS 3.2 + JASMINE Extensions
 
 ---
 
@@ -35,12 +35,18 @@ The JASMINE (Just Another Simulation Model In Nature Environments) extension add
 #### Core Features (DEPONS Mode)
 - **Agent-Based Simulation**: Each porpoise is modeled individually with realistic behavior
 - **Real-Time Visualization**: Watch population dynamics unfold on an interactive map
-- **Energy Budget Modeling**: Tracks individual energy reserves and their effect on survival
-- **Deterrence Response**: Models porpoise avoidance of noise sources (threshold: 158 dB)
-- **Persistent Spatial Memory (PSM)**: Porpoises remember good foraging locations
-- **DEPONS 3.2 Alignment**: Algorithms match the DEPONS 3.2 Java implementation
-- **Numba JIT Performance**: Hot-path kernels compiled to machine code with prange parallelism
+- **Pregnancy FSM**: Three-state reproductive cycle (immature → pregnant → ready-to-mate) with daily scheduling
+- **Energy Budget Modeling**: Tracks individual energy reserves with starvation mortality formula
+- **Logistic Food Regrowth**: MaxEnt-based carrying capacity with 48-iteration daily compounding
+- **Reference Memory**: 120-entry circular buffer with vectorized attraction (vt) and expected value (veTotal)
+- **CRW Rejection Sampling**: Retry-based angle and step length sampling (max 200 retries)
+- **PSM-Type2 Dispersal**: SSLogis heading dampening, energy-based stop, deterrence deactivation
+- **Deterrence Response**: Models porpoise avoidance of noise sources (threshold: 152 dB)
+- **Ship Noise**: JOMOPANS 13-class source levels with Weston flux physics-based transmission loss
+- **DEPONS 3.2 Alignment**: Full algorithmic sync across all 5 subsystems (502+ automated tests)
+- **Numba JIT Performance**: 7 hot-path kernels compiled to machine code with prange parallelism
 - **Vectorized Architecture**: NumPy SoA + Numba kernels support 1000+ porpoises in real-time
+- **Bitmap Grid Rendering**: Full-resolution server-side PNG rendering of landscape layers
 
 #### JASMINE Extensions (Research Mode)
 - **Behavioral State Machine**: Five behavioral states (FORAGING, TRAVELING, RESTING, DISPERSING, DISTURBED) with configurable transitions
@@ -56,12 +62,15 @@ The JASMINE (Just Another Simulation Model In Nature Environments) extension add
 CENOP-JASMINE supports two simulation modes:
 
 ### DEPONS Mode (Default)
-- Regulatory-compatible empirical models aligned with DEPONS 3.2
-- Pregnancy FSM, daily mortality, PSM-Type2 dispersal, deterrence, reference memory
-- CRW with rejection sampling (3 loops: angle, distance-modulated angle, step length)
+- Regulatory-compatible empirical models fully aligned with DEPONS 3.2
+- Pregnancy FSM (3-state: immature → pregnant → ready-to-mate) with daily scheduling
+- CRW with rejection sampling (up to 200 retries for angle and step length)
+- Reference memory (120-entry circular buffer) with vectorized attraction computation
+- Logistic food regrowth with 48-iteration daily compounding and MaxEnt carrying capacity
+- PSM-Type2 dispersal with SSLogis heading, energy-based stop, deterrence deactivation
+- Ship deterrence with JOMOPANS source levels and Weston flux transmission loss
+- Energy-based starvation mortality (m_mort_prob_const=1.0, x_survival_const=0.4)
 - Suitable for environmental impact assessments
-- Simple energy model (0-20 scale) with seasonal scaling
-- Immediate deterrence response
 
 ### JASMINE Mode (Research)
 - Physics-based movement and bioenergetics
@@ -183,7 +192,7 @@ The interface is divided into three main areas:
    - UserDefined → User-defined scenario
 2. Click **🌬️ Load Turbines** to display:
    - Orange dots for turbine locations
-   - Red shading for noise levels above 158 dB threshold
+   - Red shading for noise levels above 152 dB threshold
 
 ### Step 4: Configure Advanced Settings (Optional)
 
@@ -302,8 +311,9 @@ The interactive map shows:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| Dispersal Type | PSM-Type2 | Memory-based with heading dampening |
+| Dispersal Type | PSM-Type2 | Memory-based with SSLogis heading dampening |
 | tDisp | 3 days | Days of declining energy to trigger |
+| mean_disp_dist | 2.0 km | Mean distance per dispersal step (DEPONS 3.2) |
 | PSM_log | 0.6 | Memory strengthening rate |
 | PSM_dist | N(300;100) | Preferred dispersal distance (km) |
 | PSM_tol | 5 km | Target tolerance distance |
@@ -313,8 +323,8 @@ The interactive map shows:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| rS | 0.04 | Satiation memory decay rate |
-| rR | 0.04 | Reference memory decay rate |
+| rS | 0.03 | Satiation memory decay rate (DEPONS 3.2) |
+| rR | 0.03 | Reference memory decay rate (DEPONS 3.2) |
 | rU | 0.1 | Food replenishment rate |
 
 ### JASMINE Mode Parameters
@@ -464,8 +474,13 @@ writer.finalize()
 ### Model Validation
 
 **DEPONS Mode** is algorithmically aligned with:
-- DEPONS 3.2 Java implementation (pregnancy FSM, dispersal, deterrence, reference memory, CRW rejection sampling)
-- 502 automated tests verifying algorithm equivalence
+- DEPONS 3.2 Java implementation across all 5 subsystems:
+  - Reproduction (pregnancy FSM, weaning-based calf creation)
+  - Food & energy (logistic regrowth, MaxEnt carrying capacity, starvation formula)
+  - Movement & memory (reference memory circular buffers, CRW rejection sampling, heading composition)
+  - Dispersal (PSM-Type2 with SSLogis heading, energy-based stop)
+  - Deterrence (raw displacement vectors, WestonFlux TL, JOMOPANS SPL)
+- 502+ automated tests verifying parameter defaults, formula outputs, and population stability
 
 **JASMINE Mode** is research-grade and designed for:
 - Exploring advanced behavioral hypotheses

@@ -31,7 +31,7 @@ The JASMINE (Just Another Simulation Model In Nature Environments) extension add
 - North Sea, Kattegat, Central Baltic, and Lithuanian waters with real bathymetry
 - Monthly salinity fields driving CRW movement modulation
 - Food probability grids with logistic regrowth dynamics
-- Monthly MaxEnt prey distribution layers (visualization; integration planned)
+- Monthly MaxEnt prey distribution layers (sets carrying capacity for food patches)
 - All grids at mandatory 400m cell resolution
 
 ### Web Interface
@@ -48,10 +48,11 @@ The JASMINE (Just Another Simulation Model In Nature Environments) extension add
 - **Physics-Based Movement:** Hydrodynamic drag, thrust-based propulsion, and ocean current advection
 
 ### Performance
-- Numba JIT kernels: `reflect_boundaries`, `crw_angle_step`, `turn_position`, `eat_food`, `depons_bmr_cost`, `social_accumulate`
+- 7 Numba JIT kernels: `reflect_boundaries`, `seed_numba_rng`, `crw_angle_step`, `turn_position`, `eat_food`, `depons_bmr_cost`, `social_accumulate`
 - Three kernels parallelized with `prange` (reflect, turn_position, BMR cost)
+- Pre-allocated float64 buffers, RefMemWorkspace (~1.5 MB/tick saved), vectorized land avoidance
 - Sub-millisecond per-kernel performance for 500 agents
-- 502 tests passing (unit, integration, equivalence, and parallel determinism tests)
+- 502+ tests passing across 24 test files (unit, integration, equivalence, and parallel determinism tests)
 
 ## Installation
 
@@ -90,7 +91,7 @@ Then open your browser to http://localhost:8000
 ## Running Tests
 
 ```bash
-# Full test suite (502 tests)
+# Full test suite (502+ tests)
 python3 -m pytest tests/ -x -q
 
 # Numba kernel tests only
@@ -248,7 +249,7 @@ CENOP/
 │           ├── disturbance.py  # Disturbance impacts
 │           ├── landscape_editor.py  # Spatial data viewer
 │           └── export.py       # Results download
-└── tests/                      # Test suite (502 tests)
+└── tests/                      # Test suite (502+ tests)
     ├── conftest.py             # Fixtures, Numba/coverage compatibility
     ├── test_numba_kernels.py   # Numba kernel tests (25 tests)
     ├── test_integration.py     # Full simulation integration tests
@@ -257,7 +258,7 @@ CENOP/
     ├── test_ref_memory.py      # Reference memory tests
     ├── test_dispersal.py       # Dispersal behavior tests
     ├── test_phase5.py          # Phase 5 integration tests
-    └── ...                     # 26 test files total
+    └── ...                     # 24 test files total
 ```
 
 ## Configuration

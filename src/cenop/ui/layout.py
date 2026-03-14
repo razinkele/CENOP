@@ -370,7 +370,9 @@ def create_help_modal():
     ASC file is validated at load time; grids with a different resolution will be rejected.
     Movement distances, coordinate conversions, and the persistent spatial memory system all assume
     400&nbsp;m cells.</p>
-    <p>Layers can be inspected individually with summary statistics (min, max, mean, coverage).
+    <p>All layers are rendered as <strong>full-resolution bitmap overlays</strong> (one pixel per grid cell,
+    colour-mapped server-side) with transparent tooltip overlays for hover inspection.
+    Layers include summary statistics (min, max, mean, coverage).
     Each layer is loaded from files in the landscape data directory (e.g., <code>data/Kattegat/</code>).
     Some layers actively drive the simulation; others are loaded for visualisation and analysis only.</p>
 
@@ -384,7 +386,9 @@ def create_help_modal():
         <tr><td>Sediment Type</td><td><code>sediment.asc</code></td><td>Visualisation only *</td><td>No</td></tr>
         <tr><td>Blocks</td><td><code>blocks.asc</code></td><td>Visualisation only</td><td>No</td></tr>
     </table>
-    <p class="small text-muted">* In DEPONS, sediment feeds the Weston flux ship-noise propagation model. CENOP currently uses a simpler &alpha;/&beta; spreading-loss model that does not require sediment data.</p>
+    <p class="small text-muted">* Sediment feeds the Weston flux ship-noise propagation model.
+    CENOP includes a Python port of the DEPONS WestonFlux physics-based transmission loss model
+    (<code>weston_flux.py</code>), with fallback to a simpler &alpha;/&beta; spreading-loss formula.</p>
 
     <h3>Bathymetry (Depth) &mdash; <span style="color: var(--accent-green);">Active</span></h3>
     <p>Water depth in metres below sea level, sourced from EMODnet or equivalent hydrographic surveys.
@@ -479,8 +483,8 @@ def create_help_modal():
     together control how far ship noise propagates through the water column. Sediment is also a key
     covariate in the external MaxEnt prey models (sandeels prefer coarse sand substrates).</p>
     <p><strong>Current status in CENOP:</strong> loaded and displayed in the Landscape viewer.
-    CENOP uses a simpler &alpha;/&beta; spreading-loss formula for sound propagation that does not
-    require sediment data. Not referenced by any simulation logic.</p>
+    CENOP includes a Weston flux transmission loss model (<code>weston_flux.py</code>) ported from DEPONS,
+    which uses sediment grain size for physics-based sound propagation when ship traffic is enabled.</p>
     <p><strong>File:</strong> <code>sediment.asc</code> &nbsp;|&nbsp; <strong>Units:</strong> phi (&phi;) scale &nbsp;|&nbsp;
     <strong>Colour scheme:</strong> categorical &nbsp;|&nbsp;
     <strong>NODATA:</strong> <code>-9999</code> (land)</p>
@@ -507,10 +511,15 @@ def create_help_modal():
 
     <h2>Wind Turbine Scenarios</h2>
     <p>Turbine scenarios define the location and construction timing of offshore wind farms.
-    Each turbine generates pile-driving noise during construction that deters porpoises.</p>
+    Each turbine generates pile-driving noise during construction that deters porpoises.
+    Deterrence uses raw displacement vectors (matching DEPONS&nbsp;3.2) scaled by signal strength
+    and the deterrence coefficient (<code>deter_coeff&nbsp;=&nbsp;0.012</code>).</p>
     <div class="note">
         <strong>Note:</strong> The noise overlay (red shading) shows areas where received sound levels
-        exceed the deterrence threshold (152 dB). Porpoises avoid these areas during pile-driving.
+        exceed the deterrence threshold (152&nbsp;dB). Porpoises avoid these areas during pile-driving.
+        Ship noise uses calibrated <strong>JOMOPANS</strong> source levels (13 vessel classes) and
+        physics-based <strong>Weston flux</strong> transmission loss, with standardised logistic
+        regression for deterrence probability.
     </div>
 
     <h2>Dashboard Visualizations</h2>
@@ -552,12 +561,17 @@ def create_help_modal():
     </table>
 
     <h3>Dispersal Tab</h3>
-    <p>Controls large-scale movement when porpoises have declining energy:</p>
+    <p>Controls large-scale movement when porpoises have declining energy.
+    Dispersal uses the <strong>PSM-Type2</strong> algorithm with heading dampening via the SSLogis formula.
+    Dispersing agents move at a fixed step length (<code>mean_disp_dist&nbsp;/&nbsp;0.4</code> grid cells)
+    instead of CRW steps. Dispersal stops when the porpoise's current energy exceeds the minimum of its
+    previous 7 days' energy (checked at day boundaries). Deterrence events deactivate ongoing dispersal.</p>
     <table class="param-table">
         <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
-        <tr><td>Dispersal Type</td><td>PSM-Type2</td><td>Memory-based with heading dampening</td></tr>
+        <tr><td>Dispersal Type</td><td>PSM-Type2</td><td>Memory-based with heading dampening (SSLogis formula)</td></tr>
         <tr><td>tDisp</td><td>3 days</td><td>Consecutive days of declining energy to trigger dispersal</td></tr>
         <tr><td>PSM_dist</td><td>N(300;100)</td><td>Preferred dispersal distance: mean 300km, std 100km</td></tr>
+        <tr><td>mean_disp_dist</td><td>2.0 km</td><td>Mean distance per dispersal step (DEPONS 3.2)</td></tr>
     </table>
 
     <h3>Energy Tab</h3>
@@ -567,6 +581,37 @@ def create_help_modal():
         <tr><td>rR (Reference)</td><td>0.03</td><td>Decay rate for reference memory</td></tr>
         <tr><td>rU (Replenishment)</td><td>0.1</td><td>Rate at which depleted food patches recover</td></tr>
     </table>
+
+    <h2>Reproduction &amp; Mortality (DEPONS 3.2)</h2>
+    <p>Reproduction uses a <strong>three-state pregnancy finite state machine</strong> (FSM) matching DEPONS&nbsp;3.2:</p>
+    <table class="param-table">
+        <tr><th>State</th><th>Description</th><th>Transition</th></tr>
+        <tr><td><strong>Immature</strong></td><td>Not yet sexually mature (age &lt; 3.44 years)</td><td>&rarr; Ready-to-mate at maturation age</td></tr>
+        <tr><td><strong>Pregnant</strong></td><td>Gestation + nursing period (~540 days total)</td><td>&rarr; Ready-to-mate at weaning (calf created)</td></tr>
+        <tr><td><strong>Ready-to-mate</strong></td><td>Eligible for conception on assigned mating day</td><td>&rarr; Pregnant on mating day</td></tr>
+    </table>
+    <p>Calves are created at <em>weaning</em> (240 days post-birth), not at conception.
+    Mating days are re-randomised each year.
+    Mortality is checked daily (tick&nbsp;%&nbsp;48&nbsp;==&nbsp;0) using the starvation formula:
+    <code>yearlySurv&nbsp;=&nbsp;1&nbsp;&minus;&nbsp;m_mort_prob_const&nbsp;&times;&nbsp;exp(&minus;energy&nbsp;&times;&nbsp;x_survival_const)</code>,
+    with DEPONS&nbsp;3.2 calibrated values (<code>m_mort_prob_const&nbsp;=&nbsp;1.0</code>,
+    <code>x_survival_const&nbsp;=&nbsp;0.4</code>).
+    Bycatch mortality is also checked daily.</p>
+
+    <h2>Reference Memory System (DEPONS 3.2)</h2>
+    <p>Each porpoise maintains a <strong>circular buffer</strong> of 120 remembered positions and food
+    utility values. The reference memory system drives habitat selection through two key computations:</p>
+    <ul>
+        <li><strong>veTotal</strong> (expected food value) &mdash; weighted sum of stored food utilities,
+            decayed by <code>rS&nbsp;=&nbsp;0.03</code> (satiation memory). Controls the CRW contribution
+            weight via <code>crwContrib&nbsp;=&nbsp;inertiaConst&nbsp;+&nbsp;presMov&nbsp;&times;&nbsp;veTotal</code>.</li>
+        <li><strong>vt</strong> (attraction vector) &mdash; vectorised attraction towards previously visited
+            food-rich areas, weighted by <code>rR&nbsp;=&nbsp;0.03</code> (reference memory decay).
+            Computed using NumPy advanced indexing on the circular buffer for performance.</li>
+    </ul>
+    <p>Heading composition: <code>totalD&nbsp;=&nbsp;(dx,dy)&nbsp;&times;&nbsp;crwContrib&nbsp;+&nbsp;vt&nbsp;+&nbsp;deterVt</code>.
+    The CRW component uses <strong>rejection sampling</strong> (up to 200 retries) for both angle and step length
+    instead of clipping, matching the DEPONS&nbsp;3.2 Java implementation.</p>
 
     <h2>JASMINE Mode Features</h2>
     <p>When JASMINE mode is selected, the following advanced features are enabled:</p>
@@ -640,26 +685,48 @@ def create_help_modal():
     <h2>Scientific Background</h2>
     <p>CENOP-JASMINE is based on the DEPONS 3.2 model (Nabe-Nielsen et al., 2018) with JASMINE extensions. Key features:</p>
     <ul>
-        <li><strong>Agent-based</strong> - Each porpoise is an individual with its own state</li>
-        <li><strong>Spatially explicit</strong> - 400m x 400m grid cells</li>
-        <li><strong>30-minute time steps</strong> - 48 ticks per day, 17,280 ticks per year</li>
-        <li><strong>Dual-mode</strong> - DEPONS for regulatory, JASMINE for research</li>
-        <li><strong>Energy-based mortality</strong> - Survival depends on energy reserves</li>
-        <li><strong>Persistent Spatial Memory</strong> - Porpoises remember good foraging areas</li>
-        <li><strong>Reference Memory</strong> - Vectorized attraction to previously visited food-rich areas</li>
-        <li><strong>Learned Avoidance</strong> (JASMINE) - Porpoises remember disturbance zones</li>
-        <li><strong>Habituation</strong> (JASMINE) - Reduced response to repeated exposure</li>
+        <li><strong>Agent-based</strong> &mdash; Each porpoise is an individual with its own state</li>
+        <li><strong>Spatially explicit</strong> &mdash; 400m &times; 400m grid cells</li>
+        <li><strong>30-minute time steps</strong> &mdash; 48 ticks per day, 17,280 ticks per year (360-day years)</li>
+        <li><strong>Dual-mode</strong> &mdash; DEPONS for regulatory, JASMINE for research</li>
+        <li><strong>Pregnancy FSM</strong> &mdash; Three-state reproductive cycle (immature &rarr; pregnant &rarr; ready-to-mate)</li>
+        <li><strong>Logistic food regrowth</strong> &mdash; 48-iteration compounding with MaxEnt-based carrying capacity</li>
+        <li><strong>Energy-based mortality</strong> &mdash; Starvation formula with DEPONS&nbsp;3.2 calibrated parameters</li>
+        <li><strong>CRW rejection sampling</strong> &mdash; Retry-based angle/step sampling (max 200 retries), not clipping</li>
+        <li><strong>Reference Memory</strong> &mdash; 120-entry circular buffer with vectorised attraction (vt) and expected value (veTotal)</li>
+        <li><strong>PSM-Type2 Dispersal</strong> &mdash; Energy-triggered with SSLogis heading, energy-based stop, deterrence deactivation</li>
+        <li><strong>WestonFlux TL</strong> &mdash; Physics-based transmission loss for ship noise propagation</li>
+        <li><strong>JOMOPANS SPL</strong> &mdash; Calibrated ship source levels (13 vessel classes)</li>
+        <li><strong>Learned Avoidance</strong> (JASMINE) &mdash; Porpoises remember disturbance zones</li>
+        <li><strong>Habituation</strong> (JASMINE) &mdash; Reduced response to repeated exposure</li>
     </ul>
 
     <h2>Performance</h2>
-    <p>CENOP uses Numba JIT-compiled kernels for simulation hot paths, achieving sub-millisecond
-    performance per kernel call for populations of 500 agents. Three independent kernels
-    (boundary reflection, turn position, BMR cost) run in parallel using <code>prange</code>.</p>
+    <p>CENOP uses <strong>7 Numba JIT-compiled kernels</strong> for simulation hot paths, all achieving
+    sub-millisecond performance for populations of 500+ agents:</p>
+    <ul>
+        <li><code>reflect_boundaries_kernel</code> &mdash; boundary reflection (<code>prange</code>)</li>
+        <li><code>crw_angle_step_kernel</code> &mdash; CRW angle and step length</li>
+        <li><code>turn_position_kernel</code> &mdash; position update (<code>prange</code>)</li>
+        <li><code>eat_food_kernel</code> &mdash; food consumption with pre-allocated demand grid</li>
+        <li><code>depons_bmr_cost_kernel</code> &mdash; basal metabolic cost (<code>prange</code>)</li>
+        <li><code>social_accumulate_kernel</code> &mdash; social vector accumulation</li>
+        <li><code>seed_numba_rng</code> &mdash; per-thread RNG seeding</li>
+    </ul>
+    <p>Three kernels (boundary reflection, turn position, BMR cost) run in parallel using
+    <code>prange</code>. Additional optimisations include pre-allocated float64 buffers for
+    position/heading arrays, a reusable <code>RefMemWorkspace</code> (~1.5&nbsp;MB/tick saved),
+    and vectorised land avoidance fallbacks.</p>
 
     <h2>Model Validation</h2>
     <ul>
-        <li><strong>DEPONS mode</strong> - Algorithmically aligned with DEPONS 3.2 (pregnancy FSM, dispersal, deterrence, reference memory, CRW rejection sampling)</li>
-        <li><strong>JASMINE mode</strong> - Research-grade, designed for exploring advanced behavioral hypotheses</li>
+        <li><strong>DEPONS mode</strong> &mdash; Algorithmically aligned with DEPONS&nbsp;3.2 across all five subsystems:
+            pregnancy FSM, logistic food regrowth with MaxEnt, reference memory with circular buffers,
+            CRW rejection sampling with heading composition, PSM-Type2 dispersal with energy-based stop,
+            and deterrence with raw displacement vectors and WestonFlux/JOMOPANS ship noise.
+            502+ automated tests verify parameter defaults, formula outputs, and population stability.</li>
+        <li><strong>JASMINE mode</strong> &mdash; Research-grade, designed for exploring advanced behavioral hypotheses
+            (physics-based movement, DEB, learned avoidance, habituation)</li>
     </ul>
 
     <h2>References</h2>

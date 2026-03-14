@@ -5,7 +5,7 @@
 CENOP-JASMINE (Cetacean Noise Operations Planner with JASMINE Extensions) is a Python Shiny application for simulating harbor porpoise population dynamics in response to wind farm construction noise. This document describes the core API for developers and researchers.
 
 The API supports two simulation modes:
-- **DEPONS Mode**: Regulatory-compatible empirical models (default)
+- **DEPONS Mode**: Regulatory-compatible empirical models aligned with DEPONS 3.2 (default)
 - **JASMINE Mode**: Research-grade physics-based and bioenergetics models
 
 ---
@@ -14,44 +14,48 @@ The API supports two simulation modes:
 
 ### 1. Landscape Module
 
-**Location:** `src/cenop/core/landscape.py`
+**Location:** `src/cenop/landscape/cell_data.py`
 
-The landscape module manages the spatial environment including bathymetry, food availability, and environmental data.
+The landscape module manages the spatial environment including bathymetry, food availability, salinity, and MaxEnt prey distribution.
 
 #### Classes
 
-##### `Landscape`
+##### `CellData`
 
 ```python
-class Landscape:
+class CellData:
     """
-    Manages the spatial grid environment for porpoise simulation.
-    
+    Manages landscape grid data loaded from ASC files.
+
     Attributes:
-        width (int): Grid width in cells
-        height (int): Grid height in cells
-        cell_size (float): Size of each cell in meters (default: 400m)
-        bathymetry (np.ndarray): Depth values for each cell
-        food_level (np.ndarray): Food availability (0-1) for each cell
-        food_prob (np.ndarray): Probability of food presence
-        salinity (np.ndarray): Salinity values (optional)
-        disturbance (np.ndarray): Disturbance levels from noise sources
+        metadata (LandscapeMetadata): Grid geometry (ncols, nrows, xllcorner, yllcorner, cellsize)
+        _depth (np.ndarray): Bathymetry values (metres below sea level)
+        _food_prob (np.ndarray): Food probability / carrying capacity (0-1)
+        _food_level (np.ndarray): Current food level per cell (dynamic, depleted by foraging)
+        _salinity (list[np.ndarray]): 12 monthly salinity fields
+        _maxent (list[np.ndarray]): 12 monthly MaxEnt prey distribution layers
     """
-    
-    def __init__(self, width: int, height: int, cell_size: float = 400.0):
-        """Initialize landscape with given dimensions."""
-        
-    def load_from_raster(self, bathymetry_path: str, food_path: str = None):
-        """Load landscape data from GeoTIFF raster files."""
-        
-    def get_cell_value(self, x: int, y: int, layer: str) -> float:
-        """Get value at specific cell for given layer."""
-        
-    def update_disturbance(self, ships: List[Ship], turbines: List[Turbine]):
-        """Update disturbance layer based on noise sources."""
-        
-    def get_attractiveness(self, x: int, y: int) -> float:
-        """Calculate cell attractiveness for porpoise movement."""
+
+    def __init__(self, landscape_name: str):
+        """Initialize CellData for a named landscape (e.g., 'Kattegat', 'NorthSea')."""
+
+    def load(self):
+        """Load all ASC grid files from the landscape data directory."""
+
+    def get_depth(self, row: int, col: int) -> float:
+        """Get water depth at grid cell."""
+
+    def get_food(self, row: int, col: int) -> float:
+        """Get current food level at grid cell."""
+
+    def eat_food(self, row: int, col: int, amount: float) -> float:
+        """Consume food from cell, returning amount actually eaten."""
+
+    def regrow_food(self, tick: int):
+        """Apply logistic food regrowth (48 iterations per day, DEPONS 3.2)."""
+
+    def get_salinity(self, row: int, col: int, month: int) -> float:
+        """Get salinity value for a cell in a given month."""
 ```
 
 ---
@@ -60,196 +64,185 @@ class Landscape:
 
 **Location:** `src/cenop/agents/population.py`
 
-Vectorized implementation of porpoise population dynamics using NumPy arrays.
+Structure-of-Arrays (SoA) vectorized implementation of porpoise population dynamics.
 
 #### Classes
 
-##### `Population`
+##### `PorpoisePopulation`
 
 ```python
-class Population:
+class PorpoisePopulation:
     """
-    Vectorized porpoise population management.
-    
-    Attributes:
-        size (int): Current population size
-        max_size (int): Maximum population capacity
-        positions (np.ndarray): Shape (N, 2) - x, y coordinates
-        energy (np.ndarray): Shape (N,) - energy reserves (0-1)
-        age (np.ndarray): Shape (N,) - age in days
-        sex (np.ndarray): Shape (N,) - 0=male, 1=female
-        pregnant (np.ndarray): Shape (N,) - pregnancy status (boolean)
-        lactating (np.ndarray): Shape (N,) - lactation status (boolean)
-        dispersing (np.ndarray): Shape (N,) - dispersal status (boolean)
-        alive (np.ndarray): Shape (N,) - alive status (boolean)
+    SoA vectorized porpoise population management.
+
+    Core arrays (all shape (max_agents,)):
+        x, y (np.float64): Grid coordinates (column, row)
+        heading (np.float64): Current heading in degrees [0, 360)
+        energy (np.float64): Energy reserves (0-20 scale)
+        age (np.float64): Age in years
+        sex (np.int8): 0=male, 1=female
+        pregnancy_status (np.int8): 0=immature, 1=pregnant, 2=ready-to-mate
+        is_dispersing (np.bool_): Currently in PSM-Type2 dispersal
+        active_mask (np.bool_): True for living porpoises
+
+    Reference memory arrays:
+        ref_mem_x, ref_mem_y (np.float64): Circular buffer of remembered positions (max_agents × 120)
+        ref_mem_food (np.float64): Food utility at remembered positions
+        ref_mem_count (np.int32): Number of entries in circular buffer
     """
-    
-    def __init__(self, initial_size: int = 200, max_size: int = 500):
-        """Initialize population with random individuals."""
-        
-    def step(self, landscape: Landscape, tick: int):
-        """Execute one simulation step for all porpoises."""
-        
-    def move(self, landscape: Landscape):
-        """Update positions based on landscape attractiveness."""
-        
-    def forage(self, landscape: Landscape):
-        """Update energy based on foraging success."""
-        
-    def update_energy(self, tick: int):
-        """Apply metabolic costs and update energy reserves."""
-        
-    def reproduce(self, tick: int):
-        """Handle reproduction for pregnant females."""
-        
-    def mortality(self):
-        """Apply mortality based on age and energy."""
-        
-    def respond_to_disturbance(self, landscape: Landscape):
-        """Apply deterrence response to noise disturbance."""
-        
-    def get_statistics(self) -> Dict[str, Any]:
-        """Return population statistics for current tick."""
+
+    def __init__(self, params: SimulationParameters, cell_data: CellData):
+        """Initialize population with SoA arrays."""
+
+    def step(self, tick: int):
+        """Execute one simulation tick for all active porpoises."""
+
+    def _compute_crw_heading(self, tick: int):
+        """Compute CRW heading with rejection sampling and reference memory attraction."""
+
+    def _apply_dispersal_heading(self, mask: np.ndarray):
+        """Apply SSLogis dispersal heading for dispersing porpoises."""
+
+    def _check_mortality(self, tick: int):
+        """Daily mortality check: starvation, bycatch, max-age (tick % 48 == 0)."""
+
+    def _update_pregnancy(self, tick: int):
+        """Daily pregnancy FSM transitions (immature → pregnant → ready-to-mate)."""
+
+    def _eat_food_vectorized(self):
+        """Vectorized food consumption using eat_food_kernel."""
+
+    def _apply_deterrence(self, deterrence_vectors: tuple[np.ndarray, np.ndarray]):
+        """Apply deterrence displacement vectors (raw displacement × strength × coeff)."""
 ```
 
 ---
 
-### 3. Energetics Module
+### 3. Energy Budget Module
 
-**Location:** `src/cenop/core/energetics.py`
+**Location:** `src/cenop/physiology/energy_budget.py`
 
-Energy budget calculations based on the Dynamic Energy Budget (DEB) theory.
+Dual-mode energy system supporting DEPONS and JASMINE energy models.
 
 #### Classes
 
-##### `EnergeticsModel`
+##### `EnergyModule` (ABC)
 
 ```python
-class EnergeticsModel:
+class EnergyModule(ABC):
+    """Abstract base class for energy budget modules."""
+
+    @abstractmethod
+    def compute_energy_update(self, state: EnergyState, context: EnergyContext, mask: np.ndarray) -> EnergyResult:
+        """Compute energy changes for one tick."""
+
+    @abstractmethod
+    def compute_survival_probability(self, state: EnergyState, mask: np.ndarray) -> np.ndarray:
+        """Compute per-tick survival probability for each agent."""
+```
+
+##### `DEPONSEnergyModule`
+
+```python
+class DEPONSEnergyModule(EnergyModule):
     """
-    Dynamic Energy Budget model for porpoise energetics.
-    
-    Parameters follow Hin et al. (2019) and DEPONS parameterization.
+    DEPONS 3.2 energy model.
+
+    - Energy scale: 0-20 (dimensionless)
+    - Seasonal scaling: cold (Nov-Mar) = 1.0×, warm (May-Sep) = 1.3×
+    - Lactation cost: 1.4× normal metabolism
+    - Starvation formula: yearlySurv = 1 - m_mort_prob_const * exp(-energy * x_survival_const)
+      with m_mort_prob_const=1.0, x_survival_const=0.4 (DEPONS 3.2 calibration)
+    - BMR computed via depons_bmr_cost_kernel (Numba, prange-parallel)
     """
-    
-    # Constants (kJ/day at standard metabolic rate)
-    BMR_ADULT: float = 15000.0  # Basal metabolic rate
-    ACTIVITY_MULTIPLIER: float = 2.5  # Active metabolism
-    GESTATION_COST: float = 1.2  # Multiplier during pregnancy
-    LACTATION_COST: float = 2.0  # Multiplier during lactation
-    
-    def calculate_metabolic_cost(
-        self, 
-        age: float, 
-        weight: float,
-        is_pregnant: bool = False,
-        is_lactating: bool = False,
-        activity_level: float = 1.0
-    ) -> float:
-        """
-        Calculate daily metabolic energy cost in kJ.
-        
-        Args:
-            age: Age in days
-            weight: Body weight in kg
-            is_pregnant: Pregnancy status
-            is_lactating: Lactation status
-            activity_level: Activity multiplier (0.5-2.0)
-            
-        Returns:
-            Daily energy expenditure in kJ
-        """
-        
-    def calculate_foraging_gain(
-        self,
-        food_availability: float,
-        foraging_time: float,
-        body_size: float
-    ) -> float:
-        """
-        Calculate energy gain from foraging.
-        
-        Args:
-            food_availability: Local food level (0-1)
-            foraging_time: Time spent foraging in hours
-            body_size: Body size factor
-            
-        Returns:
-            Energy gained in kJ
-        """
-        
-    def calculate_starvation_risk(self, energy_reserve: float) -> float:
-        """
-        Calculate probability of starvation-related mortality.
-        
-        Args:
-            energy_reserve: Current energy reserve (0-1)
-            
-        Returns:
-            Daily mortality probability (0-1)
-        """
+```
+
+##### `JASMINEEnergyModule`
+
+```python
+class JASMINEEnergyModule(EnergyModule):
+    """
+    JASMINE Dynamic Energy Budget model.
+
+    - Body mass-dependent BMR (Kleiber scaling)
+    - Activity cost based on movement speed
+    - Thermoregulation cost outside thermoneutral zone
+    - Disturbance energy cost with cumulative tracking
+    - Body condition index (0-1)
+    - Survival uses DEPONS starvation formula (body_condition mapped to effective energy)
+    """
+```
+
+##### `EnergyState`
+
+```python
+@dataclass
+class EnergyState:
+    """Per-agent energy state arrays (all shape (max_agents,))."""
+    energy: np.ndarray          # Current energy level
+    body_condition: np.ndarray  # Body condition index (JASMINE)
+    disturbance_energy_cost: np.ndarray  # Cumulative disturbance cost
+```
+
+##### Factory
+
+```python
+def create_energy_module(params: SimulationParameters) -> EnergyModule:
+    """Create energy module based on simulation mode. Always returns a module (never None)."""
 ```
 
 ---
 
-### 4. Porpoise State Machine (PSM)
+### 4. Reference Memory Module
 
-**Location:** `src/cenop/agents/psm.py`
+**Location:** `src/cenop/behavior/ref_mem.py`
 
-Implements the Porpoise State Machine for behavioral state transitions.
+Implements the DEPONS 3.2 reference memory system with precomputed decay tables.
 
 #### Classes
 
-##### `PSM`
+##### `RefMemWorkspace`
 
 ```python
-class PSM:
+class RefMemWorkspace:
     """
-    Porpoise State Machine managing behavioral states.
-    
-    States:
-        - RESTING: Low activity, minimal movement
-        - FORAGING: Actively searching for food
-        - TRAVELLING: Moving between areas
-        - DISPERSING: Long-distance movement (juveniles/adults)
-    """
-    
-    class State(Enum):
-        RESTING = 0
-        FORAGING = 1
-        TRAVELLING = 2
-        DISPERSING = 3
-    
-    def __init__(self):
-        """Initialize PSM with default transition probabilities."""
-        
-    def get_next_state(
-        self, 
-        current_state: State,
-        energy: float,
-        food_available: float,
-        disturbance: float
-    ) -> State:
-        """
-        Determine next behavioral state.
-        
-        Args:
-            current_state: Current behavioral state
-            energy: Energy reserve (0-1)
-            food_available: Local food availability (0-1)
-            disturbance: Local disturbance level (0-1)
-            
-        Returns:
-            Next behavioral state
-        """
-        
-    def get_movement_parameters(self, state: State) -> Tuple[float, float]:
-        """
-        Get movement parameters for given state.
+    Reusable workspace for compute_ve_total and compute_attraction_vector.
 
-        Returns:
-            (step_length, turning_angle_std) in meters and radians
-        """
+    Pre-allocates intermediate arrays to avoid ~1.5 MB/tick of allocations.
+    Pass as optional parameter to compute_ve_total() and compute_attraction_vector().
+    """
+
+    def __init__(self, max_agents: int, ref_mem_size: int = 120):
+        """Allocate workspace arrays."""
+```
+
+#### Functions
+
+```python
+def build_ref_mem_strength(r_r: float, size: int = 120) -> np.ndarray:
+    """Precompute refMemStrength decay table: (1 - r_r)^i for i in [0, size)."""
+
+def build_work_mem_strength(r_s: float, size: int = 120) -> np.ndarray:
+    """Precompute workMemStrength decay table: (1 - r_s)^i for i in [0, size)."""
+
+def compute_ve_total(
+    ref_mem_food: np.ndarray,
+    ref_mem_count: np.ndarray,
+    work_mem_strength: np.ndarray,
+    active_mask: np.ndarray,
+    workspace: RefMemWorkspace = None,
+) -> np.ndarray:
+    """Compute expected food value (veTotal) for all agents using vectorized NumPy."""
+
+def compute_attraction_vector(
+    x: np.ndarray, y: np.ndarray,
+    ref_mem_x: np.ndarray, ref_mem_y: np.ndarray,
+    ref_mem_food: np.ndarray, ref_mem_count: np.ndarray,
+    ref_mem_strength: np.ndarray,
+    active_mask: np.ndarray,
+    workspace: RefMemWorkspace = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute attraction vector (vt_x, vt_y) towards remembered food-rich areas."""
 ```
 
 ---
@@ -559,196 +552,145 @@ class DisturbanceMemory:
 
 ---
 
-### 8. Deterrence Module
+### 8. Sound & Deterrence Module
 
-**Location:** `src/cenop/agents/deterrence.py`
+**Location:** `src/cenop/behavior/sound.py`
 
-Handles porpoise response to anthropogenic disturbance.
+Handles noise propagation, deterrence thresholds, and ship deterrence probability.
 
 #### Classes
 
-##### `DeterrenceModel`
+##### `ShipDeterrenceModel`
 
 ```python
-class DeterrenceModel:
+class ShipDeterrenceModel:
     """
-    Models porpoise deterrence response to noise.
-    
-    Based on empirical dose-response relationships from
-    Tougaard et al. and other studies.
+    Ship deterrence using standardised logistic regression (DEPONS 3.2).
+
+    Inputs are standardised (x - mean) / sd before logistic regression.
+    Constants in STD_PROB_DAY, STD_PROB_NIGHT for day/night probabilities.
     """
-    
-    # Threshold levels (dB re 1 µPa)
-    THRESHOLD_MILD: float = 120.0  # Mild behavioral response
-    THRESHOLD_STRONG: float = 140.0  # Strong avoidance
-    THRESHOLD_TTS: float = 160.0  # Temporary threshold shift
-    
-    def calculate_response_probability(
-        self,
-        received_level: float,
-        exposure_duration: float
-    ) -> float:
-        """
-        Calculate probability of deterrence response.
-        
-        Args:
-            received_level: Sound pressure level in dB
-            exposure_duration: Cumulative exposure in hours
-            
-        Returns:
-            Response probability (0-1)
-        """
-        
-    def calculate_flight_distance(
-        self,
-        received_level: float,
-        current_distance: float
-    ) -> float:
-        """
-        Calculate distance porpoise will flee.
-        
-        Args:
-            received_level: Sound pressure level in dB
-            current_distance: Current distance from source in meters
-            
-        Returns:
-            Flight distance in meters
-        """
+
+    def compute_deterrence_probability(self, received_level: float, is_day: bool) -> float:
+        """Compute probability of deterrence response to ship noise."""
+```
+
+##### `SoundPropagationParams`
+
+```python
+@dataclass
+class SoundPropagationParams:
+    """Sound propagation parameters (DEPONS 3.2 defaults)."""
+    alpha_hat: float = 0.00027   # Absorption coefficient
+    beta_hat: float = 14.72      # Spreading loss factor
+    deter_threshold: float = 152.0  # Minimum received level (dB)
+    deter_coeff: float = 0.012    # Deterrence coefficient
+    deter_max_distance: float = 1000.0  # Max deterrence distance (km)
 ```
 
 ---
 
-### 6. Noise Source Module
+### 9. Weston Flux Transmission Loss
 
-**Location:** `src/cenop/core/noise.py`
+**Location:** `src/cenop/behavior/weston_flux.py`
 
-Manages noise sources including pile driving and vessel traffic.
-
-#### Classes
-
-##### `NoiseSource`
+Physics-based transmission loss model ported from DEPONS `WestonFlux.java`.
 
 ```python
-class NoiseSource:
-    """Base class for noise sources."""
-    
-    def __init__(self, x: float, y: float, source_level: float):
-        """
-        Initialize noise source.
-        
-        Args:
-            x, y: Position in meters
-            source_level: Source level in dB re 1 µPa @ 1m
-        """
-        
-    def get_received_level(self, distance: float) -> float:
-        """
-        Calculate received level at given distance.
-        
-        Uses spherical spreading with absorption.
-        """
+def weston_flux_tl(distance: float, depth: float, grain_size: float, frequency: float = 125000) -> float:
+    """
+    Calculate transmission loss using Weston flux theory.
 
-##### `PileDriver`
+    Uses sediment grain size to derive sound speed ratio, density ratio,
+    and attenuation coefficient. Falls back to simple beta*log10(r)+alpha*r
+    when physics-based calculation is not applicable.
 
-```python
-class PileDriver(NoiseSource):
-    """Pile driving noise source."""
-    
-    def __init__(
-        self,
-        x: float, 
-        y: float,
-        hammer_energy: float = 2000.0,  # kJ
-        strike_rate: float = 30.0,  # strikes/minute
-        source_level: float = 220.0  # dB
-    ):
-        """Initialize pile driver."""
-        
-    def get_sel(self, distance: float, duration: float) -> float:
-        """
-        Calculate Sound Exposure Level.
-        
-        Args:
-            distance: Distance in meters
-            duration: Exposure duration in seconds
-            
-        Returns:
-            SEL in dB re 1 µPa²·s
-        """
-```
+    Args:
+        distance: Distance from source (m)
+        depth: Water depth (m)
+        grain_size: Sediment grain size on phi scale
+        frequency: Sound frequency (Hz, default 125 kHz for porpoise hearing)
 
-##### `Vessel`
-
-```python
-class Vessel(NoiseSource):
-    """Vessel noise source."""
-    
-    def __init__(
-        self,
-        x: float,
-        y: float,
-        speed: float = 10.0,  # m/s
-        source_level: float = 170.0  # dB
-    ):
-        """Initialize vessel."""
-        
-    def move(self, dx: float, dy: float):
-        """Update vessel position."""
+    Returns:
+        Transmission loss in dB
+    """
 ```
 
 ---
 
-### 7. Simulation Controller
+### 10. JOMOPANS Ship Source Levels
 
-**Location:** `server/simulation_controller.py`
+**Location:** `src/cenop/behavior/jomopans_spl.py`
 
-Main simulation orchestration class.
+Calibrated ship source levels from the JOMOPANS project.
+
+```python
+class VesselClass(Enum):
+    """15 vessel classes (13 JOMOPANS + 2 aliases)."""
+    FISHING = 0
+    DREDGING = 1
+    # ... 13 JOMOPANS classes total
+
+def get_source_level(vessel_class: VesselClass, speed_knots: float) -> float:
+    """Get source level in dB for a vessel class at given speed."""
+```
+
+---
+
+### 7. Simulation Module
+
+**Location:** `src/cenop/core/simulation.py`
+
+Main simulation orchestration.
 
 #### Classes
 
-##### `SimulationController`
+##### `Simulation`
 
 ```python
-class SimulationController:
+class Simulation:
     """
-    Controls the simulation lifecycle.
-    
-    Manages initialization, stepping, and data collection.
+    Main simulation controller.
+
+    Manages landscape, population, turbines, ships, and the tick loop.
     """
-    
-    def __init__(self, config: SimulationConfig):
+
+    def __init__(self, params: SimulationParameters):
+        """Initialize simulation with parameters."""
+
+    def setup(self):
+        """Load landscape, create population, initialize subsystems."""
+
+    def step(self) -> dict:
+        """Execute one tick: move, forage, energy, mortality, reproduction."""
+
+    def get_porpoise_positions(self) -> np.ndarray:
         """
-        Initialize simulation with configuration.
-        
-        Args:
-            config: SimulationConfig with all parameters
-        """
-        
-    def initialize(self):
-        """Set up initial simulation state."""
-        
-    def step(self) -> Dict[str, Any]:
-        """
-        Execute one simulation tick.
-        
+        Get current positions and state of all porpoises.
+
         Returns:
-            Dictionary with current state and statistics
+            Array (N, 7): [original_index, x, y, energy, heading, age, is_dispersing]
         """
-        
-    def run(self, num_ticks: int, callback: Callable = None):
-        """
-        Run simulation for specified ticks.
-        
-        Args:
-            num_ticks: Number of ticks to run
-            callback: Optional callback after each tick
-        """
-        
-    def get_state(self) -> Dict[str, Any]:
-        """Return current simulation state."""
-        
-    def export_results(self, output_dir: str):
-        """Export simulation results to files."""
+```
+
+##### `SimulationRunner`
+
+**Location:** `src/cenop/server/simulation_controller.py`
+
+```python
+class SimulationRunner:
+    """
+    Wraps Simulation for the Shiny server with progress tracking.
+
+    Attributes:
+        sim (Simulation): The underlying simulation
+        progress_percent (float): Current progress (0-100)
+        should_update_map (bool): Whether map needs refresh this tick
+        total_births, total_deaths (int): Cumulative counts
+    """
+
+    def step(self) -> dict:
+        """Execute one tick and update progress."""
 ```
 
 ---
@@ -847,67 +789,71 @@ class OutputWriter:
 
 ## Configuration
 
-### SimulationConfig
+### SimulationParameters
+
+**Location:** `src/cenop/parameters/simulation_params.py`
 
 ```python
 @dataclass
-class SimulationConfig:
+class SimulationParameters:
     """Main simulation configuration."""
-    
-    # Landscape
-    landscape_file: str = None
-    grid_width: int = 100
-    grid_height: int = 100
-    cell_size: float = 400.0
-    
-    # Population
-    initial_population: int = 200
-    max_population: int = 500
-    
-    # Time
-    start_tick: int = 0
-    end_tick: int = 8760  # 1 year in hours
-    ticks_per_day: int = 24
-    
-    # Energetics
-    use_deb_model: bool = True
-    starvation_threshold: float = 0.1
-    
-    # Reproduction
-    mating_season_start: int = 182  # July
-    mating_season_end: int = 243  # September
-    gestation_period: int = 300  # days
-    
-    # Disturbance
-    deterrence_enabled: bool = True
-    noise_sources: List[NoiseSource] = field(default_factory=list)
-    
-    # Output
-    output_dir: str = "./output"
-    save_interval: int = 24
 
-    # JASMINE Mode Settings
+    # Population & Time
+    porpoise_count: int = 1000
+    sim_years: int = 5
+    landscape: str = "Homogeneous"
+    random_seed: int = 0          # 0 = random each run
+
+    # Simulation Mode
     simulation_mode: str = "DEPONS"  # "DEPONS" or "JASMINE"
+    energy_mode: str = None          # Override energy subsystem
+    memory_mode: str = None          # Override memory subsystem
+    fsm_mode: str = None             # Override FSM subsystem
+    movement_mode: str = None        # Override movement subsystem
 
-    # Subsystem overrides (optional)
-    fsm_mode: str = None       # Override FSM mode
-    energy_mode: str = None    # Override energy mode
-    memory_mode: str = None    # Override memory mode
-    movement_mode: str = None  # Override movement mode
+    # CRW Parameters (DEPONS 3.2 Kattegat calibration)
+    inertia_const: float = 0.001     # k: directional persistence
+    a0: float = 0.35                 # Step length autocorrelation
+    b0: float = -0.024               # Turning angle autocorrelation
 
-    # JASMINE Physics Parameters
+    # Energy & Memory (DEPONS 3.2)
+    r_s: float = 0.03               # Satiation memory decay rate
+    r_r: float = 0.03               # Reference memory decay rate
+    r_u: float = 0.1                # Food replenishment rate
+    ref_mem_size: int = 120          # Reference memory circular buffer size
+
+    # Mortality (DEPONS 3.2 calibration)
+    m_mort_prob_const: float = 1.0   # Starvation formula constant
+    x_survival_const: float = 0.4    # Starvation formula exponent
+
+    # Dispersal
+    mean_disp_dist: float = 2.0      # Dispersal step distance (km)
+
+    # Deterrence (DEPONS 3.2)
+    deter_coeff: float = 0.012       # Deterrence coefficient
+    deter_threshold: float = 152.0   # Minimum received level (dB)
+    deter_max_distance: float = 1000.0  # Max deterrence distance (km)
+
+    # Sound propagation (DEPONS 3.2)
+    alpha_hat: float = 0.00027       # Absorption coefficient
+    beta_hat: float = 14.72          # Spreading loss factor
+
+    # Ship traffic
+    ships_enabled: bool = False
+    bycatch_prob: float = 0.0
+
+    # JASMINE Physics
     jasmine_mass_kg: float = 50.0
     jasmine_drag_coeff: float = 0.01
     jasmine_max_thrust: float = 100.0
     jasmine_current_weight: float = 0.5
 
-    # JASMINE DEB Parameters
+    # JASMINE DEB
     jasmine_bmr_scale: float = 1.0
     jasmine_activity_cost: float = 2.0
-    jasmine_thermal_model: bool = True
     jasmine_disturbance_cost: float = 1.5
 
-    # JASMINE Memory Parameters
+    # JASMINE Memory
     memory_decay_rate: float = 0.001
     avoidance_radius: float = 20.0
     habituation_enabled: bool = True
@@ -921,26 +867,25 @@ class SimulationConfig:
 ### Basic Simulation (DEPONS Mode)
 
 ```python
-from cenop.core.landscape import Landscape
-from cenop.agents.population import Population
-from server.simulation_controller import SimulationController
+from cenop.core.simulation import Simulation
+from cenop.parameters.simulation_params import SimulationParameters
 
 # Create configuration
-config = SimulationConfig(
-    initial_population=200,
-    end_tick=8760,
-    deterrence_enabled=True
+params = SimulationParameters(
+    porpoise_count=500,
+    sim_years=5,
+    landscape="Kattegat",
 )
 
-# Initialize controller
-controller = SimulationController(config)
-controller.initialize()
+# Initialize and run
+sim = Simulation(params)
+sim.setup()
 
-# Run simulation
-for tick in range(config.end_tick):
-    state = controller.step()
-    if tick % 24 == 0:  # Daily output
-        print(f"Day {tick//24}: Pop={state['population_size']}")
+for tick in range(params.sim_years * 360 * 48):
+    state = sim.step()
+    if tick % 48 == 0:  # Daily output
+        positions = sim.get_porpoise_positions()
+        print(f"Day {tick//48}: Pop={len(positions)}")
 ```
 
 ### JASMINE Mode Simulation
@@ -1015,16 +960,19 @@ for result in results:
 
 ## Version History
 
-- **v2.1.0**: DEPONS 3.2 full sync + Numba optimization
-  - Algorithmically aligned with DEPONS 3.2 Java implementation
-  - Pregnancy finite state machine with daily mortality schedule
-  - PSM-Type2 dispersal with SSLogis heading dampening
-  - Reference memory with vectorized attraction computation
-  - CRW rejection sampling (3 loops: angle, distance-modulated angle, step length)
+- **v2.1.0**: DEPONS 3.2 full sync + Numba optimization + unified grid visualization
+  - Algorithmically aligned with DEPONS 3.2 across all 5 subsystems
+  - Pregnancy FSM (immature → pregnant → ready-to-mate) with daily mortality schedule
+  - Logistic food regrowth with 48-iteration compounding and MaxEnt carrying capacity
+  - Reference memory (120-entry circular buffer) with vectorized vt and veTotal
+  - CRW rejection sampling (up to 200 retries for angle and step length)
+  - PSM-Type2 dispersal with SSLogis heading, energy-based stop, deterrence deactivation
   - Ship deterrence with JOMOPANS 13-class source levels and Weston flux TL
-  - Numba JIT kernels for 7 hot-path operations with prange parallelism
-  - Logistic food regrowth with proportional-sharing consumption
-  - 502 automated tests
+  - Deterrence vectors use raw displacement (not unit vectors), matching DEPONS Java
+  - 7 Numba JIT kernels with prange parallelism (reflect, turn_position, BMR cost)
+  - Pre-allocated buffers, RefMemWorkspace, vectorized land avoidance
+  - Unified bitmap grid rendering (server-side PNG, one pixel per cell)
+  - 502+ automated tests across 24 test files
 
 - **v2.0.0**: CENOP-JASMINE merge
   - Added JASMINE simulation mode

@@ -102,6 +102,8 @@ def run_simulation_loop(
     trace_enabled_value,
     trace_length_value,
     trace_lock,
+    skip_viz_value,
+    skip_viz_lock,
 ):
     """Background thread worker for simulation loop.
 
@@ -146,10 +148,13 @@ def run_simulation_loop(
                              entry.get('year', '?'), current_speed, current_ticks)
 
             # Send update to main thread
-            # Only include sim reference when map needs update (reduces memory pressure)
+            # Check skip-viz flag
+            with skip_viz_lock:
+                viz_skipped = skip_viz_value[0]
+
             # Build lightweight update payload; avoid sending full Simulation objects
             porpoise_positions = None
-            if runner.should_update_map:
+            if runner.should_update_map and not viz_skipped:
                 try:
                     raw_pos = runner.sim.get_porpoise_positions()  # (N,7)
                     if raw_pos.size > 0:
@@ -497,6 +502,9 @@ def server(input, output, session):
     # Shared ticks per update value [1-48] for map update frequency
     ticks_per_update_value = [48]  # Default 48 ticks (1 day) per UI update
     ticks_lock = threading.Lock()  # Protects ticks_per_update_value access
+    # Skip visualization flag for fast headless runs
+    skip_viz_value = [False]
+    skip_viz_lock = threading.Lock()
     # Shared trace settings for thread-safe updates
     trace_enabled_value = [False]
     trace_length_value = [2]  # days
@@ -1154,6 +1162,7 @@ def server(input, output, session):
                 throttle_value, throttle_lock,
                 ticks_per_update_value, ticks_lock,
                 trace_enabled_value, trace_length_value, trace_lock,
+                skip_viz_value, skip_viz_lock,
             ),
             daemon=True,
         )
@@ -1181,6 +1190,17 @@ def server(input, output, session):
         with ticks_lock:
             ticks_per_update_value[0] = ticks_val
         logger.debug("Ticks per update changed: %s", ticks_val)
+
+    @reactive.effect
+    def _sync_skip_viz():
+        """Sync skip-visualization toggle to thread-safe flag."""
+        enabled = (
+            input.skip_viz()
+            if hasattr(input, "skip_viz")
+            else False
+        )
+        with skip_viz_lock:
+            skip_viz_value[0] = bool(enabled)
 
     @reactive.effect
     def _sync_trace_settings():

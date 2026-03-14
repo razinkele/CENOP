@@ -156,6 +156,14 @@ def create_sidebar():
             class_="mb-3"
         ),
 
+        # Skip visualization for faster headless runs
+        ui.div(
+            ui.input_checkbox(
+                "skip_viz", "Skip visualization (fast run)", value=False
+            ),
+            class_="mb-3",
+        ),
+
         # Porpoise trace controls
         ui.div(
             ui.input_checkbox(

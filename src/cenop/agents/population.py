@@ -1082,13 +1082,15 @@ class PorpoisePopulation:
                 turn_angle, world_w, world_h,
                 self._right_x, self._right_y,
                 self._right_xi, self._right_yi,
-                self._right_depths
+                self._right_depths,
+                blocked_mask=self._still_blocked,
             )
             left_heading = self._compute_turn_position(
                 -turn_angle, world_w, world_h,
                 self._left_x, self._left_y,
                 self._left_xi, self._left_yi,
-                self._left_depths
+                self._left_depths,
+                blocked_mask=self._still_blocked,
             )
 
             # Pick deeper direction if valid water
@@ -2321,6 +2323,7 @@ class PorpoisePopulation:
         out_xi: np.ndarray,
         out_yi: np.ndarray,
         out_depths: np.ndarray,
+        blocked_mask: np.ndarray = None,
     ) -> np.ndarray:
         """
         Compute position and depth after turning by turn_delta degrees.
@@ -2335,35 +2338,91 @@ class PorpoisePopulation:
             out_x, out_y: Output arrays for new positions (float32)
             out_xi, out_yi: Output arrays for cell indices (int32)
             out_depths: Output array for depths at new positions (float32)
+            blocked_mask: Optional bool mask — when provided and sparse,
+                only blocked agents are processed through the kernel.
 
         Returns:
             Heading array after turning
         """
         if _HAS_KERNELS:
-            # Reuse pre-allocated float64 buffers (avoids 24 temp allocations per tick)
-            np.copyto(self._f64_x, self.x)
-            np.copyto(self._f64_y, self.y)
-            np.copyto(self._f64_heading, self.heading)
-            np.copyto(self._f64_step, self._step_dist)
-            _turn_kernel(
-                self._f64_x, self._f64_y,
-                self._f64_heading, self._f64_step,
-                float(turn_delta), world_w, world_h,
-                self._f64_out_x, self._f64_out_y, self._f64_out_heading,
-            )
-            np.copyto(out_x, self._f64_out_x)
-            np.copyto(out_y, self._f64_out_y)
-            # Get cell indices
-            np.copyto(out_xi, out_x.astype(np.int32))
-            np.copyto(out_yi, out_y.astype(np.int32))
-            np.clip(out_xi, 0, world_w - 1, out=out_xi)
-            np.clip(out_yi, 0, world_h - 1, out=out_yi)
-            # Depth lookup stays in Python
-            if hasattr(self.landscape, '_depth') and self.landscape._depth is not None:
-                np.copyto(out_depths, self.landscape._depth[out_yi, out_xi])
+            if blocked_mask is not None and np.sum(blocked_mask) < len(self.x) // 2:
+                # Optimized path: only compute for blocked agents
+                idx = np.where(blocked_mask)[0]
+                n_blocked = len(idx)
+                if n_blocked == 0:
+                    out_depths.fill(20.0)
+                    return self.heading.astype(np.float64)
+                # Use slices of the pre-allocated f64 buffers
+                bx = self._f64_x[:n_blocked]
+                by = self._f64_y[:n_blocked]
+                bh = self._f64_heading[:n_blocked]
+                bs = self._f64_step[:n_blocked]
+                box = self._f64_out_x[:n_blocked]
+                boy = self._f64_out_y[:n_blocked]
+                boh = self._f64_out_heading[:n_blocked]
+                bx[:] = self.x[idx]
+                by[:] = self.y[idx]
+                bh[:] = self.heading[idx]
+                bs[:] = self._step_dist[idx]
+                _turn_kernel(
+                    bx, by, bh, bs,
+                    float(turn_delta), world_w, world_h,
+                    box, boy, boh,
+                )
+                # Scatter results back into full-size output arrays
+                out_x[idx] = box.astype(np.float32)
+                out_y[idx] = boy.astype(np.float32)
+                out_xi[idx] = np.clip(
+                    box.astype(np.int32), 0, world_w - 1
+                )
+                out_yi[idx] = np.clip(
+                    boy.astype(np.int32), 0, world_h - 1
+                )
+                if (
+                    hasattr(self.landscape, '_depth')
+                    and self.landscape._depth is not None
+                ):
+                    out_depths[idx] = self.landscape._depth[
+                        out_yi[idx], out_xi[idx]
+                    ]
+                else:
+                    out_depths[idx] = 20.0
+                # Build heading result — copy current heading, update blocked
+                heading_out = self.heading.astype(np.float64)
+                heading_out[idx] = boh
+                return heading_out
             else:
-                out_depths.fill(20.0)
-            return self._f64_out_heading
+                # Full path (original code) — all agents
+                np.copyto(self._f64_x, self.x)
+                np.copyto(self._f64_y, self.y)
+                np.copyto(self._f64_heading, self.heading)
+                np.copyto(self._f64_step, self._step_dist)
+                _turn_kernel(
+                    self._f64_x, self._f64_y,
+                    self._f64_heading, self._f64_step,
+                    float(turn_delta), world_w, world_h,
+                    self._f64_out_x, self._f64_out_y,
+                    self._f64_out_heading,
+                )
+                np.copyto(out_x, self._f64_out_x)
+                np.copyto(out_y, self._f64_out_y)
+                # Get cell indices
+                np.copyto(out_xi, out_x.astype(np.int32))
+                np.copyto(out_yi, out_y.astype(np.int32))
+                np.clip(out_xi, 0, world_w - 1, out=out_xi)
+                np.clip(out_yi, 0, world_h - 1, out=out_yi)
+                # Depth lookup stays in Python
+                if (
+                    hasattr(self.landscape, '_depth')
+                    and self.landscape._depth is not None
+                ):
+                    np.copyto(
+                        out_depths,
+                        self.landscape._depth[out_yi, out_xi],
+                    )
+                else:
+                    out_depths.fill(20.0)
+                return self._f64_out_heading
 
         heading = (self.heading + turn_delta) % 360
         rads = np.radians(heading)

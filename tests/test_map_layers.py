@@ -11,6 +11,7 @@ import pytest
 
 from cenop.server.map_layers import (  # noqa: E402
     build_porpoise_layer,
+    build_porpoise_trails_layer,
     build_noise_construction_layer,
     build_noise_operational_layer,
     build_turbine_pole_layer,
@@ -76,12 +77,39 @@ class TestBuildTurbineLayers:
         """All layer IDs must be unique for partial_update matching."""
         ids = {
             build_porpoise_layer([])["id"],
+            build_porpoise_trails_layer([])["id"],
             build_noise_construction_layer([])["id"],
             build_noise_operational_layer([])["id"],
             build_turbine_pole_layer([])["id"],
             build_turbine_blade_layer([])["id"],
         }
-        assert len(ids) == 5, "All layer IDs must be unique"
+        assert len(ids) == 6, "All layer IDs must be unique"
+
+
+class TestBuildPorpoiseTrailsLayer:
+    def test_empty_returns_invisible(self):
+        layer = build_porpoise_trails_layer([])
+        assert layer["id"] == "porpoise-trails"
+        assert layer["visible"] is False
+
+    def test_with_trails_returns_visible(self):
+        trails = [
+            {
+                "path": [[21.0, 55.5, 1], [21.1, 55.6, 2]],
+                "timestamps": [1, 2],
+                "color": [0, 150, 255, 240],
+            },
+        ]
+        layer = build_porpoise_trails_layer(trails)
+        assert layer["id"] == "porpoise-trails"
+        assert layer["visible"] is True
+        assert layer["data"] == trails
+
+    def test_layer_id_unique(self):
+        """Trail layer ID must differ from porpoise icon layer ID."""
+        trail_layer = build_porpoise_trails_layer([])
+        icon_layer_result = build_porpoise_layer([])
+        assert trail_layer["id"] != icon_layer_result["id"]
 
 
 class TestBladeAnimation:

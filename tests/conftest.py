@@ -41,6 +41,7 @@ if "shiny_deckgl" not in sys.modules:
     _shiny_deckgl.grid_layer = _fake_layer
     _shiny_deckgl.scatterplot_layer = _fake_layer
     _shiny_deckgl.bitmap_layer = _fake_layer
+    _shiny_deckgl.trips_layer = _fake_layer
 
     # Widget / control helpers used by server code
     _shiny_deckgl.deck_legend_control = MagicMock(name="deck_legend_control")

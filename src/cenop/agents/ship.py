@@ -422,7 +422,9 @@ class ShipManager:
         porpoise_y: np.ndarray,
         params: SimulationParameters,
         is_day: bool = True,
-        cell_size: float = 400.0
+        cell_size: float = 400.0,
+        cell_data=None,
+        month: int = 1,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Calculate aggregate deterrence vector from all ships for a population.
@@ -472,16 +474,51 @@ class ShipManager:
             
             # 4. Transmission Loss & Strength
             d_masked = dist_m[in_range_mask]
-            wf_depth = getattr(params, 'weston_flux_depth', None)
-            if wf_depth is not None:
-                # WestonFlux physics-based TL (DEPONS 3.2)
-                wf_gs = params.weston_flux_grain_size
-                wf_temp = params.weston_flux_temperature
-                wf_sal = params.weston_flux_salinity
-                tl = np.array([weston_flux_tl(d, wf_depth, wf_gs, wf_temp, wf_sal)
-                               for d in d_masked])
+            if (
+                params.weston_flux_percell
+                and cell_data is not None
+                and getattr(cell_data, "_sediment", None) is not None
+            ):
+                # Per-cell WestonFlux: look up depth/sediment/salinity
+                masked_positions = np.column_stack((
+                    porpoise_x[in_range_mask],
+                    porpoise_y[in_range_mask],
+                ))
+                depths = cell_data.get_depths_vectorized(
+                    masked_positions
+                )
+                grain_sizes = cell_data.get_sediments_vectorized(
+                    masked_positions
+                )
+                salinities = cell_data.get_salinities_vectorized(
+                    masked_positions, month
+                )
+                temperature = params.weston_flux_default_temperature
+
+                # Per-porpoise TL with NODATA fallback
+                tl = np.empty_like(d_masked)
+                for i in range(len(d_masked)):
+                    if depths[i] > 0 and grain_sizes[i] != -9999.0:
+                        tl[i] = weston_flux_tl(
+                            d_masked[i],
+                            depths[i],
+                            grain_sizes[i],
+                            temperature,
+                            salinities[i],
+                        )
+                    else:
+                        # NODATA fallback: simple formula
+                        tl[i] = (
+                            params.beta_hat
+                            * np.log10(max(d_masked[i], 1.0))
+                            + params.alpha_hat * d_masked[i]
+                        )
             else:
-                tl = params.beta_hat * np.log10(d_masked) + params.alpha_hat * d_masked
+                # Simple formula (default, fully vectorized)
+                tl = (
+                    params.beta_hat * np.log10(d_masked)
+                    + params.alpha_hat * d_masked
+                )
             rl = source_level - tl
             str_val = rl - params.deter_threshold
             

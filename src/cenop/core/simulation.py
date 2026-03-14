@@ -459,7 +459,9 @@ class Simulation:
 
         # Ship deterrence (Vectorized)
         ship_dx, ship_dy = self._ship_manager.calculate_aggregate_deterrence_vectorized(
-            px, py, self.params, is_day=self.time_manager.is_daytime, cell_size=400.0
+            px, py, self.params, is_day=self.time_manager.is_daytime,
+            cell_size=400.0, cell_data=self._cell_data,
+            month=self.state.month,
         )
 
         # Combine

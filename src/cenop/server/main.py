@@ -132,7 +132,7 @@ def run_simulation_loop(runner, result_queue, stop_event, throttle_value, thrott
             porpoise_positions = None
             if runner.should_update_map:
                 try:
-                    raw_pos = runner.sim.get_porpoise_positions()  # (N,3): grid x, y, energy
+                    raw_pos = runner.sim.get_porpoise_positions()  # (N,7)
                     if raw_pos.size > 0:
                         sim = runner.sim
                         meta = sim._cell_data.metadata if sim._cell_data else None
@@ -142,10 +142,14 @@ def run_simulation_loop(runner, result_queue, stop_event, throttle_value, thrott
                                 sim.params.landscape, "EPSG:3035"
                             )
                             lons, lats = grid_to_lonlat(
-                                raw_pos[:, 0], raw_pos[:, 1], meta, crs
+                                raw_pos[:, 1], raw_pos[:, 2], meta, crs
                             )
-                            # Replace grid x,y with lon,lat; keep energy col
-                            converted = np.column_stack((lons, lats, raw_pos[:, 2]))
+                            # [id, lon, lat, energy, heading, age, is_dispersing]
+                            converted = np.column_stack((
+                                raw_pos[:, 0], lons, lats,
+                                raw_pos[:, 3], raw_pos[:, 4],
+                                raw_pos[:, 5], raw_pos[:, 6],
+                            ))
                             porpoise_positions = converted.tolist()
                         else:
                             porpoise_positions = raw_pos.tolist()
@@ -285,6 +289,7 @@ def server(input, output, session):
 
     # --- shiny-deckgl layer cache ---
     _layer_cache: dict[str, dict] = {}
+    _loaded_data_layers: set[str] = set()
 
     async def _push_all_layers():
         """Combine cached layers and push to MapWidget."""
@@ -309,25 +314,6 @@ def server(input, output, session):
                 fullscreen_widget(placement="top-left"),
             ],
         )
-        # Sync legend checkboxes with actual layer visibility.
-        # The legend control renders before layers exist, so checkboxes default
-        # to checked. After pushing layers, uncheck layers with no data via JS.
-        _legend_layer_map = {
-            "Bathymetry": "depth-bitmap",
-            "Foraging": "foraging-bitmap",
-            "Construction noise": "noise-construction",
-            "Operational noise": "noise-operational",
-            "Wind turbines": "turbine-poles",
-            "Porpoises": "porpoises",
-        }
-        hidden = [
-            label for label, lid in _legend_layer_map.items()
-            if _layer_cache.get(lid, {}).get("visible") is False
-        ]
-        if hidden:
-            await session.send_custom_message(
-                "cenop_sync_legend", {"hidden_labels": hidden}
-            )
 
     async def _push_dynamic_layers(*layer_ids: str):
         """Partial layer push — only sends specified layers by ID.
@@ -339,10 +325,89 @@ def server(input, output, session):
         if layers:
             await sim_map.partial_update(session, layers=layers)
 
+    async def _sync_legend():
+        """Send current legend entries to JS based on loaded layers."""
+        entries = [
+            {
+                "id": "basemap",
+                "label": "Background map",
+                "color": "#b0bec5",
+                "shape": "rect",
+                "checked": True,
+            }
+        ]
+
+        if "depth-bitmap" in _loaded_data_layers:
+            entries.append({
+                "id": "depth-bitmap",
+                "label": "Bathymetry",
+                "colors": [
+                    [1, 31, 75], [3, 56, 108], [15, 94, 156],
+                    [46, 134, 193], [86, 180, 233], [166, 216, 247],
+                ],
+                "shape": "rect",
+                "checked": True,
+            })
+
+        if "foraging-bitmap" in _loaded_data_layers:
+            foraging_lyr = _layer_cache.get("foraging-bitmap", {})
+            entries.append({
+                "id": "foraging-bitmap",
+                "label": "Foraging",
+                "colors": [
+                    [8, 48, 20], [20, 100, 40], [40, 160, 60],
+                    [80, 200, 80], [140, 230, 100], [200, 255, 140],
+                ],
+                "shape": "rect",
+                "checked": foraging_lyr.get("visible") is not False,
+            })
+
+        if "noise-construction" in _loaded_data_layers:
+            entries.append({
+                "id": "noise-construction",
+                "label": "Construction noise",
+                "color": "rgba(255,60,60,0.63)",
+                "shape": "circle",
+                "checked": True,
+            })
+
+        if "noise-operational" in _loaded_data_layers:
+            entries.append({
+                "id": "noise-operational",
+                "label": "Operational noise",
+                "color": "rgba(255,200,60,0.47)",
+                "shape": "circle",
+                "checked": True,
+            })
+
+        if "turbine-poles" in _loaded_data_layers:
+            entries.append({
+                "id": "turbine-poles",
+                "label": "Wind turbines",
+                "color": "rgb(50,160,240)",
+                "shape": "rect",
+                "checked": True,
+            })
+
+        if "porpoises" in _loaded_data_layers:
+            entries.append({
+                "id": "porpoises",
+                "label": "Porpoises",
+                "color": "rgb(0,150,255)",
+                "shape": "circle",
+                "checked": True,
+            })
+
+        await session.send_custom_message("cenop_legend_update", {"entries": entries})
+
+    _porpoise_legend_sent = False
+    _noise_legend_sent = False
+
     @reactive.effect
     async def _init_map():
         """Send initial empty layers, legend widget, and map controls on startup."""
         await _push_all_layers()
+        await _sync_legend()
 
     # Centralized reactive state
     state = SimulationState()
@@ -1277,6 +1342,7 @@ def server(input, output, session):
         if not loaded_name:
             _layer_cache["depth-bitmap"] = bitmap_layer("depth-bitmap", "", [], visible=False)
             _layer_cache["depth-tooltip"] = scatterplot_layer("depth-tooltip", [], visible=False)
+            _loaded_data_layers.discard("depth-bitmap")
             return
 
         try:
@@ -1292,6 +1358,7 @@ def server(input, output, session):
             if depth is None:
                 _layer_cache["depth-bitmap"] = bitmap_layer("depth-bitmap", "", [], visible=False)
                 _layer_cache["depth-tooltip"] = scatterplot_layer("depth-tooltip", [], visible=False)
+                _loaded_data_layers.discard("depth-bitmap")
                 return
 
             from cenop.ui.sidebar import LANDSCAPE_CRS, LANDSCAPE_BOUNDS
@@ -1302,6 +1369,7 @@ def server(input, output, session):
             )
             _layer_cache["depth-bitmap"] = layers[0]
             _layer_cache["depth-tooltip"] = layers[1]
+            _loaded_data_layers.add("depth-bitmap")
 
             bounds = LANDSCAPE_BOUNDS.get(loaded_name, (54.5, 56.5, 19.5, 22.5))
             lat_min, lat_max, lon_min, lon_max = bounds
@@ -1309,6 +1377,7 @@ def server(input, output, session):
             center_lon = (lon_min + lon_max) / 2
             await sim_map.fly_to(session, longitude=center_lon, latitude=center_lat, zoom=6)
             await _push_all_layers()
+            await _sync_legend()
             logger.info("Depth bitmap rendered for '%s'", loaded_name)
         except Exception as e:
             logger.error(f"Error building depth layer: {e}", exc_info=True)
@@ -1321,6 +1390,7 @@ def server(input, output, session):
         if not loaded_name:
             _layer_cache["foraging-bitmap"] = bitmap_layer("foraging-bitmap", "", [], visible=False)
             _layer_cache["foraging-tooltip"] = scatterplot_layer("foraging-tooltip", [], visible=False)
+            _loaded_data_layers.discard("foraging-bitmap")
             return
 
         try:
@@ -1336,6 +1406,7 @@ def server(input, output, session):
             if food is None:
                 _layer_cache["foraging-bitmap"] = bitmap_layer("foraging-bitmap", "", [], visible=False)
                 _layer_cache["foraging-tooltip"] = scatterplot_layer("foraging-tooltip", [], visible=False)
+                _loaded_data_layers.discard("foraging-bitmap")
                 return
 
             from cenop.ui.sidebar import LANDSCAPE_CRS
@@ -1349,8 +1420,10 @@ def server(input, output, session):
             layers[1]["visible"] = False
             _layer_cache["foraging-bitmap"] = layers[0]
             _layer_cache["foraging-tooltip"] = layers[1]
+            _loaded_data_layers.add("foraging-bitmap")
 
             await _push_all_layers()
+            await _sync_legend()
             logger.info("Foraging bitmap rendered for '%s'", loaded_name)
         except Exception as e:
             logger.error(f"Error building foraging layer: {e}", exc_info=True)
@@ -1366,7 +1439,9 @@ def server(input, output, session):
             _layer_cache["turbine-poles"] = build_turbine_pole_layer([])
             _layer_cache["turbine-blades"] = build_turbine_blade_layer([])
             _layer_cache["_turbine_data_raw"] = []
+            _loaded_data_layers.discard("turbine-poles")
             await _push_all_layers()
+            await _sync_legend()
             return
 
         try:
@@ -1427,11 +1502,13 @@ def server(input, output, session):
             state.turbine_count.set(len(turbine_data))
             _layer_cache["_turbine_data_raw"] = turbine_data
             _layer_cache["turbine-poles"] = build_turbine_pole_layer(turbine_data)
+            _loaded_data_layers.add("turbine-poles")
             animate = _safe_input(input, "blade_animation", True)
             _layer_cache["turbine-blades"] = build_turbine_blade_layer(
                 turbine_data, client_animated=animate
             )
             await _push_all_layers()
+            await _sync_legend()
             logger.info(f"Turbine layers: {len(turbine_data)} turbines loaded")
         except Exception as e:
             logger.error(f"Error building turbine layers: {e}", exc_info=True)
@@ -1477,6 +1554,8 @@ def server(input, output, session):
         if not raw:
             _layer_cache["noise-construction"] = build_noise_construction_layer([])
             _layer_cache["noise-operational"] = build_noise_operational_layer([])
+            _loaded_data_layers.discard("noise-construction")
+            _loaded_data_layers.discard("noise-operational")
             await _push_dynamic_layers("noise-construction", "noise-operational")
             return
 
@@ -1511,7 +1590,15 @@ def server(input, output, session):
 
         _layer_cache["noise-construction"] = build_noise_construction_layer(construction_noise)
         _layer_cache["noise-operational"] = build_noise_operational_layer(operational_noise)
+        if construction_noise:
+            _loaded_data_layers.add("noise-construction")
+        if operational_noise:
+            _loaded_data_layers.add("noise-operational")
         await _push_dynamic_layers("noise-construction", "noise-operational")
+        nonlocal _noise_legend_sent
+        if not _noise_legend_sent and (construction_noise or operational_noise):
+            _noise_legend_sent = True
+            await _sync_legend()
 
     @reactive.effect
     @reactive.event(state.map_update_counter)
@@ -1520,15 +1607,16 @@ def server(input, output, session):
         positions_raw = state.porpoise_positions()
         if not positions_raw:
             _layer_cache["porpoises"] = build_porpoise_layer([])
+            _loaded_data_layers.discard("porpoises")
             await _push_dynamic_layers("porpoises")
             return
 
         try:
             points = []
             for p in positions_raw[:1000]:
-                lon, lat = p[0], p[1]
-                heading = p[2] if len(p) > 2 else 0
-                age = p[3] if len(p) > 3 else 5
+                lon, lat = p[1], p[2]
+                heading = p[4] if len(p) > 4 else 0
+                age = p[5] if len(p) > 5 else 5
                 is_disturbed = p[6] if len(p) > 6 else False
 
                 if is_disturbed:
@@ -1552,7 +1640,12 @@ def server(input, output, session):
                 })
 
             _layer_cache["porpoises"] = build_porpoise_layer(points)
+            _loaded_data_layers.add("porpoises")
             await _push_dynamic_layers("porpoises")
+            nonlocal _porpoise_legend_sent
+            if not _porpoise_legend_sent:
+                _porpoise_legend_sent = True
+                await _sync_legend()
         except Exception as e:
             logger.error(f"Error updating porpoise layer: {e}", exc_info=True)
 

@@ -653,21 +653,29 @@ class Simulation:
         
     def get_porpoise_positions(self) -> np.ndarray:
         """
-        Get current positions and energy levels of all porpoises.
+        Get current positions, state, and energy of all porpoises.
 
         Returns:
-            Array of shape (N, 3) with [x, y, energy] for each porpoise
+            Array of shape (N, 7) with columns:
+            [original_index, x, y, energy, heading, age, is_dispersing]
+            original_index is the stable SoA array index (does not shift on death).
         """
         if hasattr(self, 'population_manager') and self.population_manager is not None:
-            mask = self.population_manager.active_mask
+            pop = self.population_manager
+            mask = pop.active_mask
             if not np.any(mask):
-                return np.empty((0, 3))
+                return np.empty((0, 7))
+            indices = np.where(mask)[0].astype(np.float64)
             return np.column_stack((
-                self.population_manager.x[mask],
-                self.population_manager.y[mask],
-                self.population_manager.energy[mask],
+                indices,
+                pop.x[mask],
+                pop.y[mask],
+                pop.energy[mask],
+                pop.heading[mask],
+                pop.age[mask],
+                pop.is_dispersing[mask].astype(np.float64),
             ))
-        return np.empty((0, 3))
+        return np.empty((0, 7))
         
     def get_population_history(self) -> Dict[str, List]:
         """Get population history as dictionary of lists."""

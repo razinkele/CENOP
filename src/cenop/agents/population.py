@@ -83,8 +83,8 @@ class PorpoisePopulation:
         self.heading = np.zeros(count, dtype=np.float32)
         
         # Movement State
-        self.prev_log_mov = np.full(count, 0.8, dtype=np.float32)
-        self.prev_angle = np.full(count, 10.0, dtype=np.float32)
+        self.prev_log_mov = np.full(count, 0.8, dtype=np.float64)
+        self.prev_angle = np.full(count, 10.0, dtype=np.float64)
         
         # Demography
         self.is_female = np.zeros(count, dtype=bool)
@@ -223,10 +223,10 @@ class PorpoisePopulation:
 
         # === Pre-allocated arrays for step() to avoid GC pressure ===
         # These are reused each tick instead of creating new arrays
-        self._rand_angle = np.zeros(count, dtype=np.float32)
-        self._rand_len = np.zeros(count, dtype=np.float32)
-        self._pres_angle = np.zeros(count, dtype=np.float32)
-        self._log_mov = np.zeros(count, dtype=np.float32)
+        self._rand_angle = np.zeros(count, dtype=np.float64)
+        self._rand_len = np.zeros(count, dtype=np.float64)
+        self._pres_angle = np.zeros(count, dtype=np.float64)
+        self._log_mov = np.zeros(count, dtype=np.float64)
         self._step_dist = np.zeros(count, dtype=np.float32)
         self._rads = np.zeros(count, dtype=np.float32)
         self._dx = np.zeros(count, dtype=np.float32)
@@ -235,8 +235,8 @@ class PorpoisePopulation:
         self._new_y = np.zeros(count, dtype=np.float32)
         self._new_xi = np.zeros(count, dtype=np.int32)
         self._new_yi = np.zeros(count, dtype=np.int32)
-        self._depths = np.zeros(count, dtype=np.float32)
-        self._salinity_vals = np.zeros(count, dtype=np.float32)  # For CRW environmental modulation
+        self._depths = np.zeros(count, dtype=np.float64)
+        self._salinity_vals = np.zeros(count, dtype=np.float64)  # For CRW environmental modulation
         self._env_mod_angle = np.zeros(count, dtype=np.float32)  # b1*depth + b2*salinity + b3
         self._scaling_factor = np.zeros(count, dtype=np.float32)
 

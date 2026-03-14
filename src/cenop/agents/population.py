@@ -113,8 +113,8 @@ class PorpoisePopulation:
         self._stored_util = np.zeros((count, _REF_MEM_SIZE), dtype=np.float32)
         self._pos_history_x = np.zeros((count, _REF_MEM_SIZE), dtype=np.float32)
         self._pos_history_y = np.zeros((count, _REF_MEM_SIZE), dtype=np.float32)
-        self._mem_ptr = np.zeros(count, dtype=np.int16)   # Current write index
-        self._mem_count = np.zeros(count, dtype=np.int16)  # Entries stored
+        self._mem_ptr = np.zeros(count, dtype=np.int32)   # Current write index
+        self._mem_count = np.zeros(count, dtype=np.int32)  # Entries stored
         self._ve_total = np.zeros(count, dtype=np.float32)  # Expected food value
         self._vt_x = np.zeros(count, dtype=np.float32)  # Attraction vector x
         self._vt_y = np.zeros(count, dtype=np.float32)  # Attraction vector y
@@ -1143,7 +1143,7 @@ class PorpoisePopulation:
                 valid = remaining[self._mem_count[remaining] > h]
                 if len(valid) == 0:
                     continue
-                buf_idx = (self._mem_ptr[valid].astype(np.int32) - 1 - h) % mem_size
+                buf_idx = (self._mem_ptr[valid] - 1 - h) % mem_size
                 px = self._pos_history_x[valid, buf_idx]
                 py = self._pos_history_y[valid, buf_idx]
                 xi = np.clip(px.astype(np.int32), 0, self.landscape.width - 1)

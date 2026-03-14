@@ -148,8 +148,8 @@ def compute_ve_total(
         from cenop.optimizations.kernels import compute_ve_total_kernel
         out = np.zeros(n_active, dtype=np.float64)
         compute_ve_total_kernel(
-            stored_util, mem_ptr.astype(np.int32),
-            mem_count.astype(np.int32),
+            stored_util, mem_ptr,
+            mem_count,
             work_mem_table.astype(np.float64),
             active.astype(np.int64), out,
         )
@@ -237,7 +237,7 @@ def compute_attraction_vector(
         out_y = np.zeros(n_active, dtype=np.float64)
         compute_attraction_kernel(
             stored_util, pos_history_x, pos_history_y,
-            mem_ptr.astype(np.int32), mem_count.astype(np.int32),
+            mem_ptr, mem_count,
             current_x, current_y,
             ref_mem_table.astype(np.float64),
             active.astype(np.int64), out_x, out_y,

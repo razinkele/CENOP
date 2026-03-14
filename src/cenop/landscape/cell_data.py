@@ -392,24 +392,25 @@ class CellData:
             return
 
         # --- First logistic iteration -------------------------------------
-        food_after_1 = food.copy()
-        food_after_1[active] = (
-            food[active]
-            + rate * food[active] * (1.0 - food[active] / k_vals[active])
+        delta = np.zeros_like(food)
+        delta[active] = rate * food[active] * (
+            1.0 - food[active] / k_vals[active]
         )
+        food[active] += delta[active]
 
         # --- Per-cell delta check -----------------------------------------
-        delta_mask = active & (np.abs(food_after_1 - food) > regrowth_qualifier)
-
-        # Apply first iteration result
-        food[active] = food_after_1[active]
+        delta_mask = active & (np.abs(delta) > regrowth_qualifier)
 
         # --- 47 extra iterations where delta was large --------------------
         if np.any(delta_mask):
-            f_sub = food[delta_mask]
-            k_sub = k_vals[delta_mask]
-            for _ in range(47):
-                f_sub = f_sub + rate * f_sub * (1.0 - f_sub / k_sub)
+            f_sub = food[delta_mask].copy().astype(np.float64)
+            k_sub = k_vals[delta_mask].astype(np.float64)
+            try:
+                from cenop.optimizations.kernels import regrow_food_kernel
+                regrow_food_kernel(f_sub, k_sub, float(rate), 47)
+            except ImportError:
+                for _ in range(47):
+                    f_sub = f_sub + rate * f_sub * (1.0 - f_sub / k_sub)
             food[delta_mask] = f_sub
 
         # --- Clip to capacity and write back ------------------------------

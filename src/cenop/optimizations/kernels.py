@@ -397,6 +397,21 @@ def social_accumulate_kernel(
         sw_total[j] += p_j[k]
 
 
+@njit(cache=True, parallel=True)
+def regrow_food_kernel(food, k_vals, rate, n_iter):
+    """Apply logistic food regrowth for n_iter iterations (prange-parallel).
+
+    Modifies food array in-place.
+    Each cell: F = F + rate * F * (1 - F/K), repeated n_iter times.
+    """
+    for i in prange(len(food)):
+        f = food[i]
+        k = k_vals[i]
+        for _ in range(n_iter):
+            f = f + rate * f * (1.0 - f / k)
+        food[i] = f
+
+
 def warmup_kernels():
     """Pre-compile all kernels with small dummy data to avoid first-call latency."""
     if not NUMBA_AVAILABLE:
@@ -457,4 +472,8 @@ def warmup_kernels():
     suy = np.zeros(2, dtype=np.float64)
     ssw = np.zeros(2, dtype=np.float64)
     social_accumulate_kernel(si, sj, sdx, sdy, sdi, spi, spj, sux, suy, ssw)
+    # Warmup regrow_food kernel
+    rf = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+    rk = np.array([10.0, 10.0, 10.0], dtype=np.float64)
+    regrow_food_kernel(rf, rk, 0.1, 2)
     return True

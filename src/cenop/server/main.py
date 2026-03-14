@@ -32,6 +32,7 @@ from shiny_deckgl import zoom_widget, compass_widget, scale_widget, fullscreen_w
 from cenop.ui.tabs.dashboard import sim_map
 from cenop.server.map_layers import (
     build_porpoise_layer,
+    build_porpoise_trails_layer,
     build_grid_bitmap_layer,
     build_noise_construction_layer,
     build_noise_operational_layer,
@@ -360,6 +361,7 @@ def server(input, output, session):
             _layer_cache.get("turbine-poles", build_turbine_pole_layer([])),
             _layer_cache.get("turbine-blades", build_turbine_blade_layer([])),
             _layer_cache.get("porpoises", build_porpoise_layer([])),
+            _layer_cache.get("porpoise-trails", build_porpoise_trails_layer([])),
         ]
         await sim_map.update(
             session,
@@ -452,6 +454,15 @@ def server(input, output, session):
                 "label": "Porpoises",
                 "color": "rgb(0,150,255)",
                 "shape": "circle",
+                "checked": True,
+            })
+
+        if "porpoise-trails" in _loaded_data_layers:
+            entries.append({
+                "id": "porpoise-trails",
+                "label": "Porpoise traces",
+                "color": "rgb(0,150,255)",
+                "shape": "rect",
                 "checked": True,
             })
 
@@ -1265,6 +1276,13 @@ def server(input, output, session):
                             state.porpoise_positions.set(msg.get("porpoise_positions"))
                         except AttributeError:
                             pass
+                    if msg.get("porpoise_trails") is not None:
+                        try:
+                            state.porpoise_trails.set(
+                                msg.get("porpoise_trails")
+                            )
+                        except AttributeError:
+                            pass
 
         # Flush batched entries to reactive state so dashboard updates
         if entries_batch:
@@ -1691,7 +1709,11 @@ def server(input, output, session):
         if not positions_raw:
             _layer_cache["porpoises"] = build_porpoise_layer([])
             _loaded_data_layers.discard("porpoises")
-            await _push_dynamic_layers("porpoises")
+            _layer_cache["porpoise-trails"] = (
+                build_porpoise_trails_layer([])
+            )
+            _loaded_data_layers.discard("porpoise-trails")
+            await _push_dynamic_layers("porpoises", "porpoise-trails")
             return
 
         try:
@@ -1724,7 +1746,49 @@ def server(input, output, session):
 
             _layer_cache["porpoises"] = build_porpoise_layer(points)
             _loaded_data_layers.add("porpoises")
-            await _push_dynamic_layers("porpoises")
+
+            # Build trail layer if traces enabled
+            trails_raw = state.porpoise_trails()
+            show_traces = False
+            try:
+                show_traces = input.show_traces()
+            except Exception:
+                pass
+            if show_traces and trails_raw:
+                pid_to_color = {}
+                for p in positions_raw[:1000]:
+                    pid = int(p[0])
+                    age = p[5] if len(p) > 5 else 5
+                    is_dispersing = p[6] if len(p) > 6 else False
+                    if is_dispersing:
+                        color = [255, 40, 40, 240]
+                    elif age < 2:
+                        color = [60, 180, 75, 240]
+                    elif age < 12:
+                        color = [0, 150, 255, 240]
+                    else:
+                        color = [160, 160, 160, 240]
+                    pid_to_color[pid] = color
+                colored_trails = []
+                for trail in trails_raw[:1000]:
+                    pid = trail.get("pid", -1)
+                    colored_trails.append({
+                        "path": trail["path"],
+                        "timestamps": trail["timestamps"],
+                        "color": pid_to_color.get(
+                            pid, [0, 150, 255, 240]
+                        ),
+                    })
+                _layer_cache["porpoise-trails"] = (
+                    build_porpoise_trails_layer(colored_trails)
+                )
+                _loaded_data_layers.add("porpoise-trails")
+            else:
+                _layer_cache["porpoise-trails"] = (
+                    build_porpoise_trails_layer([])
+                )
+                _loaded_data_layers.discard("porpoise-trails")
+            await _push_dynamic_layers("porpoises", "porpoise-trails")
             nonlocal _porpoise_legend_sent
             if not _porpoise_legend_sent:
                 _porpoise_legend_sent = True

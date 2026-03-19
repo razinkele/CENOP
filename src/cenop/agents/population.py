@@ -2081,19 +2081,19 @@ class PorpoisePopulation:
             return
             
         # Convert positions to PSM grid coordinates
-        psm_x = (self.x[active_idx] // self.psm_cell_size).astype(int)
-        psm_y = (self.y[active_idx] // self.psm_cell_size).astype(int)
-        
+        psm_x = (self.x[active_idx] // self.psm_cell_size).astype(np.int32)
+        psm_y = (self.y[active_idx] // self.psm_cell_size).astype(np.int32)
+
         # Clip to bounds
         np.clip(psm_x, 0, self.psm_cols - 1, out=psm_x)
         np.clip(psm_y, 0, self.psm_rows - 1, out=psm_y)
-        
+
         # Use efficient accumulator (Numba-accelerated when available)
         from cenop.optimizations import accumulate_psm_updates  # noqa: E402 — kept deferred to avoid circular import at module level
 
-        idx_arr = active_idx.astype(np.int32)
-        ys_arr = psm_y.astype(np.int32)
-        xs_arr = psm_x.astype(np.int32)
+        idx_arr = active_idx  # int64 from np.where; both Numba and fallback accept it
+        ys_arr = psm_y  # already int32
+        xs_arr = psm_x  # already int32
         food_arr = food_gained[active_idx].astype(np.float32)
 
         try:
@@ -2149,8 +2149,16 @@ class PorpoisePopulation:
                 self.psm_buffer[candidate_indices, :, :, 0], axis=(1, 2)
             )
             qualified = candidate_indices[visited_counts >= min_memory_cells]
-            for idx in qualified:
-                self._start_dispersal(idx)
+            if len(qualified) > 0:
+                # Batch-initialize dispersal state
+                self.is_dispersing[qualified] = True
+                self.dispersal_start_x[qualified] = self.x[qualified]
+                self.dispersal_start_y[qualified] = self.y[qualified]
+                self.dispersal_distance_traveled[qualified] = 0.0
+                self._prev_step_heading[qualified] = self.heading[qualified]
+                # Per-agent PSM target selection (cannot vectorize)
+                for idx in qualified:
+                    self._select_dispersal_target(idx)
 
     def _update_neighbor_recompute_interval(self, mean_disp_m: float) -> None:
         """Update the current recompute interval based on mean displacement EMA.
@@ -2223,23 +2231,33 @@ class PorpoisePopulation:
     def _start_dispersal(self, idx: int) -> None:
         """
         Start dispersal behavior for a single porpoise.
-        
+
         Uses PSM to find target cell at approximately preferred distance.
+        Initializes dispersal state then selects a target.
         """
         self.is_dispersing[idx] = True
         self.dispersal_start_x[idx] = self.x[idx]
         self.dispersal_start_y[idx] = self.y[idx]
         self.dispersal_distance_traveled[idx] = 0.0
         self._prev_step_heading[idx] = self.heading[idx]
-        
+
+        self._select_dispersal_target(idx)
+
+    def _select_dispersal_target(self, idx: int) -> None:
+        """
+        Select a dispersal target for a single porpoise using PSM data.
+
+        Finds the highest-food cell at approximately the preferred distance.
+        Falls back to a random target if no suitable cell is found.
+        """
         # Use vectorized PSM buffer scan
-        mem_slice = self.psm_buffer[idx] # (rows, cols, 2)
+        mem_slice = self.psm_buffer[idx]  # (rows, cols, 2)
         ticks = mem_slice[:, :, 0]
         food = mem_slice[:, :, 1]
-        
+
         # Get visited cells
         visited_y, visited_x = np.nonzero(ticks)
-        
+
         if len(visited_x) == 0:
             self._set_random_dispersal_target(idx)
             return
@@ -2249,7 +2267,7 @@ class PorpoisePopulation:
         visited_ticks = ticks[visited_y, visited_x]
         visited_food = food[visited_y, visited_x]
         expectations = visited_food / visited_ticks
-        
+
         max_exp = np.max(expectations)
         if max_exp <= 0:
             self._set_random_dispersal_target(idx)
@@ -2258,47 +2276,42 @@ class PorpoisePopulation:
         # Get preferred distance (stored in object list or default)
         pref_dist_km = self._psm_instances[idx].preferred_distance
         pref_dist_cells = pref_dist_km * 1000 / 400.0
-        
+
         # Get world coordinates of visited cells (center of PSM cell)
         # psm_cell_size in world units = 5 * 400 = 2000m = 5 cells
         world_x = visited_x * self.psm_cell_size + (self.psm_cell_size / 2)
         world_y = visited_y * self.psm_cell_size + (self.psm_cell_size / 2)
-        
+
         # Calculate distances to current position
         dx = world_x - self.x[idx]
         dy = world_y - self.y[idx]
-        dists = np.sqrt(dx*dx + dy*dy)
-        
+        dists = np.sqrt(dx * dx + dy * dy)
+
         # Filter for tolerance (5km approx 12.5 cells)
         tolerance_cells = 12.5
         valid_mask = np.abs(dists - pref_dist_cells) < tolerance_cells
-        
+
         if np.any(valid_mask):
             # Pick highest value among valid distance cells
-            # Filter arrays
             valid_expectations = expectations[valid_mask]
-            
+
             # Find best
             best_local_idx = np.argmax(valid_expectations)
-            
+
             # Map back to original indices
-            # valid_mask is a boolean mask into visited_x/y arrays
-            # We need the index in the filtered array -> corresponding index in visited arrays
-            
-            # Indices of valid cells in the 'visited' arrays
             valid_indices_in_visited = np.where(valid_mask)[0]
             best_index = valid_indices_in_visited[best_local_idx]
-            
+
             target_x = world_x[best_index]
             target_y = world_y[best_index]
             target_dist = dists[best_index]
-            
+
             self.dispersal_target_x[idx] = target_x
             self.dispersal_target_y[idx] = target_y
             self.dispersal_target_distance[idx] = target_dist
         else:
             self._set_random_dispersal_target(idx)
-            
+
         # Set heading toward target
         dx = self.dispersal_target_x[idx] - self.x[idx]
         dy = self.dispersal_target_y[idx] - self.y[idx]
@@ -2348,6 +2361,11 @@ class PorpoisePopulation:
         if not np.any(dispersing):
             return
 
+        # Pre-compute distances once (shared across all checks)
+        dx = self.x - self.dispersal_start_x
+        dy = self.y - self.dispersal_start_y
+        distances = np.sqrt(dx * dx + dy * dy)
+
         # --- Deterrence deactivates dispersal (Java Porpoise.java:1277-1278) ---
         deterred = dispersing & (self.deter_strength > 0)
         if np.any(deterred):
@@ -2376,11 +2394,7 @@ class PorpoisePopulation:
         if not np.any(dispersing):
             return
 
-        # --- Distance completion check ---
-        dx = self.x - self.dispersal_start_x
-        dy = self.y - self.dispersal_start_y
-        distances = np.sqrt(dx**2 + dy**2)
-
+        # --- Distance completion check (reuse pre-computed distances) ---
         completed = dispersing & (distances >= 0.95 * self.dispersal_target_distance)
         if np.any(completed):
             self.is_dispersing[completed] = False

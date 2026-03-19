@@ -610,3 +610,116 @@ class TestParallelEquivalence:
         depons_bmr_cost_kernel(speed, scaling, is_lact, is_dist, deter_mag, mask, out2, 4.5, 1.4)
 
         np.testing.assert_allclose(out1, out2, atol=1e-10)
+
+
+class TestLandAvoidanceKernel:
+    """Tests for fused land avoidance kernel."""
+
+    def test_all_agents_find_water_at_first_angle(self):
+        """When 40 deg turn leads to water, all agents should resolve."""
+        from cenop.optimizations.kernels import land_avoidance_kernel
+
+        n = 3
+        x = np.array([25.0, 30.0, 35.0], dtype=np.float64)
+        y = np.array([25.0, 30.0, 35.0], dtype=np.float64)
+        heading = np.array([0.0, 90.0, 180.0], dtype=np.float64)
+        step_dist = np.array([2.0, 2.0, 2.0], dtype=np.float64)
+        depth_grid = np.full((50, 50), 20.0, dtype=np.float32)
+        min_depth = 1.0
+        base_angles = np.array([40.0, 70.0, 120.0], dtype=np.float64)
+        jitter = np.array([5.0, 5.0, 5.0], dtype=np.float64)
+        out_x = np.zeros(n, dtype=np.float64)
+        out_y = np.zeros(n, dtype=np.float64)
+        out_heading = np.zeros(n, dtype=np.float64)
+        resolved = np.zeros(n, dtype=np.bool_)
+        land_avoidance_kernel(
+            x, y, heading, step_dist, depth_grid, min_depth,
+            base_angles, jitter, out_x, out_y, out_heading, resolved,
+        )
+        assert np.all(resolved)
+        assert np.all(out_x >= 0) and np.all(out_x < 50)
+        assert np.all(out_y >= 0) and np.all(out_y < 50)
+
+    def test_picks_deeper_when_both_valid(self):
+        """When both left and right turns lead to water, pick deeper."""
+        from cenop.optimizations.kernels import land_avoidance_kernel
+
+        depth_grid = np.full((100, 100), 5.0, dtype=np.float32)
+        # Agent at (50, 50), heading 0, step 10, angle 45 (no jitter)
+        # Right turn: heading=45, dx=sin(45)*10=7.07, dy=cos(45)*10=7.07
+        #   -> (57.07, 57.07) -> int (57, 57)
+        depth_grid[57, 57] = 30.0  # Right: deep
+        # Left turn: heading=315, dx=sin(315)*10=-7.07, dy=cos(315)*10=7.07
+        #   -> (42.93, 57.07) -> int (42, 57) but grid is [row,col]=[57,42]
+        depth_grid[57, 42] = 10.0  # Left: shallower but valid
+        n = 1
+        x = np.array([50.0], dtype=np.float64)
+        y = np.array([50.0], dtype=np.float64)
+        heading = np.array([0.0], dtype=np.float64)
+        step_dist = np.array([10.0], dtype=np.float64)
+        base_angles = np.array([45.0, 70.0, 120.0], dtype=np.float64)
+        jitter = np.zeros(3, dtype=np.float64)
+        out_x = np.zeros(n, dtype=np.float64)
+        out_y = np.zeros(n, dtype=np.float64)
+        out_heading = np.zeros(n, dtype=np.float64)
+        resolved = np.zeros(n, dtype=np.bool_)
+        land_avoidance_kernel(
+            x, y, heading, step_dist, depth_grid, 1.0,
+            base_angles, jitter, out_x, out_y, out_heading, resolved,
+        )
+        assert resolved[0]
+        # Should pick right (deeper: 30 > 10)
+        assert out_heading[0] == pytest.approx(45.0, abs=0.1)
+
+    def test_unresolved_when_all_land(self):
+        """When all 6 directions are land, agent should be unresolved."""
+        from cenop.optimizations.kernels import land_avoidance_kernel
+
+        depth_grid = np.full((50, 50), 0.0, dtype=np.float32)
+        n = 1
+        x = np.array([25.0], dtype=np.float64)
+        y = np.array([25.0], dtype=np.float64)
+        heading = np.array([90.0], dtype=np.float64)
+        step_dist = np.array([3.0], dtype=np.float64)
+        base_angles = np.array([40.0, 70.0, 120.0], dtype=np.float64)
+        jitter = np.zeros(3, dtype=np.float64)
+        out_x = np.zeros(n, dtype=np.float64)
+        out_y = np.zeros(n, dtype=np.float64)
+        out_heading = np.zeros(n, dtype=np.float64)
+        resolved = np.zeros(n, dtype=np.bool_)
+        land_avoidance_kernel(
+            x, y, heading, step_dist, depth_grid, 1.0,
+            base_angles, jitter, out_x, out_y, out_heading, resolved,
+        )
+        assert not resolved[0]
+
+    def test_tries_wider_angle_on_failure(self):
+        """When 40 deg fails but 70 deg succeeds, uses 70 deg."""
+        from cenop.optimizations.kernels import land_avoidance_kernel
+
+        depth_grid = np.full((100, 100), 0.0, dtype=np.float32)
+        # Agent at (50, 50), heading 0, step 10
+        # 40 deg right: heading=40, dx=sin(40)*10=6.43, dy=cos(40)*10=7.66
+        #   -> (56.43, 57.66) -> int (57, 56) — leave as land (0)
+        # 40 deg left: heading=320, dx=sin(320)*10=-6.43, dy=cos(320)*10=7.66
+        #   -> (43.57, 57.66) -> int (57, 43) — leave as land (0)
+        # 70 deg right: heading=70, dx=sin(70)*10=9.40, dy=cos(70)*10=3.42
+        #   -> (59.40, 53.42) -> int (53, 59)
+        depth_grid[53, 59] = 20.0  # Only valid at ~70 deg right
+        n = 1
+        x = np.array([50.0], dtype=np.float64)
+        y = np.array([50.0], dtype=np.float64)
+        heading = np.array([0.0], dtype=np.float64)
+        step_dist = np.array([10.0], dtype=np.float64)
+        base_angles = np.array([40.0, 70.0, 120.0], dtype=np.float64)
+        jitter = np.zeros(3, dtype=np.float64)
+        out_x = np.zeros(n, dtype=np.float64)
+        out_y = np.zeros(n, dtype=np.float64)
+        out_heading = np.zeros(n, dtype=np.float64)
+        resolved = np.zeros(n, dtype=np.bool_)
+        land_avoidance_kernel(
+            x, y, heading, step_dist, depth_grid, 1.0,
+            base_angles, jitter, out_x, out_y, out_heading, resolved,
+        )
+        assert resolved[0]
+        assert out_heading[0] == pytest.approx(70.0, abs=1.0)

@@ -107,3 +107,41 @@ class TestLandAvoidanceSkipBehavior:
         # Positions should be updated (add+reflect) but no trial loop ran
         np.testing.assert_array_less(pop._new_x, 400.0)
         np.testing.assert_array_less(-0.01, pop._new_x)  # >= 0
+
+
+class TestLandAvoidanceKernelIntegration:
+    """Test that the fused kernel is wired into _handle_land_avoidance."""
+
+    def test_real_landscape_with_land_resolves_agents(self):
+        """Agents on land should find water via kernel path."""
+        from unittest.mock import MagicMock
+
+        params = SimulationParameters()
+        landscape = MagicMock()
+        landscape.landscape_name = "TestLand"
+        landscape.width = 100
+        landscape.height = 100
+        depth = np.full((100, 100), 20.0, dtype=np.float32)
+        depth[49:52, :] = 0.0  # Narrow land strip at y=49-51
+        landscape._depth = depth
+        landscape.metadata = MagicMock()
+        landscape.metadata.cellsize = 400.0
+
+        pop = PorpoisePopulation(count=5, params=params, landscape=landscape)
+        assert pop._skip_land_avoidance is False
+
+        pop.x[:] = np.array([50, 60, 70, 80, 90], dtype=np.float32)
+        pop.y[:] = np.array([50, 50, 50, 50, 50], dtype=np.float32)
+        pop.heading[:] = 0.0
+        pop._step_dist[:] = 5.0
+        pop._dx[:] = 0.0
+        pop._dy[:] = 5.0
+        mask = pop.active_mask.copy()
+
+        pop._handle_land_avoidance(mask)
+
+        new_yi = np.clip(pop._new_y.astype(np.int32), 0, 99)
+        new_xi = np.clip(pop._new_x.astype(np.int32), 0, 99)
+        new_depths = depth[new_yi, new_xi]
+        # At least 3 of 5 agents should find water
+        assert np.sum(new_depths >= 1.0) >= 3

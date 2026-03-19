@@ -44,9 +44,11 @@ try:
     from cenop.optimizations.kernels import seed_numba_rng as _seed_numba_rng
     from cenop.optimizations.kernels import turn_position_kernel as _turn_kernel
     from cenop.optimizations.kernels import social_accumulate_kernel as _social_kernel
+    from cenop.optimizations.kernels import land_avoidance_kernel as _land_avoidance_kernel
     _HAS_KERNELS = True
 except ImportError:
     _HAS_KERNELS = False
+    _land_avoidance_kernel = None
 
 logger = logging.getLogger('cenop.agents.population')
 
@@ -1107,50 +1109,100 @@ class PorpoisePopulation:
             return
 
         # Try turning to avoid land (DEPONS pattern with random jitter)
-        for base_angle in [40, 70, 120]:
-            turn_angle = base_angle + np.random.uniform(0, 10)
-            np.copyto(self._still_blocked, self._on_land)
+        if _HAS_KERNELS and _land_avoidance_kernel is not None:
+            # Fused kernel path: one Numba call for all 3 angles x 2 directions
+            blocked_idx = np.where(self._on_land)[0]
+            n_blocked = len(blocked_idx)
+            if n_blocked > 0:
+                bx = self.x[blocked_idx].astype(np.float64)
+                by = self.y[blocked_idx].astype(np.float64)
+                bh = self.heading[blocked_idx].astype(np.float64)
+                bs = self._step_dist[blocked_idx].astype(np.float64)
 
-            # Compute positions for both turn directions
-            right_heading = self._compute_turn_position(
-                turn_angle, world_w, world_h,
-                self._right_x, self._right_y,
-                self._right_xi, self._right_yi,
-                self._right_depths,
-                blocked_mask=self._still_blocked,
-            )
-            left_heading = self._compute_turn_position(
-                -turn_angle, world_w, world_h,
-                self._left_x, self._left_y,
-                self._left_xi, self._left_yi,
-                self._left_depths,
-                blocked_mask=self._still_blocked,
-            )
+                base_angles = np.array([40.0, 70.0, 120.0], dtype=np.float64)
+                jitter = np.random.uniform(0, 10, 3).astype(np.float64)
 
-            # Pick deeper direction if valid water
-            right_ok = ((self._right_depths >= min_depth) & ~np.isnan(self._right_depths)) & self._still_blocked
-            left_ok = ((self._left_depths >= min_depth) & ~np.isnan(self._left_depths)) & self._still_blocked
-            both_ok = right_ok & left_ok
+                out_x = np.empty(n_blocked, dtype=np.float64)
+                out_y = np.empty(n_blocked, dtype=np.float64)
+                out_heading = np.empty(n_blocked, dtype=np.float64)
+                resolved = np.empty(n_blocked, dtype=np.bool_)
 
-            # If both OK, pick deeper
-            use_right = both_ok & (self._right_depths >= self._left_depths)
-            use_left = both_ok & (self._left_depths > self._right_depths)
+                _land_avoidance_kernel(
+                    bx, by, bh, bs,
+                    self.landscape._depth, min_depth,
+                    base_angles, jitter,
+                    out_x, out_y, out_heading, resolved,
+                )
 
-            # If only one OK
-            use_right = use_right | (right_ok & ~left_ok)
-            use_left = use_left | (left_ok & ~right_ok)
+                # Apply results for resolved agents
+                resolved_global = blocked_idx[resolved]
+                if len(resolved_global) > 0:
+                    self._new_x[resolved_global] = out_x[resolved].astype(
+                        np.float32
+                    )
+                    self._new_y[resolved_global] = out_y[resolved].astype(
+                        np.float32
+                    )
+                    self.heading[resolved_global] = out_heading[resolved].astype(
+                        np.float32
+                    )
+                    self._on_land[resolved_global] = False
+        else:
+            # Fallback: original 6-call loop (preserved exactly)
+            for base_angle in [40, 70, 120]:
+                turn_angle = base_angle + np.random.uniform(0, 10)
+                np.copyto(self._still_blocked, self._on_land)
 
-            # Update positions for those who found water
-            self._new_x[use_right] = self._right_x[use_right]
-            self._new_y[use_right] = self._right_y[use_right]
-            self.heading[use_right] = right_heading[use_right]
+                # Compute positions for both turn directions
+                right_heading = self._compute_turn_position(
+                    turn_angle, world_w, world_h,
+                    self._right_x, self._right_y,
+                    self._right_xi, self._right_yi,
+                    self._right_depths,
+                    blocked_mask=self._still_blocked,
+                )
+                left_heading = self._compute_turn_position(
+                    -turn_angle, world_w, world_h,
+                    self._left_x, self._left_y,
+                    self._left_xi, self._left_yi,
+                    self._left_depths,
+                    blocked_mask=self._still_blocked,
+                )
 
-            self._new_x[use_left] = self._left_x[use_left]
-            self._new_y[use_left] = self._left_y[use_left]
-            self.heading[use_left] = left_heading[use_left]
+                # Pick deeper direction if valid water
+                right_ok = (
+                    (self._right_depths >= min_depth)
+                    & ~np.isnan(self._right_depths)
+                ) & self._still_blocked
+                left_ok = (
+                    (self._left_depths >= min_depth)
+                    & ~np.isnan(self._left_depths)
+                ) & self._still_blocked
+                both_ok = right_ok & left_ok
 
-            # Mark as no longer blocked
-            self._on_land[use_right | use_left] = False
+                # If both OK, pick deeper
+                use_right = both_ok & (
+                    self._right_depths >= self._left_depths
+                )
+                use_left = both_ok & (
+                    self._left_depths > self._right_depths
+                )
+
+                # If only one OK
+                use_right = use_right | (right_ok & ~left_ok)
+                use_left = use_left | (left_ok & ~right_ok)
+
+                # Update positions for those who found water
+                self._new_x[use_right] = self._right_x[use_right]
+                self._new_y[use_right] = self._right_y[use_right]
+                self.heading[use_right] = right_heading[use_right]
+
+                self._new_x[use_left] = self._left_x[use_left]
+                self._new_y[use_left] = self._left_y[use_left]
+                self.heading[use_left] = left_heading[use_left]
+
+                # Mark as no longer blocked
+                self._on_land[use_right | use_left] = False
 
         # Backtrack fallback (Java Porpoise.java:505-533) — vectorized
         still_blocked = np.where(self._on_land)[0]

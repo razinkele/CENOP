@@ -493,6 +493,119 @@ def compute_attraction_kernel(
         out_vt_y[ai] = vy
 
 
+@njit(cache=True)
+def land_avoidance_kernel(
+    x,
+    y,
+    heading,
+    step_dist,
+    depth_grid,
+    min_depth,
+    base_angles,
+    jitter,
+    out_x,
+    out_y,
+    out_heading,
+    resolved,
+):
+    """Try 3 angles x 2 directions per blocked agent in one pass.
+
+    For each angle, try right then left; pick deeper if both valid;
+    break on first successful angle. Matches DEPONS Java and current
+    Python _handle_land_avoidance pattern.
+
+    Args:
+        x, y, heading, step_dist: blocked agent arrays (float64)
+        depth_grid: float32[rows, cols] landscape depth
+        min_depth: minimum water depth threshold
+        base_angles: float64[3] = [40, 70, 120] degree turn angles
+        jitter: float64[3] = pre-drawn uniform(0, 10) per angle
+        out_x, out_y, out_heading: output position/heading (float64)
+        resolved: output bool array — True if found water
+    """
+    max_x = float(depth_grid.shape[1] - 1)
+    max_y = float(depth_grid.shape[0] - 1)
+
+    for i in range(len(x)):
+        resolved[i] = False
+        for a_idx in range(3):
+            if resolved[i]:
+                break
+            angle = base_angles[a_idx] + jitter[a_idx]
+
+            # Right turn
+            rh = (heading[i] + angle) % 360.0
+            rr = rh * 3.141592653589793 / 180.0
+            rx = x[i] + np.sin(rr) * step_dist[i]
+            ry = y[i] + np.cos(rr) * step_dist[i]
+            # Reflect boundaries
+            if rx < 0.0:
+                rx = -rx
+            elif rx > max_x:
+                rx = 2.0 * max_x - rx
+            if rx < 0.0:
+                rx = 0.0
+            elif rx > max_x:
+                rx = max_x
+            if ry < 0.0:
+                ry = -ry
+            elif ry > max_y:
+                ry = 2.0 * max_y - ry
+            if ry < 0.0:
+                ry = 0.0
+            elif ry > max_y:
+                ry = max_y
+            rd = depth_grid[int(ry), int(rx)]
+
+            # Left turn
+            lh = (heading[i] - angle + 360.0) % 360.0
+            lr = lh * 3.141592653589793 / 180.0
+            lx = x[i] + np.sin(lr) * step_dist[i]
+            ly = y[i] + np.cos(lr) * step_dist[i]
+            # Reflect boundaries
+            if lx < 0.0:
+                lx = -lx
+            elif lx > max_x:
+                lx = 2.0 * max_x - lx
+            if lx < 0.0:
+                lx = 0.0
+            elif lx > max_x:
+                lx = max_x
+            if ly < 0.0:
+                ly = -ly
+            elif ly > max_y:
+                ly = 2.0 * max_y - ly
+            if ly < 0.0:
+                ly = 0.0
+            elif ly > max_y:
+                ly = max_y
+            ld = depth_grid[int(ly), int(lx)]
+
+            # Pick best
+            rok = rd >= min_depth
+            lok = ld >= min_depth
+            if rok and lok:
+                if rd >= ld:
+                    out_x[i] = rx
+                    out_y[i] = ry
+                    out_heading[i] = rh
+                else:
+                    out_x[i] = lx
+                    out_y[i] = ly
+                    out_heading[i] = lh
+                resolved[i] = True
+            elif rok:
+                out_x[i] = rx
+                out_y[i] = ry
+                out_heading[i] = rh
+                resolved[i] = True
+            elif lok:
+                out_x[i] = lx
+                out_y[i] = ly
+                out_heading[i] = lh
+                resolved[i] = True
+
+
 def warmup_kernels():
     """Pre-compile all kernels with small dummy data to avoid first-call latency."""
     if not NUMBA_AVAILABLE:
@@ -573,5 +686,21 @@ def warmup_kernels():
     _ovy = np.zeros(2, dtype=np.float64)
     compute_attraction_kernel(
         _su, _phx, _phy, _mp, _mc, _cx, _cy, _wt, _ai, _ovx, _ovy
+    )
+    # Warmup land_avoidance kernel
+    la_x = np.array([5.0], dtype=np.float64)
+    la_y = np.array([5.0], dtype=np.float64)
+    la_h = np.array([0.0], dtype=np.float64)
+    la_s = np.array([2.0], dtype=np.float64)
+    la_dg = np.full((10, 10), 20.0, dtype=np.float32)
+    la_ba = np.array([40.0, 70.0, 120.0], dtype=np.float64)
+    la_j = np.zeros(3, dtype=np.float64)
+    la_ox = np.zeros(1, dtype=np.float64)
+    la_oy = np.zeros(1, dtype=np.float64)
+    la_oh = np.zeros(1, dtype=np.float64)
+    la_r = np.zeros(1, dtype=np.bool_)
+    land_avoidance_kernel(
+        la_x, la_y, la_h, la_s, la_dg, 1.0,
+        la_ba, la_j, la_ox, la_oy, la_oh, la_r,
     )
     return True

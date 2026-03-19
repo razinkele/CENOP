@@ -273,6 +273,16 @@ class PorpoisePopulation:
         # All-true mask for turn_position fallback path
         self._all_mask = np.ones(count, dtype=bool)
 
+        # === Pre-allocated buffers for land avoidance kernel ===
+        self._la_f64_x = np.empty(count, dtype=np.float64)
+        self._la_f64_y = np.empty(count, dtype=np.float64)
+        self._la_f64_heading = np.empty(count, dtype=np.float64)
+        self._la_f64_step = np.empty(count, dtype=np.float64)
+        self._la_out_x = np.empty(count, dtype=np.float64)
+        self._la_out_y = np.empty(count, dtype=np.float64)
+        self._la_out_heading = np.empty(count, dtype=np.float64)
+        self._la_resolved = np.empty(count, dtype=np.bool_)
+
         # === Pre-allocated cell index buffers (D1: compute once per tick) ===
         self._cell_xi = np.zeros(count, dtype=np.int32)
         self._cell_yi = np.zeros(count, dtype=np.int32)
@@ -1149,38 +1159,36 @@ class PorpoisePopulation:
             blocked_idx = np.where(self._on_land)[0]
             n_blocked = len(blocked_idx)
             if n_blocked > 0:
-                bx = self.x[blocked_idx].astype(np.float64)
-                by = self.y[blocked_idx].astype(np.float64)
-                bh = self.heading[blocked_idx].astype(np.float64)
-                bs = self._step_dist[blocked_idx].astype(np.float64)
+                bx = self._la_f64_x[:n_blocked]
+                by = self._la_f64_y[:n_blocked]
+                bh = self._la_f64_heading[:n_blocked]
+                bs = self._la_f64_step[:n_blocked]
+                bx[:] = self.x[blocked_idx]  # float32->float64 implicit upcast
+                by[:] = self.y[blocked_idx]
+                bh[:] = self.heading[blocked_idx]
+                bs[:] = self._step_dist[blocked_idx]
 
                 base_angles = np.array([40.0, 70.0, 120.0], dtype=np.float64)
                 jitter = np.random.uniform(0, 10, 3).astype(np.float64)
 
-                out_x = np.empty(n_blocked, dtype=np.float64)
-                out_y = np.empty(n_blocked, dtype=np.float64)
-                out_heading = np.empty(n_blocked, dtype=np.float64)
-                resolved = np.empty(n_blocked, dtype=np.bool_)
+                out_x = self._la_out_x[:n_blocked]
+                out_y = self._la_out_y[:n_blocked]
+                out_h = self._la_out_heading[:n_blocked]
+                resolved = self._la_resolved[:n_blocked]
 
                 _land_avoidance_kernel(
                     bx, by, bh, bs,
                     self.landscape._depth, min_depth,
                     base_angles, jitter,
-                    out_x, out_y, out_heading, resolved,
+                    out_x, out_y, out_h, resolved,
                 )
 
                 # Apply results for resolved agents
                 resolved_global = blocked_idx[resolved]
                 if len(resolved_global) > 0:
-                    self._new_x[resolved_global] = out_x[resolved].astype(
-                        np.float32
-                    )
-                    self._new_y[resolved_global] = out_y[resolved].astype(
-                        np.float32
-                    )
-                    self.heading[resolved_global] = out_heading[resolved].astype(
-                        np.float32
-                    )
+                    self._new_x[resolved_global] = out_x[resolved]
+                    self._new_y[resolved_global] = out_y[resolved]
+                    self.heading[resolved_global] = out_h[resolved]
                     self._on_land[resolved_global] = False
         else:
             # Fallback: original 6-call loop (preserved exactly)

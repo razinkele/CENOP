@@ -145,3 +145,68 @@ class TestLandAvoidanceKernelIntegration:
         new_depths = depth[new_yi, new_xi]
         # At least 3 of 5 agents should find water
         assert np.sum(new_depths >= 1.0) >= 3
+
+
+class TestLandAvoidanceBufferPreallocation:
+    """Test that land avoidance pre-allocated buffers exist and work."""
+
+    def test_la_buffers_exist(self):
+        """Pre-allocated LA buffers should exist with correct dtype and shape."""
+        params = SimulationParameters()
+        pop = PorpoisePopulation(count=20, params=params, landscape=None)
+        assert hasattr(pop, "_la_f64_x")
+        assert pop._la_f64_x.dtype == np.float64
+        assert pop._la_f64_x.shape == (20,)
+        assert hasattr(pop, "_la_f64_y")
+        assert pop._la_f64_y.dtype == np.float64
+        assert hasattr(pop, "_la_f64_heading")
+        assert pop._la_f64_heading.dtype == np.float64
+        assert hasattr(pop, "_la_f64_step")
+        assert pop._la_f64_step.dtype == np.float64
+        assert hasattr(pop, "_la_out_x")
+        assert pop._la_out_x.dtype == np.float64
+        assert hasattr(pop, "_la_out_y")
+        assert pop._la_out_y.dtype == np.float64
+        assert hasattr(pop, "_la_out_heading")
+        assert pop._la_out_heading.dtype == np.float64
+        assert hasattr(pop, "_la_resolved")
+        assert pop._la_resolved.dtype == np.bool_
+
+    def test_land_avoidance_still_works_with_buffers(self):
+        """Agents on land should find water using pre-allocated buffers."""
+        from unittest.mock import MagicMock
+
+        params = SimulationParameters()
+        landscape = MagicMock()
+        landscape.landscape_name = "TestLand"
+        landscape.width = 100
+        landscape.height = 100
+        depth = np.full((100, 100), 20.0, dtype=np.float32)
+        # Narrow land strip at y=49-51
+        depth[49:52, :] = 0.0
+        landscape._depth = depth
+        landscape.metadata = MagicMock()
+        landscape.metadata.cellsize = 400.0
+
+        pop = PorpoisePopulation(count=10, params=params, landscape=landscape)
+
+        # Place agents heading into land strip
+        pop.x[:] = np.array(
+            [20, 30, 40, 50, 60, 70, 80, 90, 15, 25], dtype=np.float32
+        )
+        pop.y[:] = np.array(
+            [48, 48, 48, 48, 48, 48, 48, 48, 48, 48], dtype=np.float32
+        )
+        pop.heading[:] = 0.0
+        pop._step_dist[:] = 3.0
+        pop._dx[:] = 0.0
+        pop._dy[:] = 3.0
+        mask = pop.active_mask.copy()
+
+        pop._handle_land_avoidance(mask)
+
+        new_yi = np.clip(pop._new_y.astype(np.int32), 0, 99)
+        new_xi = np.clip(pop._new_x.astype(np.int32), 0, 99)
+        new_depths = depth[new_yi, new_xi]
+        # Most agents should find water
+        assert np.sum(new_depths >= 1.0) >= 5

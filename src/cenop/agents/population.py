@@ -44,11 +44,16 @@ try:
     from cenop.optimizations.kernels import seed_numba_rng as _seed_numba_rng
     from cenop.optimizations.kernels import turn_position_kernel as _turn_kernel
     from cenop.optimizations.kernels import social_accumulate_kernel as _social_kernel
-    from cenop.optimizations.kernels import land_avoidance_kernel as _land_avoidance_kernel
     _HAS_KERNELS = True
 except ImportError:
     _HAS_KERNELS = False
+
+try:
+    from cenop.optimizations.kernels import land_avoidance_kernel as _land_avoidance_kernel
+    _HAS_LAND_KERNEL = True
+except ImportError:
     _land_avoidance_kernel = None
+    _HAS_LAND_KERNEL = False
 
 logger = logging.getLogger('cenop.agents.population')
 
@@ -1109,7 +1114,7 @@ class PorpoisePopulation:
             return
 
         # Try turning to avoid land (DEPONS pattern with random jitter)
-        if _HAS_KERNELS and _land_avoidance_kernel is not None:
+        if _HAS_LAND_KERNEL:
             # Fused kernel path: one Numba call for all 3 angles x 2 directions
             blocked_idx = np.where(self._on_land)[0]
             n_blocked = len(blocked_idx)

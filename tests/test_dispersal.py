@@ -352,3 +352,38 @@ class TestEnergyBasedDispersalStop:
         assert is_dispersing[1] is np.True_
         # Agent 3: was dispersing + deterred -> stopped
         assert is_dispersing[3] is np.False_
+
+
+class TestDispersalBatchInit:
+    """Test that _check_dispersal_trigger batch-initializes dispersal state."""
+
+    def test_batch_dispersal_matches_individual(self):
+        """Batch init in _check_dispersal_trigger should set the same fields
+        as individual _start_dispersal calls."""
+        from cenop.agents.population import PorpoisePopulation
+        from cenop.parameters.simulation_params import SimulationParameters
+
+        params = SimulationParameters()
+        pop = PorpoisePopulation(count=10, params=params, landscape=None)
+
+        mask = pop.active_mask.copy()
+        # Set declining energy history for agents 0-4
+        # Declining = history[i] < history[i+1] for all consecutive pairs
+        # So newest (index 0) is lowest: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        for i in range(5):
+            pop._energy_history[i, :] = np.arange(1, 11, dtype=np.float32)
+
+        # Give enough PSM memory cells (50+ visited)
+        pop.psm_buffer[:5, :10, :10, 0] = 1.0
+        pop.psm_buffer[:5, :10, :10, 1] = 5.0
+
+        pop._check_dispersal_trigger(mask)
+
+        dispersing_idx = np.where(pop.is_dispersing[:5])[0]
+        assert len(dispersing_idx) >= 1, "At least one agent should start dispersing"
+
+        for idx in dispersing_idx:
+            # Batch init should set start position to current position
+            assert pop.dispersal_start_x[idx] == pop.x[idx]
+            assert pop.dispersal_start_y[idx] == pop.y[idx]
+            assert pop.dispersal_distance_traveled[idx] == 0.0

@@ -783,3 +783,80 @@ class TestLandAvoidanceKernel:
         )
         assert resolved[0]
         assert out_heading[0] == pytest.approx(70.0, abs=1.0)
+
+
+class TestEatFoodKernelV2:
+    """Test eat_food_kernel_v2 with inline fraction from energy."""
+
+    def test_matches_original_kernel_single_agent(self):
+        """V2 produces same result as v1 for single agent."""
+        from cenop.optimizations.kernels import eat_food_kernel, eat_food_kernel_v2
+
+        food_v1 = np.array([[100.0, 50.0], [75.0, 25.0]], dtype=np.float32)
+        food_v2 = food_v1.copy()
+        xi = np.array([0], dtype=np.int32)
+        yi = np.array([0], dtype=np.int32)
+        energy = np.array([10.0], dtype=np.float32)
+        fraction = np.clip((20.0 - energy) / 10.0, 0.0, 0.99).astype(np.float32)
+        eaten_v1 = np.zeros(1, dtype=np.float32)
+        eaten_v2 = np.zeros(1, dtype=np.float32)
+        dg1 = np.zeros((2, 2), dtype=np.float32)
+        dg2 = np.zeros((2, 2), dtype=np.float32)
+        eat_food_kernel(food_v1, xi, yi, fraction, eaten_v1, 0.01, dg1)
+        eat_food_kernel_v2(food_v2, xi, yi, energy, eaten_v2, 0.01, dg2)
+        np.testing.assert_allclose(eaten_v1, eaten_v2, rtol=1e-5)
+        np.testing.assert_allclose(food_v1, food_v2, rtol=1e-5)
+
+    def test_matches_original_competing_agents(self):
+        """V2 proportional sharing matches v1."""
+        from cenop.optimizations.kernels import eat_food_kernel, eat_food_kernel_v2
+
+        food_v1 = np.full((3, 3), 50.0, dtype=np.float32)
+        food_v2 = food_v1.copy()
+        xi = np.array([1, 1, 1], dtype=np.int32)
+        yi = np.array([1, 1, 1], dtype=np.int32)
+        energy = np.array([5.0, 10.0, 18.0], dtype=np.float32)
+        fracs = np.clip((20.0 - energy) / 10.0, 0.0, 0.99).astype(np.float32)
+        eaten_v1 = np.zeros(3, dtype=np.float32)
+        eaten_v2 = np.zeros(3, dtype=np.float32)
+        dg1 = np.zeros((3, 3), dtype=np.float32)
+        dg2 = np.zeros((3, 3), dtype=np.float32)
+        eat_food_kernel(food_v1, xi, yi, fracs, eaten_v1, 0.01, dg1)
+        eat_food_kernel_v2(food_v2, xi, yi, energy, eaten_v2, 0.01, dg2)
+        np.testing.assert_allclose(eaten_v1, eaten_v2, rtol=1e-5)
+
+    def test_high_energy_eats_nothing(self):
+        """Agent with energy >= 20 should eat nothing."""
+        from cenop.optimizations.kernels import eat_food_kernel_v2
+
+        food = np.full((2, 2), 100.0, dtype=np.float32)
+        eaten = np.zeros(1, dtype=np.float32)
+        dg = np.zeros((2, 2), dtype=np.float32)
+        eat_food_kernel_v2(
+            food,
+            np.array([0], dtype=np.int32),
+            np.array([0], dtype=np.int32),
+            np.array([20.0], dtype=np.float32),
+            eaten,
+            0.01,
+            dg,
+        )
+        assert eaten[0] == 0.0
+
+    def test_zero_energy_eats_max(self):
+        """Agent with energy 0 should eat at max fraction (0.99)."""
+        from cenop.optimizations.kernels import eat_food_kernel_v2
+
+        food = np.full((2, 2), 100.0, dtype=np.float32)
+        eaten = np.zeros(1, dtype=np.float32)
+        dg = np.zeros((2, 2), dtype=np.float32)
+        eat_food_kernel_v2(
+            food,
+            np.array([0], dtype=np.int32),
+            np.array([0], dtype=np.int32),
+            np.array([0.0], dtype=np.float32),
+            eaten,
+            0.01,
+            dg,
+        )
+        assert eaten[0] == pytest.approx(100.0 * 0.99, rel=1e-5)

@@ -261,6 +261,7 @@ class CellData:
         fraction: np.ndarray,
         xi: Optional[np.ndarray] = None,
         yi: Optional[np.ndarray] = None,
+        energy: Optional[np.ndarray] = None,
     ) -> np.ndarray:
         """
         Eat food from multiple cells (vectorized).
@@ -290,7 +291,29 @@ class CellData:
             i_arr = np.clip(y.astype(np.int32), 0, self.height - 1)
             j_arr = np.clip(x.astype(np.int32), 0, self.width - 1)
 
-        # Try Numba kernel first
+        # Try v2 kernel (inline fraction from energy)
+        if energy is not None:
+            try:
+                from cenop.optimizations.kernels import eat_food_kernel_v2
+                if (
+                    self._demand_grid is None
+                    or self._demand_grid.shape != self._food_value.shape
+                ):
+                    self._demand_grid = np.zeros_like(self._food_value)
+                eat_food_kernel_v2(
+                    self._food_value,
+                    j_arr,
+                    i_arr,
+                    energy.astype(np.float32),
+                    food_eaten,
+                    0.01,
+                    self._demand_grid,
+                )
+                return food_eaten
+            except ImportError:
+                pass
+
+        # Fallback to v1 kernel
         try:
             from cenop.optimizations.kernels import eat_food_kernel
             if self._demand_grid is None or self._demand_grid.shape != self._food_value.shape:

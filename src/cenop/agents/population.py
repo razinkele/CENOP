@@ -186,6 +186,8 @@ class PorpoisePopulation:
         if self._energy_module is not None:
             from cenop.physiology.energy_budget import EnergyState
             self._energy_state = EnergyState.create(count, initial_energy=10.0)
+            # Share energy array: eliminates 3 full-array sync copies per tick
+            self._energy_state.energy = self.energy
 
         if self._memory_module is not None:
             from cenop.behavior.disturbance_memory import DisturbanceMemoryState
@@ -286,6 +288,20 @@ class PorpoisePopulation:
         # === Pre-allocated cell index buffers (D1: compute once per tick) ===
         self._cell_xi = np.zeros(count, dtype=np.int32)
         self._cell_yi = np.zeros(count, dtype=np.int32)
+
+        # === Social kernel pre-allocated buffers (D2) ===
+        self._social_ux = np.zeros(count, dtype=np.float64)
+        self._social_uy = np.zeros(count, dtype=np.float64)
+        self._social_sw = np.zeros(count, dtype=np.float64)
+        self._social_out_dx = np.zeros(count, dtype=np.float32)
+        self._social_out_dy = np.zeros(count, dtype=np.float32)
+        # Pair-sized buffers (lazily grown)
+        self._social_f64_dx = np.empty(0, dtype=np.float64)
+        self._social_f64_dy = np.empty(0, dtype=np.float64)
+        self._social_f64_dist = np.empty(0, dtype=np.float64)
+        self._social_f64_pi = np.empty(0, dtype=np.float64)
+        self._social_f64_pj = np.empty(0, dtype=np.float64)
+        self._social_buf_size = 0
 
         # === Pre-allocated energy/context buffers ===
         self._water_temp = np.full(count, 10.0, dtype=np.float32)
@@ -398,6 +414,19 @@ class PorpoisePopulation:
         ).astype(np.float32)
 
         # --- Social communication implementation (vectorized neighborhood search) ---
+        def _ensure_social_buffers(self, n_pairs: int) -> None:
+            """Grow pair-sized social buffers if needed (never shrink)."""
+            if self._social_buf_size >= n_pairs:
+                return
+            self._social_f64_dx = np.empty(n_pairs, dtype=np.float64)
+            self._social_f64_dy = np.empty(n_pairs, dtype=np.float64)
+            self._social_f64_dist = np.empty(n_pairs, dtype=np.float64)
+            self._social_f64_pi = np.empty(n_pairs, dtype=np.float64)
+            self._social_f64_pj = np.empty(n_pairs, dtype=np.float64)
+            self._social_buf_size = n_pairs
+
+        self._ensure_social_buffers = _ensure_social_buffers.__get__(self, self.__class__)
+
         def _compute_social_vectors(self, mask: np.ndarray, ambient_rl: Optional[np.ndarray] = None) -> Tuple[np.ndarray, np.ndarray]:
             """
             Compute social attraction vectors for active agents.
@@ -406,8 +435,10 @@ class PorpoisePopulation:
             SciPy is available, otherwise falls back to the previous binning approach.
             Detection is still probabilistic and masked by ambient noise (SNR).
             """
-            social_dx = np.zeros(self.count, dtype=np.float32)
-            social_dy = np.zeros(self.count, dtype=np.float32)
+            self._social_out_dx.fill(0.0)
+            self._social_out_dy.fill(0.0)
+            social_dx = self._social_out_dx
+            social_dy = self._social_out_dy
 
             if not self._comm_enabled:
                 return social_dx, social_dy
@@ -543,16 +574,30 @@ class PorpoisePopulation:
                     p_j = response_probability_from_rl(rl_pairs, threshold, slope)
 
                 # Accumulate per-agent social vectors (unit-vector + weighting + accumulation)
-                ux_total = np.zeros(self.count, dtype=np.float64)
-                uy_total = np.zeros(self.count, dtype=np.float64)
-                sw_total = np.zeros(self.count, dtype=np.float64)
+                self._social_ux.fill(0.0)
+                self._social_uy.fill(0.0)
+                self._social_sw.fill(0.0)
+                ux_total = self._social_ux
+                uy_total = self._social_uy
+                sw_total = self._social_sw
 
                 if _HAS_KERNELS:
                     # Fused kernel: unit-vector, weighting, and accumulation in one pass
-                    _social_kernel(idx_i, idx_j, dx_ij.astype(np.float64),
-                                   dy_ij.astype(np.float64), dist.astype(np.float64),
-                                   p_i.astype(np.float64), p_j.astype(np.float64),
-                                   ux_total, uy_total, sw_total)
+                    self._ensure_social_buffers(ncols)
+                    self._social_f64_dx[:ncols] = dx_ij
+                    self._social_f64_dy[:ncols] = dy_ij
+                    self._social_f64_dist[:ncols] = dist
+                    self._social_f64_pi[:ncols] = p_i
+                    self._social_f64_pj[:ncols] = p_j
+                    _social_kernel(
+                        idx_i, idx_j,
+                        self._social_f64_dx[:ncols],
+                        self._social_f64_dy[:ncols],
+                        self._social_f64_dist[:ncols],
+                        self._social_f64_pi[:ncols],
+                        self._social_f64_pj[:ncols],
+                        ux_total, uy_total, sw_total,
+                    )
                 elif _HAS_NUMBA_HELPERS and _accumulate_social_totals is not None:
                     ux_ij = dx_ij / dist
                     uy_ij = dy_ij / dist
@@ -595,9 +640,15 @@ class PorpoisePopulation:
                 # Step distances for active agents
                 step_dist = (10.0 ** self.prev_log_mov) / 4.0
 
-                # Apply social weight and step length
-                social_dx = unit_x.astype(np.float32) * social_weight * step_dist.astype(np.float32)
-                social_dy = unit_y.astype(np.float32) * social_weight * step_dist.astype(np.float32)
+                # Apply social weight and step length into pre-allocated output
+                self._social_out_dx[:] = (
+                    unit_x * social_weight * step_dist
+                ).astype(np.float32)
+                self._social_out_dy[:] = (
+                    unit_y * social_weight * step_dist
+                ).astype(np.float32)
+                social_dx = self._social_out_dx
+                social_dy = self._social_out_dy
 
                 # Zero out inactive slots
                 social_dx[~mask] = 0.0
@@ -1518,8 +1569,7 @@ class PorpoisePopulation:
         from cenop.physiology.energy_budget import EnergyContext
         from cenop.behavior.states import BehaviorState
 
-        # Sync population energy → module state
-        self._energy_state.energy[:] = self.energy
+        # No sync needed — shared view, same array
 
         # Food availability
         fract_to_eat = np.clip((20.0 - self.energy) / 10.0, 0.0, 0.99)
@@ -1566,8 +1616,7 @@ class PorpoisePopulation:
         result = self._energy_module.compute_energy_update(self._energy_state, context, mask)
         self._energy_module.apply_result(self._energy_state, result, mask)
 
-        # Sync module state → population energy
-        self.energy[:] = self._energy_state.energy
+        # No sync needed — shared view, same array
 
         # Update distance traveled for energy module tracking
         self._energy_state.distance_traveled[mask] = self._step_dist[mask] * 400.0  # cells → meters
@@ -1593,13 +1642,11 @@ class PorpoisePopulation:
         """Build EnergyContext and food_available for JASMINE path.
 
         Returns (context, food_available) tuple.
-        Also syncs population energy → _energy_state.
         """
         from cenop.physiology.energy_budget import EnergyContext
         from cenop.behavior.states import BehaviorState
 
-        # Sync population energy → module state
-        self._energy_state.energy[:] = self.energy
+        # No sync needed — shared view, same array
 
         # Food availability
         fract_to_eat = np.clip((20.0 - self.energy) / 10.0, 0.0, 0.99)
@@ -1659,10 +1706,9 @@ class PorpoisePopulation:
         # Compute food intake only
         intake = self._energy_module.compute_food_intake(self._energy_state, context, mask)
 
-        # Apply food intake to module state and sync to population
+        # Apply food intake (shared view — no sync needed)
         self._energy_state.energy[mask] += intake[mask]
-        np.clip(self._energy_state.energy, 0, 20.0, out=self._energy_state.energy)
-        self.energy[:] = self._energy_state.energy
+        # Clamp deferred to end of _apply_bmr_cost_jasmine
 
         # Store for BMR phase
         self._pending_energy_context = context
@@ -1689,15 +1735,14 @@ class PorpoisePopulation:
             # Fallback: no pending context (shouldn't happen in normal flow)
             return
 
-        # Sync population energy → module state (may have changed due to mortality zeroing)
-        self._energy_state.energy[:] = self.energy
+        # No sync needed — shared view, same array
 
         # Compute BMR + activity cost
         cost = self._energy_module.compute_bmr_cost(self._energy_state, context, mask)
 
         # Apply cost
         self._energy_state.energy[mask] -= cost[mask]
-        np.clip(self._energy_state.energy, 0, 20.0, out=self._energy_state.energy)
+        # Clamp deferred to final clamp below
 
         # Also track disturbance costs in energy_state
         if hasattr(self._energy_state, 'disturbance_energy_cost'):
@@ -1708,8 +1753,7 @@ class PorpoisePopulation:
             ).astype(np.float32)
             self._energy_state.disturbance_energy_cost[mask] += disturbance_cost
 
-        # Sync module state → population energy
-        self.energy[:] = self._energy_state.energy
+        # No sync needed — shared view, same array
 
         # Update distance traveled for energy module tracking
         self._energy_state.distance_traveled[mask] = self._step_dist[mask] * 400.0  # cells → meters
@@ -2638,6 +2682,7 @@ class PorpoisePopulation:
             fract_to_eat[active_idx],
             xi=self._cell_xi[active_idx],
             yi=self._cell_yi[active_idx],
+            energy=self.energy[active_idx],
         )
         
         food_eaten[active_idx] = consumed

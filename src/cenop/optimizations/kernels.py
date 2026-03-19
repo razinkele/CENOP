@@ -326,6 +326,58 @@ def eat_food_kernel(
             food_grid[row, col] = min_food
 
 
+@njit(cache=True)
+def eat_food_kernel_v2(
+    food_grid,   # 2D float32 array (rows, cols) — modified in-place
+    x_indices,   # 1D int32 — column indices per agent
+    y_indices,   # 1D int32 — row indices per agent
+    energy,      # 1D float32 — energy level per agent
+    food_eaten,  # 1D float32 — output: actual food eaten per agent
+    min_food,    # float — minimum food floor (ADD_ARTIFICIAL_FOOD)
+    demand_grid, # 2D float32 array (rows, cols) — pre-allocated buffer
+):
+    """Two-pass proportional food with inline fraction computation.
+
+    Same as eat_food_kernel but computes frac = clip((20-energy)/10, 0, 0.99)
+    internally. demand = food_at_cell * frac (NOT raw frac).
+    """
+    n = x_indices.shape[0]
+    agent_demand = np.empty(n, dtype=np.float32)
+
+    # Pass 1: accumulate per-cell demand
+    demand_grid[:, :] = 0.0
+    for i in range(n):
+        frac = min(max((20.0 - energy[i]) / 10.0, 0.0), 0.99)
+        row = y_indices[i]
+        col = x_indices[i]
+        demand = food_grid[row, col] * frac
+        agent_demand[i] = demand
+        demand_grid[row, col] += demand
+
+    # Pass 2: distribute proportionally
+    for i in range(n):
+        row = y_indices[i]
+        col = x_indices[i]
+        total_demand = demand_grid[row, col]
+        if total_demand <= 0.0:
+            food_eaten[i] = 0.0
+            continue
+        available = max(food_grid[row, col], 0.0)
+        if total_demand <= available:
+            food_eaten[i] = agent_demand[i]
+        else:
+            share = agent_demand[i] / total_demand
+            food_eaten[i] = available * share
+
+    # Pass 3: update grid and enforce floor
+    for i in range(n):
+        row = y_indices[i]
+        col = x_indices[i]
+        food_grid[row, col] -= food_eaten[i]
+        if food_grid[row, col] < min_food:
+            food_grid[row, col] = min_food
+
+
 @njit(cache=True, parallel=True)
 def depons_bmr_cost_kernel(
     speed,              # 1D float32 — current speed in m/s
@@ -652,6 +704,14 @@ def warmup_kernels():
     fe = np.zeros(2, dtype=np.float32)
     dg = np.zeros((2, 2), dtype=np.float32)
     eat_food_kernel(fg, xi, yi, fr, fe, 0.01, dg)
+    # Warmup eat_food_kernel_v2
+    fg2 = np.ones((2, 2), dtype=np.float32) * 100.0
+    xi2 = np.array([0, 1], dtype=np.int32)
+    yi2 = np.array([0, 0], dtype=np.int32)
+    en2 = np.array([10.0, 15.0], dtype=np.float32)
+    fe2 = np.zeros(2, dtype=np.float32)
+    dg2 = np.zeros((2, 2), dtype=np.float32)
+    eat_food_kernel_v2(fg2, xi2, yi2, en2, fe2, 0.01, dg2)
     # Warmup BMR cost kernel
     spd = np.ones(2, dtype=np.float32)
     scl = np.ones(2, dtype=np.float32)

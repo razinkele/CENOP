@@ -221,3 +221,47 @@ class TestCombineRLs:
         ]
         result = combine_rls(rls)
         np.testing.assert_array_equal(result, [100.0, 95.0, 70.0])
+
+
+class TestSocialBufferPreallocation:
+    """D2: Verify social kernel buffer pre-allocation."""
+
+    def test_population_sized_buffers_exist(self, small_population):
+        """Check _social_ux, _social_out_dx etc exist with correct dtype/shape."""
+        pop = small_population
+        n = pop.count
+        # Population-sized float64 accumulators
+        for attr in ("_social_ux", "_social_uy", "_social_sw"):
+            buf = getattr(pop, attr)
+            assert buf.shape == (n,), f"{attr} shape mismatch"
+            assert buf.dtype == np.float64, f"{attr} dtype mismatch"
+        # Population-sized float32 output buffers
+        for attr in ("_social_out_dx", "_social_out_dy"):
+            buf = getattr(pop, attr)
+            assert buf.shape == (n,), f"{attr} shape mismatch"
+            assert buf.dtype == np.float32, f"{attr} dtype mismatch"
+
+    def test_pair_buffers_grow_on_demand(self, small_population):
+        """Verify _ensure_social_buffers grows pair buffers."""
+        pop = small_population
+        assert pop._social_buf_size == 0
+        pop._ensure_social_buffers(100)
+        assert pop._social_buf_size == 100
+        assert pop._social_f64_dx.shape == (100,)
+        assert pop._social_f64_dy.shape == (100,)
+        assert pop._social_f64_dist.shape == (100,)
+        assert pop._social_f64_pi.shape == (100,)
+        assert pop._social_f64_pj.shape == (100,)
+        # All pair buffers should be float64
+        assert pop._social_f64_dx.dtype == np.float64
+
+    def test_pair_buffers_dont_shrink(self, small_population):
+        """Call with 200, then 50 -- buffer stays at 200."""
+        pop = small_population
+        pop._ensure_social_buffers(200)
+        assert pop._social_buf_size == 200
+        old_dx = pop._social_f64_dx
+        pop._ensure_social_buffers(50)
+        assert pop._social_buf_size == 200
+        # Buffer object should be the same (no reallocation)
+        assert pop._social_f64_dx is old_dx

@@ -268,6 +268,8 @@ class PorpoisePopulation:
         self._f64_out_x = np.zeros(count, dtype=np.float64)
         self._f64_out_y = np.zeros(count, dtype=np.float64)
         self._f64_out_heading = np.zeros(count, dtype=np.float64)
+        self._int32_out_xi = np.zeros(count, dtype=np.int32)
+        self._int32_out_yi = np.zeros(count, dtype=np.int32)
         # All-true mask for turn_position fallback path
         self._all_mask = np.ones(count, dtype=bool)
 
@@ -2473,6 +2475,8 @@ class PorpoisePopulation:
                 box = self._f64_out_x[:n_blocked]
                 boy = self._f64_out_y[:n_blocked]
                 boh = self._f64_out_heading[:n_blocked]
+                boxi = self._int32_out_xi[:n_blocked]
+                boyi = self._int32_out_yi[:n_blocked]
                 bx[:] = self.x[idx]
                 by[:] = self.y[idx]
                 bh[:] = self.heading[idx]
@@ -2480,17 +2484,13 @@ class PorpoisePopulation:
                 _turn_kernel(
                     bx, by, bh, bs,
                     float(turn_delta), world_w, world_h,
-                    box, boy, boh,
+                    box, boy, boh, boxi, boyi,
                 )
                 # Scatter results back into full-size output arrays
                 out_x[idx] = box.astype(np.float32)
                 out_y[idx] = boy.astype(np.float32)
-                out_xi[idx] = np.clip(
-                    box.astype(np.int32), 0, world_w - 1
-                )
-                out_yi[idx] = np.clip(
-                    boy.astype(np.int32), 0, world_h - 1
-                )
+                out_xi[idx] = boxi
+                out_yi[idx] = boyi
                 if (
                     hasattr(self.landscape, '_depth')
                     and self.landscape._depth is not None
@@ -2516,14 +2516,13 @@ class PorpoisePopulation:
                     float(turn_delta), world_w, world_h,
                     self._f64_out_x, self._f64_out_y,
                     self._f64_out_heading,
+                    self._int32_out_xi, self._int32_out_yi,
                 )
                 np.copyto(out_x, self._f64_out_x)
                 np.copyto(out_y, self._f64_out_y)
-                # Get cell indices
-                np.copyto(out_xi, out_x.astype(np.int32))
-                np.copyto(out_yi, out_y.astype(np.int32))
-                np.clip(out_xi, 0, world_w - 1, out=out_xi)
-                np.clip(out_yi, 0, world_h - 1, out=out_yi)
+                # Cell indices already clamped by the kernel
+                np.copyto(out_xi, self._int32_out_xi)
+                np.copyto(out_yi, self._int32_out_yi)
                 # Depth lookup stays in Python
                 if (
                     hasattr(self.landscape, '_depth')

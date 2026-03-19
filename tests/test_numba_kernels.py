@@ -216,8 +216,13 @@ class TestTurnPositionKernel:
         out_x = np.zeros(n, dtype=np.float64)
         out_y = np.zeros(n, dtype=np.float64)
         out_heading = np.zeros(n, dtype=np.float64)
+        out_xi = np.zeros(n, dtype=np.int32)
+        out_yi = np.zeros(n, dtype=np.int32)
 
-        turn_position_kernel(x, y, heading, step_dist, 90.0, 20, 20, out_x, out_y, out_heading)
+        turn_position_kernel(
+            x, y, heading, step_dist, 90.0, 20, 20,
+            out_x, out_y, out_heading, out_xi, out_yi,
+        )
 
         # heading = (0 + 90) % 360 = 90, rads = pi/2
         # dx = sin(pi/2) * 4 = 4, dy = cos(pi/2) * 4 ≈ 0
@@ -238,12 +243,63 @@ class TestTurnPositionKernel:
         out_x = np.zeros(n, dtype=np.float64)
         out_y = np.zeros(n, dtype=np.float64)
         out_heading = np.zeros(n, dtype=np.float64)
+        out_xi = np.zeros(n, dtype=np.int32)
+        out_yi = np.zeros(n, dtype=np.int32)
 
         # Turn 90 degrees: dx = sin(pi/2)*4 = 4, new_x = 22 > 19 (max)
-        turn_position_kernel(x, y, heading, step_dist, 90.0, 20, 20, out_x, out_y, out_heading)
+        turn_position_kernel(
+            x, y, heading, step_dist, 90.0, 20, 20,
+            out_x, out_y, out_heading, out_xi, out_yi,
+        )
 
         # Should be reflected: 2*19 - 22 = 16
         assert out_x[0] == pytest.approx(16.0, abs=0.1)
+
+
+class TestTurnPositionKernelIndices:
+    """Test that turn_position_kernel outputs correct clamped int32 indices."""
+
+    def test_outputs_clamped_indices(self):
+        from cenop.optimizations.kernels import turn_position_kernel
+
+        n = 3
+        x = np.array([1.0, 25.0, 48.5], dtype=np.float64)
+        y = np.array([1.0, 25.0, 48.5], dtype=np.float64)
+        heading = np.zeros(n, dtype=np.float64)
+        step = np.array([5.0, 5.0, 5.0], dtype=np.float64)
+        out_x = np.zeros(n, dtype=np.float64)
+        out_y = np.zeros(n, dtype=np.float64)
+        out_h = np.zeros(n, dtype=np.float64)
+        out_xi = np.zeros(n, dtype=np.int32)
+        out_yi = np.zeros(n, dtype=np.int32)
+        turn_position_kernel(
+            x, y, heading, step, 90.0, 50, 50,
+            out_x, out_y, out_h, out_xi, out_yi,
+        )
+        assert out_xi.dtype == np.int32
+        assert out_yi.dtype == np.int32
+        assert np.all(out_xi >= 0) and np.all(out_xi <= 49)
+        assert np.all(out_yi >= 0) and np.all(out_yi <= 49)
+
+    def test_index_matches_float_truncation(self):
+        from cenop.optimizations.kernels import turn_position_kernel
+
+        n = 1
+        x = np.array([10.7], dtype=np.float64)
+        y = np.array([20.3], dtype=np.float64)
+        heading = np.array([0.0], dtype=np.float64)
+        step = np.array([0.0], dtype=np.float64)
+        out_x = np.zeros(n, dtype=np.float64)
+        out_y = np.zeros(n, dtype=np.float64)
+        out_h = np.zeros(n, dtype=np.float64)
+        out_xi = np.zeros(n, dtype=np.int32)
+        out_yi = np.zeros(n, dtype=np.int32)
+        turn_position_kernel(
+            x, y, heading, step, 0.0, 50, 50,
+            out_x, out_y, out_h, out_xi, out_yi,
+        )
+        assert out_xi[0] == int(out_x[0])
+        assert out_yi[0] == int(out_y[0])
 
 
 class TestEatFoodKernel:
@@ -583,12 +639,16 @@ class TestParallelEquivalence:
 
         ox1, oy1, oh1 = np.zeros(n, np.float64), np.zeros(n, np.float64), np.zeros(n, np.float64)
         ox2, oy2, oh2 = np.zeros(n, np.float64), np.zeros(n, np.float64), np.zeros(n, np.float64)
+        oxi1, oyi1 = np.zeros(n, np.int32), np.zeros(n, np.int32)
+        oxi2, oyi2 = np.zeros(n, np.int32), np.zeros(n, np.int32)
 
-        turn_position_kernel(x, y, heading, step_dist, 45.0, 20, 20, ox1, oy1, oh1)
-        turn_position_kernel(x, y, heading, step_dist, 45.0, 20, 20, ox2, oy2, oh2)
+        turn_position_kernel(x, y, heading, step_dist, 45.0, 20, 20, ox1, oy1, oh1, oxi1, oyi1)
+        turn_position_kernel(x, y, heading, step_dist, 45.0, 20, 20, ox2, oy2, oh2, oxi2, oyi2)
 
         np.testing.assert_allclose(ox1, ox2, atol=1e-10)
         np.testing.assert_allclose(oy1, oy2, atol=1e-10)
+        np.testing.assert_array_equal(oxi1, oxi2)
+        np.testing.assert_array_equal(oyi1, oyi2)
 
     def test_bmr_cost_parallel_deterministic(self):
         """Parallel BMR cost should produce consistent results."""

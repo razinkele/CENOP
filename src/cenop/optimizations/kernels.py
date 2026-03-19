@@ -193,12 +193,15 @@ def turn_position_kernel(
     turn_delta,
     world_w, world_h,
     out_x, out_y, out_heading,
+    out_xi, out_yi,
 ):
     """
     Compute new positions after turning by turn_delta degrees.
 
     For each agent: turn heading, compute displacement, add to position,
     reflect at boundaries.  Writes results to out_x, out_y, out_heading.
+    Also outputs clamped int32 cell indices in out_xi, out_yi to avoid
+    post-kernel astype(np.int32) + np.clip calls.
     """
     max_x = float(world_w - 1)
     max_y = float(world_h - 1)
@@ -237,6 +240,8 @@ def turn_position_kernel(
 
         out_x[i] = nx
         out_y[i] = ny
+        out_xi[i] = min(world_w - 1, max(0, int(nx)))
+        out_yi[i] = min(world_h - 1, max(0, int(ny)))
 
 
 @njit(cache=True)
@@ -634,9 +639,11 @@ def warmup_kernels():
     ox = np.zeros(3, dtype=np.float64)
     oy = np.zeros(3, dtype=np.float64)
     oh = np.zeros(3, dtype=np.float64)
+    oxi = np.zeros(3, dtype=np.int32)
+    oyi = np.zeros(3, dtype=np.int32)
     sd = np.ones(3, dtype=np.float64)
     hd = np.zeros(3, dtype=np.float64)
-    turn_position_kernel(x, y, hd, sd, 90.0, 20, 20, ox, oy, oh)
+    turn_position_kernel(x, y, hd, sd, 90.0, 20, 20, ox, oy, oh, oxi, oyi)
     # Warmup eat_food kernel
     fg = np.ones((2, 2), dtype=np.float32) * 100.0
     xi = np.array([0, 1], dtype=np.int32)

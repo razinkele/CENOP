@@ -226,6 +226,12 @@ class Simulation:
             self._setup_ships()
             
         self.state.population = self.population_manager.population_size
+
+        # Pre-allocate zero deterrence array for skip guards
+        self._zero_deterrence = np.zeros(
+            self.population_manager.count, dtype=np.float64
+        )
+
         self._is_initialized = True
         
     def _get_initial_age(self) -> float:
@@ -452,17 +458,35 @@ class Simulation:
         px = self.population_manager.x
         py = self.population_manager.y
 
-        # Turbine deterrence (Vectorized)
-        turb_dx, turb_dy = self._turbine_manager.calculate_aggregate_deterrence_vectorized(
-            px, py, self.params, cell_size=400.0
-        )
+        # Turbine deterrence (skip when off or no active turbines)
+        if (
+            self.params.turbines != "off"
+            and len(self._turbine_manager.get_active_turbines()) > 0
+        ):
+            turb_dx, turb_dy = (
+                self._turbine_manager.calculate_aggregate_deterrence_vectorized(
+                    px, py, self.params, cell_size=400.0
+                )
+            )
+        else:
+            turb_dx = self._zero_deterrence
+            turb_dy = self._zero_deterrence
 
-        # Ship deterrence (Vectorized)
-        ship_dx, ship_dy = self._ship_manager.calculate_aggregate_deterrence_vectorized(
-            px, py, self.params, is_day=self.time_manager.is_daytime,
-            cell_size=400.0, cell_data=self._cell_data,
-            month=self.state.month,
-        )
+        # Ship deterrence (skip when disabled or no active ships)
+        if (
+            self.params.ships_enabled
+            and len(self._ship_manager.get_active_ships()) > 0
+        ):
+            ship_dx, ship_dy = (
+                self._ship_manager.calculate_aggregate_deterrence_vectorized(
+                    px, py, self.params, is_day=self.time_manager.is_daytime,
+                    cell_size=400.0, cell_data=self._cell_data,
+                    month=self.state.month,
+                )
+            )
+        else:
+            ship_dx = self._zero_deterrence
+            ship_dy = self._zero_deterrence
 
         # Combine
         total_dx = turb_dx + ship_dx

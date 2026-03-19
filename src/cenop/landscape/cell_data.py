@@ -258,7 +258,9 @@ class CellData:
         self,
         x: np.ndarray,
         y: np.ndarray,
-        fraction: np.ndarray
+        fraction: np.ndarray,
+        xi: Optional[np.ndarray] = None,
+        yi: Optional[np.ndarray] = None,
     ) -> np.ndarray:
         """
         Eat food from multiple cells (vectorized).
@@ -267,6 +269,8 @@ class CellData:
             x: Array of x positions
             y: Array of y positions
             fraction: Array of fractions to eat (0-1) for each position
+            xi: Pre-computed clamped x indices (int32). Skips recomputation.
+            yi: Pre-computed clamped y indices (int32). Skips recomputation.
 
         Returns:
             Array of food amounts eaten at each position
@@ -280,8 +284,11 @@ class CellData:
             return food_eaten
 
         # Get grid indices for all positions
-        i_arr = np.clip(y.astype(np.int32), 0, self.height - 1)
-        j_arr = np.clip(x.astype(np.int32), 0, self.width - 1)
+        if xi is not None and yi is not None:
+            j_arr, i_arr = xi, yi
+        else:
+            i_arr = np.clip(y.astype(np.int32), 0, self.height - 1)
+            j_arr = np.clip(x.astype(np.int32), 0, self.width - 1)
 
         # Try Numba kernel first
         try:
@@ -465,51 +472,68 @@ class CellData:
         month_idx = (self._current_month - 1) % 12
         return self._entropy[month_idx]
         
-    def get_depths_vectorized(self, positions: np.ndarray) -> np.ndarray:
+    def get_depths_vectorized(
+        self,
+        positions: np.ndarray,
+        xi: Optional[np.ndarray] = None,
+        yi: Optional[np.ndarray] = None,
+    ) -> np.ndarray:
         """
         Get depths for multiple positions at once.
-        
+
         Args:
             positions: Array of shape (N, 2) with [x, y] positions
-            
+            xi: Pre-computed clamped x indices (int32). Skips recomputation.
+            yi: Pre-computed clamped y indices (int32). Skips recomputation.
+
         Returns:
             Array of depths with shape (N,)
         """
         self._ensure_loaded()
         if self._depth is None:
             return np.full(len(positions), 20.0)
-            
-        x = np.clip(positions[:, 0].astype(int), 0, self.width - 1)
-        y = np.clip(positions[:, 1].astype(int), 0, self.height - 1)
-        
+
+        if xi is not None and yi is not None:
+            x, y = xi, yi
+        else:
+            x = np.clip(positions[:, 0].astype(int), 0, self.width - 1)
+            y = np.clip(positions[:, 1].astype(int), 0, self.height - 1)
+
         return self._depth[y, x]
         
     def get_salinities_vectorized(
         self,
         positions: np.ndarray,
-        month: Optional[int] = None
+        month: Optional[int] = None,
+        xi: Optional[np.ndarray] = None,
+        yi: Optional[np.ndarray] = None,
     ) -> np.ndarray:
         """
         Get salinities for multiple positions at once.
-        
+
         Args:
             positions: Array of shape (N, 2) with [x, y] positions
             month: Month (1-12) or None for current month
-            
+            xi: Pre-computed clamped x indices (int32). Skips recomputation.
+            yi: Pre-computed clamped y indices (int32). Skips recomputation.
+
         Returns:
             Array of salinities with shape (N,)
         """
         self._ensure_loaded()
         if self._salinity is None:
             return np.full(len(positions), 30.0)
-            
+
         if month is None:
             month = self._current_month
         month_idx = (month - 1) % 12
-        
-        x = np.clip(positions[:, 0].astype(int), 0, self.width - 1)
-        y = np.clip(positions[:, 1].astype(int), 0, self.height - 1)
-        
+
+        if xi is not None and yi is not None:
+            x, y = xi, yi
+        else:
+            x = np.clip(positions[:, 0].astype(int), 0, self.width - 1)
+            y = np.clip(positions[:, 1].astype(int), 0, self.height - 1)
+
         return self._salinity[month_idx, y, x]
 
     def get_sediments_vectorized(self, positions: np.ndarray) -> np.ndarray:

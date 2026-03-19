@@ -273,6 +273,10 @@ class PorpoisePopulation:
         # All-true mask for turn_position fallback path
         self._all_mask = np.ones(count, dtype=bool)
 
+        # === Pre-allocated cell index buffers (D1: compute once per tick) ===
+        self._cell_xi = np.zeros(count, dtype=np.int32)
+        self._cell_yi = np.zeros(count, dtype=np.int32)
+
         # === Pre-allocated energy/context buffers ===
         self._water_temp = np.full(count, 10.0, dtype=np.float32)
         self._food_quality = np.ones(count, dtype=np.float32)
@@ -316,6 +320,20 @@ class PorpoisePopulation:
                 self._skip_land_avoidance = bool(
                     np.all(depth >= min_depth)
                 )
+
+        # Compute initial cell indices from position arrays
+        self._recompute_cell_indices()
+
+    def _recompute_cell_indices(self) -> None:
+        """Recompute clamped int32 cell indices from current x/y positions."""
+        if self.landscape is not None:
+            w = self.landscape.width
+            h = self.landscape.height
+        else:
+            w = self.params.world_width
+            h = self.params.world_height
+        np.copyto(self._cell_xi, np.clip(self.x.astype(np.int32), 0, w - 1))
+        np.copyto(self._cell_yi, np.clip(self.y.astype(np.int32), 0, h - 1))
 
     @property
     def population_size(self) -> int:
@@ -730,8 +748,18 @@ class PorpoisePopulation:
             # Build positions array for vectorized lookup (reuse pre-allocated buffer)
             self._positions[:, 0] = self.x
             self._positions[:, 1] = self.y
-            np.copyto(self._depths, self.landscape.get_depths_vectorized(self._positions))
-            np.copyto(self._salinity_vals, self.landscape.get_salinities_vectorized(self._positions))
+            np.copyto(
+                self._depths,
+                self.landscape.get_depths_vectorized(
+                    self._positions, xi=self._cell_xi, yi=self._cell_yi
+                ),
+            )
+            np.copyto(
+                self._salinity_vals,
+                self.landscape.get_salinities_vectorized(
+                    self._positions, xi=self._cell_xi, yi=self._cell_yi
+                ),
+            )
             # Kattegat salinity override (Java Porpoise.java:339-345)
             landscape_name = getattr(self.landscape, 'landscape_name', '')
             if landscape_name == 'Kattegat':
@@ -1318,15 +1346,22 @@ class PorpoisePopulation:
         self.x[mask] = self._new_x[mask]
         self.y[mask] = self._new_y[mask]
 
+        # Recompute cached cell indices for fresh positions
+        self._recompute_cell_indices()
+
         # Post-move depth check (Java Porpoise.java:639-660)
         if self.landscape is not None:
             self._positions[:, 0] = self.x
             self._positions[:, 1] = self.y
-            post_depths = self.landscape.get_depths_vectorized(self._positions)
+            post_depths = self.landscape.get_depths_vectorized(
+                self._positions, xi=self._cell_xi, yi=self._cell_yi
+            )
             on_land = mask & (post_depths <= 0)
             if np.any(on_land):
                 self.x[on_land] = self._pre_move_x[on_land]
                 self.y[on_land] = self._pre_move_y[on_land]
+                # Re-recompute after land rollback
+                self._recompute_cell_indices()
 
         # Adaptive neighbor recompute based on displacement
         try:
@@ -1995,6 +2030,11 @@ class PorpoisePopulation:
         active_before = int(np.sum(self.active_mask))
         self._global_tick += 1
 
+        # Ensure cached cell indices are consistent with current landscape
+        # (handles landscape reassignment after __init__)
+        if self._global_tick == 1:
+            self._recompute_cell_indices()
+
         # 1. Movement calculations
         self._update_movement(mask, deterrence_vectors, ambient_rl)
 
@@ -2585,9 +2625,11 @@ class PorpoisePopulation:
         
         # Delegate to landscape vectorized method
         consumed = self.landscape.eat_food_vectorized(
-             self.x[active_idx],
-             self.y[active_idx],
-             fract_to_eat[active_idx]
+            self.x[active_idx],
+            self.y[active_idx],
+            fract_to_eat[active_idx],
+            xi=self._cell_xi[active_idx],
+            yi=self._cell_yi[active_idx],
         )
         
         food_eaten[active_idx] = consumed

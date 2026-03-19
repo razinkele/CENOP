@@ -290,6 +290,24 @@ class PorpoisePopulation:
         self._right_depths = np.zeros(count, dtype=np.float32)
         self._left_depths = np.zeros(count, dtype=np.float32)
 
+        # --- Glue-tax optimization: skip land avoidance on all-water landscapes ---
+        self._skip_land_avoidance = False
+        if self.landscape is None:
+            self._skip_land_avoidance = True
+        elif getattr(self.landscape, "landscape_name", "") == "Homogeneous":
+            self._skip_land_avoidance = True
+        elif (
+            hasattr(self.landscape, "_depth")
+            and self.landscape._depth is not None
+        ):
+            depth = self.landscape._depth
+            has_land = np.any(np.isnan(depth))
+            if not has_land:
+                min_depth = self.params.min_depth if self.params else 1.0
+                self._skip_land_avoidance = bool(
+                    np.all(depth >= min_depth)
+                )
+
     @property
     def population_size(self) -> int:
         """Current number of living porpoises."""
@@ -1062,6 +1080,10 @@ class PorpoisePopulation:
             self.heading[reflected] = np.degrees(
                 np.arctan2(self._dx[reflected], self._dy[reflected])
             ) % 360.0
+
+        # Early exit: skip depth-check loop on all-water landscapes
+        if self._skip_land_avoidance:
+            return
 
         if not self.landscape:
             return

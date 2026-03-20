@@ -187,17 +187,21 @@ def build_porpoise_layer(positions: list[dict]) -> dict:
     if not positions:
         return icon_layer("porpoises", [], visible=False)
 
+    # Compute size server-side (was: JS Math.max(8, (d.radius || 200) / 20))
+    for p in positions:
+        p["size"] = max(8, (p.get("radius", 200)) / 20)
+
     return icon_layer(
         "porpoises",
         positions,
         iconAtlas=PORPOISE_ICON_ATLAS,
         iconMapping=PORPOISE_ICON_MAPPING,
         getIcon="arrow",
-        getPosition="@@=d.position",
-        getSize="@@=Math.max(8, (d.radius || 200) / 20)",
+        getPosition="@@d.position",
+        getSize="@@d.size",
         sizeScale=1,
-        getAngle="@@=d.heading || 0",
-        getColor="@@=d.color || [0,150,255]",
+        getAngle="@@d.heading",
+        getColor="@@d.color",
         opacity=0.95,
         pickable=True,
         visible=True,
@@ -234,8 +238,8 @@ def build_noise_construction_layer(noise_points: list) -> dict:
     return scatterplot_layer(
         "noise-construction",
         noise_points,
-        getPosition="@@=d.position",
-        getRadius="@@=d.radius || 4000",
+        getPosition="@@d.position",
+        getRadius="@@d.radius",
         getFillColor=[255, 60, 60, 80],
         getLineColor=[255, 60, 60, 160],
         lineWidthMinPixels=1,
@@ -254,8 +258,8 @@ def build_noise_operational_layer(noise_points: list) -> dict:
     return scatterplot_layer(
         "noise-operational",
         noise_points,
-        getPosition="@@=d.position",
-        getRadius="@@=d.radius || 500",
+        getPosition="@@d.position",
+        getRadius="@@d.radius",
         getFillColor=[255, 200, 60, 50],
         getLineColor=[255, 200, 60, 120],
         lineWidthMinPixels=1,
@@ -271,15 +275,25 @@ def build_turbine_pole_layer(turbine_data: list) -> dict:
     if not turbine_data:
         return icon_layer("turbine-poles", [], visible=False)
 
+    # Compute size and color server-side (was JS ternary expressions)
+    _PHASE_COLORS = {
+        'construction': [255, 70, 40, 220],
+        'operational': [50, 160, 240, 220],
+        'planned': [180, 180, 180, 180],
+    }
+    for t in turbine_data:
+        t["size"] = max(20, min(64, (t.get("radius", 300)) / 15))
+        t["color"] = _PHASE_COLORS.get(t.get("phase"), t.get("color", [255, 140, 60]))
+
     return icon_layer(
         "turbine-poles",
         turbine_data,
         iconAtlas=TURBINE_POLE_ATLAS,
         iconMapping=TURBINE_POLE_MAPPING,
         getIcon="pole",
-        getPosition="@@=d.position",
-        getSize="@@=Math.max(20, Math.min(64, (d.radius || 300) / 15))",
-        getColor="@@=d.phase === 'construction' ? [255,70,40,220] : d.phase === 'operational' ? [50,160,240,220] : d.phase === 'planned' ? [180,180,180,180] : d.color || [255,140,60]",
+        getPosition="@@d.position",
+        getSize="@@d.size",
+        getColor="@@d.color",
         pickable=True,
         opacity=0.95,
     )
@@ -297,10 +311,16 @@ def build_turbine_blade_layer(turbine_data: list, rotation: float = 0,
     if not turbine_data:
         return icon_layer("turbine-blades", [], visible=False)
 
-    if client_animated:
-        angle_expr = "@@=d.phase === 'operational' ? (window._cenopBladeRotation || 0) : 0"
-    else:
-        angle_expr = f"@@=d.phase === 'operational' ? {rotation} : 0"
+    # Compute size, color, and angle server-side
+    _PHASE_COLORS = {
+        'construction': [255, 70, 40, 220],
+        'operational': [50, 160, 240, 220],
+        'planned': [180, 180, 180, 180],
+    }
+    for t in turbine_data:
+        t["size"] = max(20, min(64, (t.get("radius", 300)) / 15))
+        t["color"] = _PHASE_COLORS.get(t.get("phase"), t.get("color", [255, 140, 60]))
+        t["angle"] = rotation if t.get("phase") == "operational" else 0
 
     return icon_layer(
         "turbine-blades",
@@ -308,10 +328,10 @@ def build_turbine_blade_layer(turbine_data: list, rotation: float = 0,
         iconAtlas=TURBINE_BLADE_ATLAS,
         iconMapping=TURBINE_BLADE_MAPPING,
         getIcon="blade",
-        getPosition="@@=d.position",
-        getSize="@@=Math.max(20, Math.min(64, (d.radius || 300) / 15))",
-        getAngle=angle_expr,
-        getColor="@@=d.phase === 'construction' ? [255,70,40,220] : d.phase === 'operational' ? [50,160,240,220] : d.phase === 'planned' ? [180,180,180,180] : d.color || [255,140,60]",
+        getPosition="@@d.position",
+        getSize="@@d.size",
+        getAngle="@@d.angle",
+        getColor="@@d.color",
         pickable=False,
         opacity=0.95,
     )
@@ -562,7 +582,7 @@ def build_grid_bitmap_layer(
     scatter = scatterplot_layer(
         f"{layer_id}-tooltip",
         tooltip_data,
-        getPosition="@@=d.position",
+        getPosition="@@d.position",
         getRadius=max(100, metadata.cellsize / 2),
         getFillColor=[0, 0, 0, 1],
         stroked=False,

@@ -66,11 +66,11 @@ def jax_tick_movement(
     dispersal_target_distance,
     dispersal_distance_traveled,
     prev_step_heading,
+    # Environment (per-agent)
+    depths,
+    salinity,
     # Landscape grids
     depth_grid,
-    salinity_grid,
-    # Scalar month index (0-11) for salinity lookup
-    month_idx,
     # Scalar parameters
     corr_angle_base,
     corr_angle_bathy,
@@ -101,12 +101,6 @@ def jax_tick_movement(
         step_dist, deter_strength, dispersal_distance_delta,
         new_prev_step_heading, key
     """
-    # Compute per-agent depth and salinity from grids
-    xi = jnp.clip(x.astype(jnp.int32), 0, world_w - 1)
-    yi = jnp.clip(y.astype(jnp.int32), 0, world_h - 1)
-    depths = depth_grid[yi, xi].astype(jnp.float64)
-    salinity = salinity_grid[month_idx, yi, xi].astype(jnp.float64)
-
     # --- Phase 1: CRW angle + step ---
     key, crw_key = jax.random.split(key)
     pres_angle, log_mov = jax_crw_kernel(

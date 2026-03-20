@@ -367,51 +367,6 @@ class PorpoisePopulation:
         # Compute initial cell indices from position arrays
         self._recompute_cell_indices()
 
-        # Convert core SoA arrays to JAX to eliminate per-tick np↔jax transfers
-        if self._use_jax:
-            import jax.numpy as jnp
-            # Core state arrays
-            self.x = jnp.asarray(self.x)
-            self.y = jnp.asarray(self.y)
-            self.heading = jnp.asarray(self.heading)
-            self.prev_log_mov = jnp.asarray(self.prev_log_mov)
-            self.prev_angle = jnp.asarray(self.prev_angle)
-            self.energy = jnp.asarray(self.energy)
-            self.active_mask = jnp.asarray(self.active_mask)
-            self.age = jnp.asarray(self.age)
-            self.with_calf = jnp.asarray(self.with_calf)
-            self.deter_strength = jnp.asarray(self.deter_strength)
-            self._was_deterred = jnp.asarray(self._was_deterred)
-            # Reference memory
-            self._stored_util = jnp.asarray(self._stored_util)
-            self._pos_history_x = jnp.asarray(self._pos_history_x)
-            self._pos_history_y = jnp.asarray(self._pos_history_y)
-            self._mem_ptr = jnp.asarray(self._mem_ptr)
-            self._mem_count = jnp.asarray(self._mem_count)
-            self._ve_total = jnp.asarray(self._ve_total)
-            self._vt_x = jnp.asarray(self._vt_x)
-            self._vt_y = jnp.asarray(self._vt_y)
-            # Energy tracking
-            self._energy_history = jnp.asarray(self._energy_history)
-            self._energy_ticks_today = jnp.asarray(self._energy_ticks_today)
-            # Dispersal
-            self.is_dispersing = jnp.asarray(self.is_dispersing)
-            self.days_declining_energy = jnp.asarray(self.days_declining_energy)
-            self.dispersal_target_x = jnp.asarray(self.dispersal_target_x)
-            self.dispersal_target_y = jnp.asarray(self.dispersal_target_y)
-            self.dispersal_target_distance = jnp.asarray(self.dispersal_target_distance)
-            self.dispersal_distance_traveled = jnp.asarray(self.dispersal_distance_traveled)
-            self.dispersal_start_x = jnp.asarray(self.dispersal_start_x)
-            self.dispersal_start_y = jnp.asarray(self.dispersal_start_y)
-            self._prev_step_heading = jnp.asarray(self._prev_step_heading)
-            self._step_dist = jnp.asarray(self._step_dist)
-            # Cell indices
-            self._cell_xi = jnp.asarray(self._cell_xi)
-            self._cell_yi = jnp.asarray(self._cell_yi)
-            # Re-link energy state to JAX array
-            if self._energy_state is not None:
-                self._energy_state.energy = self.energy
-
     def _recompute_cell_indices(self) -> None:
         """Recompute clamped int32 cell indices from current x/y positions."""
         if self.landscape is not None:
@@ -420,23 +375,13 @@ class PorpoisePopulation:
         else:
             w = self.params.world_width
             h = self.params.world_height
-        if self._use_jax:
-            import jax.numpy as jnp
-            self._cell_xi = jnp.clip(self.x.astype(jnp.int32), 0, w - 1)
-            self._cell_yi = jnp.clip(self.y.astype(jnp.int32), 0, h - 1)
-        else:
-            np.copyto(self._cell_xi, np.clip(self.x.astype(np.int32), 0, w - 1))
-            np.copyto(self._cell_yi, np.clip(self.y.astype(np.int32), 0, h - 1))
-
-    def _to_np(self, arr):
-        """Convert JAX array to NumPy. Use only at boundaries (UI, cKDTree, FSM).
-        np.asarray on a NumPy array returns a view (no copy), so this is safe for both."""
-        return np.asarray(arr)
+        np.copyto(self._cell_xi, np.clip(self.x.astype(np.int32), 0, w - 1))
+        np.copyto(self._cell_yi, np.clip(self.y.astype(np.int32), 0, h - 1))
 
     @property
     def population_size(self) -> int:
         """Current number of living porpoises."""
-        return int(np.sum(np.asarray(self.active_mask)))
+        return np.sum(self.active_mask)
         
     def _initialize_population(self):
         """Vectorized initialization logic with land avoidance."""
@@ -2140,61 +2085,58 @@ class PorpoisePopulation:
         import jax.numpy as jnp
         from cenop.behavior.ref_mem import get_work_mem_strength_table
 
-        mask = self.active_mask  # JAX array
-        active_before = int(jnp.sum(mask))
+        mask = self.active_mask
+        active_before = int(np.sum(mask))
         self._global_tick += 1
 
         if self._global_tick == 1:
             self._recompute_cell_indices()
 
         # --- Pre-compute Python-side vectors ---
-        # Deterrence (JAX functional style — no indexed assignment)
+        # Deterrence
         if deterrence_vectors is not None:
             d_dx, d_dy = deterrence_vectors
-            d_dx_jax = jnp.asarray(d_dx)
-            d_dy_jax = jnp.asarray(d_dy)
-            self.deter_strength = jnp.where(
-                mask, jnp.abs(d_dx_jax) + jnp.abs(d_dy_jax), self.deter_strength
+            self.deter_strength[mask] = (
+                np.abs(d_dx[mask]) + np.abs(d_dy[mask])
             )
-            self._was_deterred = self._was_deterred | ((self.deter_strength > 0) & mask)
+            self._was_deterred |= (self.deter_strength > 0) & mask
         else:
             d_dx = np.zeros(self.count, dtype=np.float64)
             d_dy = np.zeros(self.count, dtype=np.float64)
-            self.deter_strength = jnp.where(mask, 0.0, self.deter_strength)
+            self.deter_strength[mask] = 0.0
 
-        # Social vectors (cKDTree — stays in Python, needs NumPy mask)
-        mask_np = np.asarray(mask)
+        # Social vectors (cKDTree — stays in Python)
         if getattr(self.params, 'communication_enabled', False):
-            soc_dx, soc_dy = self._compute_social_vectors(mask_np, ambient_rl)
+            soc_dx, soc_dy = self._compute_social_vectors(mask, ambient_rl)
         else:
             soc_dx = np.zeros(self.count, dtype=np.float32)
             soc_dy = np.zeros(self.count, dtype=np.float32)
 
-        # Update reference memory (stores food, computes veTotal and vt)
-        # Ref mem uses NumPy mutation — convert at boundary
-        _saved_x, _saved_y = self.x, self.y
-        self.x = np.array(self.x, copy=True)
-        self.y = np.array(self.y, copy=True)
-        self._stored_util = np.array(self._stored_util, copy=True)
-        self._pos_history_x = np.array(self._pos_history_x, copy=True)
-        self._pos_history_y = np.array(self._pos_history_y, copy=True)
-        self._mem_ptr = np.array(self._mem_ptr, copy=True)
-        self._mem_count = np.array(self._mem_count, copy=True)
-        self._vt_x = np.array(self._vt_x, copy=True)
-        self._vt_y = np.array(self._vt_y, copy=True)
-        self._update_reference_memory(mask_np)
-        # Convert back to JAX (ref mem mutated these in-place)
-        self._stored_util = jnp.asarray(self._stored_util)
-        self._pos_history_x = jnp.asarray(self._pos_history_x)
-        self._pos_history_y = jnp.asarray(self._pos_history_y)
-        self._mem_ptr = jnp.asarray(self._mem_ptr)
-        self._mem_count = jnp.asarray(self._mem_count)
-        self._ve_total = jnp.asarray(self._ve_total)
-        self._vt_x = jnp.asarray(self._vt_x)
-        self._vt_y = jnp.asarray(self._vt_y)
-        # Restore JAX x/y (ref mem didn't change them)
-        self.x = _saved_x
-        self.y = _saved_y
+        # Environment variables at current positions
+        if self.landscape is not None:
+            self._positions[:, 0] = self.x
+            self._positions[:, 1] = self.y
+            np.copyto(
+                self._depths,
+                self.landscape.get_depths_vectorized(
+                    self._positions, xi=self._cell_xi, yi=self._cell_yi
+                ),
+            )
+            np.copyto(
+                self._salinity_vals,
+                self.landscape.get_salinities_vectorized(
+                    self._positions, xi=self._cell_xi, yi=self._cell_yi
+                ),
+            )
+            landscape_name = getattr(self.landscape, 'landscape_name', '')
+            if landscape_name == 'Kattegat':
+                self._salinity_vals[:] = 34.069105813295
+        else:
+            self._depths.fill(30.0)
+            self._salinity_vals.fill(30.0)
+
+        # Update reference memory (stores food, computes veTotal and vt) — Python
+        self._update_reference_memory(mask)
 
         # Landscape grids — cache JAX versions
         if not hasattr(self, '_jax_depth_grid') or self._jax_depth_grid is None:
@@ -2209,22 +2151,6 @@ class PorpoisePopulation:
             else:
                 self._jax_depth_grid = jnp.full(
                     (self.params.world_height, self.params.world_width),
-                    30.0,
-                    dtype=jnp.float32,
-                )
-
-        if not hasattr(self, '_jax_salinity_grid') or self._jax_salinity_grid is None:
-            if (
-                self.landscape is not None
-                and hasattr(self.landscape, '_salinity')
-                and self.landscape._salinity is not None
-            ):
-                self._jax_salinity_grid = jnp.asarray(
-                    self.landscape._salinity.astype(np.float32)
-                )
-            else:
-                self._jax_salinity_grid = jnp.full(
-                    (12, self.params.world_height, self.params.world_width),
                     30.0,
                     dtype=jnp.float32,
                 )
@@ -2253,10 +2179,6 @@ class PorpoisePopulation:
         # ==============================
         # 1. JAX movement tick
         # ==============================
-        # Save pre-move positions (JAX immutable — reference is safe)
-        pre_move_x = self.x
-        pre_move_y = self.y
-
         (
             new_x,
             new_y,
@@ -2269,31 +2191,31 @@ class PorpoisePopulation:
             new_prev_step_heading,
             _,
         ) = jax_tick_movement(
-            self.x,
-            self.y,
-            self.heading,
-            self.prev_angle,
-            self.prev_log_mov,
-            mask,
-            self._stored_util,
-            self._pos_history_x,
-            self._pos_history_y,
-            self._mem_ptr,
-            self._mem_count,
+            jnp.asarray(self.x),
+            jnp.asarray(self.y),
+            jnp.asarray(self.heading),
+            jnp.asarray(self.prev_angle),
+            jnp.asarray(self.prev_log_mov),
+            jnp.asarray(mask),
+            jnp.asarray(self._stored_util),
+            jnp.asarray(self._pos_history_x),
+            jnp.asarray(self._pos_history_y),
+            jnp.asarray(self._mem_ptr),
+            jnp.asarray(self._mem_count),
             jnp.asarray(work_table),
             jnp.asarray(d_dx),
             jnp.asarray(d_dy),
             jnp.asarray(soc_dx),
             jnp.asarray(soc_dy),
-            self.is_dispersing,
-            self.dispersal_target_x,
-            self.dispersal_target_y,
-            self.dispersal_target_distance,
-            self.dispersal_distance_traveled,
-            self._prev_step_heading,
+            jnp.asarray(self.is_dispersing),
+            jnp.asarray(self.dispersal_target_x),
+            jnp.asarray(self.dispersal_target_y),
+            jnp.asarray(self.dispersal_target_distance),
+            jnp.asarray(self.dispersal_distance_traveled),
+            jnp.asarray(self._prev_step_heading),
+            jnp.asarray(self._depths),
+            jnp.asarray(self._salinity_vals),
             self._jax_depth_grid,
-            self._jax_salinity_grid,
-            int(self._get_current_month() - 1),
             float(self.params.corr_angle_base),
             float(self.params.corr_angle_bathy),
             float(self.params.corr_angle_salinity),
@@ -2314,37 +2236,43 @@ class PorpoisePopulation:
             movement_key,
         )
 
-        # Write movement results back (JAX reassignment, no copyto)
-        self.x = new_x
-        self.y = new_y
-        self.heading = new_heading
-        self.prev_angle = new_prev_angle
-        self.prev_log_mov = new_prev_log_mov
-        self._step_dist = step_dist
-        self._prev_step_heading = new_prev_step_heading
-        self.dispersal_distance_traveled = (
-            self.dispersal_distance_traveled + dispersal_distance_delta
-        )
+        # Write movement results back to SoA arrays
+        np.copyto(self.x, np.asarray(new_x))
+        np.copyto(self.y, np.asarray(new_y))
+        np.copyto(self.heading, np.asarray(new_heading))
+        np.copyto(self.prev_angle, np.asarray(new_prev_angle))
+        np.copyto(self.prev_log_mov, np.asarray(new_prev_log_mov))
+        np.copyto(self._step_dist, np.asarray(step_dist))
+        np.copyto(self._prev_step_heading, np.asarray(new_prev_step_heading))
+        # Update dispersal distance traveled
+        disp_delta_np = np.asarray(dispersal_distance_delta)
+        self.dispersal_distance_traveled += disp_delta_np
 
         # Recompute cached cell indices
         self._recompute_cell_indices()
 
         # Post-move depth check (Java Porpoise.java:639-660)
         if self.landscape is not None:
-            xi_check = jnp.clip(self.x.astype(jnp.int32), 0, world_w - 1)
-            yi_check = jnp.clip(self.y.astype(jnp.int32), 0, world_h - 1)
-            post_depths = self._jax_depth_grid[yi_check, xi_check]
+            self._positions[:, 0] = self.x
+            self._positions[:, 1] = self.y
+            post_depths = self.landscape.get_depths_vectorized(
+                self._positions, xi=self._cell_xi, yi=self._cell_yi
+            )
             on_land = mask & (post_depths <= 0)
-            if jnp.any(on_land):
-                self.x = jnp.where(on_land, pre_move_x, self.x)
-                self.y = jnp.where(on_land, pre_move_y, self.y)
+            if np.any(on_land):
+                # Rollback to pre-move positions — use original values
+                # that were in self before write-back
+                prev_x_np = np.asarray(new_x)
+                prev_y_np = np.asarray(new_y)
+                self.x[on_land] = prev_x_np[on_land]
+                self.y[on_land] = prev_y_np[on_land]
                 self._recompute_cell_indices()
 
         # ==============================
         # 2. Behavioral FSM (Python)
         # ==============================
         if self._behavior_fsm is not None:
-            self._update_behavior_fsm(mask_np)
+            self._update_behavior_fsm(mask)
 
         # ==============================
         # 3. JAX energy tick
@@ -2353,10 +2281,10 @@ class PorpoisePopulation:
         scaling = self._get_seasonal_scaling(current_month)
         is_day_boundary = (self._global_tick % 48 == 0)
 
-        # Speed in m/s (JAX — _step_dist is already JAX)
+        # Speed in m/s
         speed_ms = self._step_dist * (400.0 / 1800.0)
 
-        # Food grid (landscape stays NumPy)
+        # Food grid
         if (
             self.landscape is not None
             and hasattr(self.landscape, '_food_value')
@@ -2383,29 +2311,29 @@ class PorpoisePopulation:
             new_days_declining_energy,
             _,
         ) = jax_tick_energy(
-            self.energy,
-            mask,
-            self.x,
-            self.y,
-            speed_ms,
-            self.with_calf,
-            self.deter_strength > 0,
-            self.deter_strength,
-            self.with_calf,
-            self.age,
+            jnp.asarray(self.energy),
+            jnp.asarray(mask),
+            jnp.asarray(self.x),
+            jnp.asarray(self.y),
+            jnp.asarray(speed_ms),
+            jnp.asarray(self.with_calf),
+            jnp.asarray(self.deter_strength > 0),
+            jnp.asarray(self.deter_strength),
+            jnp.asarray(self.with_calf),
+            jnp.asarray(self.age),
             jax_food,
-            self._cell_xi,
-            self._cell_yi,
-            self._energy_ticks_today,
-            self._energy_history,
+            jnp.asarray(self._cell_xi),
+            jnp.asarray(self._cell_yi),
+            jnp.asarray(self._energy_ticks_today),
+            jnp.asarray(self._energy_history),
             jnp.int32(self._tick_counter),
-            self.is_dispersing,
-            self.dispersal_start_x,
-            self.dispersal_start_y,
-            self.dispersal_target_distance,
-            self.dispersal_distance_traveled,
-            self.days_declining_energy.astype(jnp.int32),
-            self.deter_strength,
+            jnp.asarray(self.is_dispersing),
+            jnp.asarray(self.dispersal_start_x),
+            jnp.asarray(self.dispersal_start_y),
+            jnp.asarray(self.dispersal_target_distance),
+            jnp.asarray(self.dispersal_distance_traveled),
+            jnp.asarray(self.days_declining_energy.astype(np.int32)),
+            jnp.asarray(self.deter_strength),
             jnp.float32(scaling),
             float(self.params.e_use_per_30_min),
             float(self.params.e_lact),
@@ -2418,21 +2346,24 @@ class PorpoisePopulation:
             energy_key,
         )
 
-        # Write energy results back (JAX reassignment)
-        self.energy = new_energy
-        if self._energy_state is not None:
-            self._energy_state.energy = self.energy
-        self.active_mask = new_active_mask
-        self.with_calf = new_with_calf
-        self._energy_ticks_today = new_energy_ticks_today
-        self._energy_history = new_energy_history
+        # Write energy results back (shared view with _energy_state)
+        np.copyto(self.energy, np.asarray(new_energy))
+        np.copyto(self.active_mask, np.asarray(new_active_mask))
+        np.copyto(self.with_calf, np.asarray(new_with_calf))
+        np.copyto(self._energy_ticks_today, np.asarray(new_energy_ticks_today))
+        np.copyto(self._energy_history, np.asarray(new_energy_history))
         self._tick_counter = int(new_tick_counter)
         self._last_energy_update_tick = self._global_tick
-        self.is_dispersing = new_is_dispersing
-        self.dispersal_distance_traveled = new_dispersal_distance_traveled
-        self.days_declining_energy = new_days_declining_energy
+        np.copyto(self.is_dispersing, np.asarray(new_is_dispersing))
+        np.copyto(
+            self.dispersal_distance_traveled,
+            np.asarray(new_dispersal_distance_traveled),
+        )
+        self.days_declining_energy[:] = np.asarray(
+            new_days_declining_energy
+        ).astype(np.int16)
 
-        # Write food grid back (landscape stays NumPy)
+        # Write food grid back
         if (
             self.landscape is not None
             and hasattr(self.landscape, '_food_value')
@@ -2443,126 +2374,39 @@ class PorpoisePopulation:
             )
 
         # Dashboard metrics
-        mask_np_post = np.asarray(self.active_mask)
-        n_active = int(np.sum(mask_np_post))
+        n_active = int(np.sum(self.active_mask))
         food_eaten_np = np.asarray(food_eaten)
         total_cost_np = np.asarray(total_cost)
         if n_active > 0:
             self.avg_food_gained = float(
-                np.mean(food_eaten_np[mask_np_post])
+                np.mean(food_eaten_np[self.active_mask])
             )
             self.avg_energy_cost = float(
-                np.mean(total_cost_np[mask_np_post])
+                np.mean(total_cost_np[self.active_mask])
             )
         else:
             self.avg_food_gained = 0.0
             self.avg_energy_cost = 0.0
 
         # ==============================
-        # 4. Python post-processing (minimal conversions)
+        # 4. Python post-processing
         # ==============================
-        # --- Every-tick ops (JAX-compatible, no bulk conversion) ---
+        # PSM update
+        self._update_psm(self.active_mask, food_eaten_np)
 
-        # Aging — pure JAX op, no NumPy needed
-        self.age = jnp.where(
-            self.active_mask,
-            self.age + jnp.float32(1.0 / 360.0 / 48.0),
-            self.age,
-        )
-
-        # Reproduction day counter (scalar, not array mutation)
-        self._day_of_year = (self._day_of_year + 1) % (360 * 48)
-
-        # PSM update — psm_buffer is NumPy; reads JAX arrays via np.asarray
-        self._update_psm(mask_np_post, food_eaten_np)
-
-        # Disturbance memory — _memory_state is NumPy; needs NumPy copies
-        # for indexed assignment inside _update_disturbance_memory
-        if self._memory_module is not None:
-            _saved_x_dm = self.x
-            _saved_y_dm = self.y
-            _saved_ds = self.deter_strength
-            self.x = np.array(self.x, copy=True)
-            self.y = np.array(self.y, copy=True)
-            self.deter_strength = np.array(self.deter_strength, copy=True)
-            self._update_disturbance_memory(mask_np_post)
-            # Restore JAX arrays (disturbance memory didn't change x/y/deter)
-            self.x = _saved_x_dm
-            self.y = _saved_y_dm
-            self.deter_strength = _saved_ds
-
-        # Re-link energy state (energy is still JAX from energy tick)
-        if self._energy_state is not None:
-            self._energy_state.energy = self.energy
-
-        # --- Day boundary ops (needs NumPy for mutation-heavy FSM) ---
+        # Dispersal trigger check (day boundary)
         if is_day_boundary and self._global_tick > 0:
-            # Convert arrays that dispersal/reproduction will mutate
-            self.x = np.array(self.x, copy=True)
-            self.y = np.array(self.y, copy=True)
-            self.heading = np.array(self.heading, copy=True)
-            self.energy = np.array(self.energy, copy=True)
-            self.active_mask = np.array(self.active_mask, copy=True)
-            self.age = np.array(self.age, copy=True)
-            self.with_calf = np.array(self.with_calf, copy=True)
-            self.is_dispersing = np.array(self.is_dispersing, copy=True)
-            self.is_female = np.array(self.is_female, copy=True)
-            self.pregnancy_status = np.array(self.pregnancy_status, copy=True)
-            self.days_since_mating = np.array(self.days_since_mating, copy=True)
-            self.days_since_birth = np.array(self.days_since_birth, copy=True)
-            self.mating_day = np.array(self.mating_day, copy=True)
-            self.dispersal_start_x = np.array(self.dispersal_start_x, copy=True)
-            self.dispersal_start_y = np.array(self.dispersal_start_y, copy=True)
-            self.dispersal_distance_traveled = np.array(
-                self.dispersal_distance_traveled, copy=True
-            )
-            self.dispersal_target_x = np.array(self.dispersal_target_x, copy=True)
-            self.dispersal_target_y = np.array(self.dispersal_target_y, copy=True)
-            self.dispersal_target_distance = np.array(
-                self.dispersal_target_distance, copy=True
-            )
-            self._prev_step_heading = np.array(
-                self._prev_step_heading, copy=True
-            )
-            self._energy_history = np.array(self._energy_history, copy=True)
-
-            # Dispersal trigger check
             self._check_dispersal_trigger(self.active_mask)
 
-            # Pregnancy FSM (called directly, bypassing _handle_reproduction
-            # since we already incremented _day_of_year above)
-            self._update_pregnancy_status(self.active_mask)
+        # Disturbance memory (JASMINE)
+        if self._memory_module is not None:
+            self._update_disturbance_memory(self.active_mask)
 
-            # Convert back to JAX for next tick
-            self.x = jnp.asarray(self.x)
-            self.y = jnp.asarray(self.y)
-            self.heading = jnp.asarray(self.heading)
-            self.energy = jnp.asarray(self.energy)
-            self.active_mask = jnp.asarray(self.active_mask)
-            self.age = jnp.asarray(self.age)
-            self.with_calf = jnp.asarray(self.with_calf)
-            self.is_dispersing = jnp.asarray(self.is_dispersing)
-            self.is_female = jnp.asarray(self.is_female)
-            self.pregnancy_status = jnp.asarray(self.pregnancy_status)
-            self.days_since_mating = jnp.asarray(self.days_since_mating)
-            self.days_since_birth = jnp.asarray(self.days_since_birth)
-            self.mating_day = jnp.asarray(self.mating_day)
-            self.dispersal_start_x = jnp.asarray(self.dispersal_start_x)
-            self.dispersal_start_y = jnp.asarray(self.dispersal_start_y)
-            self.dispersal_distance_traveled = jnp.asarray(
-                self.dispersal_distance_traveled
-            )
-            self.dispersal_target_x = jnp.asarray(self.dispersal_target_x)
-            self.dispersal_target_y = jnp.asarray(self.dispersal_target_y)
-            self.dispersal_target_distance = jnp.asarray(
-                self.dispersal_target_distance
-            )
-            self._prev_step_heading = jnp.asarray(self._prev_step_heading)
-            self._energy_history = jnp.asarray(self._energy_history)
+        # Aging
+        self._update_aging(self.active_mask)
 
-            # Re-link energy state after conversion
-            if self._energy_state is not None:
-                self._energy_state.energy = self.energy
+        # Reproduction
+        self._handle_reproduction(self.active_mask)
 
     def _get_seasonal_scaling(self, month: int) -> float:
         """Get scalar seasonal scaling factor (no lactation — handled in JAX)."""
@@ -2597,7 +2441,7 @@ class PorpoisePopulation:
             ambient_rl: Ambient received level for social communication
         """
         mask = self.active_mask
-        if not np.any(np.asarray(mask)):
+        if not np.any(mask):
             return
 
         # JAX JIT path — replaces Numba/NumPy for movement + energy
@@ -2700,11 +2544,9 @@ class PorpoisePopulation:
         if len(active_idx) == 0:
             return
             
-        # Convert positions to PSM grid coordinates (ensure NumPy for clip out=)
-        x_np = np.asarray(self.x[active_idx])
-        y_np = np.asarray(self.y[active_idx])
-        psm_x = (x_np // self.psm_cell_size).astype(np.int32)
-        psm_y = (y_np // self.psm_cell_size).astype(np.int32)
+        # Convert positions to PSM grid coordinates
+        psm_x = (self.x[active_idx] // self.psm_cell_size).astype(np.int32)
+        psm_y = (self.y[active_idx] // self.psm_cell_size).astype(np.int32)
 
         # Clip to bounds
         np.clip(psm_x, 0, self.psm_cols - 1, out=psm_x)

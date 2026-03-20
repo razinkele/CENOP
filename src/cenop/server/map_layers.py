@@ -183,26 +183,23 @@ def array_to_base64_png(rgba: np.ndarray) -> str:
 
 
 def build_porpoise_layer(positions: list[dict]) -> dict:
-    """Build porpoise icon layer from position data."""
+    """Build porpoise dot layer from position data."""
     if not positions:
-        return icon_layer("porpoises", [], visible=False)
+        return scatterplot_layer("porpoises", [], visible=False)
 
-    # Compute size server-side (was: JS Math.max(8, (d.radius || 200) / 20))
-    for p in positions:
-        p["size"] = max(8, (p.get("radius", 200)) / 20)
-
-    return icon_layer(
+    return scatterplot_layer(
         "porpoises",
         positions,
-        iconAtlas=PORPOISE_ICON_ATLAS,
-        iconMapping=PORPOISE_ICON_MAPPING,
-        getIcon="arrow",
         getPosition="@@d.position",
-        getSize="@@d.size",
-        sizeScale=1,
-        getAngle="@@d.heading",
-        getColor="@@d.color",
-        opacity=0.95,
+        getFillColor="@@d.color",
+        getLineColor=[0, 0, 0, 120],
+        radiusMinPixels=4,
+        radiusMaxPixels=8,
+        getRadius=300,
+        lineWidthMinPixels=1,
+        stroked=True,
+        filled=True,
+        opacity=0.9,
         pickable=True,
         visible=True,
     )

@@ -378,6 +378,11 @@ class PorpoisePopulation:
         np.copyto(self._cell_xi, np.clip(self.x.astype(np.int32), 0, w - 1))
         np.copyto(self._cell_yi, np.clip(self.y.astype(np.int32), 0, h - 1))
 
+    def _to_np(self, arr):
+        """Convert JAX array to NumPy. Use only at boundaries (UI, cKDTree, FSM).
+        np.asarray on a NumPy array returns a view (no copy), so this is safe for both."""
+        return np.asarray(arr)
+
     @property
     def population_size(self) -> int:
         """Current number of living porpoises."""
@@ -2151,6 +2156,24 @@ class PorpoisePopulation:
             else:
                 self._jax_depth_grid = jnp.full(
                     (self.params.world_height, self.params.world_width),
+                    30.0,
+                    dtype=jnp.float32,
+                )
+
+        if not hasattr(self, '_jax_salinity_grid') or self._jax_salinity_grid is None:
+            if (
+                self.landscape is not None
+                and hasattr(self.landscape, '_salinity')
+                and self.landscape._salinity is not None
+            ):
+                # Salinity is 3D: (12, height, width) — one slice per month
+                self._jax_salinity_grid = jnp.asarray(
+                    self.landscape._salinity.astype(np.float32)
+                )  # shape: (12, height, width)
+            else:
+                # No salinity data — constant 30.0 across 12 months
+                self._jax_salinity_grid = jnp.full(
+                    (12, self.params.world_height, self.params.world_width),
                     30.0,
                     dtype=jnp.float32,
                 )

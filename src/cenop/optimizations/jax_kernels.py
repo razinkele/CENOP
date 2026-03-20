@@ -25,9 +25,10 @@ def jax_crw_kernel(
 ):
     """CRW angle + step length — fixed-iteration batch rejection.
 
-    Draws K=32 candidate samples per agent, picks the first valid one.
+    Draws K=4 candidate samples per agent, picks the first valid one.
     No while_loop — pure vectorized ops, fully GPU-friendly.
-    Rejection rates are typically <5%, so K=32 provides >99.99% coverage.
+    Rejection rates are typically <5%, so K=4 provides >99.99% coverage
+    (P(all 4 fail) ≈ 6e-6 per agent per tick).
 
     Parameters
     ----------
@@ -44,7 +45,7 @@ def jax_crw_kernel(
     out_angle : float64[n] — turning angle per agent
     out_log_mov : float64[n] — log step length per agent
     """
-    K = 32  # candidate samples per agent
+    K = 4  # candidate samples per agent (was 32; <5% rejection rate → K=4 safe)
     n = prev_angle.shape[0]
     env_mod = corr_angle_bathy * depths + corr_angle_salinity * salinity + corr_angle_base_sd
 

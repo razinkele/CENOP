@@ -1482,3 +1482,30 @@ class TestJaxFullTick:
             f"Energy diff {energy_diff:.2f}: JAX={r_jax['mean_energy']:.2f}, "
             f"Numba={r_numba['mean_energy']:.2f}"
         )
+
+
+class TestCRWK4Bounds:
+    """Verify CRW outputs are valid with K=4 (reduced from K=32)."""
+
+    def test_angle_bounds_k4(self):
+        """All output angles must be in [-180, 180] with K=4."""
+        from cenop.optimizations.jax_kernels import jax_crw_kernel
+
+        inputs = _make_inputs(n=2000, seed=99)
+        out_angle, out_log_mov = jax_crw_kernel(**inputs, **CRW_PARAMS)
+        active = np.asarray(inputs['mask'])
+        angles = np.asarray(out_angle)[active]
+        assert np.all(np.abs(angles) <= 180.0)
+        log_movs = np.asarray(out_log_mov)[active]
+        assert np.all(log_movs <= CRW_PARAMS['max_mov'] + 1e-6)
+
+    def test_angle_distribution_reasonable_k4(self):
+        """Angles should have reasonable mean and spread with K=4."""
+        from cenop.optimizations.jax_kernels import jax_crw_kernel
+
+        inputs = _make_inputs(n=5000, seed=123)
+        out_angle, _ = jax_crw_kernel(**inputs, **CRW_PARAMS)
+        active = np.asarray(inputs['mask'])
+        angles = np.asarray(out_angle)[active]
+        assert abs(np.mean(angles)) < 20.0
+        assert np.std(angles) > 10.0

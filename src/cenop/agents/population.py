@@ -2459,92 +2459,110 @@ class PorpoisePopulation:
             self.avg_energy_cost = 0.0
 
         # ==============================
-        # 4. Python post-processing
+        # 4. Python post-processing (minimal conversions)
         # ==============================
-        # Python functions use indexed mutation — need writable NumPy arrays
-        self.x = np.array(self.x, copy=True)
-        self.y = np.array(self.y, copy=True)
-        self.heading = np.array(self.heading, copy=True)
-        self.energy = np.array(self.energy, copy=True)
-        self.active_mask = np.array(self.active_mask, copy=True)
-        self.age = np.array(self.age, copy=True)
-        self.with_calf = np.array(self.with_calf, copy=True)
-        self.is_dispersing = np.array(self.is_dispersing, copy=True)
-        self.days_declining_energy = np.array(
-            self.days_declining_energy, copy=True
-        ).astype(np.int16)
-        self.dispersal_target_x = np.array(self.dispersal_target_x, copy=True)
-        self.dispersal_target_y = np.array(self.dispersal_target_y, copy=True)
-        self.dispersal_target_distance = np.array(
-            self.dispersal_target_distance, copy=True
+        # --- Every-tick ops (JAX-compatible, no bulk conversion) ---
+
+        # Aging — pure JAX op, no NumPy needed
+        self.age = jnp.where(
+            self.active_mask,
+            self.age + jnp.float32(1.0 / 360.0 / 48.0),
+            self.age,
         )
-        self.dispersal_distance_traveled = np.array(
-            self.dispersal_distance_traveled, copy=True
-        )
-        self.dispersal_start_x = np.array(self.dispersal_start_x, copy=True)
-        self.dispersal_start_y = np.array(self.dispersal_start_y, copy=True)
-        self._prev_step_heading = np.array(self._prev_step_heading, copy=True)
-        self._step_dist = np.array(self._step_dist, copy=True)
-        self.deter_strength = np.array(self.deter_strength, copy=True)
-        self._was_deterred = np.array(self._was_deterred, copy=True)
-        self._energy_history = np.array(self._energy_history, copy=True)
-        self._energy_ticks_today = np.array(self._energy_ticks_today, copy=True)
-        self._cell_xi = np.array(self._cell_xi, copy=True)
-        self._cell_yi = np.array(self._cell_yi, copy=True)
-        # Re-link energy state
+
+        # Reproduction day counter (scalar, not array mutation)
+        self._day_of_year = (self._day_of_year + 1) % (360 * 48)
+
+        # PSM update — psm_buffer is NumPy; reads JAX arrays via np.asarray
+        self._update_psm(mask_np_post, food_eaten_np)
+
+        # Disturbance memory — _memory_state is NumPy; needs NumPy copies
+        # for indexed assignment inside _update_disturbance_memory
+        if self._memory_module is not None:
+            _saved_x_dm = self.x
+            _saved_y_dm = self.y
+            _saved_ds = self.deter_strength
+            self.x = np.array(self.x, copy=True)
+            self.y = np.array(self.y, copy=True)
+            self.deter_strength = np.array(self.deter_strength, copy=True)
+            self._update_disturbance_memory(mask_np_post)
+            # Restore JAX arrays (disturbance memory didn't change x/y/deter)
+            self.x = _saved_x_dm
+            self.y = _saved_y_dm
+            self.deter_strength = _saved_ds
+
+        # Re-link energy state (energy is still JAX from energy tick)
         if self._energy_state is not None:
             self._energy_state.energy = self.energy
 
-        # PSM update
-        self._update_psm(self.active_mask, food_eaten_np)
-
-        # Dispersal trigger check (day boundary)
+        # --- Day boundary ops (needs NumPy for mutation-heavy FSM) ---
         if is_day_boundary and self._global_tick > 0:
+            # Convert arrays that dispersal/reproduction will mutate
+            self.x = np.array(self.x, copy=True)
+            self.y = np.array(self.y, copy=True)
+            self.heading = np.array(self.heading, copy=True)
+            self.energy = np.array(self.energy, copy=True)
+            self.active_mask = np.array(self.active_mask, copy=True)
+            self.age = np.array(self.age, copy=True)
+            self.with_calf = np.array(self.with_calf, copy=True)
+            self.is_dispersing = np.array(self.is_dispersing, copy=True)
+            self.is_female = np.array(self.is_female, copy=True)
+            self.pregnancy_status = np.array(self.pregnancy_status, copy=True)
+            self.days_since_mating = np.array(self.days_since_mating, copy=True)
+            self.days_since_birth = np.array(self.days_since_birth, copy=True)
+            self.mating_day = np.array(self.mating_day, copy=True)
+            self.dispersal_start_x = np.array(self.dispersal_start_x, copy=True)
+            self.dispersal_start_y = np.array(self.dispersal_start_y, copy=True)
+            self.dispersal_distance_traveled = np.array(
+                self.dispersal_distance_traveled, copy=True
+            )
+            self.dispersal_target_x = np.array(self.dispersal_target_x, copy=True)
+            self.dispersal_target_y = np.array(self.dispersal_target_y, copy=True)
+            self.dispersal_target_distance = np.array(
+                self.dispersal_target_distance, copy=True
+            )
+            self._prev_step_heading = np.array(
+                self._prev_step_heading, copy=True
+            )
+            self._energy_history = np.array(self._energy_history, copy=True)
+
+            # Dispersal trigger check
             self._check_dispersal_trigger(self.active_mask)
 
-        # Disturbance memory (JASMINE)
-        if self._memory_module is not None:
-            self._update_disturbance_memory(self.active_mask)
+            # Pregnancy FSM (called directly, bypassing _handle_reproduction
+            # since we already incremented _day_of_year above)
+            self._update_pregnancy_status(self.active_mask)
 
-        # Aging
-        self._update_aging(self.active_mask)
+            # Convert back to JAX for next tick
+            self.x = jnp.asarray(self.x)
+            self.y = jnp.asarray(self.y)
+            self.heading = jnp.asarray(self.heading)
+            self.energy = jnp.asarray(self.energy)
+            self.active_mask = jnp.asarray(self.active_mask)
+            self.age = jnp.asarray(self.age)
+            self.with_calf = jnp.asarray(self.with_calf)
+            self.is_dispersing = jnp.asarray(self.is_dispersing)
+            self.is_female = jnp.asarray(self.is_female)
+            self.pregnancy_status = jnp.asarray(self.pregnancy_status)
+            self.days_since_mating = jnp.asarray(self.days_since_mating)
+            self.days_since_birth = jnp.asarray(self.days_since_birth)
+            self.mating_day = jnp.asarray(self.mating_day)
+            self.dispersal_start_x = jnp.asarray(self.dispersal_start_x)
+            self.dispersal_start_y = jnp.asarray(self.dispersal_start_y)
+            self.dispersal_distance_traveled = jnp.asarray(
+                self.dispersal_distance_traveled
+            )
+            self.dispersal_target_x = jnp.asarray(self.dispersal_target_x)
+            self.dispersal_target_y = jnp.asarray(self.dispersal_target_y)
+            self.dispersal_target_distance = jnp.asarray(
+                self.dispersal_target_distance
+            )
+            self._prev_step_heading = jnp.asarray(self._prev_step_heading)
+            self._energy_history = jnp.asarray(self._energy_history)
 
-        # Reproduction
-        self._handle_reproduction(self.active_mask)
-
-        # Convert back to JAX for next tick
-        self.x = jnp.asarray(self.x)
-        self.y = jnp.asarray(self.y)
-        self.heading = jnp.asarray(self.heading)
-        self.energy = jnp.asarray(self.energy)
-        self.active_mask = jnp.asarray(self.active_mask)
-        self.age = jnp.asarray(self.age)
-        self.with_calf = jnp.asarray(self.with_calf)
-        self.is_dispersing = jnp.asarray(self.is_dispersing)
-        self.days_declining_energy = jnp.asarray(self.days_declining_energy)
-        self.dispersal_target_x = jnp.asarray(self.dispersal_target_x)
-        self.dispersal_target_y = jnp.asarray(self.dispersal_target_y)
-        self.dispersal_target_distance = jnp.asarray(self.dispersal_target_distance)
-        self.dispersal_distance_traveled = jnp.asarray(
-            self.dispersal_distance_traveled
-        )
-        self.dispersal_start_x = jnp.asarray(self.dispersal_start_x)
-        self.dispersal_start_y = jnp.asarray(self.dispersal_start_y)
-        self._prev_step_heading = jnp.asarray(self._prev_step_heading)
-        self._step_dist = jnp.asarray(self._step_dist)
-        self.deter_strength = jnp.asarray(self.deter_strength)
-        self._was_deterred = jnp.asarray(self._was_deterred)
-        self._energy_history = jnp.asarray(self._energy_history)
-        self._energy_ticks_today = jnp.asarray(self._energy_ticks_today)
-        self._stored_util = jnp.asarray(self._stored_util)
-        self._pos_history_x = jnp.asarray(self._pos_history_x)
-        self._pos_history_y = jnp.asarray(self._pos_history_y)
-        self._mem_ptr = jnp.asarray(self._mem_ptr)
-        self._mem_count = jnp.asarray(self._mem_count)
-        self._cell_xi = jnp.asarray(self._cell_xi)
-        self._cell_yi = jnp.asarray(self._cell_yi)
-        if self._energy_state is not None:
-            self._energy_state.energy = self.energy
+            # Re-link energy state after conversion
+            if self._energy_state is not None:
+                self._energy_state.energy = self.energy
 
     def _get_seasonal_scaling(self, month: int) -> float:
         """Get scalar seasonal scaling factor (no lactation — handled in JAX)."""
@@ -2682,9 +2700,11 @@ class PorpoisePopulation:
         if len(active_idx) == 0:
             return
             
-        # Convert positions to PSM grid coordinates
-        psm_x = (self.x[active_idx] // self.psm_cell_size).astype(np.int32)
-        psm_y = (self.y[active_idx] // self.psm_cell_size).astype(np.int32)
+        # Convert positions to PSM grid coordinates (ensure NumPy for clip out=)
+        x_np = np.asarray(self.x[active_idx])
+        y_np = np.asarray(self.y[active_idx])
+        psm_x = (x_np // self.psm_cell_size).astype(np.int32)
+        psm_y = (y_np // self.psm_cell_size).astype(np.int32)
 
         # Clip to bounds
         np.clip(psm_x, 0, self.psm_cols - 1, out=psm_x)

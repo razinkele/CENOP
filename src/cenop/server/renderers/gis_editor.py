@@ -8,7 +8,7 @@ shiny-deckgl MapWidget in the Landscape tab.
 import logging
 import numpy as np
 from shiny import render, ui, reactive
-from shiny_deckgl import deck_legend_control, scale_widget, fullscreen_widget
+from shiny_deckgl import legend_control, scale_widget, fullscreen_widget
 
 from cenop.ui.tabs.landscape_editor import gis_map
 from cenop.server.map_layers import (
@@ -145,15 +145,8 @@ def register_gis_editor_renderers(input, output, session, state):
             "layer": display_name,
         })
 
-        # Build legend
-        if scheme == "categorical":
-            legend_entries = [{"label": display_name, "color": [31, 119, 180], "shape": "rect"}]
-        else:
-            colors = GIS_COLOR_SCHEMES.get(scheme, GIS_COLOR_SCHEMES["viridis"])
-            legend_entries = [
-                {"label": f"{d_min:.2f}", "color": colors[0], "shape": "rect"},
-                {"label": f"{d_max:.2f}", "color": colors[-1], "shape": "rect"},
-            ]
+        # Build legend targets (layer_id → label)
+        legend_targets = {"gis-bitmap": display_name}
 
         # Push layers + widgets to map
         await gis_map.update(
@@ -167,10 +160,11 @@ def register_gis_editor_renderers(input, output, session, state):
 
         # Legend is a MapLibre control — must use set_controls, not update
         await gis_map.set_controls(session, [
-            deck_legend_control(
-                legend_entries,
+            legend_control(
+                legend_targets,
                 position="bottom-left",
                 title=display_name,
+                show_default=True,
             ),
         ])
 

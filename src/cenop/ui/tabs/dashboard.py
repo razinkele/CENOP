@@ -6,7 +6,7 @@ from shiny import ui
 from shiny_deckgl import (
     MapWidget, CARTO_POSITRON,
     zoom_widget, compass_widget, scale_widget, fullscreen_widget,
-    deck_legend_control,
+    legend_control,
 )
 
 # Legend entries for the layer control (matches deck.gl layer IDs in server)
@@ -72,11 +72,11 @@ sim_map = MapWidget(
     },
     # Only legend control as initial MapLibre control (no default nav — deck.gl widgets handle that)
     controls=[
-        deck_legend_control(
-            LEGEND_ENTRIES,
+        legend_control(
+            {entry["layer_id"]: entry["label"] for entry in LEGEND_ENTRIES},
             position="bottom-right",
             show_checkbox=True,
-            collapsed=False,
+            show_default=True,
             title="Layers",
         ),
     ],

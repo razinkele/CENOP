@@ -173,9 +173,9 @@ def create_sidebar():
                 "input.show_traces",
                 ui.input_slider(
                     "trace_length_days",
-                    "Trace history (days)",
+                    "Trace length",
                     min=1,
-                    max=7,
+                    max=5,
                     value=2,
                     step=1,
                 ),

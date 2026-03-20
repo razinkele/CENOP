@@ -187,16 +187,18 @@ def run_simulation_loop(
             if runner.should_update_map:
                 with trace_lock:
                     traces_on = trace_enabled_value[0]
-                    max_ticks = trace_length_value[0] * 48  # days to ticks
+                    # Limit trail to N map-update points (not sim ticks).
+                    # Each map update adds 1 point; keep short tails to avoid clutter.
+                    max_points = trace_length_value[0] * 10  # ~10 points per day-slider unit
                 if traces_on and porpoise_positions:
                     for row in porpoise_positions:
                         pid = int(row[0])
                         lon, lat = row[1], row[2]
                         if pid not in trail_history:
-                            trail_history[pid] = deque(maxlen=max_ticks)
-                        elif trail_history[pid].maxlen != max_ticks:
+                            trail_history[pid] = deque(maxlen=max_points)
+                        elif trail_history[pid].maxlen != max_points:
                             trail_history[pid] = deque(
-                                trail_history[pid], maxlen=max_ticks
+                                trail_history[pid], maxlen=max_points
                             )
                         trail_history[pid].append((lon, lat))
                     # Remove dead porpoises

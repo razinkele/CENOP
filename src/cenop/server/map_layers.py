@@ -4,7 +4,7 @@ Each function returns a layer dict compatible with MapWidget.update().
 """
 
 import numpy as np
-from shiny_deckgl import icon_layer, scatterplot_layer, bitmap_layer, trips_layer
+from shiny_deckgl import icon_layer, scatterplot_layer, bitmap_layer, path_layer
 
 
 # -- Porpoise arrow icon (base64 SVG) --
@@ -205,18 +205,23 @@ def build_porpoise_layer(positions: list[dict]) -> dict:
 
 
 def build_porpoise_trails_layer(trails: list[dict]) -> dict:
-    """Build animated porpoise trail layer using TripsLayer."""
+    """Build porpoise trace layer using PathLayer.
+
+    Each trail is a dict with 'path' (list of [lon, lat] coords) and
+    'color' ([r, g, b] or [r, g, b, a]).
+    """
     if not trails:
-        return trips_layer("porpoise-trails", [], visible=False)
-    return trips_layer(
+        return path_layer("porpoise-trails", [], visible=False)
+    return path_layer(
         "porpoise-trails",
         trails,
         getPath="@@d.path",
-        getTimestamps="@@d.timestamps",
         getColor="@@d.color",
-        widthMinPixels=2,
-        trailLength=200,
-        currentTime=0,
+        widthMinPixels=1.5,
+        widthMaxPixels=3,
+        opacity=0.6,
+        jointRounded=True,
+        capRounded=True,
         visible=True,
     )
 

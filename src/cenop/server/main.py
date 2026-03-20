@@ -125,7 +125,6 @@ def run_simulation_loop(
     logger.debug("run_simulation_loop STARTED - max_ticks=%s", runner.max_ticks)
     loop_count = 0
     trail_history: dict[int, deque] = {}
-    map_tick = 0
     try:
         while not runner.is_complete and not stop_event.is_set():
             loop_count += 1
@@ -190,7 +189,6 @@ def run_simulation_loop(
                     traces_on = trace_enabled_value[0]
                     max_ticks = trace_length_value[0] * 48  # days to ticks
                 if traces_on and porpoise_positions:
-                    map_tick += 1
                     for row in porpoise_positions:
                         pid = int(row[0])
                         lon, lat = row[1], row[2]
@@ -200,7 +198,7 @@ def run_simulation_loop(
                             trail_history[pid] = deque(
                                 trail_history[pid], maxlen=max_ticks
                             )
-                        trail_history[pid].append((lon, lat, map_tick))
+                        trail_history[pid].append((lon, lat))
                     # Remove dead porpoises
                     alive_ids = {int(row[0]) for row in porpoise_positions}
                     dead_ids = set(trail_history.keys()) - alive_ids
@@ -213,13 +211,11 @@ def run_simulation_loop(
                             trail_data.append({
                                 "pid": pid,
                                 "path": [
-                                    [t[0], t[1], t[2]] for t in trail
+                                    [t[0], t[1]] for t in trail
                                 ],
-                                "timestamps": [t[2] for t in trail],
                             })
                 elif not traces_on:
                     trail_history.clear()
-                    map_tick = 0
 
             update = {
                 "type": "update",
@@ -1794,7 +1790,6 @@ def server(input, output, session):
                     pid = trail.get("pid", -1)
                     colored_trails.append({
                         "path": trail["path"],
-                        "timestamps": trail["timestamps"],
                         "color": pid_to_color.get(
                             pid, [0, 150, 255, 240]
                         ),

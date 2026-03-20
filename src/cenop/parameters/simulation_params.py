@@ -215,6 +215,9 @@ class SimulationParameters:
     world_width: int = 1000            # Grid width (for homogeneous)
     world_height: int = 1000           # Grid height (for homogeneous)
     
+    # === JAX Acceleration ===
+    use_jax: bool = False              # Use JAX JIT when available (falls back to Numba)
+
     # === Model Version ===
     model: int = 4                     # Model version (affects behavior) - DEPONS hardcodes to 4
     

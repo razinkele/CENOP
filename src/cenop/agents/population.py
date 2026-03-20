@@ -2117,29 +2117,6 @@ class PorpoisePopulation:
             soc_dx = np.zeros(self.count, dtype=np.float32)
             soc_dy = np.zeros(self.count, dtype=np.float32)
 
-        # Environment variables at current positions
-        if self.landscape is not None:
-            self._positions[:, 0] = self.x
-            self._positions[:, 1] = self.y
-            np.copyto(
-                self._depths,
-                self.landscape.get_depths_vectorized(
-                    self._positions, xi=self._cell_xi, yi=self._cell_yi
-                ),
-            )
-            np.copyto(
-                self._salinity_vals,
-                self.landscape.get_salinities_vectorized(
-                    self._positions, xi=self._cell_xi, yi=self._cell_yi
-                ),
-            )
-            landscape_name = getattr(self.landscape, 'landscape_name', '')
-            if landscape_name == 'Kattegat':
-                self._salinity_vals[:] = 34.069105813295
-        else:
-            self._depths.fill(30.0)
-            self._salinity_vals.fill(30.0)
-
         # Update reference memory (stores food, computes veTotal and vt) — Python
         self._update_reference_memory(mask)
 
@@ -2236,9 +2213,9 @@ class PorpoisePopulation:
             jnp.asarray(self.dispersal_target_distance),
             jnp.asarray(self.dispersal_distance_traveled),
             jnp.asarray(self._prev_step_heading),
-            jnp.asarray(self._depths),
-            jnp.asarray(self._salinity_vals),
             self._jax_depth_grid,
+            self._jax_salinity_grid,
+            int(self._get_current_month() - 1),
             float(self.params.corr_angle_base),
             float(self.params.corr_angle_bathy),
             float(self.params.corr_angle_salinity),

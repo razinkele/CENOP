@@ -1339,6 +1339,8 @@ class TestJaxTickComposition:
         )
         depth_grid = jnp.full((world_h, world_w), 30.0, dtype=jnp.float32)
 
+        salinity_grid = jnp.full((12, world_h, world_w), 34.0, dtype=jnp.float32)
+
         result = jax_tick_movement(
             x, y, heading, prev_angle, prev_log_mov, mask,
             stored_util, pos_hist_x, pos_hist_y, mem_ptr, mem_count,
@@ -1353,9 +1355,9 @@ class TestJaxTickComposition:
             jnp.zeros(n, dtype=jnp.float32),
             jnp.zeros(n, dtype=jnp.float32),
             jnp.zeros(n, dtype=jnp.float32),
-            jnp.array(rng.uniform(5.0, 50.0, n), dtype=jnp.float64),
-            jnp.array(rng.uniform(10.0, 35.0, n), dtype=jnp.float64),
             depth_grid,
+            salinity_grid,
+            0,
             -0.024, -0.008, 0.93, -14.0,
             0.35, 0.0005, -0.02, 1.73,
             0.0, 4.0, 0.0, 0.15,

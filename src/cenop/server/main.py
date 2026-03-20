@@ -189,7 +189,7 @@ def run_simulation_loop(
                     traces_on = trace_enabled_value[0]
                     # Limit trail to N map-update points (not sim ticks).
                     # Each map update adds 1 point; keep short tails to avoid clutter.
-                    max_points = trace_length_value[0] * 10  # ~10 points per day-slider unit
+                    max_points = trace_length_value[0] * 3  # short tail per agent
                 if traces_on and porpoise_positions:
                     for row in porpoise_positions:
                         pid = int(row[0])

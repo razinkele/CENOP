@@ -323,6 +323,9 @@ class PorpoisePopulation:
         self._cell_xi = np.zeros(count, dtype=np.int32)
         self._cell_yi = np.zeros(count, dtype=np.int32)
 
+        # === Pre-allocated food fraction buffer (R8) ===
+        self._fract_to_eat = np.zeros(count, dtype=np.float32)
+
         # === Social kernel pre-allocated buffers (D2) ===
         self._social_ux = np.zeros(count, dtype=np.float64)
         self._social_uy = np.zeros(count, dtype=np.float64)
@@ -1841,7 +1844,10 @@ class PorpoisePopulation:
             self._apply_food_intake_jasmine(mask)
         else:
             # DEPONS inline path: food + PSM, leave BMR for _apply_bmr_cost
-            fract_to_eat = np.clip((20.0 - self.energy) / 10.0, 0.0, 0.99)
+            np.subtract(np.float32(20.0), self.energy, out=self._fract_to_eat)
+            self._fract_to_eat /= np.float32(10.0)
+            np.clip(self._fract_to_eat, 0.0, 0.99, out=self._fract_to_eat)
+            fract_to_eat = self._fract_to_eat
             if self.landscape is not None and hasattr(self.landscape, 'eat_food'):
                 food_gained = self._eat_food_vectorized(mask, fract_to_eat, active_idx=self._active_idx)
             else:

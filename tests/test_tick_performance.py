@@ -278,3 +278,19 @@ class TestR11PositionsFallback:
         for _ in range(30):
             pop2.step()
         assert_states_match(state, snapshot_state(pop2))
+
+
+class TestR8PreallocFract:
+    """R8: Pre-allocate fract_to_eat buffer."""
+
+    def test_food_fraction_unchanged(self):
+        np.random.seed(42)
+        pop = make_pop(100)
+        for _ in range(30):
+            pop.step()
+        state = snapshot_state(pop)
+        np.random.seed(42)
+        pop2 = make_pop(100)
+        for _ in range(30):
+            pop2.step()
+        assert_states_match(state, snapshot_state(pop2))

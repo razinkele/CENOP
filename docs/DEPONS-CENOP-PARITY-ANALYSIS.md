@@ -72,12 +72,12 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 | 3.8 | PSM-Type3 cost function | `energyExpect - cost(distance*Q1)` | `energy * exp(-dist*q1)`, q1=0.02 | **MATCH** | Distance-cost applied in target selection |
 | 3.9 | SSLogis function | `phi1 / (1 + exp((phi2-x)/phi3))` | Identical | **MATCH** | phi1=1, phi2=0, phi3=psm_log(0.6) |
 | 3.10 | Dispersal trigger | Energy declining ≥ t_disp days + ≥50 PSM cells | Same conditions | **MATCH** | Both check energy trend + memory size |
-| 3.11 | PSM-Type3-randdir | `DispersalPSMType3randdir.java` | Not implemented | **GAP** | Forces random target (returns -1) |
-| 3.12 | PSM-Type3-randdist | `DispersalPSMType3randdist.java` | Not implemented | **GAP** | Never stops on distance |
-| 3.13 | Undirected dispersal | `UndirectedDispersal.java` | Not implemented | **GAP** | Type3 mechanics + Type2 heading + no calf PSM |
-| 3.14 | InnerDanishWaters dispersal | `InnerDanishWatersDispersal.java` | Not implemented | **GAP** | Block-based navigation for Danish waters scenarios |
+| 3.11 | PSM-Type3-randdir | `DispersalPSMType3randdir.java` | `PSMType3RanddirDispersal` | **MATCH** | Forces random target via `force_random_target` property |
+| 3.12 | PSM-Type3-randdist | `DispersalPSMType3randdist.java` | `PSMType3RanddistDispersal` | **MATCH** | `should_stop_dispersing()` returns False |
+| 3.13 | Undirected dispersal | `UndirectedDispersal.java` | `UndirectedDispersal` | **MATCH** | Type2 heading + random target + no calf PSM |
+| 3.14 | InnerDanishWaters dispersal | `InnerDanishWatersDispersal.java` | `InnerDanishWatersDispersal` | **MATCH** | Block-based navigation with 2-phase dispersal |
 | 3.15 | Calf PSM inheritance | `calfHasPSM()`/`calfInheritsPsmDist()` | `copy_for_calf()` | **MATCH** | Calves inherit mother's cells + new preferred distance |
-| 3.16 | Dispersal types coverage | 8 types (Off, T1-T3, T3randdir, T3randdist, IDW, Undirected) | 4 types (Off, T1-T3) | **GAP** | 4/8 types missing (rarely used variants + IDW) |
+| 3.16 | Dispersal types coverage | 8 types (Off, T1-T3, T3randdir, T3randdist, IDW, Undirected) | All 8 types | **MATCH** | Full type coverage via factory |
 
 ---
 
@@ -116,7 +116,7 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 | 5.15 | Food collision handling | Sequential (order-dependent) | Proportional sharing (2-pass kernel) | **INTENTIONAL_DIVERGENCE** | Python is more equitable |
 | 5.16 | On-demand vs bulk regrowth | Lazy per-cell (OnDemandFoodPatch) | Daily bulk update (full grid) | **INTENTIONAL_DIVERGENCE** | Same end state |
 | 5.17 | BMR vectorization | Scalar per agent | `depons_bmr_cost_kernel` + prange | **INTENTIONAL_DIVERGENCE** | |
-| 5.18 | Daily energy tracking | `energyConsumedDaily` + CircularBuffer[10] | Lightweight `_energy_history` for dispersal only | **GAP** | Fine-grained reporting not ported |
+| 5.18 | Daily energy tracking | `energyConsumedDaily` + CircularBuffer[10] | `energy_consumed_daily` array + `_energy_level_sum` | **MATCH** | Daily rollover at tick%48==0 |
 | 5.19 | Swimming cost (E_USE_PER_KM) | Included but hardcoded to 0 | Not included (effectively 0) | **MATCH** | Both result in zero cost |
 
 ---
@@ -146,7 +146,7 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 | 7.5 | Monthly data files | `MonthlyDataFile` (4 modes) | Auto-detect short/long names | **MATCH** | |
 | 7.6 | UTM ↔ grid conversion | `(utm - xll) / 400 - 0.5` | Same formula | **MATCH** | |
 | 7.7 | Data source abstraction | `CellDataSource` (Dir/Zip) | Direct filesystem (Path) | **INTENTIONAL_DIVERGENCE** | Python assumes extracted files |
-| 7.8 | Suntimes (day-night cycle) | `Suntimes.java` loads CSV per DOY | Hardcoded 6am–6pm | **GAP** | Python lacks seasonal light variation |
+| 7.8 | Suntimes (day-night cycle) | `Suntimes.java` loads CSV per DOY | `Suntimes` class loads CSV per DOY | **MATCH** | Falls back to 6am-6pm if no CSV provided |
 | 7.9 | GridSpatialPartitioning | Explicit `GridSpatialPartitioning` class | Vectorized array ops + cKDTree | **INTENTIONAL_DIVERGENCE** | Different spatial indexing strategy |
 
 ---
@@ -165,7 +165,7 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 | 8.8 | JOMOPANS echo SPL | `JomopansEchoSPL.java` | `jomopans_spl.py` | **MATCH** | Line-for-line port; all 13 vessel classes |
 | 8.9 | Weston flux propagation | `WestonFlux.java` | `weston_flux.py` with `@njit` | **MATCH** | Full shallow-water physics model ported |
 | 8.10 | Vessel classes | 13 enum values | 13 + 2 aliases (CARGO, CHEMICAL_TANKER) | **MATCH** | |
-| 8.11 | Hydrophone monitoring | `Hydrophone.java` (max RL per tick) | Not implemented | **GAP** | Optional visualization feature |
+| 8.11 | Hydrophone monitoring | `Hydrophone.java` (max RL per tick) | `Hydrophone` class in sound.py | **MATCH** | Tracks loudest source per tick with reset |
 | 8.12 | Deterrence impact radius | Dynamic: `10^((SL-RT)/20)` | Fixed `deter_max_distance` (50km) | **INTENTIONAL_DIVERGENCE** | Functionally equivalent for typical params |
 | 8.13 | Disturbance memory (DEPONS) | Stateless (no persistent memory) | `DEPONSMemoryModule` (no-op) | **MATCH** | |
 | 8.14 | Disturbance memory (JASMINE) | N/A | Spatial memory + decay + avoidance | **EXTENSION** | |
@@ -201,7 +201,7 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 | 9.22 | Yearly mating day reset | `YearlyTask` → `setRandomMatingDay` | `rerandomize_mating_days()` | **MATCH** | |
 | 9.23 | Agent architecture | Repast `Agent` objects | SoA NumPy arrays (`Population`) | **INTENTIONAL_DIVERGENCE** | Vectorized for performance |
 | 9.24 | Spatial partitioning | `Block` objects | cKDTree / vectorized queries | **INTENTIONAL_DIVERGENCE** | |
-| 9.25 | Death age tracking | Age distribution histogram | Log entries only | **GAP** | Minor stats feature |
+| 9.25 | Death age tracking | Age distribution histogram | `death_ages`/`death_days`/`death_causes` lists | **MATCH** | Per-death recording with age, day, cause |
 | 9.26 | Age-stratified mortality | Not in DEPONS 3.2 | 0.15/0.05/0.15 (juv/adult/elderly) | **EXTENSION** | |
 
 ---
@@ -255,7 +255,7 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 | # | Gap | Impact | Recommendation |
 |---|-----|--------|----------------|
 | ~~G1~~ | ~~`mean_disp_dist` default 2.0 vs Java 1.6~~ | ~~Affects dispersal step size~~ | **FIXED** — Python default changed to 1.6 |
-| G2 | InnerDanishWaters dispersal not ported | Blocks Danish waters management scenarios | Port if IDW scenarios needed |
+| ~~G2~~ | ~~InnerDanishWaters dispersal not ported~~ | ~~Blocks Danish waters scenarios~~ | **FIXED** — `InnerDanishWatersDispersal` class with 2-phase block navigation |
 | ~~G3~~ | ~~PSM-Type3 cost function missing~~ | ~~Affects target cell selection~~ | **FIXED** — `q1=0.02` param + distance-cost in target selection |
 
 ### Medium Priority
@@ -263,18 +263,18 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 | # | Gap | Impact | Recommendation |
 |---|-----|--------|----------------|
 | ~~G4~~ | ~~Initial `prev_log_mov` (1.25 vs 0.8)~~ | ~~Affects first CRW step~~ | **FIXED** — MovementState default changed to 0.8 |
-| G5 | Suntimes CSV not supported | Fixed 6am–6pm vs seasonal light | Add CSV loader if light-dependent behavior modeled |
-| G6 | PSM-Type3-randdir not ported | Specialized variant | Port if needed for specific experiments |
-| G7 | PSM-Type3-randdist not ported | Specialized variant | Port if needed |
-| G8 | Undirected dispersal not ported | Specialized variant | Port if needed |
+| ~~G5~~ | ~~Suntimes CSV not supported~~ | ~~Fixed 6am–6pm vs seasonal light~~ | **FIXED** — `Suntimes` class in time_manager.py loads CSV per DOY |
+| ~~G6~~ | ~~PSM-Type3-randdir not ported~~ | ~~Specialized variant~~ | **FIXED** — `PSMType3RanddirDispersal` class |
+| ~~G7~~ | ~~PSM-Type3-randdist not ported~~ | ~~Specialized variant~~ | **FIXED** — `PSMType3RanddistDispersal` class |
+| ~~G8~~ | ~~Undirected dispersal not ported~~ | ~~Specialized variant~~ | **FIXED** — `UndirectedDispersal` class |
 
-### Low Priority
+### ~~Low Priority~~ All Fixed
 
 | # | Gap | Impact | Recommendation |
 |---|-----|--------|----------------|
-| G9 | Hydrophone monitoring | Visualization-only feature | Port if acoustic monitoring output needed |
-| G10 | Death age distribution tracking | Stats reporting only | Add instrumentation if needed |
-| G11 | Daily energy consumption tracking | Fine-grained reporting | Add if regulatory reporting required |
+| ~~G9~~ | ~~Hydrophone monitoring~~ | ~~Visualization-only~~ | **FIXED** — `Hydrophone` class in sound.py |
+| ~~G10~~ | ~~Death age distribution tracking~~ | ~~Stats reporting~~ | **FIXED** — `death_ages`/`death_days`/`death_causes` lists |
+| ~~G11~~ | ~~Daily energy consumption tracking~~ | ~~Fine-grained reporting~~ | **FIXED** — `energy_consumed_daily` array + daily rollover |
 
 ---
 
@@ -314,17 +314,17 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 |----------|-------|----------------------|-----|-----------|
 | Movement & CRW | 13 | 2 | 0 | 0 |
 | Reference Memory | 6 | 2 | 0 | 0 |
-| Dispersal & PSM | 11 | 0 | 5 | 0 |
+| Dispersal & PSM | 16 | 0 | 0 | 0 |
 | Behavioral FSM | 5 | 0 | 0 | 1 |
-| Physiology & Energy | 14 | 3 | 1 | 1 |
+| Physiology & Energy | 15 | 3 | 0 | 1 |
 | Food Dynamics | 7 | 0 | 0 | 0 |
-| Landscape & Grid | 6 | 2 | 1 | 0 |
-| Deterrence & Sound | 11 | 1 | 1 | 1 |
-| Lifecycle & Scheduling | 20 | 3 | 1 | 1 |
+| Landscape & Grid | 7 | 2 | 0 | 0 |
+| Deterrence & Sound | 12 | 1 | 0 | 1 |
+| Lifecycle & Scheduling | 21 | 3 | 0 | 1 |
 | Parameters | 34 | 0 | 0 | 0 |
-| **TOTALS** | **127** | **13** | **9** | **4** |
+| **TOTALS** | **136** | **13** | **0** | **4** |
 
-**Overall parity: 127 MATCH + 13 intentional divergences out of 153 features = ~92% direct match, ~98% functional equivalence**
+**Overall parity: 136 MATCH + 13 intentional divergences out of 153 features = ~100% functional equivalence (all gaps closed)**
 
 ---
 

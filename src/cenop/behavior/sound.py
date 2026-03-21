@@ -436,3 +436,83 @@ def combine_rls(rl_arrays: list | np.ndarray) -> np.ndarray:
         return arr.copy()
     # If shape (n_sources, N) take max across sources
     return np.max(arr, axis=0)
+
+
+@dataclass
+class HydrophoneRecord:
+    """Record of loudest sound received in a tick."""
+    ship_name: str = ""
+    ship_utm_x: float = -1.0
+    ship_utm_y: float = -1.0
+    received_level: float = 0.0
+    source_level: float = 0.0
+
+
+class Hydrophone:
+    """
+    Passive acoustic monitoring station.
+
+    Tracks the loudest sound received per tick from ships/turbines.
+    Translates from: Hydrophone.java
+
+    Each tick, ships report their sound level to each hydrophone.
+    The hydrophone keeps only the loudest source. At the end of the tick
+    the record can be queried and then reset for the next tick.
+
+    Args:
+        name: Hydrophone identifier
+        x: Grid x position
+        y: Grid y position
+        utm_x: UTM x coordinate (for reporting)
+        utm_y: UTM y coordinate (for reporting)
+    """
+
+    def __init__(
+        self, name: str, x: float, y: float,
+        utm_x: float = 0.0, utm_y: float = 0.0,
+    ):
+        self.name = name
+        self.x = x
+        self.y = y
+        self.utm_x = utm_x
+        self.utm_y = utm_y
+        self._record = HydrophoneRecord()
+
+    def receive_sound_level(
+        self,
+        ship_name: str,
+        ship_utm_x: float,
+        ship_utm_y: float,
+        source_level: float,
+        received_level: float,
+    ) -> None:
+        """
+        Report a sound level to this hydrophone.
+
+        Only keeps the record if it is louder than the current max.
+        """
+        if received_level > self._record.received_level:
+            self._record = HydrophoneRecord(
+                ship_name=ship_name,
+                ship_utm_x=ship_utm_x,
+                ship_utm_y=ship_utm_y,
+                received_level=received_level,
+                source_level=source_level,
+            )
+
+    def reset(self) -> None:
+        """Reset sound level record for next tick."""
+        self._record = HydrophoneRecord()
+
+    @property
+    def record(self) -> HydrophoneRecord:
+        """Current tick's loudest sound record."""
+        return self._record
+
+    @property
+    def received_level(self) -> float:
+        return self._record.received_level
+
+    @property
+    def source_level(self) -> float:
+        return self._record.source_level

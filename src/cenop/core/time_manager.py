@@ -16,8 +16,11 @@ Translates from: JASMINE-MB TimeManager concept + DEPONS tick system
 
 from __future__ import annotations
 
+import csv
+import io
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Dict, List, Callable, Optional, Any
 from enum import Enum, auto
 
@@ -83,6 +86,72 @@ class TimeState:
         return self.tick / 48.0
 
 
+class Suntimes:
+    """
+    Seasonal sunrise/sunset lookup from CSV.
+
+    Translates from: Suntimes.java
+
+    CSV format: "dOY","sunrise","sunset"
+    - dOY: Day of year (1-indexed in file, stored 0-indexed internally)
+    - sunrise/sunset: Tick of day (0-47) when sun rises/sets
+
+    When not loaded, falls back to fixed 6am-6pm (tick 12 to tick 36).
+    """
+
+    def __init__(self, csv_path: Optional[str] = None):
+        # Default: fixed 6am (tick 12) to 6pm (tick 36)
+        self._sunrise = [12] * 360
+        self._sunset = [36] * 360
+        self._loaded = False
+
+        if csv_path is not None:
+            self.load(csv_path)
+
+    def load(self, csv_path: str) -> None:
+        """Load suntimes from CSV file."""
+        path = Path(csv_path)
+        if not path.exists():
+            return
+
+        with open(path, "r") as f:
+            reader = csv.reader(f)
+            header = next(reader)
+            # Validate header
+            expected = ['"dOY"', '"sunrise"', '"sunset"']
+            cleaned = [h.strip().strip('"') for h in header]
+            if cleaned != ["dOY", "sunrise", "sunset"]:
+                raise ValueError(f"Unexpected suntimes header: {header}")
+
+            for row in reader:
+                if len(row) != 3:
+                    continue
+                day = int(row[0]) - 1  # Convert 1-indexed to 0-indexed
+                if 0 <= day < 360:
+                    self._sunrise[day] = int(row[1])
+                    self._sunset[day] = int(row[2])
+
+        self._loaded = True
+
+    @property
+    def is_loaded(self) -> bool:
+        return self._loaded
+
+    def is_daytime(self, tick: int) -> bool:
+        """Check if the given tick is during daytime."""
+        tick_of_day = tick % 48
+        day_of_year = (tick // 48) % 360
+        return self._sunrise[day_of_year] <= tick_of_day < self._sunset[day_of_year]
+
+    def get_sunrise(self, day_of_year: int) -> int:
+        """Get sunrise tick for a given day of year (0-indexed)."""
+        return self._sunrise[day_of_year % 360]
+
+    def get_sunset(self, day_of_year: int) -> int:
+        """Get sunset tick for a given day of year (0-indexed)."""
+        return self._sunset[day_of_year % 360]
+
+
 class TimeManager:
     """
     Unified time manager for CENOP-JASMINE hybrid simulation.
@@ -141,7 +210,8 @@ class TimeManager:
         dt_seconds: int = 1800,
         base_seed: int = 42,
         sim_years: int = 1,
-        start_datetime: Optional[datetime] = None
+        start_datetime: Optional[datetime] = None,
+        suntimes_path: Optional[str] = None,
     ):
         """
         Initialize time manager.
@@ -152,11 +222,13 @@ class TimeManager:
             base_seed: Base random seed for reproducibility
             sim_years: Total simulation duration in years
             start_datetime: Optional real-world start time for datetime calculations
+            suntimes_path: Optional path to suntimes.csv for seasonal light cycles
         """
         self._mode = mode
         self._base_seed = base_seed
         self._sim_years = sim_years
         self._start_datetime = start_datetime or datetime(2020, 1, 1)
+        self._suntimes = Suntimes(suntimes_path)
 
         # In DEPONS mode, force fixed timestep for regulatory compliance
         if mode == TimeMode.DEPONS:
@@ -227,8 +299,15 @@ class TimeManager:
 
     @property
     def is_daytime(self) -> bool:
-        """True if between 6:00-18:00."""
+        """True if daytime (uses suntimes CSV if loaded, else 6:00-18:00)."""
+        if self._suntimes.is_loaded:
+            return self._suntimes.is_daytime(self._state.tick)
         return self._state.is_daytime
+
+    @property
+    def suntimes(self) -> Suntimes:
+        """Access suntimes for sunrise/sunset queries."""
+        return self._suntimes
 
     @property
     def quarter(self) -> int:

@@ -146,6 +146,16 @@ class PorpoisePopulation:
         # Per-step energy metrics (exposed for dashboard)
         self.avg_food_gained = 0.0   # Average food gained per active agent (last step)
         self.avg_energy_cost = 0.0   # Average energy cost per active agent (last step)
+
+        # G10: Death age distribution (DEPONS parity — Globals.getListOfDeadAge/Day)
+        self.death_ages: list = []       # Ages (int years) of dead agents
+        self.death_days: list = []       # Simulation day when each death occurred
+        self.death_causes: list = []     # Cause string per death
+
+        # G11: Daily energy consumption tracking (DEPONS parity — energyConsumedDaily)
+        self._energy_consumed_today = np.zeros(count, dtype=np.float32)
+        self.energy_consumed_daily = np.zeros(count, dtype=np.float32)  # Yesterday's total
+        self._energy_level_sum = np.zeros(count, dtype=np.float32)  # Sum for daily average
         
         # Dispersal state
         self.is_dispersing = np.zeros(count, dtype=bool)
@@ -1834,6 +1844,16 @@ class PorpoisePopulation:
                 self.avg_energy_cost = float(np.mean(total_cost[mask]))
             else:
                 self.avg_energy_cost = 0.0
+
+            # G11: Track daily energy consumption (DEPONS: energyConsumedDailyTemp)
+            self._energy_consumed_today[mask] += total_cost[mask]
+            self._energy_level_sum[mask] += self.energy[mask]
+            if self._global_tick % 48 == 0:
+                # Roll daily totals (Java: performDailyStep — energyConsumedDaily)
+                np.copyto(self.energy_consumed_daily, self._energy_consumed_today)
+                self._energy_consumed_today[:] = 0
+                self._energy_level_sum[:] = 0
+
             # PSM, energy history, and dispersal
             self._update_psm(mask, food_gained)
             self._update_energy_history(mask)
@@ -1900,6 +1920,20 @@ class PorpoisePopulation:
             starved_count = int(np.sum(starved))
             old_age_count = int(np.sum(old_age))
             bycatch_count = int(np.sum(bycatch))
+
+            # G10: Record death age distribution (DEPONS: Globals.getListOfDeadAge/Day)
+            sim_day = self._global_tick // 48
+            dead_indices = np.where(all_deaths)[0]
+            for idx in dead_indices:
+                self.death_ages.append(int(self.age[idx]))
+                self.death_days.append(sim_day)
+                if starved[idx]:
+                    self.death_causes.append("starvation")
+                elif old_age[idx]:
+                    self.death_causes.append("old_age")
+                else:
+                    self.death_causes.append("bycatch")
+
             self.active_mask[all_deaths] = False
             if self._debug_instrumentation or death_count > 0:
                 active_after = int(np.sum(self.active_mask))

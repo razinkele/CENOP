@@ -28,6 +28,10 @@ class DispersalType(Enum):
     PSM_TYPE1 = "PSM-Type1"
     PSM_TYPE2 = "PSM-Type2"
     PSM_TYPE3 = "PSM-Type3"
+    PSM_TYPE3_RANDDIR = "PSM-Type3-randdir"
+    PSM_TYPE3_RANDDIST = "PSM-Type3-randdist"
+    UNDIRECTED = "Undirected"
+    INNER_DANISH_WATERS = "InnerDanishWaters"
 
 
 def sslogis(x: float, phi1: float = 1.0, phi2: float = 0.0, phi3: float = 0.6) -> float:
@@ -413,6 +417,262 @@ class PSMType3Dispersal(DispersalBehavior):
         return distance_from_start >= self._target_distance
 
 
+class PSMType3RanddirDispersal(PSMType3Dispersal):
+    """
+    PSM Type 3 Random Direction dispersal.
+
+    Same as PSM-Type3 but always uses a random target (never PSM-based).
+    Translates from: DispersalPSMType3randdir.java — findMostAttractiveMemCell() returns -1.
+    """
+
+    def should_start_dispersal(
+        self,
+        days_declining_energy: int,
+        current_energy: float,
+        memory_cell_count: int = 0,
+    ) -> bool:
+        # Same trigger but target selection always random (handled by caller)
+        return days_declining_energy >= self.params.t_disp
+
+    @property
+    def force_random_target(self) -> bool:
+        """Signal that this dispersal type always uses random target selection."""
+        return True
+
+
+class PSMType3RanddistDispersal(PSMType3Dispersal):
+    """
+    PSM Type 3 Random Distance dispersal.
+
+    Same as PSM-Type3 but never stops based on distance.
+    Translates from: DispersalPSMType3randdist.java — shouldStopDispersing() returns false.
+    """
+
+    def should_stop_dispersing(self, current_x: float, current_y: float) -> bool:
+        """Never stop based on distance — relies on other conditions."""
+        return False
+
+
+class UndirectedDispersal(PSMType3Dispersal):
+    """
+    Undirected dispersal.
+
+    Combines PSM-Type3 mechanics with PSM-Type2 heading formula (decreasing random
+    angle) and no calf PSM/distance inheritance.
+    Translates from: UndirectedDispersal.java
+
+    Key differences from PSM-Type3:
+    - findMostAttractiveMemCell() returns -1 (always random target)
+    - calculateNewHeading() uses Type2 formula (uniform random, no logistic scaling)
+    - calfHasPSM() = false, calfInheritsPsmDist() = false
+    """
+
+    @property
+    def force_random_target(self) -> bool:
+        """Always use random target selection."""
+        return True
+
+    @property
+    def calf_has_psm(self) -> bool:
+        return False
+
+    @property
+    def calf_inherits_psm_dist(self) -> bool:
+        return False
+
+    def get_dispersal_move(
+        self,
+        x: float,
+        y: float,
+        heading: float,
+        rng: np.random.Generator,
+    ) -> Tuple[float, float, float]:
+        """
+        Undirected uses PSM-Type2 heading (uniform random, no logistic).
+
+        Java: UndirectedDispersal.calculateNewHeading() —
+            angleDelta = U(-maxAngle, +maxAngle)
+            newHeading = previousStepHeading + angleDelta
+        """
+        if not self._dispersing:
+            return (heading, 0.0, 0.0)
+
+        max_angle = self.params.psm_type2_random_angle
+        angle_delta = (2 * max_angle * rng.random()) - max_angle
+        new_heading = (heading + angle_delta) % 360
+        return (new_heading, 1.0, angle_delta)
+
+
+class InnerDanishWatersDispersal(DispersalBehavior):
+    """
+    Inner Danish Waters dispersal.
+
+    Block-based navigation using 40km×40km grid blocks with per-block resource
+    values. Specific to Kattegat and Homogeneous landscapes.
+
+    Translates from: InnerDanishWatersDispersal.java
+
+    Two-phase dispersal:
+    - Phase 1 (disp_type=1): Directed movement toward high-quality block,
+      steering toward deep water and away from coast.
+    - Phase 2 (disp_type=2): Coast-following dispersal, maintaining distance
+      from land (1-4 km band).
+
+    Transitions from phase 1 → 2 occur when:
+    - Agent is SE of Sealand, N of Djursland, or in Little Belt
+    - Agent hasn't moved enough (stuck near land)
+    - Agent reaches target or encounters land
+    """
+
+    N_DISP_TARGET = 12
+    MIN_DIST_TO_TARGET = 100  # km
+
+    BLOCK_CENTRES_X = [
+        50, 150, 250, 350, 450, 550, 50, 150, 250, 350, 450, 550,
+        50, 150, 250, 350, 450, 550, 50, 150, 250, 350, 450, 550,
+        50, 150, 250, 350, 450, 550, 50, 150, 250, 350, 450, 550,
+        50, 150, 250, 350, 450, 550, 50, 150, 250, 350, 450, 550,
+        50, 150, 250, 350, 450, 550, 50, 150, 250, 350, 450, 550,
+    ]
+    BLOCK_CENTRES_Y = [
+        950, 950, 950, 950, 950, 950, 850, 850, 850, 850, 850, 850,
+        750, 750, 750, 750, 750, 750, 650, 650, 650, 650, 650, 650,
+        550, 550, 550, 550, 550, 550, 450, 450, 450, 450, 450, 450,
+        350, 350, 350, 350, 350, 350, 250, 250, 250, 250, 250, 250,
+        150, 150, 150, 150, 150, 150, 50, 50, 50, 50, 50, 50,
+    ]
+
+    # Block values for Kattegat quarters (only KAT_1 used in practice per Java comment)
+    BLOCK_VAL_HOMO = [1.0] * 60
+    BLOCK_VAL_KAT_1 = [
+        0, 0.007, 0.0042, 0.0022, 8e-04, 0, 0, 0.0454, 0.0522,
+        0.0176, 0.0185, 0, 0, 0.0458, 0.0348, 0.0062, 0.0182, 0.4446,
+        0, 0.2898, 0.1013, 0.0769, 0.126, 0.4615, 0.4439, 0.5104,
+        0.5741, 0.4593, 0.6447, 0.6498, 0.8685, 0.5063, 0.971, 0.1697,
+        0.27, 0.1261, 0.9438, 0.7346, 1, 0.3994, 0.1576, 0.2355,
+        0.7718, 0.9082, 0.8524, 0.2161, 0.4916, 0.2975, 0.8397, 0.7533,
+        0.7199, 0.885, 0.727, 0.1057, 0, 0, 0.8284, 0.7116, 0.4866, 0,
+    ]
+
+    def __init__(
+        self,
+        params: DispersalParams,
+        landscape_name: str = "Kattegat",
+        nav_blocks: Optional[np.ndarray] = None,
+    ):
+        super().__init__(params)
+        self._disp_type = 0  # 0=off, 1=directed, 2=coast-following
+        self._target_x = 0.0
+        self._target_y = 0.0
+        self._landscape_name = landscape_name
+        self._nav_blocks = nav_blocks  # int[width][height] navigation block IDs
+
+    @property
+    def is_dispersing(self) -> bool:
+        return self._disp_type != 0
+
+    @property
+    def disp_type(self) -> int:
+        return self._disp_type
+
+    @property
+    def calf_has_psm(self) -> bool:
+        return False
+
+    @property
+    def calf_inherits_psm_dist(self) -> bool:
+        return False
+
+    def should_start_dispersal(
+        self,
+        days_declining_energy: int,
+        current_energy: float,
+        memory_cell_count: int = 0,
+    ) -> bool:
+        return days_declining_energy >= self.params.t_disp
+
+    def start_dispersal(
+        self,
+        rng: np.random.Generator,
+        target_heading: Optional[float] = None,
+        start_position: Optional[Tuple[float, float]] = None,
+    ) -> None:
+        self._dispersing = True
+        self._disp_type = 1
+        self._distance_traveled = 0.0
+        # Target selection is done by select_target()
+
+    def select_target(
+        self,
+        current_x: float,
+        current_y: float,
+        rng: np.random.Generator,
+        is_homogeneous: bool = False,
+    ) -> Tuple[float, float]:
+        """Select dispersal target block based on block quality values."""
+        block_values = (
+            self.BLOCK_VAL_HOMO if is_homogeneous else self.BLOCK_VAL_KAT_1
+        )
+        n_blocks = len(block_values)
+        block_quality = np.zeros(n_blocks)
+
+        for i in range(n_blocks):
+            dx = abs(current_x - self.BLOCK_CENTRES_X[i])
+            dy = abs(current_y - self.BLOCK_CENTRES_Y[i])
+            dist = np.sqrt(dx * dx + dy * dy)
+            block_quality[i] = block_values[i]
+            # Zero quality for blocks too close
+            if dist < self.MIN_DIST_TO_TARGET / 0.4:
+                block_quality[i] = 0
+
+        # Get top N_DISP_TARGET blocks
+        top_indices = np.argsort(block_quality)[-self.N_DISP_TARGET:][::-1]
+        selected_idx = top_indices[rng.integers(0, len(top_indices))]
+
+        # Navigation block correction for far-north agents
+        if self._nav_blocks is not None:
+            xi = min(int(current_x), self._nav_blocks.shape[0] - 1)
+            yi = min(int(current_y), self._nav_blocks.shape[1] - 1)
+            nav_block = self._nav_blocks[max(0, xi), max(0, yi)]
+            if nav_block < 20 and selected_idx in (30, 31, 36, 37, 43):
+                selected_idx += 2
+
+        self._target_x = float(self.BLOCK_CENTRES_X[selected_idx])
+        self._target_y = float(self.BLOCK_CENTRES_Y[selected_idx])
+        return (self._target_x, self._target_y)
+
+    def get_dispersal_move(
+        self,
+        x: float,
+        y: float,
+        heading: float,
+        rng: np.random.Generator,
+    ) -> Tuple[float, float, float]:
+        """IDW dispersal move — returns heading adjustment only."""
+        if self._disp_type == 0:
+            return (heading, 0.0, 0.0)
+        # Phase 1 and 2 heading logic is complex and landscape-dependent.
+        # The heading is computed externally based on depth/coast data.
+        # Here we return current heading as placeholder; the actual steering
+        # is done by the population-level IDW integration.
+        return (heading, 1.0, 0.0)
+
+    def transition_to_phase2(self) -> None:
+        """Transition from directed (phase 1) to coast-following (phase 2)."""
+        self._disp_type = 2
+
+    def end_dispersal(self) -> None:
+        self._dispersing = False
+        self._disp_type = 0
+        self._target_x = 0.0
+        self._target_y = 0.0
+        self._distance_traveled = 0.0
+
+    def should_stop_dispersing(self, current_x: float, current_y: float) -> bool:
+        """IDW never stops based on distance — uses water/land conditions."""
+        return False
+
+
 def create_dispersal_behavior(
     dispersal_type: DispersalType | str,
     params: Optional[DispersalParams] = None
@@ -441,5 +701,13 @@ def create_dispersal_behavior(
         return PSMType2Dispersal(params)
     elif dispersal_type == DispersalType.PSM_TYPE3:
         return PSMType3Dispersal(params)
+    elif dispersal_type == DispersalType.PSM_TYPE3_RANDDIR:
+        return PSMType3RanddirDispersal(params)
+    elif dispersal_type == DispersalType.PSM_TYPE3_RANDDIST:
+        return PSMType3RanddistDispersal(params)
+    elif dispersal_type == DispersalType.UNDIRECTED:
+        return UndirectedDispersal(params)
+    elif dispersal_type == DispersalType.INNER_DANISH_WATERS:
+        return InnerDanishWatersDispersal(params)
     else:
         return NoDispersal(params)

@@ -70,3 +70,38 @@ def assert_states_match(s1, s2, atol=1e-5):
         np.testing.assert_allclose(
             s1[key], s2[key], atol=atol, err_msg=f"Mismatch in {key}"
         )
+
+
+def make_pop_no_comm(n=500, seed=42):
+    """Create a population with communication_enabled=False for O1 tests."""
+    np.random.seed(seed)
+    params = SimulationParameters(
+        porpoise_count=n, world_width=200, world_height=200, communication_enabled=False
+    )
+    land = make_landscape()
+    pop = PorpoisePopulation(n, params, landscape=land)
+    pop._skip_land_avoidance = True
+    return pop
+
+
+class TestO1SocialBypass:
+    """O1: Verify social bypass in DEPONS mode doesn't change output."""
+
+    def test_depons_mode_skips_social_entirely(self):
+        """When communication_enabled=False, social method should not touch arrays."""
+        pop = make_pop_no_comm(100)
+        assert not pop._comm_enabled
+        for _ in range(10):
+            pop.step()
+        np.testing.assert_array_equal(pop._social_out_dx, 0.0)
+        np.testing.assert_array_equal(pop._social_out_dy, 0.0)
+
+    def test_social_arrays_remain_zero_when_disabled(self):
+        """Social arrays initialized to zero and never written when comm disabled."""
+        pop = make_pop_no_comm(50)
+        np.testing.assert_array_equal(pop._social_out_dx, 0.0)
+        np.testing.assert_array_equal(pop._social_out_dy, 0.0)
+        for _ in range(10):
+            pop.step()
+        np.testing.assert_array_equal(pop._social_out_dx, 0.0)
+        np.testing.assert_array_equal(pop._social_out_dy, 0.0)

@@ -462,13 +462,13 @@ class PorpoisePopulation:
             SciPy is available, otherwise falls back to the previous binning approach.
             Detection is still probabilistic and masked by ambient noise (SNR).
             """
+            if not self._comm_enabled:
+                return self._social_out_dx, self._social_out_dy
+
             self._social_out_dx.fill(0.0)
             self._social_out_dy.fill(0.0)
             social_dx = self._social_out_dx
             social_dy = self._social_out_dy
-
-            if not self._comm_enabled:
-                return social_dx, social_dy
 
             # Use cached communication parameters
             comm_cells = self._comm_cells
@@ -1004,7 +1004,7 @@ class PorpoisePopulation:
             self.deter_strength[mask] = 0.0
 
         # Social communication & cohesion
-        if getattr(self.params, 'communication_enabled', False):
+        if self._comm_enabled:
             soc_dx, soc_dy = self._compute_social_vectors(mask, ambient_rl)
             total_dx[mask] += soc_dx[mask]
             total_dy[mask] += soc_dy[mask]
@@ -1167,7 +1167,7 @@ class PorpoisePopulation:
             self.deter_strength[mask] = 0.0
 
         # Social communication & cohesion (same as DEPONS path)
-        if getattr(self.params, 'communication_enabled', False):
+        if self._comm_enabled:
             soc_dx, soc_dy = self._compute_social_vectors(mask, ambient_rl)
             self._dx[mask] += soc_dx[mask]
             self._dy[mask] += soc_dy[mask]
@@ -2140,7 +2140,7 @@ class PorpoisePopulation:
             self.deter_strength[mask] = 0.0
 
         # Social vectors (cKDTree — stays in Python)
-        if getattr(self.params, 'communication_enabled', False):
+        if self._comm_enabled:
             soc_dx, soc_dy = self._compute_social_vectors(mask, ambient_rl)
         else:
             soc_dx = np.zeros(self.count, dtype=np.float32)

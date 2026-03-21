@@ -136,6 +136,15 @@ class PorpoisePopulation:
         self._vt_x = np.zeros(count, dtype=np.float32)  # Attraction vector x
         self._vt_y = np.zeros(count, dtype=np.float32)  # Attraction vector y
 
+        # Pre-compute float64 decay tables (avoid per-tick astype in RefMem kernels)
+        from cenop.behavior.ref_mem import get_work_mem_strength_table, get_ref_mem_strength_table
+        self._work_mem_table_f64 = get_work_mem_strength_table(
+            self.params.r_s, _REF_MEM_SIZE
+        ).astype(np.float64)
+        self._ref_mem_table_f64 = get_ref_mem_strength_table(
+            self.params.r_r, _REF_MEM_SIZE
+        ).astype(np.float64)
+
         # === PSM and Dispersal State (Phase 2) ===
         # Energy history for dispersal trigger (5 days = 5*48 ticks)
         self._energy_history = np.zeros((count, 10), dtype=np.float32)  # Last 10 daily averages (need 8 for energy-based stop)
@@ -1954,7 +1963,6 @@ class PorpoisePopulation:
         Java ref: FastRefMemTurn.java:53-64 (store), Porpoise.java:688-705 (veTotal)
         """
         from cenop.behavior.ref_mem import (
-            get_ref_mem_strength_table, get_work_mem_strength_table,
             compute_ve_total, compute_attraction_vector,
         )
 
@@ -1971,14 +1979,14 @@ class PorpoisePopulation:
         # (Porpoise.java:264-277 — refMemTurn + getExpFoodVal before posList.add)
 
         # 1. Compute veTotal FIRST (uses existing buffer, before new entry)
-        work_table = get_work_mem_strength_table(self.params.r_s, mem_size)
+        work_table = self._work_mem_table_f64
         self._ve_total = compute_ve_total(
             self._stored_util, self._mem_ptr, self._mem_count, work_table, mask,
             workspace=self._ref_mem_workspace,
         )
 
         # 2. Compute attraction vector vt FIRST (uses existing buffer)
-        ref_table = get_ref_mem_strength_table(self.params.r_r, mem_size)
+        ref_table = self._ref_mem_table_f64
         world_w = self.landscape.width if self.landscape else 0
         world_h = self.landscape.height if self.landscape else 0
         new_vt_x, new_vt_y = compute_attraction_vector(
@@ -2117,7 +2125,6 @@ class PorpoisePopulation:
         """
         import jax
         import jax.numpy as jnp
-        from cenop.behavior.ref_mem import get_work_mem_strength_table
 
         mask = self.active_mask
         active_before = int(np.sum(mask))
@@ -2203,7 +2210,7 @@ class PorpoisePopulation:
 
         # Ref mem tables
         mem_size = self._stored_util.shape[1]
-        work_table = get_work_mem_strength_table(self.params.r_s, mem_size)
+        work_table = self._work_mem_table_f64
 
         # Split RNG key
         self._jax_key, movement_key, energy_key = jax.random.split(

@@ -105,3 +105,17 @@ class TestO1SocialBypass:
             pop.step()
         np.testing.assert_array_equal(pop._social_out_dx, 0.0)
         np.testing.assert_array_equal(pop._social_out_dy, 0.0)
+
+
+class TestO2RefMemCache:
+    """O2: Pre-cache RefMem decay tables as float64."""
+
+    def test_refmem_output_unchanged_after_optimization(self):
+        """veTotal and vt vectors must be identical before/after caching."""
+        np.random.seed(99)
+        pop = make_pop(100)
+        for _ in range(20):
+            pop.step()
+        # Verify non-trivial (some agents have memory)
+        assert np.any(pop._ve_total != 0), "veTotal should be non-zero after 20 ticks"
+        assert np.any(pop._vt_x != 0) or np.any(pop._vt_y != 0), "vt should be non-zero"

@@ -1887,14 +1887,6 @@ class PorpoisePopulation:
                 self._energy_consumed_today[:] = 0
                 self._energy_level_sum[:] = 0
 
-            # PSM, energy history, and dispersal
-            self._update_psm(mask, food_gained)
-            self._update_energy_history(mask)
-            self._update_dispersal(mask)
-            # Clamp energy
-            np.clip(self.energy, 0, 20.0, out=self.energy)
-            self._pending_food_available = None
-
     def _check_mortality(self, mask: np.ndarray, active_before: int) -> None:
         """
         Check and apply mortality (DEPONS Pattern).
@@ -2546,6 +2538,15 @@ class PorpoisePopulation:
 
         # 4c. BMR cost — use updated active_mask so dead agents are excluded
         self._apply_bmr_cost(self.active_mask)
+
+        # 4d. Post-BMR updates (DEPONS path — extracted from _apply_bmr_cost)
+        if self._energy_module is None:
+            food_gained = getattr(self, '_pending_food_available', None)
+            self._update_psm(self.active_mask, food_gained)
+            self._update_energy_history(self.active_mask)
+            self._update_dispersal(self.active_mask)
+            np.clip(self.energy, 0, 20.0, out=self.energy)
+            self._pending_food_available = None
 
         # 4.5 Disturbance memory update (JASMINE)
         if self._memory_module is not None:

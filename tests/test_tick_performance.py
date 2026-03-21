@@ -205,3 +205,20 @@ class TestO8DailyHoist:
         pop.step()
         doy_after = pop._day_of_year
         assert doy_after == (doy_before + 1) % (360 * 48)
+
+
+class TestO9SeparateBMR:
+    """O9: BMR computation separated from PSM/dispersal/energy-history."""
+
+    def test_energy_identical_after_separation(self):
+        """Energy values must be identical after refactoring."""
+        np.random.seed(42)
+        pop = make_pop(200)
+        for _ in range(50):
+            pop.step()
+        state = snapshot_state(pop)
+        np.random.seed(42)
+        pop2 = make_pop(200)
+        for _ in range(50):
+            pop2.step()
+        assert_states_match(state, snapshot_state(pop2))

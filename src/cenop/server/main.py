@@ -726,7 +726,7 @@ def server(input, output, session):
                     "Details",
                     type="button",
                     class_="btn btn-sm btn-outline-secondary",
-                    onclick=f"event.stopPropagation(); Shiny.setInputValue('detail_landscape','{name}', {{priority: 'event'}});"
+                    **{"data-landscape": name, "onclick": "event.stopPropagation(); Shiny.setInputValue('detail_landscape', this.dataset.landscape, {priority: 'event'});"}
                 )
 
                 # Make row clickable - select bathy.asc file for preview (removed to prevent reload)

@@ -230,8 +230,12 @@ class SimulationParameters:
         """Validate parameter ranges."""
         if self.porpoise_count < 0:
             raise ValueError("porpoise_count must be non-negative")
+        if self.porpoise_count > 100000:
+            raise ValueError("porpoise_count must not exceed 100,000")
         if self.sim_years < 1:
             raise ValueError("sim_years must be at least 1")
+        if self.sim_years > 200:
+            raise ValueError("sim_years must not exceed 200")
         if self.max_age <= 0:
             raise ValueError("max_age must be positive")
         if not 0 <= self.conceive_prob <= 1:

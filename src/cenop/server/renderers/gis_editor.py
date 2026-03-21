@@ -5,6 +5,7 @@ Handles loading spatial data layers and rendering them via the
 shiny-deckgl MapWidget in the Landscape tab.
 """
 
+import html
 import logging
 import numpy as np
 from shiny import render, ui, reactive
@@ -182,14 +183,16 @@ def register_gis_editor_renderers(input, output, session, state):
         if not stats:
             return ui.p("No layer loaded yet.", class_="text-muted small")
 
+        safe_layer = html.escape(str(stats["layer"]))
+        safe_coverage = html.escape(str(stats["coverage"]))
         return ui.HTML(f'''
         <table class="table table-sm table-borderless" style="font-size:0.8rem;">
-            <tr><td class="text-muted">Layer</td><td><b>{stats["layer"]}</b></td></tr>
+            <tr><td class="text-muted">Layer</td><td><b>{safe_layer}</b></td></tr>
             <tr><td class="text-muted">Min</td><td>{stats["min"]:.4f}</td></tr>
             <tr><td class="text-muted">Max</td><td>{stats["max"]:.4f}</td></tr>
             <tr><td class="text-muted">Mean</td><td>{stats["mean"]:.4f}</td></tr>
             <tr><td class="text-muted">Std Dev</td><td>{stats["std"]:.4f}</td></tr>
-            <tr><td class="text-muted">Coverage</td><td>{stats["coverage"]}</td></tr>
+            <tr><td class="text-muted">Coverage</td><td>{safe_coverage}</td></tr>
             <tr><td class="text-muted">Displayed</td><td>{stats["sampled"]} pts</td></tr>
         </table>
         ''')

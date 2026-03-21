@@ -294,3 +294,25 @@ class TestR8PreallocFract:
         for _ in range(30):
             pop2.step()
         assert_states_match(state, snapshot_state(pop2))
+
+
+class TestR6VectorizeDeathRecording:
+    """R6: Vectorize death age/day/cause recording."""
+
+    def test_death_recording_still_works(self):
+        # Use a no-food landscape so agents starve quickly
+        land = make_landscape()
+        land._food_value[:] = 0.0
+        np.random.seed(42)
+        params = SimulationParameters(porpoise_count=100, world_width=200, world_height=200)
+        pop = PorpoisePopulation(100, params, landscape=land)
+        pop._skip_land_avoidance = True
+        pop.energy[:] = 0.001
+        pop.with_calf[:] = False
+        for _ in range(5):
+            pop.step()
+        assert len(pop.death_ages) > 0
+        assert len(pop.death_ages) == len(pop.death_days)
+        assert len(pop.death_ages) == len(pop.death_causes)
+        for cause in pop.death_causes:
+            assert cause in ("starvation", "old_age", "bycatch")

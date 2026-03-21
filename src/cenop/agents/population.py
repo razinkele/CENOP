@@ -1950,15 +1950,14 @@ class PorpoisePopulation:
             # G10: Record death age distribution (DEPONS: Globals.getListOfDeadAge/Day)
             sim_day = self._global_tick // 48
             dead_indices = np.where(all_deaths)[0]
-            for idx in dead_indices:
-                self.death_ages.append(int(self.age[idx]))
-                self.death_days.append(sim_day)
-                if starved[idx]:
-                    self.death_causes.append("starvation")
-                elif old_age[idx]:
-                    self.death_causes.append("old_age")
-                else:
-                    self.death_causes.append("bycatch")
+            self.death_ages.extend(self.age[dead_indices].astype(int).tolist())
+            self.death_days.extend([sim_day] * len(dead_indices))
+            causes = np.where(
+                starved[dead_indices],
+                "starvation",
+                np.where(old_age[dead_indices], "old_age", "bycatch"),
+            )
+            self.death_causes.extend(causes.tolist())
 
             self.active_mask[all_deaths] = False
             if self._debug_instrumentation or death_count > 0:

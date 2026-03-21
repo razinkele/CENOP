@@ -39,7 +39,7 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 | 1.11 | Boundary reflection | `Porpoise.java:857-869` | `kernels.py:36-84` | **MATCH** | Bouncy borders: `if x<0: x=-x; if x>max: x=2*max-x` |
 | 1.12 | CRW vectorization | Sequential per-agent | Numba `@njit` batch + `prange` | **INTENTIONAL_DIVERGENCE** | Python processes all agents in parallel |
 | 1.13 | Cell index caching | Implicit grid lookup | Pre-computed `int32 out_xi/out_yi` | **INTENTIONAL_DIVERGENCE** | Python caches for reuse across tick phases |
-| 1.14 | Initial `prev_log_mov` | 0.8 | 1.25 | **GAP** | Affects first-step behavior; should be harmonized |
+| 1.14 | Initial `prev_log_mov` | 0.8 | 0.8 | **MATCH** | Fixed to match Java default |
 
 ---
 
@@ -69,7 +69,7 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 | 3.5 | PSM-Type2 target distance | `super.calc() * 0.95` | `target_distance *= 0.95` | **MATCH** | 95% of Euclidean distance |
 | 3.6 | PSM-Type3 heading formula | `DispersalPSMType3.java:65-78` | `dispersal.py:354-388` | **MATCH** | `angleDelta = maxAngle / (1 + exp(-log*(dist-x0)))` with random ±1 sign |
 | 3.7 | PSM-Type3 stop condition | Distance from START ≥ target | Distance from START ≥ target | **MATCH** | **Critical**: NOT cumulative distance |
-| 3.8 | PSM-Type3 cost function | `energyExpect - cost(distance*Q1)` | Only `energyExpect` (no cost) | **GAP** | Python lacks distance-cost for target selection |
+| 3.8 | PSM-Type3 cost function | `energyExpect - cost(distance*Q1)` | `energy * exp(-dist*q1)`, q1=0.02 | **MATCH** | Distance-cost applied in target selection |
 | 3.9 | SSLogis function | `phi1 / (1 + exp((phi2-x)/phi3))` | Identical | **MATCH** | phi1=1, phi2=0, phi3=psm_log(0.6) |
 | 3.10 | Dispersal trigger | Energy declining ≥ t_disp days + ≥50 PSM cells | Same conditions | **MATCH** | Both check energy trend + memory size |
 | 3.11 | PSM-Type3-randdir | `DispersalPSMType3randdir.java` | Not implemented | **GAP** | Forces random target (returns -1) |
@@ -241,7 +241,7 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 | 10.29 | `r_s` / `r_r` (memory decay) | 0.03 | 0.03 | **MATCH** |
 | 10.30 | `alpha_hat` | 0.00027 | 0.00027 | **MATCH** |
 | 10.31 | `beta_hat` | 14.72 | 14.72 | **MATCH** |
-| 10.32 | `mean_disp_dist` | 1.6 | 2.0 | **GAP** |
+| 10.32 | `mean_disp_dist` | 1.6 | 1.6 | **MATCH** |
 | 10.33 | `bycatch_prob` | 0.0 | 0.0 | **MATCH** |
 | 10.34 | `min_depth` | 1.0 | 1.0 | **MATCH** |
 | 10.35 | `min_depth_dispersal` | 4.0 | 4.0 | **MATCH** |
@@ -254,15 +254,15 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 
 | # | Gap | Impact | Recommendation |
 |---|-----|--------|----------------|
-| G1 | `mean_disp_dist` default 2.0 vs Java 1.6 | Affects dispersal step size | Change Python default to 1.6 |
+| ~~G1~~ | ~~`mean_disp_dist` default 2.0 vs Java 1.6~~ | ~~Affects dispersal step size~~ | **FIXED** — Python default changed to 1.6 |
 | G2 | InnerDanishWaters dispersal not ported | Blocks Danish waters management scenarios | Port if IDW scenarios needed |
-| G3 | PSM-Type3 cost function missing | Affects target cell selection in Type3 dispersal | Implement `cost = energyExpect * (1 - exp(-dist*Q1))` |
+| ~~G3~~ | ~~PSM-Type3 cost function missing~~ | ~~Affects target cell selection~~ | **FIXED** — `q1=0.02` param + distance-cost in target selection |
 
 ### Medium Priority
 
 | # | Gap | Impact | Recommendation |
 |---|-----|--------|----------------|
-| G4 | Initial `prev_log_mov` (1.25 vs 0.8) | Affects first CRW step only | Harmonize to 0.8 |
+| ~~G4~~ | ~~Initial `prev_log_mov` (1.25 vs 0.8)~~ | ~~Affects first CRW step~~ | **FIXED** — MovementState default changed to 0.8 |
 | G5 | Suntimes CSV not supported | Fixed 6am–6pm vs seasonal light | Add CSV loader if light-dependent behavior modeled |
 | G6 | PSM-Type3-randdir not ported | Specialized variant | Port if needed for specific experiments |
 | G7 | PSM-Type3-randdist not ported | Specialized variant | Port if needed |
@@ -312,19 +312,19 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 
 | Category | MATCH | INTENTIONAL_DIVERGENCE | GAP | EXTENSION |
 |----------|-------|----------------------|-----|-----------|
-| Movement & CRW | 12 | 2 | 1 | 0 |
+| Movement & CRW | 13 | 2 | 0 | 0 |
 | Reference Memory | 6 | 2 | 0 | 0 |
-| Dispersal & PSM | 10 | 0 | 6 | 0 |
+| Dispersal & PSM | 11 | 0 | 5 | 0 |
 | Behavioral FSM | 5 | 0 | 0 | 1 |
 | Physiology & Energy | 14 | 3 | 1 | 1 |
 | Food Dynamics | 7 | 0 | 0 | 0 |
 | Landscape & Grid | 6 | 2 | 1 | 0 |
 | Deterrence & Sound | 11 | 1 | 1 | 1 |
 | Lifecycle & Scheduling | 20 | 3 | 1 | 1 |
-| Parameters | 33 | 0 | 1 | 0 |
-| **TOTALS** | **124** | **13** | **12** | **4** |
+| Parameters | 34 | 0 | 0 | 0 |
+| **TOTALS** | **127** | **13** | **9** | **4** |
 
-**Overall parity: 124 MATCH + 13 intentional divergences out of 153 features = ~90% direct match, ~98% functional equivalence**
+**Overall parity: 127 MATCH + 13 intentional divergences out of 153 features = ~92% direct match, ~98% functional equivalence**
 
 ---
 

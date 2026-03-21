@@ -50,8 +50,8 @@ class TestMovementState:
         assert np.all(state.heading >= 0)
         assert np.all(state.heading < 360)
 
-        # prev_log_mov should be ~1.25 (DEPONS default)
-        assert np.allclose(state.prev_log_mov, 1.25)
+        # prev_log_mov should be 0.8 (DEPONS 3.2 default, Porpoise.java constructor)
+        assert np.allclose(state.prev_log_mov, 0.8)
 
         # Not dispersing by default
         assert not np.any(state.is_dispersing)

@@ -60,7 +60,7 @@ class MovementState:
         _rng = rng if rng is not None else np.random.default_rng()
         return cls(
             prev_heading=np.zeros(count, dtype=np.float32),
-            prev_log_mov=np.full(count, 1.25, dtype=np.float32),
+            prev_log_mov=np.full(count, 0.8, dtype=np.float32),
             prev_angle=np.zeros(count, dtype=np.float32),
             heading=_rng.uniform(0, 360, count).astype(np.float32),
             step_distance=np.zeros(count, dtype=np.float32),

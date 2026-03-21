@@ -1018,7 +1018,7 @@ class PorpoisePopulation:
         # Override step distance for dispersing agents (Java AbstractPSMDispersal.java:210)
         dispersing = mask & self.is_dispersing
         if np.any(dispersing):
-            disp_step = getattr(self.params, 'mean_disp_dist', 2.0) / 0.4
+            disp_step = getattr(self.params, 'mean_disp_dist', 1.6) / 0.4
             self._step_dist[dispersing] = disp_step
             self.dispersal_distance_traveled[dispersing] += disp_step
 
@@ -2751,16 +2751,24 @@ class PorpoisePopulation:
         dy = world_y - self.y[idx]
         dists = np.sqrt(dx * dx + dy * dy)
 
+        # PSM-Type3 distance-cost: fitness = energy * exp(-dist * q1)
+        # (DispersalPSMType3.findMostAttractiveMemCell in Java)
+        q1 = getattr(self.params, 'q1', 0.02)
+        if q1 > 0:
+            fitness = expectations * np.exp(-dists * q1)
+        else:
+            fitness = expectations
+
         # Filter for tolerance (5km approx 12.5 cells)
         tolerance_cells = 12.5
         valid_mask = np.abs(dists - pref_dist_cells) < tolerance_cells
 
         if np.any(valid_mask):
-            # Pick highest value among valid distance cells
-            valid_expectations = expectations[valid_mask]
+            # Pick highest fitness among valid distance cells
+            valid_fitness = fitness[valid_mask]
 
             # Find best
-            best_local_idx = np.argmax(valid_expectations)
+            best_local_idx = np.argmax(valid_fitness)
 
             # Map back to original indices
             valid_indices_in_visited = np.where(valid_mask)[0]

@@ -82,7 +82,8 @@ class SimulationParameters:
     psm_dist_sd: float = 100.0
     psm_tol: float = 5.0               # Tolerance band (km)
     psm_angle: float = 20.0            # Max turning angle after PSM step
-    
+    q1: float = 0.02                   # PSM-Type3 distance-cost coefficient (DEPONS 3.2)
+
     # === Memory ===
     r_s: float = 0.03                  # Satiation memory decay rate (DEPONS 3.2)
     r_r: float = 0.03                  # Reference memory decay rate (DEPONS 3.2)
@@ -97,7 +98,7 @@ class SimulationParameters:
     corr_angle_bathy: float = -0.008   # b1: depth effect on turning angle
     corr_angle_salinity: float = 0.93  # b2: salinity effect on turning angle
     corr_angle_base_sd: float = -14.0  # b3: intercept for turning angle
-    mean_disp_dist: float = 2.0        # Dispersal distance per step (km) (DEPONS 3.2)
+    mean_disp_dist: float = 1.6        # Dispersal distance per step (km) (DEPONS 3.2)
     max_mov: float = 1.73              # Max movement distance (km)
     
     # === Random Components (TRACE Table 2) ===

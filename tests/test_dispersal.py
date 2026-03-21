@@ -282,12 +282,12 @@ class TestDispersalStepDistance:
         """Dispersing agents use fixed step = mean_disp_dist / 0.4.
 
         Java: AbstractPSMDispersal.java:210
-        mean_disp_dist=2.0 from parameters (ddisp=2), step=2.0/0.4=5.0 grid cells.
+        mean_disp_dist=1.6 from DEPONS 3.2, step=1.6/0.4=4.0 grid cells.
         """
         from cenop.parameters.simulation_params import SimulationParameters
         params = SimulationParameters()
         step = params.mean_disp_dist / 0.4
-        assert step == pytest.approx(5.0), f"Dispersal step should be 5.0, got {step}"
+        assert step == pytest.approx(4.0), f"Dispersal step should be 4.0, got {step}"
 
     def test_dispersal_target_uses_95_percent(self):
         """PSM-Type2 target = 0.95 * drawn target distance.

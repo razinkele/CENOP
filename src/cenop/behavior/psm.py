@@ -191,33 +191,39 @@ class PersistentSpatialMemory:
         current_x: float,
         current_y: float,
         tolerance: float = 5.0,  # km
-        cell_size: float = 400.0  # meters
+        cell_size: float = 400.0,  # meters
+        q1: float = 0.0,  # PSM-Type3 distance-cost coefficient
     ) -> Optional[Tuple[float, float, float]]:
         """
         Find a target cell for dispersal at approximately preferred distance.
-        
-        Searches for the best cell (highest energy expectation) that is
-        approximately at the preferred dispersal distance.
-        
-        Optimized: vectorized distance computation over all memory cells.
-        
+
+        Searches for the best cell (highest fitness) that is approximately
+        at the preferred dispersal distance.
+
+        When q1 > 0 (PSM-Type3), applies distance-cost:
+            cost = energy * (1 - exp(-distance * q1))
+            fitness = energy - cost = energy * exp(-distance * q1)
+        This penalizes far-away cells proportionally to their distance.
+        (Translates DispersalPSMType3.findMostAttractiveMemCell)
+
         Args:
             current_x, current_y: Current position
             tolerance: Tolerance band around preferred distance (km)
             cell_size: Grid cell size in meters
-            
+            q1: Distance-cost coefficient (0 = no cost, >0 = penalize distance)
+
         Returns:
             (x, y, distance_km) or None if no suitable cell found
         """
         if not self._mem_cells:
             return None
-            
+
         preferred_dist_cells = self.preferred_distance * 1000 / cell_size  # km to cells
         tolerance_cells = tolerance * 1000 / cell_size
-        
+
         min_dist = preferred_dist_cells - tolerance_cells
         max_dist = preferred_dist_cells + tolerance_cells
-        
+
         # Extract all cell data into arrays at once
         n = len(self._mem_cells)
         cell_nums = np.fromiter(self._mem_cells.keys(), dtype=np.int32, count=n)
@@ -225,30 +231,38 @@ class PersistentSpatialMemory:
             [cd.energy_expectation for cd in self._mem_cells.values()],
             dtype=np.float64,
         )
-        
+
         # Vectorized cell_number_to_position
         mem_x = cell_nums % self.cells_per_row
         mem_y = cell_nums // self.cells_per_row
         xs = (mem_x + 0.5) * self.mem_cell_size
         ys = (mem_y + 0.5) * self.mem_cell_size
-        
+
         # Vectorized distance computation
         dx = xs - current_x
         dy = ys - current_y
         dists = np.sqrt(dx * dx + dy * dy)
-        
+
+        # Apply PSM-Type3 distance-cost if q1 > 0
+        # Java: cost = energy * (1 - exp(-dist * q1)); fitness = energy - cost
+        # Simplifies to: fitness = energy * exp(-dist * q1)
+        if q1 > 0:
+            fitness = energies * np.exp(-dists * q1)
+        else:
+            fitness = energies
+
         # Find candidates in target distance range
         in_range = (dists >= min_dist) & (dists <= max_dist)
-        
+
         if np.any(in_range):
-            # Best candidate in range by energy expectation
-            range_energies = energies.copy()
-            range_energies[~in_range] = -np.inf
-            best_idx = int(np.argmax(range_energies))
+            # Best candidate in range by fitness
+            range_fitness = fitness.copy()
+            range_fitness[~in_range] = -np.inf
+            best_idx = int(np.argmax(range_fitness))
         else:
-            # No cells in target range - pick highest energy overall
-            best_idx = int(np.argmax(energies))
-        
+            # No cells in target range - pick highest fitness overall
+            best_idx = int(np.argmax(fitness))
+
         dist_km = float(dists[best_idx]) * cell_size / 1000
         return (float(xs[best_idx]), float(ys[best_idx]), dist_km)
         

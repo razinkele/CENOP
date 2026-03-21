@@ -2040,18 +2040,11 @@ class PorpoisePopulation:
         self._mem_count[active] = np.minimum(self._mem_count[active] + 1, mem_size)
 
     def _handle_reproduction(self, mask: np.ndarray) -> None:
-        """Handle reproduction — delegates to pregnancy FSM on day boundaries.
+        """Handle reproduction — delegates to pregnancy FSM.
 
-        Called every tick from step(), but only runs FSM on day boundary (tick%48==0).
-        Java ref: Porpoise.java:1124-1128 — if (updMortality()) { updPregnancyStatus(); }
+        Only called on day boundaries (tick%48==0) from step().
+        _day_of_year is now incremented in step() before this call.
         """
-        # Update day-of-year counter every tick
-        self._day_of_year = (self._day_of_year + 1) % (360 * 48)
-
-        # Only run pregnancy FSM once per day
-        if self._global_tick % 48 != 0:
-            return
-
         self._update_pregnancy_status(mask)
 
     def rerandomize_mating_days(self) -> None:
@@ -2470,8 +2463,12 @@ class PorpoisePopulation:
         # Aging
         self._update_aging(self.active_mask)
 
-        # Reproduction
-        self._handle_reproduction(self.active_mask)
+        # Day-of-year counter (must run every tick — was inside _handle_reproduction)
+        self._day_of_year = (self._day_of_year + 1) % (360 * 48)
+
+        # Reproduction (daily only — pregnancy FSM)
+        if self._global_tick % 48 == 0:
+            self._handle_reproduction(self.active_mask)
 
     def _get_seasonal_scaling(self, month: int) -> float:
         """Get scalar seasonal scaling factor (no lactation — handled in JAX)."""
@@ -2557,8 +2554,12 @@ class PorpoisePopulation:
         # 5. Aging
         self._update_aging(self.active_mask)
 
-        # 6. Reproduction
-        self._handle_reproduction(self.active_mask)
+        # 6. Day-of-year counter (must run every tick — was inside _handle_reproduction)
+        self._day_of_year = (self._day_of_year + 1) % (360 * 48)
+
+        # 7. Reproduction (daily only — pregnancy FSM)
+        if self._global_tick % 48 == 0:
+            self._handle_reproduction(self.active_mask)
 
     def to_dataframe(self) -> pd.DataFrame:
         """Export active agents to DataFrame for UI helpers."""

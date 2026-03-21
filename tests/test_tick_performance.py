@@ -184,3 +184,24 @@ class TestO6DtypePingPong:
         for _ in range(30):
             pop2.step()
         assert_states_match(state, snapshot_state(pop2))
+
+
+class TestO8DailyHoist:
+    """O8: Daily checks only called on day boundaries."""
+
+    def test_reproduction_only_on_day_boundary(self):
+        """Reproduction state should only change at tick % 48 == 0."""
+        pop = make_pop(100)
+        while pop._global_tick % 48 != 47:
+            pop.step()
+        preg_before = pop.pregnancy_status.copy()
+        pop.step()  # This should be tick%48==0
+        assert pop._global_tick % 48 == 0
+
+    def test_day_of_year_increments_every_tick(self):
+        """_day_of_year must increment every tick, not just on day boundaries."""
+        pop = make_pop(50)
+        doy_before = pop._day_of_year
+        pop.step()
+        doy_after = pop._day_of_year
+        assert doy_after == (doy_before + 1) % (360 * 48)

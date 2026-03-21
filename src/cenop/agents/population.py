@@ -67,6 +67,14 @@ try:
 except ImportError:
     _HAS_JAX = False
 
+try:
+    from cenop.optimizations.tick_cython import cython_depons_post_crw as _cython_post_crw
+    from cenop.optimizations.tick_cython import cython_available
+    _HAS_CYTHON = cython_available()
+except ImportError:
+    _HAS_CYTHON = False
+    _cython_post_crw = None
+
 logger = logging.getLogger('cenop.agents.population')
 
 
@@ -391,6 +399,10 @@ class PorpoisePopulation:
             import jax
             _jax_seed = params.random_seed if params.random_seed else 42
             self._jax_key = jax.random.PRNGKey(_jax_seed)
+
+        # === Cython acceleration (decided at runtime in step()) ===
+        self._use_cython = False
+        self._cython_food_gained = np.zeros(count, dtype=np.float32) if _HAS_CYTHON else None
 
         # Compute initial cell indices from position arrays
         self._recompute_cell_indices()
@@ -2533,39 +2545,122 @@ class PorpoisePopulation:
         if self._global_tick == 1:
             self._recompute_cell_indices()
 
-        # 1. Movement calculations
+        # 1. Movement calculations (CRW + RefMem stay as Numba)
         self._update_movement(mask, deterrence_vectors, ambient_rl)
 
-        # 2. Land avoidance
-        self._handle_land_avoidance(mask)
+        # === Cython fast path ===
+        _cy_ok = (
+            _HAS_CYTHON
+            and _cython_post_crw is not None
+            and self._energy_module is None
+            and self._skip_land_avoidance
+            and not self._comm_enabled
+        )
+        if _cy_ok:
+            current_month = self._get_current_month()
+            seasonal_scaling = self._get_seasonal_scaling(current_month)
+            disp_step = getattr(self.params, 'mean_disp_dist', 1.6) / 0.4
+            world_w = self.landscape.width if self.landscape else self.params.world_width
+            world_h = self.landscape.height if self.landscape else self.params.world_height
 
-        # 3. Apply positions
-        self._apply_positions(mask)
+            food_grid = (
+                self.landscape._food_value
+                if self.landscape
+                else np.full((world_h, world_w), 50.0, dtype=np.float32)
+            )
 
-        # 3.5 Behavioral FSM update (JASMINE)
-        if self._behavior_fsm is not None:
-            self._update_behavior_fsm(mask)
+            self._cython_food_gained.fill(0.0)
+            _cython_post_crw(
+                self.x,
+                self.y,
+                self.heading,
+                self.prev_angle,
+                self.prev_log_mov,
+                self.energy,
+                self.active_mask.view(np.uint8),
+                self.is_dispersing.view(np.uint8),
+                self.with_calf.view(np.uint8),
+                self._pres_angle,
+                self._log_mov,
+                self._ve_total,
+                self._vt_x,
+                self._vt_y,
+                food_grid,
+                self._cython_food_gained,
+                self.dispersal_distance_traveled,
+                self.params.inertia_const,
+                disp_step,
+                self.params.e_use_per_30_min,
+                self.params.e_lact,
+                getattr(self.params, 'm_mort_prob_const', 1.0),
+                getattr(self.params, 'x_survival_const', 0.4),
+                seasonal_scaling,
+                world_w,
+                world_h,
+            )
 
-        # 4a. Food intake (post-food energy is used for starvation check below)
-        self._apply_food_intake(mask)
+            # Post-Cython housekeeping
+            self._recompute_cell_indices()
+            self._active_idx = np.flatnonzero(self.active_mask)
 
-        # 4b. Starvation check on post-food, pre-BMR energy (Java ordering)
-        self._check_mortality(mask, active_before)
+            # Dashboard stats
+            n_active = len(self._active_idx)
+            if n_active > 0:
+                self.avg_food_gained = float(
+                    np.mean(self._cython_food_gained[self.active_mask])
+                )
+                self.avg_energy_cost = 0.001 * seasonal_scaling * self.params.e_use_per_30_min
+            else:
+                self.avg_food_gained = 0.0
+                self.avg_energy_cost = 0.0
 
-        # Recompute active indices after mortality changed active_mask
-        self._active_idx = np.flatnonzero(self.active_mask)  # returns intp = int64 on 64-bit
+            # G11: Daily energy tracking
+            self._energy_consumed_today[self.active_mask] += np.float32(
+                0.001 * seasonal_scaling * self.params.e_use_per_30_min
+            )
+            self._energy_level_sum[self.active_mask] += self.energy[self.active_mask]
+            if self._global_tick % 48 == 0:
+                np.copyto(self.energy_consumed_daily, self._energy_consumed_today)
+                self._energy_consumed_today[:] = 0
+                self._energy_level_sum[:] = 0
 
-        # 4c. BMR cost — use updated active_mask so dead agents are excluded
-        self._apply_bmr_cost(self.active_mask)
-
-        # 4d. Post-BMR updates (DEPONS path — extracted from _apply_bmr_cost)
-        if self._energy_module is None:
-            food_gained = getattr(self, '_pending_food_available', None)
-            self._update_psm(self.active_mask, food_gained)
+            # Post-BMR updates (PSM, energy history, dispersal)
+            self._update_psm(self.active_mask, self._cython_food_gained)
             self._update_energy_history(self.active_mask)
             self._update_dispersal(self.active_mask)
             np.clip(self.energy, 0, 20.0, out=self.energy)
-            self._pending_food_available = None
+        else:
+            # === Python/NumPy path (existing code) ===
+            # 2. Land avoidance
+            self._handle_land_avoidance(mask)
+
+            # 3. Apply positions
+            self._apply_positions(mask)
+
+            # 3.5 Behavioral FSM update (JASMINE)
+            if self._behavior_fsm is not None:
+                self._update_behavior_fsm(mask)
+
+            # 4a. Food intake (post-food energy is used for starvation check below)
+            self._apply_food_intake(mask)
+
+            # 4b. Starvation check on post-food, pre-BMR energy (Java ordering)
+            self._check_mortality(mask, active_before)
+
+            # Recompute active indices after mortality changed active_mask
+            self._active_idx = np.flatnonzero(self.active_mask)
+
+            # 4c. BMR cost — use updated active_mask so dead agents are excluded
+            self._apply_bmr_cost(self.active_mask)
+
+            # 4d. Post-BMR updates (DEPONS path — extracted from _apply_bmr_cost)
+            if self._energy_module is None:
+                food_gained = getattr(self, '_pending_food_available', None)
+                self._update_psm(self.active_mask, food_gained)
+                self._update_energy_history(self.active_mask)
+                self._update_dispersal(self.active_mask)
+                np.clip(self.energy, 0, 20.0, out=self.energy)
+                self._pending_food_available = None
 
         # 4.5 Disturbance memory update (JASMINE)
         if self._memory_module is not None:

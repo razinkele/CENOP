@@ -112,7 +112,10 @@ class Suntimes:
         """Load suntimes from CSV file."""
         path = Path(csv_path)
         if not path.exists():
-            return
+            raise FileNotFoundError(
+                f"Suntimes CSV not found: {csv_path}. "
+                "Remove suntimes_path parameter to use default 6am-6pm."
+            )
 
         with open(path, "r") as f:
             reader = csv.reader(f)

@@ -370,7 +370,7 @@ class PorpoisePopulation:
             and self.landscape._depth is not None
         ):
             depth = self.landscape._depth
-            has_land = np.any(np.isnan(depth))
+            has_land = np.isnan(depth).any()
             if not has_land:
                 min_depth = self.params.min_depth if self.params else 1.0
                 self._skip_land_avoidance = bool(
@@ -737,7 +737,7 @@ class PorpoisePopulation:
                 dist_cells = np.sqrt(dxs * dxs + dys * dys)
 
                 within = dist_cells <= comm_cells
-                if not np.any(within):
+                if not within.any():
                     continue
 
                 dxs = dxs[within]
@@ -907,7 +907,7 @@ class PorpoisePopulation:
             # Rejection sampling for turning angle (Java Porpoise.java:332-360)
             violations = np.abs(self._pres_angle) > 180
             retry = 0
-            while np.any(violations & mask) and retry < 200:
+            while (violations & mask).any() and retry < 200:
                 idx = np.where(violations & mask)[0]
                 new_rand = np.random.normal(self.params.r2_mean, self.params.r2_sd, len(idx))
                 angle_tmp = self.params.corr_angle_base * self.prev_angle[idx] + new_rand
@@ -919,17 +919,17 @@ class PorpoisePopulation:
                 violations = np.abs(self._pres_angle) > 180
                 retry += 1
             # Emergency fallback: clamp to +/-90 (Java Porpoise.java:354)
-            if np.any(violations & mask):
+            if (violations & mask).any():
                 self._pres_angle[violations & mask] = np.sign(self._pres_angle[violations & mask]) * 90
 
             # Second angle loop: distance-dependent modulation (Java Porpoise.java:374-393)
             max_mov_value = np.power(10.0, self.params.max_mov)
             prev_mov = np.power(10.0, self.prev_log_mov)
             needs_modulation = mask & (prev_mov <= max_mov_value)
-            if np.any(needs_modulation):
+            if needs_modulation.any():
                 retry = 0
                 violations2 = np.ones(self.count, dtype=bool)
-                while np.any(violations2 & needs_modulation) and retry < 200:
+                while (violations2 & needs_modulation).any() and retry < 200:
                     idx = np.where(violations2 & needs_modulation)[0]
                     rnd = np.random.uniform(0, 20, len(idx))
                     new_angle = (np.abs(self._pres_angle[idx]) + rnd
@@ -938,7 +938,7 @@ class PorpoisePopulation:
                     violations2 = np.abs(self._pres_angle) >= 180
                     retry += 1
                 # Fallback: random(0,20) + 90 (Java Porpoise.java:389)
-                if np.any(violations2 & needs_modulation):
+                if (violations2 & needs_modulation).any():
                     fb_idx = np.where(violations2 & needs_modulation)[0]
                     self._pres_angle[fb_idx] = np.sign(self._pres_angle[fb_idx]) * (
                         np.random.uniform(0, 20, len(fb_idx)) + 90
@@ -955,7 +955,7 @@ class PorpoisePopulation:
             # Rejection sampling for step length (Java Porpoise.java:367-391)
             violations = self._log_mov > self.params.max_mov
             retry = 0
-            while np.any(violations & mask) and retry < 200:
+            while (violations & mask).any() and retry < 200:
                 idx = np.where(violations & mask)[0]
                 new_rand = np.random.normal(self.params.r1_mean, self.params.r1_sd, len(idx))
                 self._log_mov[idx] = (
@@ -967,7 +967,7 @@ class PorpoisePopulation:
                 violations = self._log_mov > self.params.max_mov
                 retry += 1
             # Emergency fallback: clamp to maxMov (Java Porpoise.java:387)
-            if np.any(violations & mask):
+            if (violations & mask).any():
                 self._log_mov[violations & mask] = self.params.max_mov
 
             self.prev_log_mov[mask] = self._log_mov[mask]
@@ -986,7 +986,7 @@ class PorpoisePopulation:
 
         # Save dispersal heading before CRW composition overwrites it
         _disp_mask = mask & self.is_dispersing
-        _saved_disp_heading = self.heading[_disp_mask].copy() if np.any(_disp_mask) else None
+        _saved_disp_heading = self.heading[_disp_mask].copy() if _disp_mask.any() else None
 
         # Compute CRW unit direction vector from heading
         np.radians(self.heading, out=self._rads)
@@ -1037,7 +1037,7 @@ class PorpoisePopulation:
 
         # Override step distance for dispersing agents (Java AbstractPSMDispersal.java:210)
         dispersing = mask & self.is_dispersing
-        if np.any(dispersing):
+        if dispersing.any():
             disp_step = getattr(self.params, 'mean_disp_dist', 1.6) / 0.4
             self._step_dist[dispersing] = disp_step
             self.dispersal_distance_traveled[dispersing] += disp_step
@@ -1060,7 +1060,7 @@ class PorpoisePopulation:
         from cenop.behavior.dispersal import sslogis
 
         dispersing = mask & self.is_dispersing
-        if not np.any(dispersing):
+        if not dispersing.any():
             return
 
         n = int(np.sum(dispersing))
@@ -1127,7 +1127,7 @@ class PorpoisePopulation:
 
         # Compute dispersal headings for dispersing agents
         dispersing = mask & self.is_dispersing
-        if np.any(dispersing):
+        if dispersing.any():
             disp_dx = self.dispersal_target_x - self.x
             disp_dy = self.dispersal_target_y - self.y
             state.dispersal_heading[dispersing] = np.degrees(
@@ -1148,7 +1148,7 @@ class PorpoisePopulation:
                 det_dy = det_dy + av.avoidance_dy * av.avoidance_strength
             else:
                 strength = av.avoidance_strength
-                if np.any(strength > 0):
+                if (strength > 0).any():
                     det_dx = av.avoidance_dx * strength
                     det_dy = av.avoidance_dy * strength
 
@@ -1211,7 +1211,7 @@ class PorpoisePopulation:
         # Recalculate heading ONLY for agents whose displacement was reflected
         # (DEPONS Porpoise.forward(): setHeading + setPrevAngle(0) after bounce)
         reflected = mask & ((self._dx != self._orig_dx) | (self._dy != self._orig_dy))
-        if np.any(reflected):
+        if reflected.any():
             self.heading[reflected] = np.degrees(
                 np.arctan2(self._dx[reflected], self._dy[reflected])
             ) % 360.0
@@ -1238,7 +1238,7 @@ class PorpoisePopulation:
         min_depth = self.params.min_depth if self.params else 1.0
         np.copyto(self._on_land, ((self._depths < min_depth) | np.isnan(self._depths)) & mask)
 
-        if not np.any(self._on_land):
+        if not self._on_land.any():
             return
 
         # Try turning to avoid land (DEPONS pattern with random jitter)
@@ -1414,10 +1414,10 @@ class PorpoisePopulation:
         # --- X reflection ---
         under_x = mask & (new_x < 0)
         over_x  = mask & (new_x > max_x)
-        if np.any(under_x):
+        if under_x.any():
             new_x[under_x] = -new_x[under_x]
             dx[under_x]    = -dx[under_x]
-        if np.any(over_x):
+        if over_x.any():
             new_x[over_x] = 2.0 * max_x - new_x[over_x]
             dx[over_x]    = -dx[over_x]
         np.clip(new_x, 0, max_x, out=new_x)
@@ -1425,10 +1425,10 @@ class PorpoisePopulation:
         # --- Y reflection ---
         under_y = mask & (new_y < 0)
         over_y  = mask & (new_y > max_y)
-        if np.any(under_y):
+        if under_y.any():
             new_y[under_y] = -new_y[under_y]
             dy[under_y]    = -dy[under_y]
-        if np.any(over_y):
+        if over_y.any():
             new_y[over_y] = 2.0 * max_y - new_y[over_y]
             dy[over_y]    = -dy[over_y]
         np.clip(new_y, 0, max_y, out=new_y)
@@ -1453,7 +1453,7 @@ class PorpoisePopulation:
                 self._positions, xi=self._cell_xi, yi=self._cell_yi
             )
             on_land = mask & (post_depths <= 0)
-            if np.any(on_land):
+            if on_land.any():
                 self.x[on_land] = self._pre_move_x[on_land]
                 self.y[on_land] = self._pre_move_y[on_land]
                 # Re-recompute after land rollback
@@ -1465,7 +1465,7 @@ class PorpoisePopulation:
                 dx_m = (self.x - self._prev_x) * 400.0  # meters
                 dy_m = (self.y - self._prev_y) * 400.0
                 disp = np.hypot(dx_m, dy_m)
-                if np.any(mask):
+                if mask.any():
                     mean_disp = float(np.mean(disp[mask]))
                 else:
                     mean_disp = 0.0
@@ -1573,7 +1573,7 @@ class PorpoisePopulation:
         # If we have deterrence dx/dy stored from movement, use them
         # Otherwise approximate from deter_strength alone (use agent position)
         disturbed_mask = is_disturbed & mask
-        if np.any(disturbed_mask):
+        if disturbed_mask.any():
             disturbance_x[disturbed_mask] = self.x[disturbed_mask] - self._dx[disturbed_mask] * 5.0
             disturbance_y[disturbed_mask] = self.y[disturbed_mask] - self._dy[disturbed_mask] * 5.0
 
@@ -1925,7 +1925,7 @@ class PorpoisePopulation:
 
         # Apply deaths
         all_deaths = starved | old_age | bycatch
-        if np.any(all_deaths):
+        if all_deaths.any():
             death_count = int(np.sum(all_deaths))
             starved_count = int(np.sum(starved))
             old_age_count = int(np.sum(old_age))
@@ -2056,7 +2056,7 @@ class PorpoisePopulation:
         # 2 → 1: Ready to pregnant on mating day
         current_day = self._day_of_year // 48
         ready = female_mask & (self.pregnancy_status == 2) & (self.mating_day == current_day)
-        if np.any(ready):
+        if ready.any():
             conceive_roll = np.random.random(self.count)
             conceives = ready & (conceive_roll < self.params.conceive_prob)
             self.pregnancy_status[conceives] = 1
@@ -2065,7 +2065,7 @@ class PorpoisePopulation:
         # 1 → 2 + birth: Pregnant gives birth at gestation_time
         giving_birth = female_mask & (self.pregnancy_status == 1) & \
                        (self.days_since_mating == self.params.gestation_time)
-        if np.any(giving_birth):
+        if giving_birth.any():
             self.pregnancy_status[giving_birth] = 2
             self.with_calf[giving_birth] = True
             self.days_since_mating[giving_birth] = -99
@@ -2074,7 +2074,7 @@ class PorpoisePopulation:
         # Weaning: at nursing_time, create female calf, end lactation
         weaning = female_mask & self.with_calf & \
                   (self.days_since_birth == self.params.nursing_time)
-        if np.any(weaning):
+        if weaning.any():
             calf_roll = np.random.random(self.count)
             creates_calf = weaning & (calf_roll > 0.5)
 
@@ -2301,7 +2301,7 @@ class PorpoisePopulation:
                 self._positions, xi=self._cell_xi, yi=self._cell_yi
             )
             on_land = mask & (post_depths <= 0)
-            if np.any(on_land):
+            if on_land.any():
                 # Rollback to pre-move positions — use original values
                 # that were in self before write-back
                 prev_x_np = np.asarray(new_x)
@@ -2483,7 +2483,7 @@ class PorpoisePopulation:
             ambient_rl: Ambient received level for social communication
         """
         mask = self.active_mask
-        if not np.any(mask):
+        if not mask.any():
             return
 
         # JAX JIT path — replaces Numba/NumPy for movement + energy
@@ -2811,7 +2811,7 @@ class PorpoisePopulation:
         tolerance_cells = 12.5
         valid_mask = np.abs(dists - pref_dist_cells) < tolerance_cells
 
-        if np.any(valid_mask):
+        if valid_mask.any():
             # Pick highest fitness among valid distance cells
             valid_fitness = fitness[valid_mask]
 
@@ -2878,7 +2878,7 @@ class PorpoisePopulation:
     def _update_dispersal(self, mask: np.ndarray) -> None:
         """Update dispersal progress for dispersing porpoises."""
         dispersing = mask & self.is_dispersing
-        if not np.any(dispersing):
+        if not dispersing.any():
             return
 
         # Pre-compute distances once (shared across all checks)
@@ -2888,13 +2888,13 @@ class PorpoisePopulation:
 
         # --- Deterrence deactivates dispersal (Java Porpoise.java:1277-1278) ---
         deterred = dispersing & (self.deter_strength > 0)
-        if np.any(deterred):
+        if deterred.any():
             self.is_dispersing[deterred] = False
             self.dispersal_distance_traveled[deterred] = 0.0
             self.days_declining_energy[deterred] = 0
             dispersing = mask & self.is_dispersing
 
-        if not np.any(dispersing):
+        if not dispersing.any():
             return
 
         # --- Energy-based stop (Java Porpoise.java:1105-1118) ---
@@ -2903,7 +2903,7 @@ class PorpoisePopulation:
             today = self._energy_history[dispersing, 0]
             past_min = np.min(self._energy_history[dispersing, 1:8], axis=1)
             recovering = today > past_min
-            if np.any(recovering):
+            if recovering.any():
                 disp_indices = np.where(dispersing)[0]
                 stop_indices = disp_indices[recovering]
                 self.is_dispersing[stop_indices] = False
@@ -2911,12 +2911,12 @@ class PorpoisePopulation:
                 self.days_declining_energy[stop_indices] = 0
                 dispersing = mask & self.is_dispersing
 
-        if not np.any(dispersing):
+        if not dispersing.any():
             return
 
         # --- Distance completion check (reuse pre-computed distances) ---
         completed = dispersing & (distances >= 0.95 * self.dispersal_target_distance)
-        if np.any(completed):
+        if completed.any():
             self.is_dispersing[completed] = False
             self.dispersal_distance_traveled[completed] = 0.0
             self.days_declining_energy[completed] = 0
@@ -2931,7 +2931,7 @@ class PorpoisePopulation:
         # Calculate avg visited cells from buffer
         # This is expensive for all agents, allow sampling or simplified metric
         avg_cells = 0.0
-        if np.any(active):
+        if active.any():
              # Just sample first 10 for performance in UI? Or calc all?
              # Vectorized count:
              counts = np.count_nonzero(self.psm_buffer[active, :, :, 0], axis=(1,2))
@@ -3166,7 +3166,7 @@ class PorpoisePopulation:
     def get_energy_stats(self) -> Dict[str, Any]:
         """Get statistics about population energy levels."""
         active = self.active_mask
-        if not np.any(active):
+        if not active.any():
             return {'mean': 0.0, 'std': 0.0, 'min': 0.0, 'max': 0.0, 'hungry': 0, 'starving': 0}
             
         active_energy = self.energy[active]

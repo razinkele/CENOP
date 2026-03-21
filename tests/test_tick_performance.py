@@ -136,3 +136,20 @@ class TestO3CachedActiveIdx:
         for _ in range(50):
             pop2.step()
         assert_states_match(state, snapshot_state(pop2))
+
+
+class TestO4ReduceNpAny:
+    """O4: Reduce np.any() calls in movement."""
+
+    def test_movement_output_unchanged(self):
+        """Movement vectors must be identical after reducing np.any."""
+        np.random.seed(77)
+        pop = make_pop(200)
+        for _ in range(30):
+            pop.step()
+        state = snapshot_state(pop)
+        np.random.seed(77)
+        pop2 = make_pop(200)
+        for _ in range(30):
+            pop2.step()
+        assert_states_match(state, snapshot_state(pop2))

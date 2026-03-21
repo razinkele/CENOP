@@ -44,6 +44,7 @@ try:
     from cenop.optimizations.kernels import seed_numba_rng as _seed_numba_rng
     from cenop.optimizations.kernels import turn_position_kernel as _turn_kernel
     from cenop.optimizations.kernels import social_accumulate_kernel as _social_kernel
+    from cenop.optimizations.kernels import social_sound_kernel as _social_sound_kernel
     from cenop.optimizations.kernels import heading_position_reflect_kernel as _heading_kernel
     _HAS_KERNELS = True
 except ImportError:
@@ -596,28 +597,7 @@ class PorpoisePopulation:
                 xj = self.x[idx_j]
                 yj = self.y[idx_j]
 
-                # Displacements and distances recomputed each tick (topology reused)
-                dx_ij = xj - xi
-                dy_ij = yj - yi
-                dist = np.hypot(dx_ij, dy_ij) + 1e-6
-                dist_m = dist * np.float32(400.0)
-
-                # Received level (same for both directions since distance symmetric)
-                rl_pairs = calculate_received_level(source_level, dist_m, self.params.alpha_hat, self.params.beta_hat)
-
-                # Probabilities: listener i hearing caller j
-                if ambient_rl is not None:
-                    ambient_i = np.asarray(ambient_rl[idx_i], dtype=np.float32)
-                    snr_i = rl_pairs - ambient_i
-                    p_i = response_probability_from_rl(snr_i, threshold, slope)
-                    ambient_j = np.asarray(ambient_rl[idx_j], dtype=np.float32)
-                    snr_j = rl_pairs - ambient_j
-                    p_j = response_probability_from_rl(snr_j, threshold, slope)
-                else:
-                    p_i = response_probability_from_rl(rl_pairs, threshold, slope)
-                    p_j = response_probability_from_rl(rl_pairs, threshold, slope)
-
-                # Accumulate per-agent social vectors (unit-vector + weighting + accumulation)
+                # Fused social sound: distance + TL + RL + probability + accumulation
                 self._social_ux.fill(0.0)
                 self._social_uy.fill(0.0)
                 self._social_sw.fill(0.0)
@@ -626,50 +606,91 @@ class PorpoisePopulation:
                 sw_total = self._social_sw
 
                 if _HAS_KERNELS:
-                    # Fused kernel: unit-vector, weighting, and accumulation in one pass
-                    self._ensure_social_buffers(ncols)
-                    self._social_f64_dx[:ncols] = dx_ij
-                    self._social_f64_dy[:ncols] = dy_ij
-                    self._social_f64_dist[:ncols] = dist
-                    self._social_f64_pi[:ncols] = p_i
-                    self._social_f64_pj[:ncols] = p_j
-                    _social_kernel(
-                        idx_i, idx_j,
-                        self._social_f64_dx[:ncols],
-                        self._social_f64_dy[:ncols],
-                        self._social_f64_dist[:ncols],
-                        self._social_f64_pi[:ncols],
-                        self._social_f64_pj[:ncols],
-                        ux_total, uy_total, sw_total,
+                    if ambient_rl is not None:
+                        amb_i = np.asarray(ambient_rl[idx_i], dtype=np.float64)
+                        amb_j = np.asarray(ambient_rl[idx_j], dtype=np.float64)
+                    else:
+                        amb_i = np.zeros(ncols, dtype=np.float64)
+                        amb_j = np.zeros(ncols, dtype=np.float64)
+
+                    _social_sound_kernel(
+                        xi.astype(np.float64),
+                        yi.astype(np.float64),
+                        xj.astype(np.float64),
+                        yj.astype(np.float64),
+                        idx_i,
+                        idx_j,
+                        amb_i,
+                        amb_j,
+                        float(source_level),
+                        float(self.params.alpha_hat),
+                        float(self.params.beta_hat),
+                        float(threshold),
+                        float(slope),
+                        400.0,
+                        self.count,
+                        ux_total,
+                        uy_total,
+                        sw_total,
                     )
-                elif _HAS_NUMBA_HELPERS and _accumulate_social_totals is not None:
-                    ux_ij = dx_ij / dist
-                    uy_ij = dy_ij / dist
-                    ux_contrib_i = ux_ij * p_i
-                    uy_contrib_i = uy_ij * p_i
-                    ux_contrib_j = -ux_ij * p_j
-                    uy_contrib_j = -uy_ij * p_j
-                    try:
-                        _accumulate_social_totals(
-                            np.int64(self.count), idx_i, idx_j,
-                            ux_contrib_i, uy_contrib_i, ux_contrib_j, uy_contrib_j, p_i, p_j,
-                            ux_total, uy_total, sw_total
-                        )
-                    except (TypeError, ValueError) as e:
-                        logger.debug("Numba social accumulator fallback: %s", e)
-                        ux_total = np.bincount(np.concatenate([idx_i, idx_j]), weights=np.concatenate([ux_contrib_i, ux_contrib_j]), minlength=self.count)
-                        uy_total = np.bincount(np.concatenate([idx_i, idx_j]), weights=np.concatenate([uy_contrib_i, uy_contrib_j]), minlength=self.count)
-                        sw_total = np.bincount(np.concatenate([idx_i, idx_j]), weights=np.concatenate([p_i, p_j]), minlength=self.count)
                 else:
+                    # NumPy fallback path
+                    dx_ij = xj - xi
+                    dy_ij = yj - yi
+                    dist = np.hypot(dx_ij, dy_ij) + 1e-6
+                    dist_m = dist * np.float32(400.0)
+
+                    rl_pairs = calculate_received_level(
+                        source_level,
+                        dist_m,
+                        self.params.alpha_hat,
+                        self.params.beta_hat,
+                    )
+
+                    if ambient_rl is not None:
+                        ambient_i = np.asarray(
+                            ambient_rl[idx_i], dtype=np.float32
+                        )
+                        snr_i = rl_pairs - ambient_i
+                        p_i = response_probability_from_rl(
+                            snr_i, threshold, slope
+                        )
+                        ambient_j = np.asarray(
+                            ambient_rl[idx_j], dtype=np.float32
+                        )
+                        snr_j = rl_pairs - ambient_j
+                        p_j = response_probability_from_rl(
+                            snr_j, threshold, slope
+                        )
+                    else:
+                        p_i = response_probability_from_rl(
+                            rl_pairs, threshold, slope
+                        )
+                        p_j = response_probability_from_rl(
+                            rl_pairs, threshold, slope
+                        )
+
                     ux_ij = dx_ij / dist
                     uy_ij = dy_ij / dist
                     ux_contrib_i = ux_ij * p_i
                     uy_contrib_i = uy_ij * p_i
                     ux_contrib_j = -ux_ij * p_j
                     uy_contrib_j = -uy_ij * p_j
-                    ux_total = np.bincount(np.concatenate([idx_i, idx_j]), weights=np.concatenate([ux_contrib_i, ux_contrib_j]), minlength=self.count)
-                    uy_total = np.bincount(np.concatenate([idx_i, idx_j]), weights=np.concatenate([uy_contrib_i, uy_contrib_j]), minlength=self.count)
-                    sw_total = np.bincount(np.concatenate([idx_i, idx_j]), weights=np.concatenate([p_i, p_j]), minlength=self.count)
+                    ux_total[:] = np.bincount(
+                        np.concatenate([idx_i, idx_j]),
+                        weights=np.concatenate([ux_contrib_i, ux_contrib_j]),
+                        minlength=self.count,
+                    )
+                    uy_total[:] = np.bincount(
+                        np.concatenate([idx_i, idx_j]),
+                        weights=np.concatenate([uy_contrib_i, uy_contrib_j]),
+                        minlength=self.count,
+                    )
+                    sw_total[:] = np.bincount(
+                        np.concatenate([idx_i, idx_j]),
+                        weights=np.concatenate([p_i, p_j]),
+                        minlength=self.count,
+                    )
 
                 # Compute unit direction and scale for those agents that had any contribution
                 has_signal = sw_total > 0

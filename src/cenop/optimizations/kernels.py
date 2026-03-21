@@ -734,6 +734,83 @@ def heading_position_reflect_kernel(
         out_dy[i] = math.cos(rad2) * step
 
 
+@njit(cache=True)
+def social_sound_kernel(
+    xi,
+    yi,
+    xj,
+    yj,
+    idx_i,
+    idx_j,
+    ambient_i,
+    ambient_j,
+    source_level,
+    alpha_hat,
+    beta_hat,
+    threshold,
+    slope,
+    cell_size,
+    n_agents,
+    out_ux,
+    out_uy,
+    out_sw,
+):
+    """Fused social sound: distance + TL + RL + probability + accumulation.
+
+    Uses sequential iteration (no prange) because multiple pairs may share
+    agent indices, causing race conditions on accumulation.
+
+    Handles ambient noise: p_i and p_j computed independently using
+    per-agent ambient levels (SNR = RL - ambient).
+
+    Args:
+        xi, yi: float64[n_pairs] -- agent i positions (grid cells)
+        xj, yj: float64[n_pairs] -- agent j positions (grid cells)
+        idx_i, idx_j: int64[n_pairs] -- global agent indices
+        ambient_i, ambient_j: float64[n_pairs] -- ambient RL at each agent (0 if none)
+        source_level, alpha_hat, beta_hat: sound propagation params
+        threshold, slope: response probability params
+        cell_size: grid cell size in meters (400.0)
+        n_agents: total agent count
+        out_ux, out_uy, out_sw: float64[n_agents] -- accumulated (must be zeroed before call)
+    """
+    n_pairs = len(xi)
+    for p in range(n_pairs):
+        ddx = xj[p] - xi[p]
+        ddy = yj[p] - yi[p]
+        dist_cells = math.sqrt(ddx * ddx + ddy * ddy) + 1.0e-6
+        dist_m = dist_cells * cell_size
+
+        ux = ddx / dist_cells
+        uy = ddy / dist_cells
+
+        dist_safe = max(dist_m, 1.0)
+        tl = beta_hat * math.log10(dist_safe) + alpha_hat * dist_safe
+        rl = source_level - tl
+
+        snr_i = rl - ambient_i[p]
+        linear_i = slope * (snr_i - threshold)
+        linear_i = max(-500.0, min(500.0, linear_i))
+        p_i = 1.0 / (1.0 + math.exp(-linear_i))
+        p_i = max(0.0, min(1.0, p_i))
+
+        snr_j = rl - ambient_j[p]
+        linear_j = slope * (snr_j - threshold)
+        linear_j = max(-500.0, min(500.0, linear_j))
+        p_j = 1.0 / (1.0 + math.exp(-linear_j))
+        p_j = max(0.0, min(1.0, p_j))
+
+        ii = idx_i[p]
+        jj = idx_j[p]
+
+        out_ux[ii] += ux * p_i
+        out_uy[ii] += uy * p_i
+        out_sw[ii] += p_i
+        out_ux[jj] += -ux * p_j
+        out_uy[jj] += -uy * p_j
+        out_sw[jj] += p_j
+
+
 def warmup_kernels():
     """Pre-compile all kernels with small dummy data to avoid first-call latency."""
     if not NUMBA_AVAILABLE:
@@ -804,6 +881,23 @@ def warmup_kernels():
     suy = np.zeros(2, dtype=np.float64)
     ssw = np.zeros(2, dtype=np.float64)
     social_accumulate_kernel(si, sj, sdx, sdy, sdi, spi, spj, sux, suy, ssw)
+    # Warmup social_sound_kernel
+    ss_xi = np.array([1.0, 2.0], dtype=np.float64)
+    ss_yi = np.array([1.0, 2.0], dtype=np.float64)
+    ss_xj = np.array([3.0, 4.0], dtype=np.float64)
+    ss_yj = np.array([3.0, 4.0], dtype=np.float64)
+    ss_ii = np.array([0, 1], dtype=np.int64)
+    ss_jj = np.array([1, 0], dtype=np.int64)
+    ss_ai = np.zeros(2, dtype=np.float64)
+    ss_aj = np.zeros(2, dtype=np.float64)
+    ss_oux = np.zeros(2, dtype=np.float64)
+    ss_ouy = np.zeros(2, dtype=np.float64)
+    ss_osw = np.zeros(2, dtype=np.float64)
+    social_sound_kernel(
+        ss_xi, ss_yi, ss_xj, ss_yj, ss_ii, ss_jj, ss_ai, ss_aj,
+        150.0, 0.01, 15.0, 100.0, 0.1, 400.0, 2,
+        ss_oux, ss_ouy, ss_osw,
+    )
     # Warmup regrow_food kernel
     rf = np.array([1.0, 2.0, 3.0], dtype=np.float64)
     rk = np.array([10.0, 10.0, 10.0], dtype=np.float64)

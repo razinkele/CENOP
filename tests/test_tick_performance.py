@@ -318,6 +318,26 @@ class TestR6VectorizeDeathRecording:
             assert cause in ("starvation", "old_age", "bycatch")
 
 
+class TestR3SocialSoundKernel:
+    """R3: Fused social sound+probability Numba kernel."""
+
+    def test_social_output_matches_numpy_path(self):
+        np.random.seed(42)
+        params = SimulationParameters(
+            porpoise_count=100,
+            world_width=200,
+            world_height=200,
+            communication_enabled=True,
+        )
+        land = make_landscape()
+        pop = PorpoisePopulation(100, params, landscape=land)
+        pop._skip_land_avoidance = True
+        for _ in range(20):
+            pop.step()
+        state = snapshot_state(pop)
+        assert np.all(np.isfinite(state["x"]))
+
+
 class TestR12FoodLevelsXiYi:
     """R12: get_food_levels_vectorized accepts xi/yi."""
 

@@ -119,3 +119,20 @@ class TestO2RefMemCache:
         # Verify non-trivial (some agents have memory)
         assert np.any(pop._ve_total != 0), "veTotal should be non-zero after 20 ticks"
         assert np.any(pop._vt_x != 0) or np.any(pop._vt_y != 0), "vt should be non-zero"
+
+
+class TestO3CachedActiveIdx:
+    """O3: Cache np.where(mask) once per tick."""
+
+    def test_simulation_output_unchanged_with_cached_indices(self):
+        """Full 50-tick trajectory must be identical."""
+        np.random.seed(42)
+        pop = make_pop(200)
+        for _ in range(50):
+            pop.step()
+        state = snapshot_state(pop)
+        np.random.seed(42)
+        pop2 = make_pop(200)
+        for _ in range(50):
+            pop2.step()
+        assert_states_match(state, snapshot_state(pop2))

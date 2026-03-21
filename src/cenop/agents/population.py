@@ -93,7 +93,8 @@ class PorpoisePopulation:
         # Identity
         self.ids = np.arange(count, dtype=np.int32)
         self.active_mask = np.ones(count, dtype=bool) # True if alive/active slot
-        
+        self._active_idx = np.arange(count, dtype=np.intp)  # cached np.where(active_mask)[0]
+
         # Position
         self.x = np.zeros(count, dtype=np.float32)
         self.y = np.zeros(count, dtype=np.float32)
@@ -1969,7 +1970,7 @@ class PorpoisePopulation:
         if self.landscape is None:
             return
 
-        active = np.where(mask)[0]
+        active = self._active_idx
         if len(active) == 0:
             return
 
@@ -2493,6 +2494,9 @@ class PorpoisePopulation:
         active_before = int(np.sum(self.active_mask))
         self._global_tick += 1
 
+        # Cache active indices once per tick (avoid redundant np.where in sub-methods)
+        self._active_idx = np.where(mask)[0]
+
         # Ensure cached cell indices are consistent with current landscape
         # (handles landscape reassignment after __init__)
         if self._global_tick == 1:
@@ -2516,6 +2520,9 @@ class PorpoisePopulation:
 
         # 4b. Starvation check on post-food, pre-BMR energy (Java ordering)
         self._check_mortality(mask, active_before)
+
+        # Recompute active indices after mortality changed active_mask
+        self._active_idx = np.where(self.active_mask)[0]
 
         # 4c. BMR cost — use updated active_mask so dead agents are excluded
         self._apply_bmr_cost(self.active_mask)

@@ -1846,7 +1846,7 @@ class PorpoisePopulation:
             # DEPONS inline path: food + PSM, leave BMR for _apply_bmr_cost
             fract_to_eat = np.clip((20.0 - self.energy) / 10.0, 0.0, 0.99)
             if self.landscape is not None and hasattr(self.landscape, 'eat_food'):
-                food_gained = self._eat_food_vectorized(mask, fract_to_eat)
+                food_gained = self._eat_food_vectorized(mask, fract_to_eat, active_idx=self._active_idx)
             else:
                 food_gained = fract_to_eat * np.random.uniform(0.1, 0.5, self.count)
             self.energy[mask] += food_gained[mask]
@@ -3108,7 +3108,7 @@ class PorpoisePopulation:
 
     # === Phase 3: Enhanced Energetics Methods ===
 
-    def _eat_food_vectorized(self, mask: np.ndarray, fract_to_eat: np.ndarray) -> np.ndarray:
+    def _eat_food_vectorized(self, mask: np.ndarray, fract_to_eat: np.ndarray, active_idx=None) -> np.ndarray:
         """
         Eat food from landscape cells (Vectorized).
         
@@ -3120,7 +3120,8 @@ class PorpoisePopulation:
             return food_eaten
             
         # Only active agents eat
-        active_idx = np.where(mask)[0]
+        if active_idx is None:
+            active_idx = np.where(mask)[0]
         if len(active_idx) == 0:
              return food_eaten
         

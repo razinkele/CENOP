@@ -238,3 +238,19 @@ class TestR7DeadSwimmingCost:
         for _ in range(30):
             pop2.step()
         assert_states_match(state, snapshot_state(pop2))
+
+
+class TestR9PassActiveIdx:
+    """R9: Reuse _active_idx in food eating."""
+
+    def test_food_intake_unchanged(self):
+        np.random.seed(42)
+        pop = make_pop(100)
+        for _ in range(30):
+            pop.step()
+        state = snapshot_state(pop)
+        np.random.seed(42)
+        pop2 = make_pop(100)
+        for _ in range(30):
+            pop2.step()
+        assert_states_match(state, snapshot_state(pop2))

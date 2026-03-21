@@ -4,27 +4,13 @@ Each function returns a layer dict compatible with MapWidget.update().
 """
 
 import numpy as np
-from shiny_deckgl import icon_layer, scatterplot_layer, bitmap_layer, path_layer
+from shiny_deckgl import icon_layer, scatterplot_layer, bitmap_layer, trips_layer
+from shiny_deckgl.ibm import ICON_ATLAS as IBM_ICON_ATLAS, ICON_MAPPING as IBM_ICON_MAPPING
 
 
-# -- Porpoise arrow icon (base64 SVG) --
-PORPOISE_ICON_ATLAS = (
-    "data:image/svg+xml;base64,"
-    "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4NCjxzdmcgeG1s"
-    "bnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMzIiIGhlaWdo"
-    "dD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiI+DQogIDxnIGZpbGw9Im5vbmUiIHN0"
-    "cm9rZT0iYmxhY2siIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJv"
-    "dW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj4NCiAgICA8IS0tIEFycm93IHNo"
-    "YWZ0IC0tPg0KICAgIDxsaW5lIHgxPSIxNiIgeTE9IjI2IiB4Mj0iMTYiIHkyPSI4"
-    "IiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMyIgLz4NCiAgICA8IS0t"
-    "IEFycm93IGhlYWQgLS0+DQogICAgPHBvbHlsaW5lIHBvaW50cz0iOCwxMiAxNiw0"
-    "IDI0LDEyIiBmaWxsPSIjZmZmZmZmIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13"
-    "aWR0aD0iMyIvPg0KICA8L2c+DQo8L3N2Zz4="
-)
-PORPOISE_ICON_MAPPING = {
-    "arrow": {"x": 0, "y": 0, "width": 32, "height": 32,
-              "anchorY": 16, "anchorX": 16},
-}
+# -- Porpoise icon: use IBM marine species sprite atlas --
+PORPOISE_ICON_ATLAS = IBM_ICON_ATLAS
+PORPOISE_ICON_MAPPING = IBM_ICON_MAPPING
 
 # -- Turbine pole icon --
 TURBINE_POLE_ATLAS = (
@@ -183,46 +169,49 @@ def array_to_base64_png(rgba: np.ndarray) -> str:
 
 
 def build_porpoise_layer(positions: list[dict]) -> dict:
-    """Build porpoise dot layer from position data."""
+    """Build porpoise icon layer using IBM harbour porpoise sprite."""
     if not positions:
-        return scatterplot_layer("porpoises", [], visible=False)
+        return icon_layer("porpoises", [], visible=False)
 
-    return scatterplot_layer(
+    return icon_layer(
         "porpoises",
         positions,
+        iconAtlas=PORPOISE_ICON_ATLAS,
+        iconMapping=PORPOISE_ICON_MAPPING,
+        getIcon="Harbour porpoise",
         getPosition="@@d.position",
-        getFillColor="@@d.color",
-        getLineColor=[0, 0, 0, 120],
-        radiusMinPixels=4,
-        radiusMaxPixels=8,
-        getRadius=300,
-        lineWidthMinPixels=1,
-        stroked=True,
-        filled=True,
+        getSize=40,
+        sizeMinPixels=16,
+        sizeMaxPixels=48,
+        getAngle="@@d.heading",
+        getColor="@@d.color",
         opacity=0.9,
         pickable=True,
         visible=True,
     )
 
 
-def build_porpoise_trails_layer(trails: list[dict]) -> dict:
-    """Build porpoise trace layer using PathLayer.
+def build_porpoise_trails_layer(
+    trails: list[dict], current_time: float = 0
+) -> dict:
+    """Build porpoise trace layer using TripsLayer with decaying trails.
 
-    Each trail is a dict with 'path' (list of [lon, lat] coords) and
-    'color' ([r, g, b] or [r, g, b, a]).
+    Each trail is a dict with 'path' (list of [lon, lat, timestamp] coords)
+    and 'color' ([r, g, b] or [r, g, b, a]).
     """
     if not trails:
-        return path_layer("porpoise-trails", [], visible=False)
-    return path_layer(
+        return trips_layer("porpoise-trails", [], visible=False)
+    return trips_layer(
         "porpoise-trails",
         trails,
         getPath="@@d.path",
         getColor="@@d.color",
-        widthMinPixels=1.5,
-        widthMaxPixels=3,
-        opacity=0.6,
-        jointRounded=True,
-        capRounded=True,
+        currentTime=current_time,
+        trailLength=180,
+        fadeTrail=True,
+        widthMinPixels=2,
+        widthMaxPixels=4,
+        opacity=0.7,
         visible=True,
     )
 

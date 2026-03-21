@@ -125,6 +125,7 @@ def run_simulation_loop(
     logger.debug("run_simulation_loop STARTED - max_ticks=%s", runner.max_ticks)
     loop_count = 0
     trail_history: dict[int, deque] = {}
+    trail_time_counter = 0
     try:
         while not runner.is_complete and not stop_event.is_set():
             loop_count += 1
@@ -191,6 +192,7 @@ def run_simulation_loop(
                     # Each map update adds 1 point; keep short tails to avoid clutter.
                     max_points = trace_length_value[0] * 3  # short tail per agent
                 if traces_on and porpoise_positions:
+                    trail_time_counter += 1
                     for row in porpoise_positions:
                         pid = int(row[0])
                         lon, lat = row[1], row[2]
@@ -200,20 +202,20 @@ def run_simulation_loop(
                             trail_history[pid] = deque(
                                 trail_history[pid], maxlen=max_points
                             )
-                        trail_history[pid].append((lon, lat))
+                        trail_history[pid].append((lon, lat, trail_time_counter))
                     # Remove dead porpoises
                     alive_ids = {int(row[0]) for row in porpoise_positions}
                     dead_ids = set(trail_history.keys()) - alive_ids
                     for pid in dead_ids:
                         del trail_history[pid]
-                    # Serialize for queue
+                    # Serialize for queue — path includes [lon, lat, time]
                     trail_data = []
                     for pid, trail in list(trail_history.items())[:1000]:
                         if len(trail) >= 2:
                             trail_data.append({
                                 "pid": pid,
                                 "path": [
-                                    [t[0], t[1]] for t in trail
+                                    [t[0], t[1], t[2]] for t in trail
                                 ],
                             })
                 elif not traces_on:
@@ -228,6 +230,7 @@ def run_simulation_loop(
                 "should_update_map": runner.should_update_map,
                 "porpoise_positions": porpoise_positions,
                 "porpoise_trails": trail_data,
+                "trail_time": trail_time_counter,
             }
             result_queue.put(update)
 
@@ -1308,6 +1311,7 @@ def server(input, output, session):
                             state.porpoise_trails.set(
                                 msg.get("porpoise_trails")
                             )
+                            state.trail_time.set(msg.get("trail_time", 0))
                         except AttributeError:
                             pass
 
@@ -1744,12 +1748,17 @@ def server(input, output, session):
             return
 
         try:
+            import math
+
             points = []
             for p in positions_raw[:1000]:
                 lon, lat = p[1], p[2]
-                heading = p[4] if len(p) > 4 else 0
+                heading_rad = p[4] if len(p) > 4 else 0
                 age = p[5] if len(p) > 5 else 5
                 is_disturbed = p[6] if len(p) > 6 else False
+
+                # Convert radians (math convention) to degrees clockwise from north
+                heading_deg = -math.degrees(heading_rad) + 90
 
                 if is_disturbed:
                     color = [255, 40, 40, 240]
@@ -1762,10 +1771,9 @@ def server(input, output, session):
 
                 points.append({
                     "position": [lon, lat],
-                    "heading": heading,
+                    "heading": heading_deg,
                     "age": age,
                     "is_disturbed": is_disturbed,
-                    "radius": 200,
                     "color": color,
                     "layerType": "Porpoise",
                     "info": f"Age: {age:.1f}y" if isinstance(age, float) else f"Age: {age}",
@@ -1776,6 +1784,7 @@ def server(input, output, session):
 
             # Build trail layer if traces enabled
             trails_raw = state.porpoise_trails()
+            current_time = state.trail_time()
             show_traces = False
             try:
                 show_traces = input.show_traces()
@@ -1806,7 +1815,7 @@ def server(input, output, session):
                         ),
                     })
                 _layer_cache["porpoise-trails"] = (
-                    build_porpoise_trails_layer(colored_trails)
+                    build_porpoise_trails_layer(colored_trails, current_time)
                 )
                 _loaded_data_layers.add("porpoise-trails")
             else:

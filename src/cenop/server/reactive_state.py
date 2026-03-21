@@ -45,6 +45,7 @@ class SimulationState:
     # Latest lightweight porpoise positions snapshot for map rendering
     porpoise_positions: reactive.Value = field(default_factory=lambda: reactive.Value([]))
     porpoise_trails: reactive.Value = field(default_factory=lambda: reactive.Value([]))
+    trail_time: reactive.Value = field(default_factory=lambda: reactive.Value(0))
     
     # Landscape loading trigger
     landscape_load_counter: reactive.Value = field(default_factory=lambda: reactive.Value(0))

@@ -35,7 +35,7 @@ def make_landscape(w=200, h=200):
 def make_pop(n=500, seed=42):
     """Create a population for benchmarking (homogeneous, no land avoidance)."""
     np.random.seed(seed)
-    params = SimulationParameters(porpoise_count=n, world_width=200, world_height=200)
+    params = SimulationParameters(porpoise_count=n, world_width=200, world_height=200, random_seed=seed)
     land = make_landscape()
     pop = PorpoisePopulation(n, params, landscape=land)
     pop._skip_land_avoidance = True
@@ -76,7 +76,7 @@ def make_pop_no_comm(n=500, seed=42):
     """Create a population with communication_enabled=False for O1 tests."""
     np.random.seed(seed)
     params = SimulationParameters(
-        porpoise_count=n, world_width=200, world_height=200, communication_enabled=False
+        porpoise_count=n, world_width=200, world_height=200, communication_enabled=False, random_seed=seed
     )
     land = make_landscape()
     pop = PorpoisePopulation(n, params, landscape=land)

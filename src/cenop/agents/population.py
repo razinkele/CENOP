@@ -96,6 +96,10 @@ class PorpoisePopulation:
         self.landscape = landscape
         self.count = count # Initial count capacity
 
+        # Random generator for reproducibility (per-instance)
+        seed = getattr(self.params, 'random_seed', None)
+        self.rng = np.random.default_rng(seed)
+
         # JASMINE integration modules (Phase 2-5)
         self._movement_module = movement_module
         self._behavior_fsm = behavior_fsm
@@ -125,7 +129,7 @@ class PorpoisePopulation:
         self.age = np.zeros(count, dtype=np.float32)
         
         # Energy
-        self.energy = np.random.normal(
+        self.energy = self.rng.normal(
             params.energy_init_mean, params.energy_init_sd, count
         ).clip(0, 20).astype(np.float32)
         
@@ -243,10 +247,7 @@ class PorpoisePopulation:
             from cenop.movement.base import MovementState
             self._movement_state = MovementState.create(count)
 
-        # Random generator for reproducibility (per-instance)
-        # Use SimulationParameters.random_seed when available
-        seed = getattr(self.params, 'random_seed', None)
-        self.rng = np.random.default_rng(seed)
+        # (self.rng created early in __init__, before array initialization)
 
         # Instrumentation controls: set via params.debug_instrumentation or env var CENOP_INSTRUMENT
         self._debug_instrumentation = bool(getattr(self.params, 'debug_instrumentation', False) or os.getenv('CENOP_INSTRUMENT', '0').lower() in ('1','true','yes'))
@@ -437,8 +438,8 @@ class PorpoisePopulation:
         
         if self.landscape is None:
             # No landscape - use simple random positions
-            self.x = np.random.uniform(0, world_w, self.count).astype(np.float32)
-            self.y = np.random.uniform(0, world_h, self.count).astype(np.float32)
+            self.x = self.rng.uniform(0, world_w, self.count).astype(np.float32)
+            self.y = self.rng.uniform(0, world_h, self.count).astype(np.float32)
         else:
             # Use landscape - place only in water cells (depth >= min_depth)
             lw = self.landscape.width
@@ -453,25 +454,25 @@ class PorpoisePopulation:
                 
                 if len(valid_x) > 0:
                     # Randomly select from valid positions
-                    indices = np.random.choice(len(valid_x), self.count, replace=True)
-                    self.x = valid_x[indices].astype(np.float32) + np.random.uniform(0, 1, self.count).astype(np.float32)
-                    self.y = valid_y[indices].astype(np.float32) + np.random.uniform(0, 1, self.count).astype(np.float32)
+                    indices = self.rng.choice(len(valid_x), self.count, replace=True)
+                    self.x = valid_x[indices].astype(np.float32) + self.rng.uniform(0, 1, self.count).astype(np.float32)
+                    self.y = valid_y[indices].astype(np.float32) + self.rng.uniform(0, 1, self.count).astype(np.float32)
                 else:
                     # Fallback - no valid water cells (shouldn't happen)
-                    self.x = np.random.uniform(0, lw, self.count).astype(np.float32)
-                    self.y = np.random.uniform(0, lh, self.count).astype(np.float32)
+                    self.x = self.rng.uniform(0, lw, self.count).astype(np.float32)
+                    self.y = self.rng.uniform(0, lh, self.count).astype(np.float32)
             else:
                 # No depth data - use full area
-                self.x = np.random.uniform(0, lw, self.count).astype(np.float32)
-                self.y = np.random.uniform(0, lh, self.count).astype(np.float32)
+                self.x = self.rng.uniform(0, lw, self.count).astype(np.float32)
+                self.y = self.rng.uniform(0, lh, self.count).astype(np.float32)
             
-        self.heading = np.random.uniform(0, 360, self.count).astype(np.float32)
+        self.heading = self.rng.uniform(0, 360, self.count).astype(np.float32)
         
         # Sex ratio 50%
-        self.is_female = np.random.choice([True, False], self.count)
+        self.is_female = self.rng.choice([True, False], self.count)
         
         # Ages from distribution
-        self.age = np.random.choice(
+        self.age = self.rng.choice(
             AGE_DISTRIBUTION_FREQUENCY, 
             size=self.count
         ).astype(np.float32)
@@ -837,7 +838,7 @@ class PorpoisePopulation:
         self._day_of_year = 0
 
         # Mating day (females only, N(225, 20))
-        mating_days = np.random.normal(225, 20, self.count).astype(np.int16)
+        mating_days = self.rng.normal(225, 20, self.count).astype(np.int16)
         # Apply only to females, others stay -99
         self.mating_day = np.where(self.is_female, mating_days, -99)
 
@@ -849,7 +850,7 @@ class PorpoisePopulation:
         self.pregnancy_status[mature_females] = 2
 
         # Some conceive with probability conceive_prob → pregnant (status=1)
-        conceive_roll = np.random.random(self.count)
+        conceive_roll = self.rng.random(self.count)
         conceives = mature_females & (conceive_roll < self.params.conceive_prob)
         self.pregnancy_status[conceives] = 1
         self.days_since_mating[conceives] = 0
@@ -857,7 +858,7 @@ class PorpoisePopulation:
         # Pregnant females get random days_since_mating representing progress into gestation
         n_conceives = int(np.sum(conceives))
         if n_conceives > 0:
-            initial_dsm = (360 - np.round(np.random.normal(225, 20, n_conceives))).astype(np.int16)
+            initial_dsm = (360 - np.round(self.rng.normal(225, 20, n_conceives))).astype(np.int16)
             initial_dsm = np.clip(initial_dsm, 0, 360)
             self.days_since_mating[conceives] = initial_dsm
 
@@ -914,9 +915,9 @@ class PorpoisePopulation:
         if _HAS_KERNELS:
             # Numba kernel: computes pres_angle and log_mov with rejection sampling
             # Seed Numba's internal RNG from NumPy's RNG for reproducibility
-            _seed_numba_rng(np.random.randint(0, 2**31))
-            np.copyto(self._rand_angle, np.random.normal(self.params.r2_mean, self.params.r2_sd, self.count))
-            np.copyto(self._rand_len, np.random.normal(self.params.r1_mean, self.params.r1_sd, self.count))
+            _seed_numba_rng(self.rng.integers(0, 2**31))
+            np.copyto(self._rand_angle, self.rng.normal(self.params.r2_mean, self.params.r2_sd, self.count))
+            np.copyto(self._rand_len, self.rng.normal(self.params.r1_mean, self.params.r1_sd, self.count))
             _crw_kernel(
                 self.prev_angle, self.prev_log_mov,
                 self._depths, self._salinity_vals,
@@ -933,7 +934,7 @@ class PorpoisePopulation:
             # --- Turning Angle (NumPy fallback) ---
             # DEPONS formula: angleTmp = b0 * prevAngle + N(0,4)
             #                 presAngle = angleTmp * (b1*depth + b2*salinity + b3)
-            np.copyto(self._rand_angle, np.random.normal(self.params.r2_mean, self.params.r2_sd, self.count))
+            np.copyto(self._rand_angle, self.rng.normal(self.params.r2_mean, self.params.r2_sd, self.count))
 
             # angleTmp = b0 * prevAngle + R2
             np.multiply(self.params.corr_angle_base, self.prev_angle, out=self._pres_angle)
@@ -952,7 +953,7 @@ class PorpoisePopulation:
             retry = 0
             while (violations & mask).any() and retry < 200:
                 idx = np.where(violations & mask)[0]
-                new_rand = np.random.normal(self.params.r2_mean, self.params.r2_sd, len(idx))
+                new_rand = self.rng.normal(self.params.r2_mean, self.params.r2_sd, len(idx))
                 angle_tmp = self.params.corr_angle_base * self.prev_angle[idx] + new_rand
                 self._pres_angle[idx] = angle_tmp * (
                     self.params.corr_angle_bathy * self._depths[idx]
@@ -974,7 +975,7 @@ class PorpoisePopulation:
                 violations2 = np.ones(self.count, dtype=bool)
                 while (violations2 & needs_modulation).any() and retry < 200:
                     idx = np.where(violations2 & needs_modulation)[0]
-                    rnd = np.random.uniform(0, 20, len(idx))
+                    rnd = self.rng.uniform(0, 20, len(idx))
                     new_angle = (np.abs(self._pres_angle[idx]) + rnd
                                  - rnd * prev_mov[idx] / max_mov_value)
                     self._pres_angle[idx] = np.sign(self._pres_angle[idx]) * new_angle
@@ -984,12 +985,12 @@ class PorpoisePopulation:
                 if (violations2 & needs_modulation).any():
                     fb_idx = np.where(violations2 & needs_modulation)[0]
                     self._pres_angle[fb_idx] = np.sign(self._pres_angle[fb_idx]) * (
-                        np.random.uniform(0, 20, len(fb_idx)) + 90
+                        self.rng.uniform(0, 20, len(fb_idx)) + 90
                     )
 
             # --- Step Length (NumPy fallback) ---
             # DEPONS formula: log10_mov = a0 * prev_log_mov + a1*depth + a2*salinity + R1
-            np.copyto(self._rand_len, np.random.normal(self.params.r1_mean, self.params.r1_sd, self.count))
+            np.copyto(self._rand_len, self.rng.normal(self.params.r1_mean, self.params.r1_sd, self.count))
             np.multiply(self.params.corr_logmov_length, self.prev_log_mov, out=self._log_mov)
             self._log_mov += self.params.corr_logmov_bathy * self._depths
             self._log_mov += self.params.corr_logmov_salinity * self._salinity_vals
@@ -1000,7 +1001,7 @@ class PorpoisePopulation:
             retry = 0
             while (violations & mask).any() and retry < 200:
                 idx = np.where(violations & mask)[0]
-                new_rand = np.random.normal(self.params.r1_mean, self.params.r1_sd, len(idx))
+                new_rand = self.rng.normal(self.params.r1_mean, self.params.r1_sd, len(idx))
                 self._log_mov[idx] = (
                     self.params.corr_logmov_length * self.prev_log_mov[idx]
                     + self.params.corr_logmov_bathy * self._depths[idx]
@@ -1130,7 +1131,7 @@ class PorpoisePopulation:
         psm_log = getattr(self.params, 'psm_log', 0.6)
 
         # Random angle delta: U(-psm_angle, +psm_angle)
-        delta = np.random.uniform(-psm_angle, psm_angle, n)
+        delta = self.rng.uniform(-psm_angle, psm_angle, n)
 
         # Distance-based logistic scaling (DispersalPSMType2.java:77)
         target_dist = self.dispersal_target_distance[dispersing]
@@ -1319,7 +1320,7 @@ class PorpoisePopulation:
                 bs[:] = self._step_dist[blocked_idx]
 
                 base_angles = np.array([40.0, 70.0, 120.0], dtype=np.float64)
-                jitter = np.random.uniform(0, 10, 3).astype(np.float64)
+                jitter = self.rng.uniform(0, 10, 3).astype(np.float64)
 
                 out_x = self._la_out_x[:n_blocked]
                 out_y = self._la_out_y[:n_blocked]
@@ -1343,7 +1344,7 @@ class PorpoisePopulation:
         else:
             # Fallback: original 6-call loop (preserved exactly)
             for base_angle in [40, 70, 120]:
-                turn_angle = base_angle + np.random.uniform(0, 10)
+                turn_angle = base_angle + self.rng.uniform(0, 10)
                 np.copyto(self._still_blocked, self._on_land)
 
                 # Compute positions for both turn directions
@@ -1590,7 +1591,7 @@ class PorpoisePopulation:
         if self.landscape is not None and hasattr(self.landscape, 'eat_food'):
             food_gained = self._eat_food_vectorized(mask, fract_to_eat)
         else:
-            food_gained = fract_to_eat * np.random.uniform(0.1, 0.5, self.count)
+            food_gained = fract_to_eat * self.rng.uniform(0.1, 0.5, self.count)
 
         self.energy[mask] += food_gained[mask]
 
@@ -1675,7 +1676,7 @@ class PorpoisePopulation:
         if self.landscape is not None and hasattr(self.landscape, 'eat_food'):
             food_available = self._eat_food_vectorized(mask, fract_to_eat)
         else:
-            food_available = fract_to_eat * np.random.uniform(0.1, 0.5, self.count)
+            food_available = fract_to_eat * self.rng.uniform(0.1, 0.5, self.count)
 
         # Behavioral state
         if self._behavior_state is not None:
@@ -1752,7 +1753,7 @@ class PorpoisePopulation:
         if self.landscape is not None and hasattr(self.landscape, 'eat_food'):
             food_available = self._eat_food_vectorized(mask, fract_to_eat)
         else:
-            food_available = fract_to_eat * np.random.uniform(0.1, 0.5, self.count)
+            food_available = fract_to_eat * self.rng.uniform(0.1, 0.5, self.count)
 
         # Behavioral state
         if self._behavior_state is not None:
@@ -1893,7 +1894,7 @@ class PorpoisePopulation:
             if self.landscape is not None and hasattr(self.landscape, 'eat_food'):
                 food_gained = self._eat_food_vectorized(mask, fract_to_eat, active_idx=self._active_idx)
             else:
-                food_gained = fract_to_eat * np.random.uniform(0.1, 0.5, self.count)
+                food_gained = fract_to_eat * self.rng.uniform(0.1, 0.5, self.count)
             self.energy[mask] += food_gained[mask]
             np.clip(self.energy, 0, 20.0, out=self.energy)
             # Store for BMR phase
@@ -1954,7 +1955,7 @@ class PorpoisePopulation:
             0.0
         )
 
-        starvation_check = np.random.random(self.count)
+        starvation_check = self.rng.random(self.count)
         starving = (starvation_check > step_surv_prob) & mask
 
         # Two-step starvation logic (Java Porpoise.java:766-776):
@@ -2087,7 +2088,7 @@ class PorpoisePopulation:
         females = self.is_female & self.active_mask
         n_females = int(np.sum(females))
         if n_females > 0:
-            new_days = np.round(np.random.normal(
+            new_days = np.round(self.rng.normal(
                 self.params.mating_day_mean, self.params.mating_day_sd, n_females
             )).astype(np.int16)
             self.mating_day[females] = new_days
@@ -2104,7 +2105,7 @@ class PorpoisePopulation:
         current_day = self._day_of_year // 48
         ready = female_mask & (self.pregnancy_status == 2) & (self.mating_day == current_day)
         if ready.any():
-            conceive_roll = np.random.random(self.count)
+            conceive_roll = self.rng.random(self.count)
             conceives = ready & (conceive_roll < self.params.conceive_prob)
             self.pregnancy_status[conceives] = 1
             self.days_since_mating[conceives] = 0
@@ -2122,7 +2123,7 @@ class PorpoisePopulation:
         weaning = female_mask & self.with_calf & \
                   (self.days_since_birth == self.params.nursing_time)
         if weaning.any():
-            calf_roll = np.random.random(self.count)
+            calf_roll = self.rng.random(self.count)
             creates_calf = weaning & (calf_roll > 0.5)
 
             n_calves = int(np.sum(creates_calf))
@@ -2139,7 +2140,7 @@ class PorpoisePopulation:
                     self.heading[new_slots] = self.heading[mother_indices]
                     self.age[new_slots] = 0.0
                     self.is_female[new_slots] = True
-                    self.energy[new_slots] = np.random.normal(
+                    self.energy[new_slots] = self.rng.normal(
                         self.params.energy_init_mean, self.params.energy_init_sd, slots_to_use
                     ).clip(0, 20).astype(np.float32)
                     self.pregnancy_status[new_slots] = 0
@@ -3005,7 +3006,7 @@ class PorpoisePopulation:
         clamping (which biased targets toward edges/corners).
         """
         pref_dist_km = self._psm_instances[idx].preferred_distance
-        angle_rad = np.random.uniform(0, 2 * np.pi)
+        angle_rad = self.rng.uniform(0, 2 * np.pi)
         dist_cells = pref_dist_km * 1000 / 400.0
         
         tx = self.x[idx] + np.sin(angle_rad) * dist_cells

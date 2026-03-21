@@ -941,22 +941,31 @@ def server(input, output, session):
         
         landscape = file_info.get('landscape')
         filename = file_info.get('file')
-        
+
         if not landscape or not filename:
             return None
-        
-        cache_key = f"{landscape}/{filename}"
-        
+
+        # Path traversal protection: strip any directory components from UI inputs
+        safe_landscape = Path(landscape).name
+        safe_filename = Path(filename).name
+
+        cache_key = f"{safe_landscape}/{safe_filename}"
+
         # Use cache if available
         if _preview_data_cache is not None and _preview_cache_key == cache_key:
             logger.info(f"[PREVIEW DEBUG] Using cached data for {cache_key}")
             return _preview_data_cache
-            
+
         logger.info(f"[PREVIEW DEBUG] Loading fresh data for {cache_key}")
         try:
             # Load ASC file
             module_dir = Path(__file__).resolve().parent.parent.parent.parent
-            file_path = module_dir / "data" / landscape / filename
+            data_root = (module_dir / "data").resolve()
+            file_path = module_dir / "data" / safe_landscape / safe_filename
+            # Verify resolved path is within the data directory
+            if not str(file_path.resolve()).startswith(str(data_root)):
+                logger.error(f"[PREVIEW DEBUG] Path traversal attempt blocked: {file_path}")
+                return None
             
             if not file_path.exists():
                     logger.error(f"[PREVIEW DEBUG] File not found: {file_path}")

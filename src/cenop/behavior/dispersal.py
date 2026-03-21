@@ -223,14 +223,16 @@ class PSMType1Dispersal(DispersalBehavior):
 class PSMType2Dispersal(DispersalBehavior):
     """
     PSM Type 2 dispersal.
-    
-    Logistic DECREASE in random turning as dispersal progresses.
-    
+
+    Logistic INCREASE in random turning as dispersal progresses.
+    (Despite the Java class being named "LogisticDecrease", PSMType2 uses
+    raw SSLogis which increases. PSMType1 uses 1-SSLogis for actual decrease.)
+
     Translates from: DispersalPSMType2.java
-    
+
     Key formulas:
     - distLogX = (3 * distPerc) - 1.5  (input transformation)
-    - logDistPerc = SSLogis(distLogX)  (logistic decrease)
+    - logDistPerc = SSLogis(distLogX)  (logistic increase)
     - angleDelta = random(-maxAngle, +maxAngle) * logDistPerc
     - newHeading = previousStepHeading + angleDelta
     - Target = 95% of target distance (PSM-Type2 specific)

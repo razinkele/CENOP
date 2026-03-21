@@ -1915,7 +1915,6 @@ class PorpoisePopulation:
             total_cost = 0.001 * scaling_factor * self.params.e_use_per_30_min
             self.energy[mask] -= total_cost[mask]
             n_active = int(np.sum(mask))
-            food_gained = getattr(self, '_pending_food_available', np.zeros(self.count))
             if n_active > 0:
                 self.avg_energy_cost = float(np.mean(total_cost[mask]))
             else:
@@ -2567,6 +2566,7 @@ class PorpoisePopulation:
             and not self._comm_enabled
         )
         if _cy_ok:
+            active_before_mask = self.active_mask.copy()
             current_month = self._get_current_month()
             seasonal_scaling = self._get_seasonal_scaling(current_month)
             disp_step = getattr(self.params, 'mean_disp_dist', 1.6) / 0.4
@@ -2612,6 +2612,18 @@ class PorpoisePopulation:
             # Post-Cython housekeeping
             self._recompute_cell_indices()
             self._active_idx = np.flatnonzero(self.active_mask)
+
+            # Record death statistics (Cython killed agents in-place via starvation)
+            deaths = int(np.sum(active_before_mask)) - int(np.sum(self.active_mask))
+            if deaths > 0:
+                newly_dead = active_before_mask & ~self.active_mask
+                if newly_dead.any():
+                    sim_day = self._global_tick // 48
+                    dead_idx = np.flatnonzero(newly_dead)
+                    self.death_ages.extend(self.age[dead_idx].astype(int).tolist())
+                    self.death_days.extend([sim_day] * len(dead_idx))
+                    # Cython only performs starvation deaths
+                    self.death_causes.extend(["starvation"] * len(dead_idx))
 
             # Dashboard stats
             n_active = len(self._active_idx)

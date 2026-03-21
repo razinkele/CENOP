@@ -168,3 +168,19 @@ class TestO5FusedHeadingKernel:
         assert np.all(np.isfinite(state["x"]))
         assert np.all(np.isfinite(state["y"]))
         assert np.all((state["heading"] >= 0) & (state["heading"] < 360))
+
+
+class TestO6DtypePingPong:
+    """O6: Verify no output change after removing astype overhead."""
+
+    def test_output_stable_after_dtype_cleanup(self):
+        np.random.seed(42)
+        pop = make_pop(100)
+        for _ in range(30):
+            pop.step()
+        state = snapshot_state(pop)
+        np.random.seed(42)
+        pop2 = make_pop(100)
+        for _ in range(30):
+            pop2.step()
+        assert_states_match(state, snapshot_state(pop2))

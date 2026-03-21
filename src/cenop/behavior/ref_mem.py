@@ -151,7 +151,7 @@ def compute_ve_total(
             stored_util, mem_ptr,
             mem_count,
             work_mem_table if work_mem_table.dtype == np.float64 else work_mem_table.astype(np.float64),
-            active.astype(np.int64), out,
+            active if active.dtype == np.int64 else active.astype(np.int64), out,
         )
         ve_total[active] = out.astype(np.float32)
         return ve_total
@@ -240,7 +240,7 @@ def compute_attraction_vector(
             mem_ptr, mem_count,
             current_x, current_y,
             ref_mem_table if ref_mem_table.dtype == np.float64 else ref_mem_table.astype(np.float64),
-            active.astype(np.int64), out_x, out_y,
+            active if active.dtype == np.int64 else active.astype(np.int64), out_x, out_y,
         )
         vt_x[active] = out_x.astype(np.float32)
         vt_y[active] = out_y.astype(np.float32)

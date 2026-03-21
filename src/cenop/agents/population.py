@@ -2518,7 +2518,7 @@ class PorpoisePopulation:
         self._global_tick += 1
 
         # Cache active indices once per tick (avoid redundant np.where in sub-methods)
-        self._active_idx = np.where(mask)[0]
+        self._active_idx = np.flatnonzero(mask)  # returns intp = int64 on 64-bit
 
         # Ensure cached cell indices are consistent with current landscape
         # (handles landscape reassignment after __init__)
@@ -2545,7 +2545,7 @@ class PorpoisePopulation:
         self._check_mortality(mask, active_before)
 
         # Recompute active indices after mortality changed active_mask
-        self._active_idx = np.where(self.active_mask)[0]
+        self._active_idx = np.flatnonzero(self.active_mask)  # returns intp = int64 on 64-bit
 
         # 4c. BMR cost — use updated active_mask so dead agents are excluded
         self._apply_bmr_cost(self.active_mask)

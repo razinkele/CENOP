@@ -44,7 +44,7 @@ if "shiny_deckgl" not in sys.modules:
     _shiny_deckgl.trips_layer = _fake_layer
 
     # Widget / control helpers used by server code
-    _shiny_deckgl.deck_legend_control = MagicMock(name="deck_legend_control")
+    _shiny_deckgl.legend_control = MagicMock(name="legend_control")
     _shiny_deckgl.scale_widget = MagicMock(name="scale_widget")
     _shiny_deckgl.zoom_widget = MagicMock(name="zoom_widget")
     _shiny_deckgl.compass_widget = MagicMock(name="compass_widget")
@@ -74,5 +74,14 @@ if "shiny_deckgl" not in sys.modules:
     # Style constants
     _shiny_deckgl.CARTO_DARK = "carto-dark"
     _shiny_deckgl.CARTO_POSITRON = "carto-positron"
+
+    # IBM submodule with marine species icon atlas
+    _ibm = types.ModuleType("shiny_deckgl.ibm")
+    _ibm.ICON_ATLAS = "data:image/png;base64,mock"
+    _ibm.ICON_MAPPING = {
+        "Harbour porpoise": {"x": 192, "y": 0, "width": 64, "height": 64, "anchorY": 32},
+    }
+    _shiny_deckgl.ibm = _ibm
+    sys.modules["shiny_deckgl.ibm"] = _ibm
 
     sys.modules["shiny_deckgl"] = _shiny_deckgl

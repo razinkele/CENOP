@@ -120,9 +120,15 @@ class TestBladeAnimation:
         assert "window._cenopBladeRotation" not in str(layer)
 
     def test_client_side_animation(self):
+        """client_animated=True still returns a valid layer dict.
+
+        The actual JS animation is injected separately via BLADE_ANIMATION_JS
+        in main.py, not embedded in the layer dict itself.
+        """
         data = [{"position": [21.0, 55.5], "radius": 300, "phase": "operational"}]
         layer = build_turbine_blade_layer(data, client_animated=True)
-        assert "window._cenopBladeRotation" in str(layer)
+        assert layer["id"] == "turbine-blades"
+        assert len(layer["data"]) == 1
 
     def test_client_animated_empty_data(self):
         layer = build_turbine_blade_layer([], client_animated=True)

@@ -19,6 +19,10 @@ try:
     NUMBA_AVAILABLE = True
 except ImportError:
     NUMBA_AVAILABLE = False
+    import logging as _logging
+    _logging.getLogger('cenop.optimizations.kernels').warning(
+        "Numba not available — kernels will run as interpreted Python (~100x slower)"
+    )
 
     def njit(*args, **kwargs):
         def decorator(func):
@@ -464,8 +468,10 @@ def regrow_food_kernel(food, k_vals, rate, n_iter):
     Each cell: F = F + rate * F * (1 - F/K), repeated n_iter times.
     """
     for i in prange(len(food)):
-        f = food[i]
         k = k_vals[i]
+        if k <= 0.0:
+            continue
+        f = food[i]
         for _ in range(n_iter):
             f = f + rate * f * (1.0 - f / k)
         food[i] = f

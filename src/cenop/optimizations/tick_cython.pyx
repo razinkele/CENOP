@@ -69,10 +69,10 @@ def cython_depons_post_crw(
     cdef int i
     cdef double max_x = <double>(world_w - 1)
     cdef double max_y = <double>(world_h - 1)
-    cdef double h, rad, dx_crw, dy_crw, pres_mov, crw_c
-    cdef double total_dx, total_dy, new_h, step, ddx, ddy, nx, ny
+    cdef double pres_mov
+    cdef double new_h, step, ddx, ddy, nx, ny, rad
     cdef double fract, food_available, eaten, scaling, bmr
-    cdef double yearly_surv, step_surv, pre_heading
+    cdef double yearly_surv, step_surv
     cdef int xi_c, yi_c, deaths = 0
 
     # Pre-generate mortality random draws (vectorized NumPy, fast)
@@ -84,31 +84,16 @@ def cython_depons_post_crw(
             continue
 
         pres_mov = pow(10.0, log_mov[i])
-        pre_heading = heading[i]
 
-        # === 1. HEADING COMPOSITION + POSITION + REFLECT ===
+        # === 1. POSITION + REFLECT ===
+        # Heading composition, prev_angle, prev_log_mov, and dispersal_distance
+        # are already computed by _update_movement / _heading_kernel.
+        # Cython only needs to compute step distance and positions.
+        new_h = heading[i]
         if is_dispersing[i]:
-            new_h = heading[i]
             step = disp_step
-            dispersal_distance_traveled[i] += <f32>step
         else:
-            h = fmod(heading[i] + pres_angle[i], 360.0)
-            if h < 0:
-                h += 360.0
-            rad = h * DEG2RAD
-            dx_crw = sin(rad)
-            dy_crw = cos(rad)
-            crw_c = inertia_const + pres_mov * ve_total[i]
-            total_dx = dx_crw * crw_c + vt_x[i]
-            total_dy = dy_crw * crw_c + vt_y[i]
-            new_h = atan2(total_dx, total_dy) * RAD2DEG
-            if new_h < 0:
-                new_h += 360.0
             step = pres_mov / 4.0
-
-        heading[i] = <f32>new_h
-        prev_angle[i] = fmod(new_h - pre_heading + 180.0, 360.0) - 180.0
-        prev_log_mov[i] = log_mov[i]
 
         rad = new_h * DEG2RAD
         ddx = sin(rad) * step

@@ -20,23 +20,27 @@ from cenop.behavior.sound import calculate_received_level, response_probability_
 import logging
 import os
 
+logger = logging.getLogger('cenop.agents.population')
+
 # Import scipy.spatial at module level for performance
 try:
     from scipy.spatial import cKDTree as _cKDTree
     _HAS_SCIPY = True
-except ImportError:
+except ImportError as _e:
     _cKDTree = None
     _HAS_SCIPY = False
+    logger.warning("scipy unavailable (KDTree fallback active): %s", _e)
 
 # Import numba helpers at module level
 try:
     from cenop.optimizations.numba_helpers import accumulate_social_totals as _accumulate_social_totals
     from cenop.optimizations.numba_helpers import weighted_direction_sum as _weighted_direction_sum
     _HAS_NUMBA_HELPERS = True
-except ImportError:
+except ImportError as _e:
     _accumulate_social_totals = None
     _weighted_direction_sum = None
     _HAS_NUMBA_HELPERS = False
+    logger.warning("Numba helpers unavailable (NumPy fallback): %s", _e)
 
 try:
     from cenop.optimizations.kernels import reflect_boundaries_kernel as _reflect_kernel
@@ -47,15 +51,17 @@ try:
     from cenop.optimizations.kernels import social_sound_kernel as _social_sound_kernel
     from cenop.optimizations.kernels import heading_position_reflect_kernel as _heading_kernel
     _HAS_KERNELS = True
-except ImportError:
+except ImportError as _e:
     _HAS_KERNELS = False
+    logger.warning("Numba kernels unavailable (NumPy fallback): %s", _e)
 
 try:
     from cenop.optimizations.kernels import land_avoidance_kernel as _land_avoidance_kernel
     _HAS_LAND_KERNEL = True
-except ImportError:
+except ImportError as _e:
     _land_avoidance_kernel = None
     _HAS_LAND_KERNEL = False
+    logger.warning("Land avoidance kernel unavailable (Python fallback): %s", _e)
 
 try:
     from cenop.optimizations.tick_jax import (
@@ -64,18 +70,18 @@ try:
         is_jax_available,
     )
     _HAS_JAX = is_jax_available()
-except ImportError:
+except ImportError as _e:
     _HAS_JAX = False
+    logger.warning("JAX tick unavailable (Numba/NumPy fallback): %s", _e)
 
 try:
     from cenop.optimizations.tick_cython import cython_depons_post_crw as _cython_post_crw
     from cenop.optimizations.tick_cython import cython_available
     _HAS_CYTHON = cython_available()
-except ImportError:
+except ImportError as _e:
     _HAS_CYTHON = False
     _cython_post_crw = None
-
-logger = logging.getLogger('cenop.agents.population')
+    logger.warning("Cython tick unavailable (Python fallback): %s", _e)
 
 
 class PorpoisePopulation:
@@ -1825,7 +1831,10 @@ class PorpoisePopulation:
         context = getattr(self, '_pending_energy_context', None)
         food_available = getattr(self, '_pending_food_available', None)
         if context is None or food_available is None:
-            # Fallback: no pending context (shouldn't happen in normal flow)
+            logger.error(
+                "[BUG] _apply_bmr_cost_jasmine called without pending context at tick=%d",
+                self._global_tick,
+            )
             return
 
         # No sync needed — shared view, same array
@@ -2317,6 +2326,10 @@ class PorpoisePopulation:
             movement_key,
         )
 
+        # Save pre-move positions BEFORE write-back (for land rollback)
+        _jax_pre_x = self.x.copy()
+        _jax_pre_y = self.y.copy()
+
         # Write movement results back to SoA arrays
         np.copyto(self.x, np.asarray(new_x))
         np.copyto(self.y, np.asarray(new_y))
@@ -2341,12 +2354,9 @@ class PorpoisePopulation:
             )
             on_land = mask & (post_depths <= 0)
             if on_land.any():
-                # Rollback to pre-move positions — use original values
-                # that were in self before write-back
-                prev_x_np = np.asarray(new_x)
-                prev_y_np = np.asarray(new_y)
-                self.x[on_land] = prev_x_np[on_land]
-                self.y[on_land] = prev_y_np[on_land]
+                # Rollback to pre-move positions saved before write-back
+                self.x[on_land] = _jax_pre_x[on_land]
+                self.y[on_land] = _jax_pre_y[on_land]
                 self._recompute_cell_indices()
 
         # ==============================
@@ -2749,9 +2759,9 @@ class PorpoisePopulation:
 
         try:
             accumulate_psm_updates(self.psm_buffer, idx_arr, ys_arr, xs_arr, food_arr)
-        except (TypeError, ValueError) as e:
-            # Fallback to np.add.at if Numba accelerator unavailable
-            logger.debug("PSM accumulator fallback: %s", e)
+        except TypeError as e:
+            # Numba type signature mismatch (e.g. NumPy version change) — fallback and warn
+            logger.warning("PSM accumulator TypeError (NumPy/Numba mismatch?), using np.add.at fallback: %s", e)
             np.add.at(self.psm_buffer[:, :, :, 0], (active_idx, psm_y, psm_x), 1.0)
             np.add.at(self.psm_buffer[:, :, :, 1], (active_idx, psm_y, psm_x), food_gained[active_idx])
 
@@ -2915,7 +2925,7 @@ class PorpoisePopulation:
 
         # Calculate expectations efficiently
         # food / ticks where ticks > 0
-        visited_ticks = ticks[visited_y, visited_x]
+        visited_ticks = np.maximum(ticks[visited_y, visited_x], 1.0)
         visited_food = food[visited_y, visited_x]
         expectations = visited_food / visited_ticks
 

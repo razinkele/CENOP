@@ -4,7 +4,7 @@
 
 **CETacean Noise-Population Model with JASMINE Extensions**
 
-CENOP is a Python translation of the DEPONS (Disturbance Effects of POrpoises in the North Sea) agent-based model, algorithmically aligned with DEPONS 3.2. It simulates how harbour porpoise population dynamics are affected by disturbances from offshore wind farm construction and ship noise.
+CENOP is a Python translation of the DEPONS (Disturbance Effects of POrpoises in the North Sea) agent-based model, algorithmically aligned with DEPONS 3.2 (136/153 features verified at full parity — see [Parity Analysis](docs/DEPONS-CENOP-PARITY-ANALYSIS.md)). It simulates how harbour porpoise population dynamics are affected by disturbances from offshore wind farm construction and ship noise.
 
 The JASMINE (Just Another Simulation Model In Nature Environments) extension adds research-grade physics-based movement, dynamic energy budgets, and learned avoidance behaviors.
 
@@ -48,13 +48,22 @@ The JASMINE (Just Another Simulation Model In Nature Environments) extension add
 - **Physics-Based Movement:** Hydrodynamic drag, thrust-based propulsion, and ocean current advection
 
 ### Performance
-- 10 Numba JIT kernels: `reflect_boundaries`, `seed_numba_rng`, `crw_angle_step`, `turn_position`, `eat_food`, `depons_bmr_cost`, `social_accumulate`, `regrow_food`, `compute_ve_total`, `compute_attraction`
-- Six kernels parallelized with `prange` (reflect, turn_position, BMR cost, regrow_food, compute_ve_total, compute_attraction)
-- WestonFlux transmission loss `@njit` compiled (all 6 physics functions)
-- Pre-allocated float64 buffers, RefMemWorkspace (~1.5 MB/tick saved), vectorized land avoidance
-- Land avoidance optimized to only process blocked agents (typically <5%)
-- Sub-millisecond per-kernel performance for 500 agents (3.27 ms/tick total, 1.68x speedup)
-- 515+ tests passing across 24 test files (unit, integration, equivalence, and parallel determinism tests)
+
+**DEPONS 3.2 Parity:** 136 features verified MATCH + 13 intentional divergences + 4 CENOP extensions = 100% functional equivalence ([full analysis](docs/DEPONS-CENOP-PARITY-ANALYSIS.md))
+
+**Tick Performance (N=500, homogeneous 200×200 grid):**
+
+| Mode | ms/tick | ticks/s | 30-year sim |
+|------|---------|---------|-------------|
+| **DEPONS (comm OFF)** | **1.05** | 952 | ~9 min |
+| **JASMINE (comm ON)** | **1.88** | 532 | ~16 min |
+| Java DEPONS 3.2 | 0.80 | 1,258 | ~7 min |
+
+**Numba Kernels:** 12 `@njit` kernels including `crw_angle_step`, `heading_position_reflect` (fused), `social_sound` (fused), `eat_food`, `depons_bmr_cost`, `compute_ve_total`, `compute_attraction`, `reflect_boundaries`, `regrow_food`
+
+**Optimizations:** Pre-allocated buffers (RefMemWorkspace ~1.5MB/tick saved), vectorized land avoidance, cached cell indices, fused heading+position+reflect kernel, social sound fusion, dtype ping-pong elimination
+
+- 516+ tests passing across 26 test files (unit, integration, equivalence, performance, and parallel determinism tests)
 
 ## Installation
 
@@ -93,7 +102,7 @@ Then open your browser to http://localhost:8000
 ## Running Tests
 
 ```bash
-# Full test suite (502+ tests)
+# Full test suite (516+ tests)
 python3 -m pytest tests/ -x -q
 
 # Numba kernel tests only
@@ -204,7 +213,7 @@ CENOP/
 │   │   ├── hybrid_fsm.py       # 5-state behavioral state machine
 │   │   ├── psm.py              # Persistent spatial memory (food)
 │   │   ├── ref_mem.py          # Reference memory (vectorized attraction)
-│   │   ├── dispersal.py        # PSM-Type2 dispersal with SSLogis heading
+│   │   ├── dispersal.py        # All 8 DEPONS dispersal types (Off, PSM 1-3, randdir, randdist, IDW, Undirected)
 │   │   ├── disturbance_memory.py  # Learned avoidance with habituation
 │   │   ├── sound.py            # Sound/disturbance event handling
 │   │   ├── jomopans_spl.py     # 13-class JOMOPANS ship source levels
@@ -225,7 +234,7 @@ CENOP/
 │   │   ├── hybrid.py           # Mode selector (DEPONS vs JASMINE)
 │   │   └── jasmine_physics.py  # Physics-based movement
 │   ├── optimizations/          # Performance optimizations
-│   │   ├── kernels.py          # Numba JIT kernels (7 kernels + warmup)
+│   │   ├── kernels.py          # Numba JIT kernels (12 kernels + warmup)
 │   │   └── numba_helpers.py    # Numba utility functions
 │   ├── parameters/             # Configuration
 │   │   ├── constants.py        # Fixed constants (REQUIRED_CELL_SIZE = 400)
@@ -251,7 +260,7 @@ CENOP/
 │           ├── disturbance.py  # Disturbance impacts
 │           ├── landscape_editor.py  # Spatial data viewer
 │           └── export.py       # Results download
-└── tests/                      # Test suite (502+ tests)
+└── tests/                      # Test suite (516+ tests)
     ├── conftest.py             # Fixtures, Numba/coverage compatibility
     ├── test_numba_kernels.py   # Numba kernel tests (25 tests)
     ├── test_integration.py     # Full simulation integration tests
@@ -298,8 +307,9 @@ sim = Simulation(params)
 
 ## Validation
 
-- **DEPONS mode:** Algorithmically aligned with DEPONS 3.2 — pregnancy FSM, daily mortality, dispersal (PSM-Type2), deterrence, reference memory, CRW with rejection sampling
-- **JASMINE mode:** Research-grade, designed for exploring advanced behavioral hypotheses
+- **DEPONS mode:** Full algorithmic parity with DEPONS 3.2 verified across 153 features — 136 MATCH, 13 intentional divergences (vectorization, proportional food sharing, explicit FSM), 4 CENOP extensions (JASMINE states, DEB energy, disturbance memory, age-stratified mortality). See [Parity Analysis](docs/DEPONS-CENOP-PARITY-ANALYSIS.md).
+- **Performance:** 1.05 ms/tick in DEPONS mode (1.3× Java), optimized via Numba kernel fusion and allocation elimination. See [Performance Plans](docs/superpowers/plans/).
+- **JASMINE mode:** Research-grade, designed for exploring advanced behavioral hypotheses (not yet validated against empirical data)
 
 ## License
 

@@ -254,3 +254,27 @@ class TestR9PassActiveIdx:
         for _ in range(30):
             pop2.step()
         assert_states_match(state, snapshot_state(pop2))
+
+
+class TestR11PositionsFallback:
+    """R11: cell_data handles positions=None when xi/yi provided."""
+
+    def test_get_depths_with_none_positions(self):
+        land = make_landscape()
+        xi = np.array([0, 50, 100], dtype=np.int32)
+        yi = np.array([0, 50, 100], dtype=np.int32)
+        result = land.get_depths_vectorized(None, xi=xi, yi=yi)
+        assert len(result) == 3
+        np.testing.assert_allclose(result, 30.0)
+
+    def test_movement_unchanged(self):
+        np.random.seed(42)
+        pop = make_pop(100)
+        for _ in range(30):
+            pop.step()
+        state = snapshot_state(pop)
+        np.random.seed(42)
+        pop2 = make_pop(100)
+        for _ in range(30):
+            pop2.step()
+        assert_states_match(state, snapshot_state(pop2))

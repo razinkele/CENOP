@@ -847,19 +847,16 @@ class PorpoisePopulation:
         # === Get environmental variables from landscape ===
         # DEPONS CRW uses depth and salinity to modulate movement
         if self.landscape is not None:
-            # Build positions array for vectorized lookup (reuse pre-allocated buffer)
-            self._positions[:, 0] = self.x
-            self._positions[:, 1] = self.y
             np.copyto(
                 self._depths,
                 self.landscape.get_depths_vectorized(
-                    self._positions, xi=self._cell_xi, yi=self._cell_yi
+                    None, xi=self._cell_xi, yi=self._cell_yi
                 ),
             )
             np.copyto(
                 self._salinity_vals,
                 self.landscape.get_salinities_vectorized(
-                    self._positions, xi=self._cell_xi, yi=self._cell_yi
+                    None, xi=self._cell_xi, yi=self._cell_yi
                 ),
             )
             # Kattegat salinity override (Java Porpoise.java:339-345)

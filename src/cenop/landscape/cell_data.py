@@ -514,7 +514,8 @@ class CellData:
         """
         self._ensure_loaded()
         if self._depth is None:
-            return np.full(len(positions), 20.0)
+            n = len(xi) if xi is not None else len(positions)
+            return np.full(n, 20.0)
 
         if xi is not None and yi is not None:
             x, y = xi, yi
@@ -545,7 +546,8 @@ class CellData:
         """
         self._ensure_loaded()
         if self._salinity is None:
-            return np.full(len(positions), 30.0)
+            n = len(xi) if xi is not None else len(positions)
+            return np.full(n, 30.0)
 
         if month is None:
             month = self._current_month

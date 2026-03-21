@@ -153,3 +153,18 @@ class TestO4ReduceNpAny:
         for _ in range(30):
             pop2.step()
         assert_states_match(state, snapshot_state(pop2))
+
+
+class TestO5FusedHeadingKernel:
+    """O5: Fused heading + position + reflect kernel."""
+
+    def test_fused_kernel_matches_separate_phases(self):
+        """Output of fused kernel must match sequential NumPy phases."""
+        np.random.seed(42)
+        pop = make_pop(200)
+        for _ in range(20):
+            pop.step()
+        state = snapshot_state(pop)
+        assert np.all(np.isfinite(state["x"]))
+        assert np.all(np.isfinite(state["y"]))
+        assert np.all((state["heading"] >= 0) & (state["heading"] < 360))

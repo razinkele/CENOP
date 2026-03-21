@@ -44,6 +44,7 @@ try:
     from cenop.optimizations.kernels import seed_numba_rng as _seed_numba_rng
     from cenop.optimizations.kernels import turn_position_kernel as _turn_kernel
     from cenop.optimizations.kernels import social_accumulate_kernel as _social_kernel
+    from cenop.optimizations.kernels import heading_position_reflect_kernel as _heading_kernel
     _HAS_KERNELS = True
 except ImportError:
     _HAS_KERNELS = False
@@ -283,6 +284,9 @@ class PorpoisePopulation:
         _REF_MEM_SIZE_INIT = params.ref_mem_size if hasattr(params, 'ref_mem_size') else 120
         from cenop.behavior.ref_mem import RefMemWorkspace
         self._ref_mem_workspace = RefMemWorkspace.create(count, _REF_MEM_SIZE_INIT)
+
+        # Zero buffer for fused kernel (deterrence/social when absent)
+        self._zero_f64 = np.zeros(count, dtype=np.float64)
 
         # === Pre-allocated buffers to eliminate per-tick .copy() calls ===
         self._pre_move_x = np.zeros(count, dtype=np.float32)
@@ -984,70 +988,89 @@ class PorpoisePopulation:
         # Update reference memory (stores food, computes veTotal and vt)
         self._update_reference_memory(mask)
 
-        # Save dispersal heading before CRW composition overwrites it
-        _disp_mask = mask & self.is_dispersing
-        _saved_disp_heading = self.heading[_disp_mask].copy() if _disp_mask.any() else None
-
-        # Compute CRW unit direction vector from heading
-        np.radians(self.heading, out=self._rads)
-        np.sin(self._rads, out=self._dx)
-        np.cos(self._rads, out=self._dy)
-
-        # Heading composition (Java Porpoise.java:556-566)
-        # crwContrib = inertiaConst + presMov * veTotal
-        # Compute 10^log_mov once and reuse for both crwContrib and step distance
-        np.power(10.0, self._log_mov, out=self._step_dist)
-        crw_contrib = self.params.inertia_const + self._step_dist * self._ve_total
-
-        # totalD = (dx,dy) * crwContrib + vt + deterVt
-        total_dx = self._dx * crw_contrib + self._vt_x
-        total_dy = self._dy * crw_contrib + self._vt_y
-
-        # Apply deterrence vectors
+        # Prepare deterrence vectors (track strength before kernel)
         if deterrence_vectors is not None:
             d_dx, d_dy = deterrence_vectors
             self.deter_strength[mask] = np.abs(d_dx[mask]) + np.abs(d_dy[mask])
             self._was_deterred |= (self.deter_strength > 0) & mask
-            total_dx[mask] += d_dx[mask]
-            total_dy[mask] += d_dy[mask]
         else:
+            d_dx = self._zero_f64
+            d_dy = self._zero_f64
             self.deter_strength[mask] = 0.0
 
-        # Social communication & cohesion
+        # Social communication & cohesion (add to deterrence for kernel input)
         if self._comm_enabled:
             soc_dx, soc_dy = self._compute_social_vectors(mask, ambient_rl)
-            total_dx[mask] += soc_dx[mask]
-            total_dy[mask] += soc_dy[mask]
+            d_dx = d_dx + soc_dx  # new array — won't modify originals
+            d_dy = d_dy + soc_dy
 
-        # facePoint: new heading from composite vector (Java Porpoise.java:567)
-        new_heading = np.degrees(np.arctan2(total_dx, total_dy)) % 360
-        self.heading[mask] = new_heading[mask]
+        disp_step = getattr(self.params, 'mean_disp_dist', 1.6) / 0.4
+        world_w = self.landscape.width if self.landscape else self.params.world_width
+        world_h = self.landscape.height if self.landscape else self.params.world_height
 
-        # Restore dispersal heading — dispersing agents skip CRW composition
-        if _saved_disp_heading is not None:
-            self.heading[_disp_mask] = _saved_disp_heading
+        if _HAS_KERNELS:
+            _heading_kernel(
+                self.heading, self._pres_angle, self._log_mov,
+                self._ve_total, self._vt_x, self._vt_y,
+                d_dx, d_dy, self.x, self.y,
+                mask, self.is_dispersing,
+                self.params.inertia_const, disp_step,
+                world_w, world_h,
+                self.heading, self._dx, self._dy, self._step_dist,
+            )
+        else:
+            # Save dispersal heading before CRW composition overwrites it
+            _disp_mask = mask & self.is_dispersing
+            _saved_disp_heading = (
+                self.heading[_disp_mask].copy() if _disp_mask.any() else None
+            )
+
+            # Compute CRW unit direction vector from heading
+            np.radians(self.heading, out=self._rads)
+            np.sin(self._rads, out=self._dx)
+            np.cos(self._rads, out=self._dy)
+
+            # Heading composition (Java Porpoise.java:556-566)
+            np.power(10.0, self._log_mov, out=self._step_dist)
+            crw_contrib = self.params.inertia_const + self._step_dist * self._ve_total
+
+            total_dx = self._dx * crw_contrib + self._vt_x + d_dx
+            total_dy = self._dy * crw_contrib + self._vt_y + d_dy
+
+            # facePoint: new heading from composite vector (Java Porpoise.java:567)
+            new_heading = np.degrees(np.arctan2(total_dx, total_dy)) % 360
+            self.heading[mask] = new_heading[mask]
+
+            # Restore dispersal heading — dispersing agents skip CRW composition
+            if _saved_disp_heading is not None:
+                self.heading[_disp_mask] = _saved_disp_heading
+
+            # Step distance: presMov / 4.0 (Java Porpoise.java:589)
+            self._step_dist /= 4.0
+
+            # Override step distance for dispersing agents
+            dispersing = mask & self.is_dispersing
+            if dispersing.any():
+                self._step_dist[dispersing] = disp_step
+
+            # Final dx/dy for actual movement from composite heading
+            np.radians(self.heading, out=self._rads)
+            np.sin(self._rads, out=self._dx)
+            self._dx *= self._step_dist
+            np.cos(self._rads, out=self._dy)
+            self._dy *= self._step_dist
+
+        # Update dispersal distance traveled
+        dispersing = mask & self.is_dispersing
+        if dispersing.any():
+            self.dispersal_distance_traveled[dispersing] += self._step_dist[dispersing]
 
         # Store total turn for next step (Java Porpoise.java:583)
         total_turn = (self.heading - self._pre_heading + 180) % 360 - 180
         self.prev_angle[mask] = total_turn[mask]
 
-        # Step distance: presMov / 4.0 (Java Porpoise.java:589)
-        # _step_dist already holds 10^log_mov from heading composition above
-        self._step_dist /= 4.0
-
-        # Override step distance for dispersing agents (Java AbstractPSMDispersal.java:210)
-        dispersing = mask & self.is_dispersing
-        if dispersing.any():
-            disp_step = getattr(self.params, 'mean_disp_dist', 1.6) / 0.4
-            self._step_dist[dispersing] = disp_step
-            self.dispersal_distance_traveled[dispersing] += disp_step
-
-        # Final dx/dy for actual movement from composite heading
-        np.radians(self.heading, out=self._rads)
-        np.sin(self._rads, out=self._dx)
-        self._dx *= self._step_dist
-        np.cos(self._rads, out=self._dy)
-        self._dy *= self._step_dist
+        # Update prev_log_mov (Numba kernel updates it inline, NumPy fallback needs this)
+        self.prev_log_mov[mask] = self._log_mov[mask]
 
     def _apply_dispersal_heading(self, mask: np.ndarray) -> None:
         """Apply PSM-Type2 dispersal heading using the dispersal module formula.

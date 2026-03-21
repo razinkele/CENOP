@@ -10,6 +10,8 @@ this module holds NEW kernels extracted from population.py hot paths.
 """
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 try:
@@ -663,6 +665,75 @@ def land_avoidance_kernel(
                 resolved[i] = True
 
 
+@njit(cache=True, parallel=True)
+def heading_position_reflect_kernel(
+    heading, pres_angle, log_mov, ve_total, vt_x, vt_y,
+    deter_dx, deter_dy, x, y, mask, is_dispersing,
+    inertia_const, disp_step, world_w, world_h,
+    out_heading, out_dx, out_dy, out_step_dist,
+):
+    """Fused: heading composition + step distance + dx/dy.
+
+    Replaces separate heading composition, step distance, and final dx/dy
+    phases with a single pass per agent.  Position update and boundary
+    reflection are left to _handle_land_avoidance.
+
+    Args:
+        heading: float32[N] current heading (degrees, already has CRW turn applied)
+        pres_angle: float64[N] CRW turning angle (unused here — already in heading)
+        log_mov: float64[N] current tick's log10(movement) from CRW kernel
+        ve_total: float32[N] expected food value from RefMem
+        vt_x, vt_y: float32[N] attraction vectors from RefMem
+        deter_dx, deter_dy: float[N] deterrence + social displacement
+        x, y: float32[N] current positions (unused — dx/dy only)
+        mask: bool[N] active agents
+        is_dispersing: bool[N] dispersing agents skip heading composition
+        inertia_const: float scalar
+        disp_step: float scalar — fixed step for dispersing agents
+        world_w, world_h: int — grid dimensions (unused, kept for API compat)
+        out_heading: float32[N] output heading (may alias heading)
+        out_dx, out_dy: float32[N] output displacement
+        out_step_dist: float32[N] output step distance
+    """
+    DEG2RAD = 0.017453292519943295
+    RAD2DEG = 57.29577951308232
+    for i in prange(len(heading)):
+        if not mask[i]:
+            continue
+
+        pres_mov = 10.0 ** log_mov[i]
+
+        if is_dispersing[i]:
+            # Dispersing: keep current heading, use fixed step
+            new_h = heading[i]
+            step = disp_step
+        else:
+            # Heading composition (Java Porpoise.java:556-567)
+            h = heading[i]
+            rad = h * DEG2RAD
+            dx_crw = math.sin(rad)
+            dy_crw = math.cos(rad)
+            crw_c = inertia_const + pres_mov * ve_total[i]
+            total_dx = dx_crw * crw_c + vt_x[i] + deter_dx[i]
+            total_dy = dy_crw * crw_c + vt_y[i] + deter_dy[i]
+
+            # facePoint: new heading from composite vector
+            new_h = math.atan2(total_dx, total_dy) * RAD2DEG
+            if new_h < 0:
+                new_h += 360.0
+
+            # Step distance = 10^log_mov / 4.0 (Java Porpoise.java:589)
+            step = pres_mov / 4.0
+
+        out_heading[i] = new_h
+        out_step_dist[i] = step
+
+        # Final dx/dy from composite heading
+        rad2 = new_h * DEG2RAD
+        out_dx[i] = math.sin(rad2) * step
+        out_dy[i] = math.cos(rad2) * step
+
+
 def warmup_kernels():
     """Pre-compile all kernels with small dummy data to avoid first-call latency."""
     if not NUMBA_AVAILABLE:
@@ -769,5 +840,29 @@ def warmup_kernels():
     land_avoidance_kernel(
         la_x, la_y, la_h, la_s, la_dg, 1.0,
         la_ba, la_j, la_ox, la_oy, la_oh, la_r,
+    )
+    # Warmup heading_position_reflect kernel
+    hp_n = 3
+    hp_h = np.array([0.0, 90.0, 180.0], dtype=np.float32)
+    hp_pa = np.zeros(hp_n, dtype=np.float64)
+    hp_lm = np.ones(hp_n, dtype=np.float64)
+    hp_ve = np.zeros(hp_n, dtype=np.float32)
+    hp_vtx = np.zeros(hp_n, dtype=np.float32)
+    hp_vty = np.zeros(hp_n, dtype=np.float32)
+    hp_ddx = np.zeros(hp_n, dtype=np.float64)
+    hp_ddy = np.zeros(hp_n, dtype=np.float64)
+    hp_x = np.array([5.0, 10.0, 15.0], dtype=np.float32)
+    hp_y = np.array([5.0, 10.0, 15.0], dtype=np.float32)
+    hp_mask = np.ones(hp_n, dtype=np.bool_)
+    hp_disp = np.zeros(hp_n, dtype=np.bool_)
+    hp_oh = np.zeros(hp_n, dtype=np.float32)
+    hp_odx = np.zeros(hp_n, dtype=np.float32)
+    hp_ody = np.zeros(hp_n, dtype=np.float32)
+    hp_osd = np.zeros(hp_n, dtype=np.float32)
+    heading_position_reflect_kernel(
+        hp_h, hp_pa, hp_lm, hp_ve, hp_vtx, hp_vty,
+        hp_ddx, hp_ddy, hp_x, hp_y, hp_mask, hp_disp,
+        1.0, 4.0, 20, 20,
+        hp_oh, hp_odx, hp_ody, hp_osd,
     )
     return True

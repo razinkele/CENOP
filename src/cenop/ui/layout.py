@@ -965,6 +965,42 @@ def create_app_ui():
             }
             renderLegend(container, entries);
         });
+
+        /* Blade animation handler — replaces generic eval_js */
+        Shiny.addCustomMessageHandler('cenop_blade_animation', function(payload) {
+            var action = (typeof payload === 'object') ? payload.action : payload;
+            if (action === 'start') {
+                window._cenopBladeAnimRunning = false;
+                window._cenopBladeRotation = window._cenopBladeRotation || 0;
+                setTimeout(function() {
+                    window._cenopBladeAnimRunning = true;
+                    function animateBlades() {
+                        if (!window._cenopBladeAnimRunning) return;
+                        window._cenopBladeRotation =
+                            (window._cenopBladeRotation + 1.5) % 360;
+                        var widget =
+                            document.querySelector('[data-widget-id="sim_map"]');
+                        if (widget && widget.__deckgl_instance) {
+                            var inst = widget.__deckgl_instance;
+                            if (inst.lastLayers) {
+                                var idx = inst.lastLayers.findIndex(function(l) {
+                                    return l.id === 'turbine-blades';
+                                });
+                                if (idx >= 0) {
+                                    inst.overlay.setProps(
+                                        {layers: inst.overlay.props.layers}
+                                    );
+                                }
+                            }
+                        }
+                        requestAnimationFrame(animateBlades);
+                    }
+                    requestAnimationFrame(animateBlades);
+                }, 20);
+            } else {
+                window._cenopBladeAnimRunning = false;
+            }
+        });
     })();
     """
 

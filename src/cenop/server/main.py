@@ -1828,11 +1828,11 @@ def server(input, output, session):
                 raw, client_animated=True
             )
             await _push_dynamic_layers("turbine-blades")
-            await session.send_custom_message("eval_js", BLADE_ANIMATION_JS)
+            await session.send_custom_message("cenop_blade_animation", {"action": "start"})
         else:
             _layer_cache["turbine-blades"] = build_turbine_blade_layer(raw, rotation=0)
             await _push_dynamic_layers("turbine-blades")
-            await session.send_custom_message("eval_js", BLADE_ANIMATION_STOP_JS)
+            await session.send_custom_message("cenop_blade_animation", {"action": "stop"})
     
     # =========================================================================
     # Population Tab Renderers

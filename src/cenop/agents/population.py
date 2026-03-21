@@ -1867,9 +1867,7 @@ class PorpoisePopulation:
             # DEPONS inline path: BMR + swimming cost
             current_month = self._get_current_month()
             scaling_factor = self._get_energy_scaling(current_month, mask)
-            bmr_cost = 0.001 * scaling_factor * self.params.e_use_per_30_min
-            swimming_cost = (10.0 ** self.prev_log_mov) * 0.001 * scaling_factor * 0.0  # E_USE_PER_KM = 0
-            total_cost = bmr_cost + swimming_cost
+            total_cost = 0.001 * scaling_factor * self.params.e_use_per_30_min
             self.energy[mask] -= total_cost[mask]
             n_active = int(np.sum(mask))
             food_gained = getattr(self, '_pending_food_available', np.zeros(self.count))

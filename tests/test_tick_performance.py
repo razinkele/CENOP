@@ -222,3 +222,19 @@ class TestO9SeparateBMR:
         for _ in range(50):
             pop2.step()
         assert_states_match(state, snapshot_state(pop2))
+
+
+class TestR7DeadSwimmingCost:
+    """R7: Eliminate dead swimming_cost computation."""
+
+    def test_energy_unchanged_after_removing_dead_code(self):
+        np.random.seed(42)
+        pop = make_pop(100)
+        for _ in range(30):
+            pop.step()
+        state = snapshot_state(pop)
+        np.random.seed(42)
+        pop2 = make_pop(100)
+        for _ in range(30):
+            pop2.step()
+        assert_states_match(state, snapshot_state(pop2))

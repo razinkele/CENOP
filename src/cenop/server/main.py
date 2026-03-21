@@ -1826,8 +1826,6 @@ def server(input, output, session):
     @reactive.event(input.blade_animation, state.turbine_load_counter)
     async def _manage_blade_animation():
         """Start or stop client-side blade animation based on toggle."""
-        from cenop.server.map_layers import BLADE_ANIMATION_JS, BLADE_ANIMATION_STOP_JS
-
         animate = input.blade_animation()
         raw = _layer_cache.get("_turbine_data_raw", [])
         has_operational = any(t.get("phase") == "operational" for t in raw)

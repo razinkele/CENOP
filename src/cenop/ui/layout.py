@@ -978,10 +978,8 @@ def create_app_ui():
                         if (!window._cenopBladeAnimRunning) return;
                         window._cenopBladeRotation =
                             (window._cenopBladeRotation + 1.5) % 360;
-                        var widget =
-                            document.querySelector('[data-widget-id="sim_map"]');
-                        if (widget && widget.__deckgl_instance) {
-                            var inst = widget.__deckgl_instance;
+                        var inst = (window.__deckgl_instances || {})['sim_map'];
+                        if (inst) {
                             if (inst.lastLayers) {
                                 var idx = inst.lastLayers.findIndex(function(l) {
                                     return l.id === 'turbine-blades';

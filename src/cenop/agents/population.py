@@ -2018,11 +2018,9 @@ class PorpoisePopulation:
         self._vt_y[update] = new_vt_y[update]
 
         # 3. NOW store current food and position in circular buffer (vectorized)
-        n_active = len(active)
-        pos_buf = np.empty((n_active, 2), dtype=np.float32)
-        pos_buf[:, 0] = self.x[active]
-        pos_buf[:, 1] = self.y[active]
-        food_levels = self.landscape.get_food_levels_vectorized(pos_buf)
+        food_levels = self.landscape.get_food_levels_vectorized(
+            None, xi=self._cell_xi[active], yi=self._cell_yi[active]
+        )
 
         ptrs = self._mem_ptr[active]
         self._stored_util[active, ptrs] = food_levels

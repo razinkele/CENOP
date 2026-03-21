@@ -192,18 +192,22 @@ class CellData:
         i, j = self._get_indices(x, y)
         return float(self._food_value[i, j])
 
-    def get_food_levels_vectorized(self, positions: np.ndarray) -> np.ndarray:
+    def get_food_levels_vectorized(self, positions=None, xi=None, yi=None):
         """Get food levels for multiple positions at once.
 
         Args:
-            positions: (N, 2) array of (x, y) positions
-
-        Returns:
-            (N,) array of food levels
+            positions: (N, 2) array of (x, y) positions (used if xi/yi not provided)
+            xi: Optional pre-computed int column indices
+            yi: Optional pre-computed int row indices
         """
         self._ensure_loaded()
         if self._food_value is None:
-            return np.full(len(positions), 0.5, dtype=np.float32)
+            n = len(xi) if xi is not None else len(positions)
+            return np.full(n, 0.5, dtype=np.float32)
+        if xi is not None and yi is not None:
+            xi = np.clip(xi, 0, self.width - 1)
+            yi = np.clip(yi, 0, self.height - 1)
+            return self._food_value[yi, xi].astype(np.float32)
         j = np.clip(positions[:, 0].astype(int), 0, self.width - 1)
         i = np.clip(positions[:, 1].astype(int), 0, self.height - 1)
         return self._food_value[i, j].astype(np.float32)

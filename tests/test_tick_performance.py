@@ -316,3 +316,19 @@ class TestR6VectorizeDeathRecording:
         assert len(pop.death_ages) == len(pop.death_causes)
         for cause in pop.death_causes:
             assert cause in ("starvation", "old_age", "bycatch")
+
+
+class TestR12FoodLevelsXiYi:
+    """R12: get_food_levels_vectorized accepts xi/yi."""
+
+    def test_food_levels_same_with_xi_yi(self):
+        land = make_landscape()
+        n = 50
+        x = np.random.uniform(0, 199, n).astype(np.float32)
+        y = np.random.uniform(0, 199, n).astype(np.float32)
+        xi = np.clip(x.astype(np.int32), 0, 199)
+        yi = np.clip(y.astype(np.int32), 0, 199)
+        pos = np.column_stack((x, y))
+        result_pos = land.get_food_levels_vectorized(pos)
+        result_xiyi = land.get_food_levels_vectorized(None, xi=xi, yi=yi)
+        np.testing.assert_array_equal(result_pos, result_xiyi)

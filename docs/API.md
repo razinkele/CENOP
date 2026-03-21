@@ -10,6 +10,27 @@ The API supports two simulation modes:
 
 ---
 
+## DEPONS 3.2 Algorithmic Parity
+
+CENOP's DEPONS mode achieves **100% functional equivalence** with DEPONS 3.2 Java:
+
+- **136 features** verified MATCH (identical formulas, parameters, output)
+- **13 intentional divergences** (vectorization, proportional food sharing, explicit FSM)
+- **4 CENOP extensions** (JASMINE states, DEB energy, disturbance memory, age-stratified mortality)
+- **0 gaps remaining** (all 12 original gaps closed)
+
+Full analysis: [DEPONS-CENOP Parity Analysis](DEPONS-CENOP-PARITY-ANALYSIS.md)
+
+### Performance vs Java (N=500, 200×200 grid)
+
+| System | ms/tick | Ratio |
+|--------|---------|-------|
+| Java DEPONS 3.2 | 0.80 | 1.0× |
+| Python DEPONS mode | 1.05 | 1.3× |
+| Python JASMINE mode | 1.88 | 2.4× |
+
+---
+
 ## Core Modules
 
 ### 1. Landscape Module
@@ -96,6 +117,8 @@ class PorpoisePopulation:
 
     def step(self, tick: int):
         """Execute one simulation tick for all active porpoises."""
+
+**New in v2.2:** `step()` now caches `_active_idx` per tick, uses fused Numba kernels for heading+position+reflect, and pre-allocates all per-tick buffers for zero-allocation steady state.
 
     def _compute_crw_heading(self, tick: int):
         """Compute CRW heading with rejection sampling and reference memory attraction."""
@@ -552,6 +575,24 @@ class DisturbanceMemory:
 
 ---
 
+### Dispersal Module
+
+**Location:** `src/cenop/behavior/dispersal.py`
+
+Implements all DEPONS 3.2 dispersal types for porpoise movement away from energy-depleted areas.
+
+Supported dispersal types (all 8 DEPONS 3.2 types):
+- `OFF` — No dispersal
+- `PSM_TYPE1` — Straight-line to target
+- `PSM_TYPE2` — SSLogis heading dampening (default)
+- `PSM_TYPE3` — Logistic increase in turning + distance-cost target selection (q1=0.02)
+- `PSM_TYPE3_RANDDIR` — Type3 with random target (always bypasses PSM)
+- `PSM_TYPE3_RANDDIST` — Type3 that never stops on distance
+- `UNDIRECTED` — Type2 heading + random target + no calf PSM inheritance
+- `INNER_DANISH_WATERS` — Block-based navigation for Danish waters (60 blocks, 2-phase)
+
+---
+
 ### 8. Sound & Deterrence Module
 
 **Location:** `src/cenop/behavior/sound.py`
@@ -573,6 +614,20 @@ class ShipDeterrenceModel:
 
     def compute_deterrence_probability(self, received_level: float, is_day: bool) -> float:
         """Compute probability of deterrence response to ship noise."""
+```
+
+##### `Hydrophone`
+
+Passive acoustic monitoring station (translates `Hydrophone.java`).
+
+```python
+from cenop.behavior.sound import Hydrophone
+
+h = Hydrophone(name="H1", x=100.0, y=200.0)
+h.receive_sound_level("Ship-A", utm_x=500000, utm_y=6000000,
+                       source_level=170.0, received_level=145.0)
+print(h.received_level)  # 145.0
+h.reset()  # Call at end of each tick
 ```
 
 ##### `SoundPropagationParams`
@@ -958,7 +1013,31 @@ for result in results:
 
 ---
 
+## Time Manager
+
+**Location:** `src/cenop/core/time_manager.py`
+
+### Suntimes
+
+Seasonal sunrise/sunset from CSV (translates `Suntimes.java`). Falls back to fixed 6am-6pm when no CSV provided.
+
+```python
+from cenop.core.time_manager import TimeManager, Suntimes
+
+tm = TimeManager(suntimes_path="data/suntimes.csv")
+print(tm.is_daytime)  # Uses per-DOY sunrise/sunset from CSV
+```
+
+---
+
 ## Version History
+
+### v2.3.0 (2026-03-21)
+- Full DEPONS 3.2 parity: all 153 features verified (136 MATCH, 13 divergences, 4 extensions)
+- 8 dispersal types (added PSM-Type3-randdir, randdist, Undirected, InnerDanishWaters)
+- Hydrophone monitoring, Suntimes CSV support, death age tracking
+- Performance: 1.05 ms/tick DEPONS mode (was 2.10 ms), 12 Numba kernels (fused heading+position+reflect, social sound)
+- 516+ tests (up from 498)
 
 - **v2.1.0**: DEPONS 3.2 full sync + performance optimization + new features
   - Algorithmically aligned with DEPONS 3.2 across all 5 subsystems

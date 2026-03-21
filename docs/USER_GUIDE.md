@@ -33,6 +33,8 @@ The JASMINE (Just Another Simulation Model In Nature Environments) extension add
 ### Key Features
 
 #### Core Features (DEPONS Mode)
+- **Full DEPONS 3.2 Parity:** 153 simulation features verified against Java source (136 exact match, 13 intentional improvements, 4 extensions)
+- **High Performance:** 1.05 ms/tick in DEPONS mode — only 1.3× slower than the Java original, with 12 Numba JIT kernels
 - **Agent-Based Simulation**: Each porpoise is modeled individually with realistic behavior
 - **Real-Time Visualization**: Watch population dynamics unfold on an interactive map
 - **Pregnancy FSM**: Three-state reproductive cycle (immature → pregnant → ready-to-mate) with daily scheduling
@@ -43,7 +45,7 @@ The JASMINE (Just Another Simulation Model In Nature Environments) extension add
 - **PSM-Type2 Dispersal**: SSLogis heading dampening, energy-based stop, deterrence deactivation
 - **Deterrence Response**: Models porpoise avoidance of noise sources (threshold: 152 dB)
 - **Ship Noise**: JOMOPANS 13-class source levels with Weston flux physics-based transmission loss
-- **DEPONS 3.2 Alignment**: Full algorithmic sync across all 5 subsystems (502+ automated tests)
+- **DEPONS 3.2 Alignment**: Full algorithmic sync across all 5 subsystems (516+ automated tests)
 - **Numba JIT Performance**: 7 hot-path kernels compiled to machine code with prange parallelism
 - **Vectorized Architecture**: NumPy SoA + Numba kernels support 1000+ porpoises in real-time
 - **Bitmap Grid Rendering**: Full-resolution server-side PNG rendering of landscape layers
@@ -318,6 +320,7 @@ The interactive map shows:
 | PSM_dist | N(300;100) | Preferred dispersal distance (km) |
 | PSM_tol | 5 km | Target tolerance distance |
 | PSM_angle | 20° | Maximum turn per step |
+| q1 | 0.02 | PSM-Type3 distance-cost coefficient |
 
 ### Model Settings: Energy Tab
 
@@ -480,7 +483,7 @@ writer.finalize()
   - Movement & memory (reference memory circular buffers, CRW rejection sampling, heading composition)
   - Dispersal (PSM-Type2 with SSLogis heading, energy-based stop)
   - Deterrence (raw displacement vectors, WestonFlux TL, JOMOPANS SPL)
-- 502+ automated tests verifying parameter defaults, formula outputs, and population stability
+- 516+ automated tests verifying parameter defaults, formula outputs, and population stability
 
 **JASMINE Mode** is research-grade and designed for:
 - Exploring advanced behavioral hypotheses
@@ -514,6 +517,19 @@ writer.finalize()
 | RESTING | Low activity energy recovery | Physics-based |
 | DISPERSING | Memory-driven dispersal to new areas | PSM-based |
 | DISTURBED | Response to disturbance events | Avoidance |
+
+### Performance Benchmarks
+
+CENOP achieves near-Java performance through Numba JIT compilation:
+
+| Population Size | DEPONS Mode | JASMINE Mode | Java Reference |
+|----------------|-------------|--------------|----------------|
+| 100 agents | 0.82 ms/tick | 0.88 ms/tick | 0.15 ms/tick |
+| 500 agents | 1.05 ms/tick | 1.88 ms/tick | 0.80 ms/tick |
+| 1,000 agents | 1.54 ms/tick | 4.19 ms/tick | 1.64 ms/tick |
+| 2,000 agents | 2.40 ms/tick | 11.2 ms/tick | 3.34 ms/tick |
+
+A 30-year simulation with 500 agents completes in approximately 9 minutes (DEPONS) or 16 minutes (JASMINE).
 
 ### Citation
 

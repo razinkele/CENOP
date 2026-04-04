@@ -196,5 +196,14 @@ class TestSimulation:
         assert sim.state.tick == initial_tick + 1
 
 
+def test_update_psm_none_food_gained():
+    """_update_psm should handle None food_gained gracefully."""
+    from cenop.agents.population import PorpoisePopulation
+    from cenop.parameters import SimulationParameters
+    params = SimulationParameters(porpoise_count=10, sim_years=1, landscape="Homogeneous")
+    pop = PorpoisePopulation(count=10, params=params)
+    pop._update_psm(pop.active_mask.copy(), None)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

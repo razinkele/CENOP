@@ -2752,6 +2752,8 @@ class PorpoisePopulation:
         Only records ticks where food was actually consumed
         (Java PersistentSpatialMemory.java:119).
         """
+        if food_gained is None:
+            return
         # Gate: only count agents that actually gained food
         food_positive = food_gained > 0
         active_idx = np.where(mask & food_positive)[0]

@@ -2103,6 +2103,7 @@ def server(input, output, session):
             max_dist = getattr(p, 'deter_max_distance', 50.0) if p else 50.0
 
             # --- Turbine Info ---
+            loaded_safe = html.escape(str(loaded)) if loaded else ""
             turbine_info = ""
             if sim is not None and hasattr(sim, '_turbine_manager'):
                 tm = sim._turbine_manager
@@ -2115,7 +2116,7 @@ def server(input, output, session):
                     sl_str = f"{sl_min:.0f}" if sl_min == sl_max else f"{sl_min:.0f}-{sl_max:.0f}"
                     turbine_info = (
                         f'<tr><td style="padding:2px 8px;"><b>Turbines</b></td>'
-                        f'<td style="padding:2px 8px;">{n_total} ({loaded})</td></tr>'
+                        f'<td style="padding:2px 8px;">{n_total} ({loaded_safe})</td></tr>'
                         f'<tr><td style="padding:2px 8px;"><b>Source Level (SL)</b></td>'
                         f'<td style="padding:2px 8px;">{sl_str} dB re 1\u00b5Pa @ 1m</td></tr>'
                         f'<tr><td style="padding:2px 8px;"><b>Deterrence Radius</b></td>'
@@ -2124,7 +2125,7 @@ def server(input, output, session):
             elif loaded and loaded != "off":
                 turbine_info = (
                     f'<tr><td style="padding:2px 8px;"><b>Scenario</b></td>'
-                    f'<td style="padding:2px 8px;">{loaded} (not yet simulated)</td></tr>'
+                    f'<td style="padding:2px 8px;">{loaded_safe} (not yet simulated)</td></tr>'
                 )
 
             model_html = f'''

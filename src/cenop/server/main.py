@@ -807,11 +807,18 @@ def server(input, output, session):
             if not selected_landscape:
                 logger.info(f"[PREVIEW DEBUG] No landscape selected, returning empty div")
                 return ui.div()
-            
+
+            # Path traversal protection
+            selected_landscape = Path(selected_landscape).name
+
             # Get available files for this landscape
             module_dir = Path(__file__).resolve().parent.parent.parent.parent
             data_dir = module_dir / "data" / selected_landscape
-            
+            data_root = (module_dir / "data").resolve()
+            if not str(data_dir.resolve()).startswith(str(data_root)):
+                logger.error("Path traversal attempt blocked in preview: %s", selected_landscape)
+                return ui.div()
+
             if not data_dir.exists():
                 logger.warning(f"[PREVIEW DEBUG] Data directory not found: {data_dir}")
                 return ui.span("No data directory found", class_="text-muted")

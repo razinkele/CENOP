@@ -544,7 +544,6 @@ def compute_attraction_kernel(
             dy = py - cy
             dist = (dx * dx + dy * dy) ** 0.5
             if dist < 1e-20:
-                weight = 9999.0 * util
                 # direction undefined at zero distance, skip
                 continue
             else:

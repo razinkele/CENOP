@@ -123,3 +123,29 @@ class TestMemoryUpdate:
             pop._update_reference_memory(pop.active_mask)
 
         assert pop._ve_total[0] > 0, "veTotal should be positive with food history"
+
+
+def test_attraction_zero_distance_skips():
+    """When an agent is at the exact position of a memory entry, that entry should be skipped."""
+    from cenop.behavior.ref_mem import compute_attraction_vector
+    import numpy as np
+    n_agents = 2
+    mem_size = 5
+    stored_util = np.zeros((n_agents, mem_size), dtype=np.float32)
+    pos_x = np.zeros((n_agents, mem_size), dtype=np.float32)
+    pos_y = np.zeros((n_agents, mem_size), dtype=np.float32)
+    mem_ptr = np.array([1, 0], dtype=np.int32)
+    mem_count = np.array([1, 0], dtype=np.int32)
+    x = np.array([100.0, 200.0], dtype=np.float32)
+    y = np.array([100.0, 200.0], dtype=np.float32)
+    pos_x[0, 0] = 100.0
+    pos_y[0, 0] = 100.0
+    stored_util[0, 0] = 5.0
+    ref_mem_table = np.ones(mem_size, dtype=np.float32)
+    mask = np.array([True, True])
+    vt_x, vt_y = compute_attraction_vector(
+        stored_util, pos_x, pos_y, mem_ptr, mem_count,
+        x, y, ref_mem_table, mask
+    )
+    assert vt_x[0] == 0.0, f"Expected 0.0, got {vt_x[0]}"
+    assert vt_y[0] == 0.0, f"Expected 0.0, got {vt_y[0]}"

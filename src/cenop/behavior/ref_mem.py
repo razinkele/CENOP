@@ -301,7 +301,7 @@ def compute_attraction_vector(
         factor = workspace.factor[:n_active, :]
         factor[:] = np.where(
             dist < 1e-20,
-            9999.0 * ordered_util,
+            0.0,  # Skip zero-distance entries (direction undefined)
             ordered_util * ref_weights[np.newaxis, :] / safe_dist,
         )
 
@@ -341,7 +341,7 @@ def compute_attraction_vector(
         ref_weights = ref_mem_table[:mem_size].astype(np.float32)
         factor = np.where(
             dist < 1e-20,
-            9999.0 * ordered_util,
+            0.0,  # Skip zero-distance entries (direction undefined)
             ordered_util * ref_weights[np.newaxis, :] / safe_dist,
         )
 

@@ -39,6 +39,8 @@ class LandscapeLoader:
             landscape_name: Name of landscape folder
             data_dir: Base data directory
         """
+        if not landscape_name or '/' in landscape_name or '\\' in landscape_name or landscape_name in ('.', '..'):
+            raise ValueError(f"Invalid landscape name: {landscape_name!r}")
         self.landscape_name = landscape_name
         self.data_dir = Path(data_dir)
         self.landscape_path = self.data_dir / landscape_name

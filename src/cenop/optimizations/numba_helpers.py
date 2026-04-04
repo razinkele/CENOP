@@ -2,6 +2,7 @@
 Optional numba-accelerated helpers for hot inner loops.
 If Numba is not installed, fallback pure-Python implementations are used.
 """
+import logging
 from typing import Tuple
 
 try:
@@ -98,9 +99,16 @@ try:
         _ = accumulate_social_totals(count, idx_i, idx_j, ux_ci, uy_ci, ux_cj, uy_cj, p_i, p_j, ux_total, uy_total, sw_total)
         return True
 
-except Exception:
+except ImportError:
+    logging.getLogger("CENOP").info("Numba not available, using pure-Python fallback")
+    has_numba = False
+except Exception as e:
+    logging.getLogger("CENOP").warning(
+        "Numba installed but @njit decoration failed: %s. Using pure-Python fallback.", e
+    )
     has_numba = False
 
+if not has_numba:
     def weighted_direction_sum(dxs, dys, weights):
         ux = 0.0
         uy = 0.0

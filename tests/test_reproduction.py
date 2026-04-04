@@ -393,6 +393,22 @@ class TestPhase2Integration:
                 "Should have some pregnant or ready-to-mate females"
 
 
+def test_mating_day_clipped_to_valid_range():
+    """Mating days must be clipped to [0, 359]."""
+    import numpy as np
+    raw = np.array([-10, 0, 180, 225, 359, 400, 500], dtype=np.float64)
+    clipped = np.clip(raw, 0, 359).astype(np.int16)
+    assert clipped[0] == 0
+    assert clipped[-1] == 359
+    assert clipped[-2] == 359
+    assert clipped[3] == 225
+    params = SimulationParameters(porpoise_count=200)
+    pop = PorpoisePopulation(count=200, params=params)
+    female_mating = pop.mating_day[pop.is_female]
+    assert np.all(female_mating >= 0), f"Min mating_day = {female_mating.min()}"
+    assert np.all(female_mating <= 359), f"Max mating_day = {female_mating.max()}"
+
+
 def test_pregnancy_init_nonpregnant_mature_stay_ready():
     """Mature females that don't conceive should remain status=2, not reset to 0."""
     import numpy as np

@@ -6,6 +6,8 @@ This module contains the main server function and all render callbacks.
 """
 
 from shiny import render, ui, reactive
+from shiny.types import SilentException
+import html
 import pandas as pd
 import numpy as np
 import logging
@@ -47,7 +49,7 @@ def _safe_input(input_obj, name: str, default=None):
     """Safely read a Shiny input that may not be bound yet."""
     try:
         return getattr(input_obj, name)()
-    except Exception:
+    except (AttributeError, TypeError, SilentException):
         return default
 
 
@@ -180,7 +182,7 @@ def run_simulation_loop(
                     else:
                         porpoise_positions = []
                 except (ImportError, ValueError, RuntimeError) as e:
-                    logger.debug("Coordinate transform failed: %s", e)
+                    logger.warning("Coordinate transform failed: %s", e)
                     porpoise_positions = None
 
             # Collect trail data if traces enabled
@@ -1304,16 +1306,16 @@ def server(input, output, session):
                     if msg.get("porpoise_positions") is not None:
                         try:
                             state.porpoise_positions.set(msg.get("porpoise_positions"))
-                        except AttributeError:
-                            pass
+                        except (AttributeError, TypeError) as e:
+                            logger.warning("Could not update porpoise_positions: %s", e)
                     if msg.get("porpoise_trails") is not None:
                         try:
                             state.porpoise_trails.set(
                                 msg.get("porpoise_trails")
                             )
                             state.trail_time.set(msg.get("trail_time", 0))
-                        except AttributeError:
-                            pass
+                        except (AttributeError, TypeError) as e:
+                            logger.warning("Could not update porpoise_trails: %s", e)
 
         # Flush batched entries to reactive state so dashboard updates
         if entries_batch:
@@ -1788,8 +1790,8 @@ def server(input, output, session):
             show_traces = False
             try:
                 show_traces = input.show_traces()
-            except Exception:
-                pass
+            except (AttributeError, TypeError, SilentException):
+                logger.debug("show_traces input not available, defaulting to False")
             if show_traces and trails_raw:
                 pid_to_color = {}
                 for p in positions_raw[:1000]:

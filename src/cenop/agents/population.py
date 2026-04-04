@@ -862,10 +862,6 @@ class PorpoisePopulation:
             initial_dsm = np.clip(initial_dsm, 0, 360)
             self.days_since_mating[conceives] = initial_dsm
 
-        # Failed conceive → set back to immature (status=0)
-        failed = mature_females & ~conceives
-        self.pregnancy_status[failed] = 0
-
     # === Step Sub-Methods (P1.5 Refactoring) ===
 
     def _update_movement(

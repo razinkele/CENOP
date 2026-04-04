@@ -391,3 +391,17 @@ class TestPhase2Integration:
             # At least some should be pregnant (given init seeds ~68% at start)
             assert n_pregnant > 0 or n_ready > 0, \
                 "Should have some pregnant or ready-to-mate females"
+
+
+def test_pregnancy_init_nonpregnant_mature_stay_ready():
+    """Mature females that don't conceive should remain status=2, not reset to 0."""
+    import numpy as np
+    params = SimulationParameters(porpoise_count=500)
+    rng = np.random.default_rng(42)
+    pop = PorpoisePopulation(count=500, params=params)
+    mature_female = pop.is_female & (pop.age >= pop.params.maturity_age) & pop.active_mask
+    not_pregnant = mature_female & (pop.pregnancy_status != 1)
+    assert np.sum(not_pregnant) > 0, "Need at least one non-pregnant mature female"
+    assert np.all(pop.pregnancy_status[not_pregnant] == 2), (
+        f"Found {np.sum(pop.pregnancy_status[not_pregnant] == 0)} mature females incorrectly at status 0"
+    )

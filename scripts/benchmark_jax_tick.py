@@ -27,6 +27,7 @@ CRW_PARAMS = dict(
     r2_sd=39.68,
     r1_mean=0.0,
     r1_sd=0.559,
+    m_param=0.00001,
 )
 
 TARGET_MS = 1.2  # ms/tick target

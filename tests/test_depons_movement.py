@@ -64,8 +64,8 @@ class TestMovementParameters:
         """Verify m parameter exists (speed-dependent turning limit)."""
         params = SimulationParameters()
 
-        # m = 10^0.74 ≈ 5.495 (DEPONS value)
-        assert abs(params.m - 5.495409) < 0.001, "m should be ~5.495"
+        # Java SimulationParameters.initialize():262 hardcodes m=0.00001
+        assert params.m == 0.00001, "m should be 0.00001 (Java runtime override)"
 
     def test_inertia_parameter(self):
         """Verify inertia constant k exists."""

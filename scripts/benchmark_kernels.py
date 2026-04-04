@@ -68,7 +68,7 @@ def main():
         olm = np.zeros(n, dtype=np.float64)
         crw_angle_step_kernel(pa, plm, d, s, ra, rl, m, opa, olm,
                               0.5, 0.01, 0.01, 1.0, 0.5, 0.01, 0.01, 3.0,
-                              0.0, 4.0, 0.0, 1.0)
+                              0.0, 4.0, 0.0, 1.0, 0.00001)
     benchmark("crw_angle_step", bench_crw)
 
     # eat_food

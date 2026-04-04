@@ -22,6 +22,7 @@ def jax_crw_kernel(
     corr_angle_base, corr_angle_bathy, corr_angle_salinity,
     corr_angle_base_sd, corr_logmov_length, corr_logmov_bathy,
     corr_logmov_salinity, max_mov, r2_mean, r2_sd, r1_mean, r1_sd,
+    m_param,
 ):
     """CRW angle + step length — fixed-iteration batch rejection.
 
@@ -64,15 +65,14 @@ def jax_crw_kernel(
     pres_angle = jnp.where(any_valid1, pres_angle, jnp.sign(pres_angles[0]) * 90.0)
 
     # === Loop 2: Distance-dependent modulation ===
-    max_mov_value = 10.0**max_mov
     prev_mov_value = 10.0**prev_log_mov
-    needs_mod = prev_mov_value <= max_mov_value
+    needs_mod = prev_mov_value <= m_param
 
     key, k2 = jax.random.split(key)
-    rnds = jax.random.uniform(k2, (K, n)) * 20.0  # (K, n)
+    rnds = jax.random.normal(k2, (K, n))  # N(0,1), not uniform
     abs_angle = jnp.abs(pres_angle)
-    # Each candidate: |angle| + rnd - rnd * prev_mov/max_mov
-    new_angle_mags = abs_angle[None, :] + rnds - rnds * (prev_mov_value / max_mov_value)[None, :]
+    # Each candidate: |angle| + rnd - rnd * prev_mov/m_param
+    new_angle_mags = abs_angle[None, :] + rnds - rnds * (prev_mov_value / m_param)[None, :]
     dist_angles = jnp.sign(pres_angle)[None, :] * new_angle_mags  # (K, n)
 
     valid2 = jnp.abs(dist_angles) < 180.0  # (K, n)

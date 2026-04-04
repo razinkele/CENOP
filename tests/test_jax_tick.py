@@ -28,6 +28,7 @@ CRW_PARAMS = dict(
     r2_sd=39.68,
     r1_mean=0.0,
     r1_sd=0.559,
+    m_param=0.00001,
 )
 
 
@@ -1359,6 +1360,7 @@ class TestJaxTickComposition:
             -0.024, -0.008, 0.93, -14.0,
             0.35, 0.0005, -0.02, 1.73,
             0.0, 4.0, 0.0, 0.15,
+            0.00001,
             0.001, 2.0, 1.0,
             world_w, world_h,
             jax.random.PRNGKey(99),

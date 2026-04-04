@@ -929,6 +929,7 @@ class PorpoisePopulation:
                 self.params.corr_logmov_salinity, self.params.max_mov,
                 self.params.r2_mean, self.params.r2_sd,
                 self.params.r1_mean, self.params.r1_sd,
+                self.params.m,
             )
         else:
             # --- Turning Angle (NumPy fallback) ---
@@ -966,27 +967,29 @@ class PorpoisePopulation:
             if (violations & mask).any():
                 self._pres_angle[violations & mask] = np.sign(self._pres_angle[violations & mask]) * 90
 
-            # Second angle loop: distance-dependent modulation (Java Porpoise.java:374-393)
-            max_mov_value = np.power(10.0, self.params.max_mov)
+            # Second angle loop: distance-dependent modulation (Java Porpoise.java:367-397)
             prev_mov = np.power(10.0, self.prev_log_mov)
-            needs_modulation = mask & (prev_mov <= max_mov_value)
+            needs_modulation = mask & (prev_mov <= self.params.m)
             if needs_modulation.any():
+                mod_idx = np.where(needs_modulation)[0]
+                # Java line 365-367: extract sign once, work with abs values
+                signs = np.sign(self._pres_angle[mod_idx])
+                self._pres_angle[mod_idx] = np.abs(self._pres_angle[mod_idx])
                 retry = 0
-                violations2 = np.ones(self.count, dtype=bool)
-                while (violations2 & needs_modulation).any() and retry < 200:
-                    idx = np.where(violations2 & needs_modulation)[0]
-                    rnd = self.rng.uniform(0, 20, len(idx))
-                    new_angle = (np.abs(self._pres_angle[idx]) + rnd
-                                 - rnd * prev_mov[idx] / max_mov_value)
-                    self._pres_angle[idx] = np.sign(self._pres_angle[idx]) * new_angle
-                    violations2 = np.abs(self._pres_angle) >= 180
+                violations2 = self._pres_angle[mod_idx] >= 180.0
+                while violations2.any() and retry < 200:
+                    v_idx = mod_idx[violations2]
+                    rnd = self.rng.normal(0, 1, len(v_idx))  # N(0,1), not uniform
+                    self._pres_angle[v_idx] += rnd - rnd * prev_mov[v_idx] / self.params.m
+                    violations2 = self._pres_angle[mod_idx] >= 180.0
                     retry += 1
-                # Fallback: random(0,20) + 90 (Java Porpoise.java:389)
-                if (violations2 & needs_modulation).any():
-                    fb_idx = np.where(violations2 & needs_modulation)[0]
-                    self._pres_angle[fb_idx] = np.sign(self._pres_angle[fb_idx]) * (
-                        self.rng.uniform(0, 20, len(fb_idx)) + 90
-                    )
+                # Fallback: random(0,20) + 90 (Java Porpoise.java:386)
+                still_bad = self._pres_angle[mod_idx] >= 180.0
+                if still_bad.any():
+                    fb_idx = mod_idx[still_bad]
+                    self._pres_angle[fb_idx] = self.rng.uniform(0, 20, len(fb_idx)) + 90
+                # Java line 397: restore sign
+                self._pres_angle[mod_idx] *= signs
 
             # --- Step Length (NumPy fallback) ---
             # DEPONS formula: log10_mov = a0 * prev_log_mov + a1*depth + a2*salinity + R1
@@ -2318,6 +2321,7 @@ class PorpoisePopulation:
             float(self.params.r2_sd),
             float(self.params.r1_mean),
             float(self.params.r1_sd),
+            float(self.params.m),
             float(self.params.inertia_const),
             float(self.params.mean_disp_dist),
             float(min_depth),

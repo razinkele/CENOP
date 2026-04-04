@@ -104,6 +104,7 @@ def crw_angle_step_kernel(
     corr_angle_base, corr_angle_bathy, corr_angle_salinity, corr_angle_base_sd,
     corr_logmov_length, corr_logmov_bathy, corr_logmov_salinity, max_mov,
     r2_mean, r2_sd, r1_mean, r1_sd,
+    m_param,
 ):
     """
     CRW angle + step length kernel with rejection sampling.
@@ -147,27 +148,23 @@ def crw_angle_step_kernel(
             else:
                 pres_angle = -90.0
 
-        # Distance-dependent modulation (Java Porpoise.java:374-393)
-        max_mov_value = 10.0 ** max_mov
+        # Distance-dependent modulation (Java Porpoise.java:367-397)
         prev_mov_value = 10.0 ** prev_log_mov[i]
 
-        if prev_mov_value <= max_mov_value:
+        if prev_mov_value <= m_param:
+            sign = 1.0 if pres_angle >= 0 else -1.0
+            pres_angle = abs(pres_angle)  # Java line 367: abs once before loop
             retry = 0
-            while abs(pres_angle) >= 180.0 and retry < max_retries:
-                rnd = np.random.uniform(0.0, 20.0)
-                new_angle = abs(pres_angle) + rnd - rnd * prev_mov_value / max_mov_value
-                if pres_angle >= 0:
-                    pres_angle = new_angle
-                else:
-                    pres_angle = -new_angle
+            while pres_angle >= 180.0 and retry < max_retries:
+                rnd = np.random.normal(0.0, 1.0)  # Java: nextCrwAngleWithM() = N(0,1)
+                pres_angle = pres_angle + rnd - rnd * prev_mov_value / m_param
                 retry += 1
 
-            if abs(pres_angle) >= 180.0:
-                rnd = np.random.uniform(0.0, 20.0)
-                if pres_angle >= 0:
-                    pres_angle = rnd + 90.0
-                else:
-                    pres_angle = -(rnd + 90.0)
+            if pres_angle >= 180.0:
+                rnd = np.random.uniform(0.0, 20.0)  # Emergency fallback (Java line 386)
+                pres_angle = rnd + 90.0
+
+            pres_angle = pres_angle * sign  # Restore sign (Java line 397)
 
         out_pres_angle[i] = pres_angle
 
@@ -840,7 +837,7 @@ def warmup_kernels():
     olm = np.zeros(n, dtype=np.float64)
     crw_angle_step_kernel(pa, plm, dep, sal, ra, rl, m, opa, olm,
                           0.0, 0.0, 0.0, 1.0, 0.5, 0.0, 0.0, 3.0,
-                          0.0, 4.0, 0.0, 1.0)
+                          0.0, 4.0, 0.0, 1.0, 0.00001)
     # Warmup turn_position kernel
     ox = np.zeros(3, dtype=np.float64)
     oy = np.zeros(3, dtype=np.float64)

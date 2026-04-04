@@ -106,7 +106,7 @@ class SimulationParameters:
     r1_sd: float = 0.15                # R1 SD for step length
     r2_mean: float = 0.0               # R2 mean for turning angle N(μ, σ)
     r2_sd: float = 4.0                 # R2 SD for turning angle (degrees)
-    m: float = 5.495409  # 10^0.74 - limit for when turning angles stop decreasing with speed
+    m: float = 0.00001  # Java SimulationParameters.initialize():262 hardcodes this (field default was 10^0.74)
     
     # === Energetics ===
     e_use_per_30_min: float = 4.5      # Energy use per half-hour step

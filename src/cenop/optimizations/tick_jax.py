@@ -84,6 +84,7 @@ def jax_tick_movement(
     r2_sd,
     r1_mean,
     r1_sd,
+    m_param,
     inertia_const,
     mean_disp_dist,
     min_depth,
@@ -122,6 +123,7 @@ def jax_tick_movement(
         r2_sd,
         r1_mean,
         r1_sd,
+        m_param,
     )
 
     # --- Phase 2: Reference memory ---

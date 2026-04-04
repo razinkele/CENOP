@@ -106,6 +106,7 @@ class TestCRWAngleStepKernel:
             0.0, 0.0, 0.0, 1.0,  # angle params (b0=0, b1=0, b2=0, b3=1)
             0.5, 0.0, 0.0, 3.0,  # step params
             0.0, 4.0, 0.0, 1.0,  # random distribution params
+            0.00001,
         )
 
         # With zero random input and b0=0: pres_angle = 0 * 1.0 = 0
@@ -137,6 +138,7 @@ class TestCRWAngleStepKernel:
             0.0, 0.0, 0.0, 1.0,
             0.5, 0.0, 0.0, 3.0,
             0.0, 4.0, 0.0, 1.0,
+            0.00001,
         )
 
         # After rejection sampling, angle should be within valid range
@@ -166,6 +168,7 @@ class TestCRWAngleStepKernel:
             0.0, 0.0, 0.0, 1.0,
             0.5, 0.0, 0.0, 3.0,
             0.0, 4.0, 0.0, 1.0,
+            0.00001,
         )
 
         assert out_log_mov[0] <= 3.0, \
@@ -193,11 +196,72 @@ class TestCRWAngleStepKernel:
             0.0, 0.0, 0.0, 1.0,
             0.5, 0.0, 0.0, 3.0,
             0.0, 4.0, 0.0, 1.0,
+            0.00001,
         )
 
         assert out_pres_angle[0] != 0.0  # Active agent computed
         assert out_pres_angle[1] == 0.0  # Masked agent zero
         assert out_log_mov[1] == 2.0     # Unchanged
+
+
+def test_crw_loop2_with_correct_m():
+    """With m=0.00001, loop 2 should never fire (prevMov > m for all normal movement)."""
+    from cenop.optimizations.kernels import crw_angle_step_kernel
+    import numpy as np
+
+    n = 100
+    rng = np.random.default_rng(42)
+    prev_angle = rng.normal(0, 10, n)
+    prev_log_mov = np.full(n, 0.5)
+    depths = np.full(n, -20.0)
+    salinity = np.full(n, 34.0)
+    rand_angle = rng.normal(0.0, 4.0, n)
+    rand_len = rng.normal(1.25, 0.15, n)
+    mask = np.ones(n, dtype=bool)
+    out_pres_angle = np.zeros(n)
+    out_log_mov = np.zeros(n)
+
+    crw_angle_step_kernel(
+        prev_angle, prev_log_mov, depths, salinity,
+        rand_angle, rand_len, mask, out_pres_angle, out_log_mov,
+        -0.024, -0.008, 0.93, -14.0,
+        0.35, 0.0005, -0.02, 1.73,
+        0.0, 4.0, 1.25, 0.15,
+        0.00001,
+    )
+    assert np.all(np.abs(out_pres_angle[mask]) <= 180.0)
+    assert np.all(np.isfinite(out_pres_angle))
+
+
+def test_crw_loop2_fires_with_high_m():
+    """With m=1000 (high), loop 2 fires for all agents. Verify angles are reduced below 180."""
+    from cenop.optimizations.kernels import crw_angle_step_kernel
+    import numpy as np
+
+    n = 50
+    rng = np.random.default_rng(99)
+    prev_angle = np.full(n, 170.0, dtype=np.float64)
+    prev_log_mov = np.full(n, 1.0, dtype=np.float64)
+    depths = np.full(n, -20.0)
+    salinity = np.full(n, 34.0)
+    rand_angle = np.full(n, 50.0, dtype=np.float64)
+    rand_len = rng.normal(1.25, 0.15, n)
+    mask = np.ones(n, dtype=bool)
+    out_pres_angle = np.zeros(n)
+    out_log_mov = np.zeros(n)
+
+    crw_angle_step_kernel(
+        prev_angle, prev_log_mov, depths, salinity,
+        rand_angle, rand_len, mask, out_pres_angle, out_log_mov,
+        -0.024, -0.008, 0.93, -14.0,
+        0.35, 0.0005, -0.02, 0.5,
+        0.0, 4.0, 1.25, 0.15,
+        1000.0,
+    )
+    assert np.all(np.abs(out_pres_angle[mask]) <= 180.0), (
+        f"Loop 2 failed to reduce angles: max={np.max(np.abs(out_pres_angle))}"
+    )
+    assert np.all(np.isfinite(out_pres_angle))
 
 
 class TestTurnPositionKernel:

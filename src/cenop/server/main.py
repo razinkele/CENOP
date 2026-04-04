@@ -1588,6 +1588,7 @@ def server(input, output, session):
         try:
             import os
             landscape_name = _safe_input(input, "landscape", "Homogeneous")
+            landscape_name = Path(landscape_name).name  # strip path components
 
             base_paths = [
                 os.path.join("data", "wind-farms"),
@@ -1604,6 +1605,7 @@ def server(input, output, session):
                 logger.warning(f"No wind-farms directory found for {landscape_name}")
                 return
 
+            loaded_name = Path(loaded_name).name  # strip path components
             turbine_file = os.path.join(wf_dir, f"{loaded_name}.txt")
             if not os.path.isfile(turbine_file):
                 logger.warning(f"Turbine file not found: {turbine_file}")

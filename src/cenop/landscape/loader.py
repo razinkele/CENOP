@@ -7,11 +7,14 @@ Translates from: LandscapeLoader.java
 
 from __future__ import annotations
 
+import logging
 import numpy as np
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
 from cenop.landscape.cell_data import LandscapeMetadata
+
+logger = logging.getLogger(__name__)
 
 
 # File names used by DEPONS
@@ -119,13 +122,22 @@ class LandscapeLoader:
                 else:
                     break  # First data line found
                     
+        # Validate required header fields
+        required_fields = ['ncols', 'nrows', 'xllcorner', 'yllcorner', 'cellsize']
+        missing = [f for f in required_fields if f not in header]
+        if missing:
+            raise ValueError(
+                f"ASC file {filepath} missing required header fields: {missing}. "
+                f"Found: {list(header.keys())}"
+            )
+
         # Create metadata
         metadata = LandscapeMetadata(
-            ncols=header.get('ncols', 0),
-            nrows=header.get('nrows', 0),
-            xllcorner=header.get('xllcorner', 0.0),
-            yllcorner=header.get('yllcorner', 0.0),
-            cellsize=header.get('cellsize', 400.0),
+            ncols=header['ncols'],
+            nrows=header['nrows'],
+            xllcorner=header['xllcorner'],
+            yllcorner=header['yllcorner'],
+            cellsize=header['cellsize'],
             nodata_value=header.get('nodata_value', -9999.0),
         )
         
@@ -171,8 +183,13 @@ class LandscapeLoader:
                 data, _ = self._load_asc(long)
                 monthly_data.append(data)
             else:
-                # If file doesn't exist, use previous month or zeros
+                # If file doesn't exist, duplicate previous month with warning
                 if monthly_data:
+                    logger.warning(
+                        "Monthly %s file missing for month %d (%s / %s). "
+                        "Duplicating month %d data as fallback.",
+                        prefix, month, short, long, month - 1,
+                    )
                     monthly_data.append(monthly_data[-1].copy())
                 else:
                     raise FileNotFoundError(

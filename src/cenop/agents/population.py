@@ -840,7 +840,7 @@ class PorpoisePopulation:
         # Mating day (females only, N(225, 20))
         mating_days = np.clip(self.rng.normal(225, 20, self.count), 0, 359).astype(np.int16)
         # Apply only to females, others stay -99
-        self.mating_day = np.where(self.is_female, mating_days, -99)
+        self.mating_day = np.where(self.is_female, mating_days, np.int16(-99)).astype(np.int16)
 
         # Initialize pregnancy state (Java Porpoise.java:165-178)
         maturity_age = self.params.maturity_age

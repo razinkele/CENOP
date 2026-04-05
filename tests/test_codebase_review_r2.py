@@ -189,3 +189,90 @@ class TestErrorSanitization:
         from cenop.parameters.simulation_params import SimulationParameters
         params = SimulationParameters(porpoise_count=50000)
         assert params.porpoise_count == 50000
+
+
+class TestDtypeAndFoodBugs:
+    """Verify dtype preservation and food calculation correctness."""
+
+    def test_mating_day_stays_int16(self):
+        """mating_day must remain int16 after initialization, not promote to int64."""
+        from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.agents.population import PorpoisePopulation
+
+        params = SimulationParameters(porpoise_count=10)
+        pop = PorpoisePopulation(10, params, landscape=None)
+        assert pop.mating_day.dtype == np.int16, (
+            f"mating_day dtype is {pop.mating_day.dtype}, expected int16"
+        )
+
+    def test_eat_food_conserved_multi_agent_cell(self, monkeypatch):
+        """Food conservation: sum(eaten) + remaining = original food.
+
+        The NumPy fallback has a bug where actual_available is computed
+        from the already-depleted grid. Numba kernels don't have this bug.
+        We must force the NumPy path by making kernel imports fail.
+        """
+        import sys
+        import types
+        import cenop.optimizations as _opt_pkg
+        import cenop.optimizations.kernels  # ensure loaded
+
+        class _BlockedKernels(types.ModuleType):
+            def __getattr__(self, name):
+                raise ImportError(f"blocked for test: {name}")
+
+        stub = _BlockedKernels("cenop.optimizations.kernels")
+        monkeypatch.setitem(sys.modules, "cenop.optimizations.kernels", stub)
+        monkeypatch.setattr(_opt_pkg, "kernels", stub)
+
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+
+        landscape = create_homogeneous_landscape(width=10, height=10, depth=20.0)
+
+        # Two agents at same position, each wanting 80% of the food
+        x = np.array([5.0, 5.0], dtype=np.float64)
+        y = np.array([5.0, 5.0], dtype=np.float64)
+        fract = np.array([0.8, 0.8], dtype=np.float32)
+
+        i, j = int(y[0]), int(x[0])
+        original_food = float(landscape._food_value[i, j])
+
+        eaten = landscape.eat_food_vectorized(x, y, fract)
+
+        remaining_food = float(landscape._food_value[i, j])
+        total = float(np.sum(eaten)) + remaining_food
+
+        # Food conservation: what was eaten + what remains = original
+        # (allowing for 0.01 artificial food floor)
+        assert total >= original_food - 0.02, (
+            f"Food not conserved: eaten={np.sum(eaten):.4f} + "
+            f"remaining={remaining_food:.4f} = {total:.4f}, "
+            f"original={original_food:.4f}"
+        )
+        # Each agent should get a fair share (roughly equal)
+        if len(eaten) > 1 and eaten[0] > 0:
+            assert abs(eaten[0] - eaten[1]) < 0.05, (
+                f"Unequal shares: {eaten[0]:.4f} vs {eaten[1]:.4f}"
+            )
+
+    def test_eat_food_untouched_cells_unchanged(self):
+        """Cells where no agent ate should retain original food value."""
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+
+        landscape = create_homogeneous_landscape(width=10, height=10, depth=20.0)
+
+        # One agent at (5, 5)
+        x = np.array([5.0], dtype=np.float64)
+        y = np.array([5.0], dtype=np.float64)
+        fract = np.array([0.5], dtype=np.float32)
+
+        # Record food at a cell that NO agent touches
+        original_remote_food = float(landscape._food_value[0, 0])
+
+        landscape.eat_food_vectorized(x, y, fract)
+
+        # Remote cell should be unchanged
+        assert landscape._food_value[0, 0] == pytest.approx(original_remote_food), (
+            f"Untouched cell changed from {original_remote_food} to "
+            f"{landscape._food_value[0, 0]}"
+        )

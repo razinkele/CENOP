@@ -330,34 +330,33 @@ class CellData:
         except ImportError:
             pass
 
+        # --- NumPy fallback (no Numba) ---
         # Get current food at each position
-        current_food = self._food_value[i_arr, j_arr]
+        current_food = self._food_value[i_arr, j_arr].copy()
 
-        # Calculate food to eat
+        # Calculate desired food to eat per agent
         food_eaten = current_food * fraction
 
-        # Aggregate consumption for agents in the same cell using np.add.at
-        # This prevents the last-write-wins race condition when multiple
-        # agents occupy the same cell
-        total_consumed = np.zeros_like(self._food_value)
-        np.add.at(total_consumed, (i_arr, j_arr), food_eaten)
+        # Aggregate total demand per cell
+        total_demand = np.zeros_like(self._food_value)
+        np.add.at(total_demand, (i_arr, j_arr), food_eaten)
 
-        # Update food values with aggregated consumption
-        new_food = np.maximum(0.0, self._food_value - total_consumed)
+        # Available food per cell (minus artificial floor)
+        available = np.maximum(self._food_value - 0.01, 0.0)
 
-        # ADD_ARTIFICIAL_FOOD: minimum 0.01
-        new_food = np.maximum(new_food, 0.01)
+        # Actual depletion per cell = min(demand, available)
+        actual_depletion = np.minimum(total_demand, available)
 
-        # Write back to food grid
-        self._food_value[:] = new_food
+        # Update food grid — only deplete cells that had demand
+        demand_mask = total_demand > 0
+        self._food_value[demand_mask] -= actual_depletion[demand_mask]
+        # Enforce floor only on cells that had demand
+        np.maximum(self._food_value, 0.01, where=demand_mask, out=self._food_value)
 
-        # Recompute actual food eaten per agent (may be less if cell was depleted)
-        actual_available = self._food_value[i_arr, j_arr] + food_eaten
-        ratio = np.where(total_consumed[i_arr, j_arr] > 0,
-                         food_eaten / total_consumed[i_arr, j_arr],
-                         0.0)
-        # Each agent gets its proportional share of the actual depletion
-        actual_eaten = np.minimum(food_eaten, actual_available * ratio)
+        # Each agent gets proportional share of actual depletion
+        cell_demand = total_demand[i_arr, j_arr]
+        ratio = np.where(cell_demand > 0, food_eaten / cell_demand, 0.0)
+        actual_eaten = ratio * actual_depletion[i_arr, j_arr]
 
         return actual_eaten
 

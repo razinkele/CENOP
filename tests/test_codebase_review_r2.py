@@ -307,3 +307,40 @@ class TestSocialBuffersAndTickCounter:
         assert pop._tick_counter == old_counter, (
             "_tick_counter changed in JAX mode — should have been skipped"
         )
+
+
+class TestSilentFailureLogging:
+    """Verify silent failures now produce log messages."""
+
+    def test_safe_float_logs_on_invalid_input(self, caplog):
+        """_safe_float should log when falling back to default."""
+        from cenop.server.simulation_controller import _safe_float
+        with caplog.at_level(logging.WARNING):
+            result = _safe_float(lambda: "not_a_number", 42.0)
+        assert result == 42.0
+        assert caplog.text, "_safe_float should log on invalid input"
+
+    def test_safe_input_logs_on_invalid_input(self, caplog):
+        """_safe_input should log when falling back to default."""
+        from cenop.server.simulation_controller import _safe_input
+        mock_input = type("MockInput", (), {})()
+        with caplog.at_level(logging.WARNING):
+            result = _safe_input(mock_input, "nonexistent_field", "default_val")
+        assert result == "default_val"
+        assert caplog.text, "_safe_input should log on missing attribute"
+
+    def test_initial_position_fallback_logs_warning(self, caplog):
+        """Fallback to center position should log a warning."""
+        from cenop.core.simulation import Simulation
+        from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        landscape = create_homogeneous_landscape(width=100, height=100, depth=-1.0)
+        params = SimulationParameters(porpoise_count=1, min_depth=5.0)
+        sim = Simulation.__new__(Simulation)
+        sim.params = params
+        sim._cell_data = landscape
+        with caplog.at_level(logging.WARNING):
+            x, y = sim._get_valid_initial_position()
+        assert x == pytest.approx(50.0)
+        assert y == pytest.approx(50.0)
+        assert "center" in caplog.text.lower() or "position" in caplog.text.lower()

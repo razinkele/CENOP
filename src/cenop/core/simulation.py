@@ -259,6 +259,14 @@ class Simulation:
                 return x, y
                 
         # Fallback to center if no valid position found
+        logger.warning(
+            "No valid initial position found after %d attempts (min_depth=%.1f); "
+            "falling back to center position (%.1f, %.1f)",
+            max_attempts,
+            self.params.min_depth,
+            self._cell_data.width / 2,
+            self._cell_data.height / 2,
+        )
         return self._cell_data.width / 2, self._cell_data.height / 2
         
     def _setup_turbines(self) -> None:

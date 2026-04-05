@@ -26,7 +26,10 @@ def _safe_float(getter, default: float) -> float:
         if val is None:
             return default
         return float(val)
-    except (AttributeError, TypeError, ValueError, SilentException):
+    except SilentException:
+        return default
+    except (AttributeError, TypeError, ValueError) as e:
+        logger.warning("_safe_float: invalid value, using default %s (%s)", default, e)
         return default
 
 
@@ -34,7 +37,10 @@ def _safe_input(input, name: str, default):
     """Safely get a value from a Shiny input that may not exist."""
     try:
         return getattr(input, name)()
-    except (AttributeError, TypeError, SilentException):
+    except SilentException:
+        return default
+    except (AttributeError, TypeError) as e:
+        logger.warning("_safe_input: could not read '%s', using default %r (%s)", name, default, e)
         return default
 
 
@@ -96,8 +102,9 @@ def create_simulation_from_inputs(input) -> Simulation:
             if len(parts) == 2:
                 psm_dist_mean = float(parts[0])
                 psm_dist_sd = float(parts[1])
-    except (ValueError, TypeError, AttributeError):
-        pass  # Use defaults for PSM dist parsing
+    except (ValueError, TypeError, AttributeError) as e:
+        logger.warning("PSM dist parsing failed for %r, using defaults mean=%s sd=%s (%s)",
+                       psm_dist_str, psm_dist_mean, psm_dist_sd, e)
     
     # Read and validate input values with safe defaults
     porpoise_count_val = input.porpoise_count()

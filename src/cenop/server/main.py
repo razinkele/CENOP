@@ -20,7 +20,8 @@ try:
     # Importing SimulationRunner at module import time can create circular imports
     # in unit test environments. Import lazily where needed instead.
     from .simulation_controller import create_simulation_from_inputs, SimulationRunner
-except ImportError:
+except ImportError as e:
+    logging.getLogger("CENOP").warning("Could not import simulation controller: %s", e)
     create_simulation_from_inputs = None
     SimulationRunner = None
 from .renderers.chart_helpers import (

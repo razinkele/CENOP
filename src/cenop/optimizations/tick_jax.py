@@ -8,10 +8,13 @@ Both functions are pure — all state is passed in as flat arrays, all
 parameters as scalars, and new arrays are returned. No side effects.
 """
 
+import logging
 from functools import partial
 
 import jax
 import jax.numpy as jnp
+
+logger = logging.getLogger(__name__)
 
 from cenop.optimizations.jax_kernels import (
     jax_crw_kernel,
@@ -34,7 +37,10 @@ def is_jax_available() -> bool:
         x = jnp.ones(1)
         _ = float(x[0])
         return True
-    except Exception:
+    except ImportError:
+        return False
+    except Exception as e:
+        logger.warning("JAX runtime check failed: %s", e)
         return False
 
 

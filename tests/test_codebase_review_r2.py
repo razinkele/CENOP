@@ -344,3 +344,48 @@ class TestSilentFailureLogging:
         assert x == pytest.approx(50.0)
         assert y == pytest.approx(50.0)
         assert "center" in caplog.text.lower() or "position" in caplog.text.lower()
+
+
+class TestJaxAndCellDataWarnings:
+    """Verify JAX fallback and CellData None-array access produce warnings."""
+
+    @pytest.mark.parametrize("getter,default_val,field_name", [
+        ("get_depth", 20.0, "_depth"),
+        ("get_dist_to_coast", 10000.0, "_dist_to_coast"),
+        ("get_sediment", 1.0, "_sediment"),
+        ("get_food_prob", 0.5, "_food_prob"),
+        ("get_food_level", 0.5, "_food_value"),
+    ])
+    def test_celldata_none_array_logs_warning(self, caplog, getter, default_val, field_name):
+        """Accessing data when array is None should log a warning (once)."""
+        from cenop.landscape.cell_data import CellData, LandscapeMetadata
+        cd = CellData.__new__(CellData)
+        cd._loaded = True
+        cd.metadata = LandscapeMetadata(ncols=10, nrows=10, xllcorner=0, yllcorner=0, cellsize=400)
+        for attr in ['_depth', '_dist_to_coast', '_sediment', '_food_prob', '_food_value',
+                     '_blocks', '_entropy', '_salinity']:
+            setattr(cd, attr, None)
+        for attr in dir(cd):
+            if attr.startswith('_warned_') and attr.endswith('_none'):
+                delattr(cd, attr)
+        with caplog.at_level(logging.WARNING):
+            val = getattr(cd, getter)(5.0, 5.0)
+        assert val == pytest.approx(default_val)
+        assert caplog.text, f"{getter} should log warning when {field_name} is None"
+
+    def test_is_jax_available_logs_on_runtime_failure(self, caplog, monkeypatch):
+        """JAX runtime failure should log warning, not silently return False."""
+        try:
+            import cenop.optimizations.tick_jax as tjax
+            from cenop.optimizations.tick_jax import is_jax_available
+
+            def raise_oom(n):
+                raise RuntimeError("GPU OOM")
+
+            monkeypatch.setattr(tjax.jnp, 'ones', raise_oom)
+            with caplog.at_level(logging.WARNING):
+                result = is_jax_available()
+            assert result is False
+            assert "jax" in caplog.text.lower() or "runtime" in caplog.text.lower()
+        except (ImportError, AttributeError):
+            pytest.skip("JAX not installed")

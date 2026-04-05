@@ -7,10 +7,13 @@ Translates from: CellData.java
 
 from __future__ import annotations
 
+import logging
 import numpy as np
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Tuple, List
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -156,6 +159,9 @@ class CellData:
         """Get water depth at position."""
         self._ensure_loaded()
         if self._depth is None:
+            if not getattr(self, '_warned_depth_none', False):
+                logger.warning("Depth array is None, returning default 20.0")
+                self._warned_depth_none = True
             return 20.0  # Default depth
         i, j = self._get_indices(x, y)
         return float(self._depth[i, j])
@@ -164,6 +170,9 @@ class CellData:
         """Get distance to coast at position."""
         self._ensure_loaded()
         if self._dist_to_coast is None:
+            if not getattr(self, '_warned_dist_to_coast_none', False):
+                logger.warning("Distance-to-coast array is None, returning default 10000.0")
+                self._warned_dist_to_coast_none = True
             return 10000.0  # Default distance
         i, j = self._get_indices(x, y)
         return float(self._dist_to_coast[i, j])
@@ -172,6 +181,9 @@ class CellData:
         """Get sediment type at position."""
         self._ensure_loaded()
         if self._sediment is None:
+            if not getattr(self, '_warned_sediment_none', False):
+                logger.warning("Sediment array is None, returning default 1.0")
+                self._warned_sediment_none = True
             return 1.0
         i, j = self._get_indices(x, y)
         return float(self._sediment[i, j])
@@ -180,6 +192,9 @@ class CellData:
         """Get food probability at position."""
         self._ensure_loaded()
         if self._food_prob is None:
+            if not getattr(self, '_warned_food_prob_none', False):
+                logger.warning("Food probability array is None, returning default 0.5")
+                self._warned_food_prob_none = True
             return 0.5
         i, j = self._get_indices(x, y)
         return float(self._food_prob[i, j])
@@ -188,6 +203,9 @@ class CellData:
         """Get current food level at position."""
         self._ensure_loaded()
         if self._food_value is None:
+            if not getattr(self, '_warned_food_value_none', False):
+                logger.warning("Food value array is None, returning default 0.5")
+                self._warned_food_value_none = True
             return 0.5
         i, j = self._get_indices(x, y)
         return float(self._food_value[i, j])

@@ -173,3 +173,19 @@ class TestPathTraversalPrevention:
         from cenop.config import get_wind_farm_file, WIND_FARMS_DIR
         result = get_wind_farm_file("/etc/passwd")
         assert str(result.resolve()).startswith(str(WIND_FARMS_DIR.resolve()))
+
+
+class TestErrorSanitization:
+    """Verify internal details are not leaked and bounds are enforced."""
+
+    def test_porpoise_count_rejects_above_50000(self):
+        """Server must reject porpoise count above 50000."""
+        from cenop.parameters.simulation_params import SimulationParameters
+        with pytest.raises(ValueError, match="50,000"):
+            SimulationParameters(porpoise_count=50001)
+
+    def test_porpoise_count_accepts_50000(self):
+        """Exactly 50000 should be accepted."""
+        from cenop.parameters.simulation_params import SimulationParameters
+        params = SimulationParameters(porpoise_count=50000)
+        assert params.porpoise_count == 50000

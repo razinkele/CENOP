@@ -545,7 +545,7 @@ def server(input, output, session):
             ui.notification_show(f"Loading landscape: {landscape_name}...", type="info", duration=3)
         except Exception as e:
             logger.error(f"Error loading landscape: {e}", exc_info=True)
-            ui.notification_show(f"Error loading landscape: {str(e)}", type="error")
+            ui.notification_show("Error loading landscape. Check server logs for details.", type="error")
     
     @render.text
     def landscape_status():
@@ -623,7 +623,7 @@ def server(input, output, session):
                 ui.notification_show(f"Loading turbines: {turbine_scenario}...", type="info", duration=3)
         except Exception as e:
             logger.error(f"Error loading turbines: {e}", exc_info=True)
-            ui.notification_show(f"Error loading turbines: {str(e)}", type="error")
+            ui.notification_show("Error loading turbines. Check server logs for details.", type="error")
     
     @render.text
     def turbine_status():
@@ -689,7 +689,7 @@ def server(input, output, session):
                 )
         except Exception as e:
             logger.error(f"Data available: could not list landscapes: {e}", exc_info=True)
-            ui.notification_show(f"Error loading landscapes: {str(e)}", type="error", duration=10)
+            ui.notification_show("Error loading landscapes. Check server logs for details.", type="error", duration=10)
             landscapes = []
 
         # Build table rows using helper function for testability
@@ -1142,7 +1142,7 @@ def server(input, output, session):
         except Exception as exc:
             logger.exception("Failed to create/initialize simulation")
             state.progress_message.set(f"Error: {exc}")
-            ui.notification_show(f"Simulation failed: {exc}", type="error", duration=10)
+            ui.notification_show("Simulation failed. Check server logs for details.", type="error", duration=10)
             return
 
         # Reset queue and event - use idiomatic pattern to avoid TOCTOU race

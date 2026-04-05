@@ -86,3 +86,58 @@ class TestLandscapeLoaderValidation:
             data = loader._load_monthly("prey")
         assert data.shape[0] == 12
         assert "missing" in caplog.text.lower() or "duplicat" in caplog.text.lower()
+
+
+class TestShipLoaderWarnings:
+    """Verify ship loader logs warnings for missing/invalid data."""
+
+    def test_missing_route_file_logs_warning(self, tmp_path, caplog):
+        """Missing route file should log warning, not silently return empty."""
+        from cenop.agents.ship import ShipManager
+        mgr = ShipManager.__new__(ShipManager)
+        with caplog.at_level(logging.WARNING):
+            routes = mgr._load_routes(
+                str(tmp_path / "nonexistent_routes.txt"),
+                0.0, 0.0, 400.0,
+            )
+        assert routes == {}
+        assert "route" in caplog.text.lower() or "not found" in caplog.text.lower()
+
+    def test_unknown_route_name_logs_warning(self, tmp_path, caplog):
+        """Ship referencing an unknown route name should log warning."""
+        from cenop.agents.ship import ShipManager
+        ship_file = tmp_path / "ships.txt"
+        ship_file.write_text(
+            "name\ttype\tlength\troute\n"
+            "TestShip\tother\t10.0\tnonexistent_route\n"
+        )
+        mgr = ShipManager.__new__(ShipManager)
+        with caplog.at_level(logging.WARNING):
+            ships = mgr._load_ships(str(ship_file), {})
+        assert len(ships) == 1
+        assert "route" in caplog.text.lower() or "unknown" in caplog.text.lower()
+
+    def test_invalid_tick_timing_logs_warning(self, tmp_path, caplog):
+        """Invalid tick timing values should log warning."""
+        from cenop.agents.ship import ShipManager
+        ship_file = tmp_path / "ships.txt"
+        ship_file.write_text(
+            "name\ttype\tlength\troute\ttick_start\ttick_end\n"
+            "TestShip\tother\t10.0\troute1\tabc\txyz\n"
+        )
+        mgr = ShipManager.__new__(ShipManager)
+        with caplog.at_level(logging.WARNING):
+            ships = mgr._load_ships(str(ship_file), {"route1": type("Route", (), {"buoys": []})()})
+        assert "tick" in caplog.text.lower() or "timing" in caplog.text.lower()
+
+    def test_json_parse_error_disables_manager(self, tmp_path, caplog):
+        """Invalid JSON should log error and disable the ship manager."""
+        from cenop.agents.ship import ShipManager
+        json_file = tmp_path / "ships.json"
+        json_file.write_text("{invalid json")
+        mgr = ShipManager.__new__(ShipManager)
+        mgr.ships = []
+        mgr.enabled = True
+        with caplog.at_level(logging.ERROR):
+            mgr.load_from_json(str(json_file), 0.0, 0.0, 400.0)
+        assert not mgr.enabled, "Ship manager should be disabled after JSON parse failure"

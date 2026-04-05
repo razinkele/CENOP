@@ -677,6 +677,7 @@ class ShipManager:
         path = Path(filepath)
         
         if not path.exists():
+            logger.warning("Ship route file not found: %s. Ships will have no routes.", filepath)
             return routes
             
         # Parse route file format
@@ -753,13 +754,24 @@ class ShipManager:
                         break
                         
                 # Get route
-                route = routes.get(route_name, Route())
+                route = routes.get(route_name)
+                if route is None:
+                    logger.warning(
+                        "Ship '%s' references unknown route '%s' — ship will be stationary.",
+                        name, route_name,
+                    )
+                    route = Route()
                 
                 # Optional timing
                 try:
                     tick_start = int(parts[4]) if len(parts) > 4 else 0
                     tick_end = int(parts[5]) if len(parts) > 5 else 2147483647
-                except ValueError:
+                except ValueError as e:
+                    logger.warning(
+                        "Ship '%s': invalid tick timing values (%s) — "
+                        "ship will be active for entire simulation.",
+                        name, e,
+                    )
                     tick_start = 0
                     tick_end = 2147483647
                 
@@ -833,6 +845,7 @@ class ShipManager:
                 data = json.load(f)
         except json.JSONDecodeError as e:
             logger.error("Failed to parse ships JSON: %s", e)
+            self.enabled = False
             return
             
         # Parse routes

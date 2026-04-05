@@ -240,28 +240,3 @@ class TestSocialBufferPreallocation:
             buf = getattr(pop, attr)
             assert buf.shape == (n,), f"{attr} shape mismatch"
             assert buf.dtype == np.float32, f"{attr} dtype mismatch"
-
-    def test_pair_buffers_grow_on_demand(self, small_population):
-        """Verify _ensure_social_buffers grows pair buffers."""
-        pop = small_population
-        assert pop._social_buf_size == 0
-        pop._ensure_social_buffers(100)
-        assert pop._social_buf_size == 100
-        assert pop._social_f64_dx.shape == (100,)
-        assert pop._social_f64_dy.shape == (100,)
-        assert pop._social_f64_dist.shape == (100,)
-        assert pop._social_f64_pi.shape == (100,)
-        assert pop._social_f64_pj.shape == (100,)
-        # All pair buffers should be float64
-        assert pop._social_f64_dx.dtype == np.float64
-
-    def test_pair_buffers_dont_shrink(self, small_population):
-        """Call with 200, then 50 -- buffer stays at 200."""
-        pop = small_population
-        pop._ensure_social_buffers(200)
-        assert pop._social_buf_size == 200
-        old_dx = pop._social_f64_dx
-        pop._ensure_social_buffers(50)
-        assert pop._social_buf_size == 200
-        # Buffer object should be the same (no reallocation)
-        assert pop._social_f64_dx is old_dx

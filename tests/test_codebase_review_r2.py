@@ -276,3 +276,34 @@ class TestDtypeAndFoodBugs:
             f"Untouched cell changed from {original_remote_food} to "
             f"{landscape._food_value[0, 0]}"
         )
+
+
+class TestSocialBuffersAndTickCounter:
+    """Verify dead social buffers are removed and tick_counter is guarded."""
+
+    def test_no_dead_social_f64_buffers(self):
+        """Population should not have unused _social_f64_* buffers."""
+        from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.agents.population import PorpoisePopulation
+        params = SimulationParameters(porpoise_count=5)
+        pop = PorpoisePopulation(5, params, landscape=None)
+        assert not hasattr(pop, '_social_f64_dx'), (
+            "_social_f64_dx still exists — dead buffer not removed"
+        )
+        assert not hasattr(pop, '_social_f64_dy'), (
+            "_social_f64_dy still exists — dead buffer not removed"
+        )
+
+    def test_energy_history_skips_in_jax_mode(self):
+        """_update_energy_history should be a no-op when _use_jax is True."""
+        from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.agents.population import PorpoisePopulation
+        params = SimulationParameters(porpoise_count=5)
+        pop = PorpoisePopulation(5, params, landscape=None)
+        pop._use_jax = True
+        mask = pop.active_mask.copy()
+        old_counter = pop._tick_counter
+        pop._update_energy_history(mask)
+        assert pop._tick_counter == old_counter, (
+            "_tick_counter changed in JAX mode — should have been skipped"
+        )

@@ -348,14 +348,6 @@ class PorpoisePopulation:
         self._social_sw = np.zeros(count, dtype=np.float64)
         self._social_out_dx = np.zeros(count, dtype=np.float32)
         self._social_out_dy = np.zeros(count, dtype=np.float32)
-        # Pair-sized buffers (lazily grown)
-        self._social_f64_dx = np.empty(0, dtype=np.float64)
-        self._social_f64_dy = np.empty(0, dtype=np.float64)
-        self._social_f64_dist = np.empty(0, dtype=np.float64)
-        self._social_f64_pi = np.empty(0, dtype=np.float64)
-        self._social_f64_pj = np.empty(0, dtype=np.float64)
-        self._social_buf_size = 0
-
         # === Pre-allocated energy/context buffers ===
         self._water_temp = np.full(count, 10.0, dtype=np.float32)
         self._food_quality = np.ones(count, dtype=np.float32)
@@ -478,19 +470,6 @@ class PorpoisePopulation:
         ).astype(np.float32)
 
         # --- Social communication implementation (vectorized neighborhood search) ---
-        def _ensure_social_buffers(self, n_pairs: int) -> None:
-            """Grow pair-sized social buffers if needed (never shrink)."""
-            if self._social_buf_size >= n_pairs:
-                return
-            self._social_f64_dx = np.empty(n_pairs, dtype=np.float64)
-            self._social_f64_dy = np.empty(n_pairs, dtype=np.float64)
-            self._social_f64_dist = np.empty(n_pairs, dtype=np.float64)
-            self._social_f64_pi = np.empty(n_pairs, dtype=np.float64)
-            self._social_f64_pj = np.empty(n_pairs, dtype=np.float64)
-            self._social_buf_size = n_pairs
-
-        self._ensure_social_buffers = _ensure_social_buffers.__get__(self, self.__class__)
-
         def _compute_social_vectors(self, mask: np.ndarray, ambient_rl: Optional[np.ndarray] = None) -> Tuple[np.ndarray, np.ndarray]:
             """
             Compute social attraction vectors for active agents.
@@ -2878,6 +2857,10 @@ class PorpoisePopulation:
         """
         # Prevent double-update within the same tick
         if getattr(self, '_last_energy_update_tick', -1) == self._global_tick:
+            return
+
+        # JAX path manages tick_counter and energy history via jax_tick_energy
+        if getattr(self, '_use_jax', False):
             return
 
         # Accumulate energy for current day

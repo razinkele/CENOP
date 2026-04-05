@@ -297,7 +297,7 @@ class Simulation:
         from cenop.config import get_wind_farm_file
         
         # Get the filename for this scenario
-        scenario_key = self.params.turbines
+        scenario_key = Path(self.params.turbines).name  # Strip path components
         if scenario_key in scenario_files:
             filename = scenario_files[scenario_key]
         else:

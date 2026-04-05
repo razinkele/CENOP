@@ -141,3 +141,35 @@ class TestShipLoaderWarnings:
         with caplog.at_level(logging.ERROR):
             mgr.load_from_json(str(json_file), 0.0, 0.0, 400.0)
         assert not mgr.enabled, "Ship manager should be disabled after JSON parse failure"
+
+
+class TestPathTraversalPrevention:
+    """Verify path traversal attacks are blocked."""
+
+    def test_get_data_file_strips_traversal(self):
+        """get_data_file must resolve within DATA_DIR, not traverse out."""
+        from cenop.config import get_data_file, DATA_DIR
+        result = get_data_file("../../etc/passwd")
+        assert str(result.resolve()).startswith(str(DATA_DIR.resolve())), (
+            f"Path {result} escapes DATA_DIR {DATA_DIR}"
+        )
+
+    def test_get_wind_farm_file_strips_traversal(self):
+        """get_wind_farm_file must resolve within WIND_FARMS_DIR."""
+        from cenop.config import get_wind_farm_file, WIND_FARMS_DIR
+        result = get_wind_farm_file("../../../etc/passwd")
+        assert str(result.resolve()).startswith(str(WIND_FARMS_DIR.resolve())), (
+            f"Path {result} escapes WIND_FARMS_DIR {WIND_FARMS_DIR}"
+        )
+
+    def test_get_data_file_rejects_absolute_path(self):
+        """get_data_file must not allow absolute paths to escape."""
+        from cenop.config import get_data_file, DATA_DIR
+        result = get_data_file("/etc/passwd")
+        assert str(result.resolve()).startswith(str(DATA_DIR.resolve()))
+
+    def test_get_wind_farm_file_rejects_absolute_path(self):
+        """get_wind_farm_file must not allow absolute paths."""
+        from cenop.config import get_wind_farm_file, WIND_FARMS_DIR
+        result = get_wind_farm_file("/etc/passwd")
+        assert str(result.resolve()).startswith(str(WIND_FARMS_DIR.resolve()))

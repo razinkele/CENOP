@@ -23,13 +23,19 @@ STATIC_DIR = PROJECT_ROOT / "static"
 
 def get_data_file(filename: str) -> Path:
     """Resolve a path to a data file, checking existence."""
-    path = DATA_DIR / filename
+    safe_name = Path(filename).name  # Strip directory components
+    path = (DATA_DIR / safe_name).resolve()
+    if not str(path).startswith(str(DATA_DIR.resolve())):
+        raise ValueError(f"Invalid data filename: {filename!r}")
     if not path.exists():
         logger.warning(f"Data file not found: {path}")
     return path
 
+
 def get_wind_farm_file(filename: str) -> Path:
     """Resolve a path to a wind farm definition file."""
-    path = WIND_FARMS_DIR / filename
-    # Don't check existence here as the caller might handle it
+    safe_name = Path(filename).name  # Strip directory components
+    path = (WIND_FARMS_DIR / safe_name).resolve()
+    if not str(path).startswith(str(WIND_FARMS_DIR.resolve())):
+        raise ValueError(f"Invalid wind farm filename: {filename!r}")
     return path

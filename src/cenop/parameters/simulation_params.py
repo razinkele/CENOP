@@ -78,10 +78,10 @@ class SimulationParameters:
     dispersal: str = "PSM-Type2"
     t_disp: int = 3                    # Days of declining energy before dispersal
     psm_log: float = 0.6               # Logistic increase in random turning
-    psm_dist_mean: float = 300.0       # Preferred dispersal distance (km)
+    psm_dist_mean: float = 350.0       # Preferred dispersal distance (km) — Java parameters.xml:46
     psm_dist_sd: float = 100.0
     psm_tol: float = 5.0               # Tolerance band (km)
-    psm_angle: float = 20.0            # Max turning angle after PSM step
+    psm_angle: float = 40.0            # Max turning angle after PSM step — Java parameters.xml:52
     q1: float = 0.02                   # PSM-Type3 distance-cost coefficient (DEPONS 3.2)
 
     # === Memory ===
@@ -98,7 +98,7 @@ class SimulationParameters:
     corr_angle_bathy: float = -0.008   # b1: depth effect on turning angle
     corr_angle_salinity: float = 0.93  # b2: salinity effect on turning angle
     corr_angle_base_sd: float = -14.0  # b3: intercept for turning angle
-    mean_disp_dist: float = 1.6        # Dispersal distance per step (km) (DEPONS 3.2)
+    mean_disp_dist: float = 2.0        # Dispersal distance per step (km) — Java parameters.xml:117
     max_mov: float = 1.73              # Max movement distance (km)
     
     # === Random Components (TRACE Table 2) ===

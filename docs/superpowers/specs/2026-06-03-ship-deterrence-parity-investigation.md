@@ -51,18 +51,33 @@ parameter is inert. Ship traffic currently has almost no behavioral effect.
 7. **Vector**: **unit vector away from ship** × `deterMagnitude` × `reactingOrNot`
    (`Ship.java:236-243`).
 
-## CENOP scalar path — faithful ✅ (but unused)
+## CENOP scalar path — *mostly* faithful ⚠️ (but unused)
 
-- `behavior/sound.py::ShipDeterrenceModel` reproduces the standardization constants
-  exactly (`5.801812/2.602801`, `6.243703/2.548173`, `5.311561/2.698996`, …) and the
-  logit transform `1/(1+exp(−x))`.
+**Correction (2026-06-03, post multi-angle review):** the scalar path is faithful
+for the **probability/gate** logic but has two real DEPONS divergences of its own —
+it is NOT a clean oracle as originally claimed.
+
+- `behavior/sound.py::ShipDeterrenceModel.calculate_deterrence_probability`
+  reproduces the standardization constants exactly (`5.801812/2.602801`,
+  `6.243703/2.548173`, …) and the logit `1/(1+exp(−x))`. ✅
+- **BUG — `calculate_deterrence_magnitude` omits the `exp` link.** DEPONS `predictMag`
+  returns `Math.exp(Mag)` (`Ship.java:395,405`); CENOP returns `max(0.0, magnitude)`
+  (`sound.py:354`) — the raw linear predictor. ~6.5× magnitude error at the mean and
+  wrong shape vs RL/distance. ❌
 - `agents/ship.py::Ship.calculate_deterrence` (~line 320): RL via simple `α/β` TL or
   per-cell WestonFlux; **Tships=80 gate** (`ship.py:353`); probabilistic response
-  (`np.random.random() < prob`); returns `(should_deter, prob, magnitude, dist_km)`.
-- Aggregated by `ShipManager.calculate_aggregate_deterrence` (`ship.py:418`) →
-  unit-vector × magnitude.
+  (`np.random.random() < prob`); returns `(should_deter, prob, magnitude, dist_km)`. ✅ gate/prob
+- **BUG — the scalar aggregator `ShipManager.calculate_aggregate_deterrence`
+  (`ship.py:418`) builds the vector with `get_deterrence_vector(..., deter_coeff)` →
+  `calculate_deterrence_vector` = raw-displacement × magnitude × `deter_coeff`** — the
+  **turbine** formula (`Porpoise.java:1290`), not the DEPONS ship unit-vector ×
+  `predictMag` (no `deter_coeff`, `Ship.java:231-242`). ❌
 - **Only caller in `src/` is its own aggregate method; `Simulation.step()` does not
   invoke it.** It survives only in tests (`test_deterrence.py`).
+
+**Implication:** the fix must first *correct the oracle* (add `exp`, replace the
+vector formula), then share it with the vectorized path — not adopt the scalar
+output as-is. See the design spec `2026-06-03-ship-deterrence-vectorized-port-design.md`.
 
 ## CENOP vectorized path — wrong ❌ (production)
 

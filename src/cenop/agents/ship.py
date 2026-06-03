@@ -350,7 +350,7 @@ class Ship(Agent):
             )
 
         # Tships gate: skip deterrence below minimum RL (Java Ship.java:228)
-        tships = getattr(params, 'deter_ships_min_db', 70.0)
+        tships = getattr(params, 'deter_ships_min_db', 80.0)
         if spl <= tships:
             return (False, 0.0, 0.0, distance_km)
 

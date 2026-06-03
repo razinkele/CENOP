@@ -118,16 +118,18 @@ def cython_depons_post_crw(
         elif ny > max_y:
             ny = max_y
 
-        x[i] = <f32>nx
-        y[i] = <f32>ny
-
-        # Cell index
-        xi_c = <int>nx
+        # Pre-move cell index — DEPONS eats at the cell just left
+        # (Porpoise.updEnergeticStatus → posList.get(1)), so derive the eat
+        # cell from the position BEFORE write-back, not the post-move position.
+        xi_c = <int>x[i]
         if xi_c < 0: xi_c = 0
         if xi_c >= world_w: xi_c = world_w - 1
-        yi_c = <int>ny
+        yi_c = <int>y[i]
         if yi_c < 0: yi_c = 0
         if yi_c >= world_h: yi_c = world_h - 1
+
+        x[i] = <f32>nx
+        y[i] = <f32>ny
 
         # === 2. FOOD INTAKE ===
         fract = (20.0 - energy[i]) / 10.0

@@ -2101,7 +2101,7 @@ def server(input, output, session):
             alpha = getattr(p, 'alpha_hat', 0.0) if p else 0.0
             threshold = getattr(p, 'deter_threshold', 158.0) if p else 158.0
             coeff = getattr(p, 'deter_coeff', 0.07) if p else 0.07
-            max_dist = getattr(p, 'deter_max_distance', 50.0) if p else 50.0
+            max_dist = getattr(p, 'deter_max_distance', 1000.0) if p else 1000.0
 
             # --- Turbine Info ---
             loaded_safe = html.escape(str(loaded)) if loaded else ""

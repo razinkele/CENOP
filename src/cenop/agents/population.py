@@ -338,6 +338,10 @@ class PorpoisePopulation:
         # === Pre-allocated cell index buffers (D1: compute once per tick) ===
         self._cell_xi = np.zeros(count, dtype=np.int32)
         self._cell_yi = np.zeros(count, dtype=np.int32)
+        # Pre-move cell indices — DEPONS eats food at the cell just left
+        # (Porpoise.updEnergeticStatus eats at posList.get(1)), not the post-move cell.
+        self._pre_cell_xi = np.zeros(count, dtype=np.int32)
+        self._pre_cell_yi = np.zeros(count, dtype=np.int32)
 
         # === Pre-allocated food fraction buffer (R8) ===
         self._fract_to_eat = np.zeros(count, dtype=np.float32)
@@ -416,6 +420,23 @@ class PorpoisePopulation:
             h = self.params.world_height
         np.copyto(self._cell_xi, np.clip(self.x.astype(np.int32), 0, w - 1))
         np.copyto(self._cell_yi, np.clip(self.y.astype(np.int32), 0, h - 1))
+
+    def _snapshot_pre_move_cells(self, pre_x: np.ndarray, pre_y: np.ndarray) -> None:
+        """Capture clamped cell indices for the pre-move positions.
+
+        DEPONS eats food at the cell the porpoise just left
+        (Porpoise.updEnergeticStatus → eatFood(posList.get(1))), i.e. the
+        position before this step's move. These buffers let
+        _eat_food_vectorized deplete that patch instead of the post-move cell.
+        """
+        if self.landscape is not None:
+            w = self.landscape.width
+            h = self.landscape.height
+        else:
+            w = self.params.world_width
+            h = self.params.world_height
+        np.copyto(self._pre_cell_xi, np.clip(pre_x.astype(np.int32), 0, w - 1))
+        np.copyto(self._pre_cell_yi, np.clip(pre_y.astype(np.int32), 0, h - 1))
 
     @property
     def population_size(self) -> int:
@@ -1479,6 +1500,9 @@ class PorpoisePopulation:
         # Save pre-move positions for post-move depth check (reuse pre-allocated buffers)
         np.copyto(self._pre_move_x, self.x)
         np.copyto(self._pre_move_y, self.y)
+        # Capture the pre-move cell — food is eaten where the porpoise just was
+        # (DEPONS posList.get(1)), not at the post-move cell.
+        self._snapshot_pre_move_cells(self._pre_move_x, self._pre_move_y)
 
         self.x[mask] = self._new_x[mask]
         self.y[mask] = self._new_y[mask]
@@ -2308,6 +2332,9 @@ class PorpoisePopulation:
         # Save pre-move positions BEFORE write-back (for land rollback)
         _jax_pre_x = self.x.copy()
         _jax_pre_y = self.y.copy()
+        # Capture pre-move cell — food is eaten where the porpoise just was
+        # (DEPONS posList.get(1)), not the post-move cell.
+        self._snapshot_pre_move_cells(_jax_pre_x, _jax_pre_y)
 
         # Write movement results back to SoA arrays
         np.copyto(self.x, np.asarray(new_x))
@@ -2392,8 +2419,8 @@ class PorpoisePopulation:
             jnp.asarray(self.with_calf),
             jnp.asarray(self.age),
             jax_food,
-            jnp.asarray(self._cell_xi),
-            jnp.asarray(self._cell_yi),
+            jnp.asarray(self._pre_cell_xi),
+            jnp.asarray(self._pre_cell_yi),
             jnp.asarray(self._energy_ticks_today),
             jnp.asarray(self._energy_history),
             jnp.int32(self._tick_counter),
@@ -3249,13 +3276,15 @@ class PorpoisePopulation:
         if len(active_idx) == 0:
              return food_eaten
         
-        # Delegate to landscape vectorized method
+        # Delegate to landscape vectorized method.
+        # Eat at the PRE-move cell (the patch the porpoise just left) to match
+        # DEPONS Porpoise.updEnergeticStatus → eatFood(posList.get(1)).
         consumed = self.landscape.eat_food_vectorized(
-            self.x[active_idx],
-            self.y[active_idx],
+            self._pre_move_x[active_idx],
+            self._pre_move_y[active_idx],
             fract_to_eat[active_idx],
-            xi=self._cell_xi[active_idx],
-            yi=self._cell_yi[active_idx],
+            xi=self._pre_cell_xi[active_idx],
+            yi=self._pre_cell_yi[active_idx],
             energy=self.energy[active_idx],
         )
         

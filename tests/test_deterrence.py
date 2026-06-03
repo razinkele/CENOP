@@ -119,19 +119,22 @@ class TestTLParameterDefaults:
         assert params.deter_threshold == pytest.approx(152.0), \
             f"deter_threshold should be 152.0, got {params.deter_threshold}"
 
-    def test_deter_max_distance_is_50km(self):
-        """deter_max_distance should be 50.0 km (Java: 50000 m = 50 * 1000).
+    def test_deter_max_distance_is_1000km(self):
+        """deter_max_distance should be 1000.0 km (parameters.xml dmax_deter).
 
-        Bug: Phase 1 set 1000.0 (misreading Java's 50*1000m as 1000 km).
-        Code does `max_dist_m = params.deter_max_distance * 1000` so:
-        - Correct: 50.0 km * 1000 = 50,000 m
-        - Bug: 1000.0 km * 1000 = 1,000,000 m (way too far)
+        Authoritative source is parameters.xml, not Java field initializers:
+        - parameters.xml: dmax_deter=1000.0 [km]
+        - SimulationParameters.initialize(): deterMaxDistance = dmax_deter * 1000
+          -> 1,000,000 m = 1000 km
+        - resetToDefaultsForUnitTest(): deterMaxDistance = 1000.0 * 1000 (also 1000 km)
+        The `50 * 1000` field initializer (SimulationParameters.java:89) is stale and
+        overwritten in every code path. CENOP stores km and converts with *1000 at use.
         """
         from cenop.parameters.simulation_params import SimulationParameters
         params = SimulationParameters()
 
-        assert params.deter_max_distance == pytest.approx(50.0), \
-            f"deter_max_distance should be 50.0 km, got {params.deter_max_distance}"
+        assert params.deter_max_distance == pytest.approx(1000.0), \
+            f"deter_max_distance should be 1000.0 km, got {params.deter_max_distance}"
 
 
 class TestShipDeterrenceStandardization:
@@ -165,23 +168,27 @@ class TestShipDeterrenceStandardization:
             f"Day probability at 3km, 80dB should be in meaningful range, got {prob_below}"
 
     def test_tships_minimum_gate(self):
-        """Ship deterrence should be skipped when RL <= Tships (70 dB).
+        """Ship deterrence should be skipped when RL <= Tships (80 dB).
 
-        Java: Ship.java:228 — if (receivedLevel <= Tships) skip
+        Java: Ship.java:228 — if (receivedLevel <= Tships) skip.
+        Authoritative value is parameters.xml Tships=80.0, loaded verbatim by
+        SimulationParameters.initialize(). The 70.0 in the field initializer
+        (SimulationParameters.java:164) and resetToDefaultsForUnitTest() is a
+        unit-test default, not the production runtime value.
         """
         from cenop.parameters.simulation_params import SimulationParameters
         params = SimulationParameters()
         assert hasattr(params, 'deter_ships_min_db'), "Missing deter_ships_min_db parameter"
-        assert params.deter_ships_min_db == pytest.approx(70.0), \
-            f"deter_ships_min_db should be 70.0, got {params.deter_ships_min_db}"
+        assert params.deter_ships_min_db == pytest.approx(80.0), \
+            f"deter_ships_min_db should be 80.0, got {params.deter_ships_min_db}"
 
     def test_ship_deterrence_gated_below_tships(self):
-        """Ship with RL below 70 dB should produce zero deterrence."""
+        """Ship with RL below Tships (80 dB) should produce zero deterrence."""
         from cenop.agents.ship import Ship, VesselClass
         from cenop.parameters.simulation_params import SimulationParameters
 
         params = SimulationParameters()
-        params.deter_ships_min_db = 70.0
+        params.deter_ships_min_db = 80.0
 
         # Ship very far away (will produce low RL)
         s = Ship(id=0, x=0.0, y=0.0, vessel_type=VesselClass.FISHING)
@@ -228,9 +235,9 @@ class TestPhase5Integration:
         from cenop.parameters.simulation_params import SimulationParameters
         params = SimulationParameters()
 
-        # Max distance should be reasonable (50 km, not 1000 km)
-        assert params.deter_max_distance <= 100.0, \
-            f"deter_max_distance={params.deter_max_distance} too large"
+        # Max distance matches parameters.xml dmax_deter = 1000 km
+        assert params.deter_max_distance == pytest.approx(1000.0), \
+            f"deter_max_distance={params.deter_max_distance} should be 1000.0 km"
 
         # Tships gate should be set
         assert hasattr(params, 'deter_ships_min_db')

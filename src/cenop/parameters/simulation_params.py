@@ -120,9 +120,9 @@ class SimulationParameters:
     deter_threshold: float = 152.0     # RT: minimum received level (dB) - Java default (DEPONS 3.2)
     deter_decay: float = 50.0          # Psi_deter: decay rate (%)
     deter_time: int = 0                # tdeter: deterrence duration (steps) - Java default (DEPONS 3.2)
-    deter_max_distance: float = 50.0    # Max deterrence distance (km) — Java 50000m (DEPONS 3.2)
+    deter_max_distance: float = 1000.0  # dmax_deter: max deterrence distance (km) — parameters.xml (DEPONS 3.2)
     deter_min_distance_ships: float = 0.1  # Min deterrence distance for ships (km)
-    deter_ships_min_db: float = 70.0   # Tships: minimum RL to trigger ship deterrence (dB)
+    deter_ships_min_db: float = 80.0   # Tships: minimum RL to trigger ship deterrence (dB) — parameters.xml (DEPONS 3.2)
 
     # WestonFlux per-cell transmission loss (optional, off by default)
     weston_flux_percell: bool = False              # Use per-cell depth/sediment/salinity for TL

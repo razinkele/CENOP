@@ -52,9 +52,10 @@ class TestSoundPropagationParameters:
         assert params.deter_coeff == 0.012, "deter_coeff should be 0.012 (DEPONS 3.2)"
 
     def test_max_deterrence_distance(self):
-        """Verify max deterrence distance matches DEPONS 3.2."""
+        """Verify max deterrence distance matches DEPONS 3.2 parameters.xml."""
         params = SimulationParameters()
-        assert params.deter_max_distance == 50.0, "deter_max_distance should be 50 km (Java 50000m, DEPONS 3.2)"
+        assert params.deter_max_distance == 1000.0, \
+            "deter_max_distance should be 1000 km (parameters.xml dmax_deter, DEPONS 3.2)"
 
 
 class TestTransmissionLoss:

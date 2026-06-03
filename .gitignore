@@ -208,3 +208,8 @@ __marimo__/
 
 # Claude Code local config
 .claude.local.md
+
+# Simulation outputs: keep compact regression baselines (Population/Energy/Mortality.txt),
+# ignore heavy per-individual / per-event files (reproducible via scripts/run_kattegat_reference.py)
+output/**/PorpoiseStatistics.txt
+output/**/Dispersal.txt

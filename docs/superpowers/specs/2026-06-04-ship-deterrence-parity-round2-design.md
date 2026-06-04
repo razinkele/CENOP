@@ -7,7 +7,11 @@ architecture / test-impact / scope), all findings verified against code. Key cor
 were ignored) + vessel-class mapping; #1 is a single site (`main.py:2102` doesn't apply); #2's
 JAX threading goes through `tick_jax.py` (not just `jax_kernels.py`); three existing tests
 need updating. DEPONS parity of the approach confirmed faithful (band 12, speed-0→0,
-turbine-only deactivation).
+turbine-only deactivation). **v3:** a second review (DEPONS tables verified to match
+`JomopansEchoSPL.java` exactly) added a real per-buoy-speed loader bug (the loader overwrites
+JSON route speeds with 10.0 → wrong JOMOPANS speed), a DEPONS-`forValue`-style type
+normalization, a second JAX test caller + the rename decision, pinning the integration test's
+SL, and two stale line-ref fixes (`3062`, `ship.py:874`).
 **Follows:** the merged DEPONS ship-deterrence port (`2026-06-03-ship-deterrence-parity-investigation.md`,
 `2026-06-04-ship-deterrence-vectorized-port-design.md`). Picks up the three documented
 follow-ups left by that work.
@@ -74,7 +78,7 @@ decidecade band-12 SL (the VHF-relevant band for porpoises).
   `None`. `get_source_level()` becomes:
   - if `self.base_source_level is not None`: return it directly (explicit override) —
     preserves the existing data path (`ships.json` `impact` already sets
-    `base_source_level`, `ship.py:923`) and lets tests force a specific SL;
+    `base_source_level`, `ship.py:874`) and lets tests force a specific SL;
   - else: `return jomopans_spl(self.vessel_class, self.speed, self.length, band=12)`.
 - This is **not** the old simplified formula (which is removed entirely, along with the
   ad-hoc `vhf_weighting`); it is the calibrated JOMOPANS band-12 SL as the default, with a
@@ -102,10 +106,20 @@ and hardcodes `vessel_length = 100.0`. The Kattegat `ships.json` actually provid
   (`ship_data.get("impact")` with no 170 default; set override only if not None and > 0).
   Absent `impact` → leave `None` → JOMOPANS.
 - Read `length` from the JSON record (fallback 100.0 if absent) and map the JSON `type`
-  string → `VesselClass` (e.g. Bulker→BULKER, Containership→CONTAINER, Tanker→TANKER,
-  Government/Research→GOVERNMENT, Cruise/Dredger/Passenger/Tug/Recreational/Fishing/Naval/
-  Other→matching enum). Per-ship `speed` comes from the route buoys (already synced via
-  `Ship.update` → `noise.speed`).
+  string → `VesselClass` via DEPONS-style normalization (`VesselClass.forValue`: strip
+  `[-/ _]`, uppercase, match the enum name) with two aliases for CENOP's renamed constants:
+  `CONTAINERSHIP → CONTAINER`, `GOVERNMENTRESEARCH → GOVERNMENT`. This resolves all 12
+  Kattegat strings (Bulker, Containership, Tanker, Government/Research, Cruise, Dredger,
+  Passenger, Tug, Recreational, Fishing, Naval, Other).
+- **Preserve per-buoy speed (review-found bug):** the loader currently does
+  `for buoy in route.buoys: buoy.speed = ship_data.get("speed", 10.0)`, which **overwrites
+  the real per-waypoint speeds** the Kattegat `ships.json` provides (e.g. 34.3, 26.3, …) with
+  a constant 10.0 — feeding JOMOPANS (speed-dependent) a wrong speed for every ship. Fix:
+  only overwrite buoy speed when the ship record has an explicit ship-level `speed`; otherwise
+  keep the JSON per-buoy speeds (which `Buoy` already loads). `Ship.update` syncs
+  `noise.speed` from the current buoy, so JOMOPANS then sees the real per-buoy speed.
+  (Verify the speed unit is knots, as JOMOPANS expects; flag if the JSON speeds look like a
+  different unit.)
 - **Vessel-class validation:** `jomopans_spl` uses `_VC_SPEED.get(vc, 7.4)` — an unmapped
   class silently gets a tug-like 7.4 kn reference (Java throws instead). Assert/validate that
   every ship's `vessel_type` resolves to an explicit `_VC_SPEED` entry; confirm all 12
@@ -140,7 +154,7 @@ magnitudes differ (expected; documented in the regenerated PROVENANCE).
 
 **Problem:** DEPONS deactivates dispersal only when a porpoise is deterred by a turbine or
 sound source (`Porpoise.java:1277`; `applyShipDeterrence` does NOT). CENOP's dispersal-
-deactivation gates on the **combined** `deter_strength > 0` (`population.py:3060` NumPy;
+deactivation gates on the **combined** `deter_strength > 0` (`population.py:3062` NumPy;
 `jax_kernels.py:843` JAX), so now that ship deterrence is live, ships wrongly stop
 dispersal.
 
@@ -160,8 +174,9 @@ dispersal.
     `:3065-3066` move with the gate).
   - **JAX:** the gate is `jax_kernels.py:843` inside `jax_dispersal_update`, which is called
     from **`tick_jax.py:360` inside `jax_tick_energy`** (NOT directly from `_step_jax`). So
-    threading turbine-only requires FOUR edits: add a `turbine_deter_strength` param to
-    `jax_dispersal_update` (`jax_kernels.py:812`); add it to `jax_tick_energy`
+    threading turbine-only requires FOUR edits: in `jax_dispersal_update`
+    (`jax_kernels.py:812`) **rename** its `deter_strength` param → `turbine_deter_strength`
+    (the gate at :843 is its only use), and add the param to `jax_tick_energy`
     (`tick_jax.py:255`, a ~30-arg JIT fn — signature change → re-trace); pass it at the
     `jax_dispersal_update` call (`tick_jax.py:360`); and supply
     `jnp.asarray(self._turbine_deter_strength)` at the `jax_tick_energy` call in `_step_jax`
@@ -205,15 +220,25 @@ preserved; both NumPy and JAX paths exercised.
   regenerated ship SLs vary by vessel class/length (not a constant 170/134).
 
 **Existing tests the plan MUST update (review found these — spec previously omitted):**
-- `tests/test_jax_tick.py::test_deterrence_cancels_dispersal` (~line 1248) — calls
-  `jax_dispersal_update(..., deter_strength=...)`; the new turbine-only param will break the
-  call (TypeError) or make it vacuous. Update to pass/assert the turbine-deterrence input.
+- `tests/test_jax_tick.py::test_deterrence_cancels_dispersal` (~line 1265) AND
+  `test_distance_completion` (~line 1295) — BOTH call `jax_dispersal_update(...,
+  deter_strength=...)`. Since `jax_dispersal_update`'s param is renamed to
+  `turbine_deter_strength`, both calls must be updated (else `TypeError`). Update
+  `test_deterrence_cancels_dispersal` to assert turbine deterrence cancels dispersal and ship
+  deterrence does not.
 - `tests/test_dispersal.py::test_deterrence_deactivates_dispersal` (~line 337) — re-implements
   the gate inline on combined `deter_strength`; update to turbine-only so it doesn't enshrine
   the now-incorrect contract.
 - `tests/test_integration.py::test_ship_manager_creates_deterrence_vectors` (~line 163) —
-  its "~175 dB / 7 m margin" comment is wrong once SL is JOMOPANS (~134 dB); update the
-  comment (and consider pinning an explicit SL, since the in-range margin narrows).
+  constructs a CARGO ship WITHOUT setting `base_source_level`, so after #3 it gets JOMOPANS
+  (~128–134 dB vs the old 175), narrowing the in-range margin. **Pin an explicit
+  `ship.noise.base_source_level`** (override path) so the assertion is guaranteed, and fix
+  the stale "~175 dB / 7 m / threshold 158" comment (actual Tships=80).
+- **New loader test:** assert all **12** Kattegat `type` strings map to a valid `VesselClass`
+  (and that `length` is read), so an unmapped/normalization miss fails loudly.
+- **No change needed (note in plan):** the text loader `_load_ships` and the sample-ship
+  fallback (`simulation.py`) construct ships via `__post_init__` and so inherit JOMOPANS
+  automatically; the Cython tick path does no deterrence/dispersal-deactivation.
 
 ## Non-goals (carried forward, documented)
 

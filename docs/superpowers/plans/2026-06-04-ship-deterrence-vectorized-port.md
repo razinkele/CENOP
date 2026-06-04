@@ -10,6 +10,13 @@
 
 **Spec:** `docs/superpowers/specs/2026-06-03-ship-deterrence-vectorized-port-design.md` (v2)
 
+**Revised v2 after a four-angle plan review (verified against code):**
+- Added a `_force_u` test seam — the DEPONS ship-response probability caps ~0.2, so reaction-dependent semantics (loudest-ship-wins, order invariance, no-deter_coeff) were **vacuous** (every seeded draw gave `react=False`); they now force a reaction and assert non-zero first.
+- Task 6 fixed: there are **three** L1 `deter_strength` sites in `population.py` (1033, 1236, 2192) plus the JAX kernel (`jax_kernels.py:371`) and its pinning test (`test_jax_tick.py`) — all switched to L2.
+- Moved the superseded-test rewrite into Task 3 (was Task 7) so every commit stays green; removed orphaned imports in the same commits to avoid ruff F401 failures.
+- Task 4 red step now genuinely fails-first (tick-varies-draws) + a sequential-run reproducibility guard (no global-RNG cross-talk).
+- NODATA→RL=0 now also tests salinity and `TL≤0`; documented the intentional RNG-stream divergence; added u==prob / day-night / on-ship / NODATA edge tests and a pinned characterization snapshot; added baseline provenance.
+
 ---
 
 ## Conventions
@@ -303,14 +310,16 @@ class TestVectorizedPath:
         assert dx99[0] == 0.0  # inside the 100 m floor -> excluded
 
     def test_deter_coeff_does_not_affect_ship_vector(self):
-        """Ships must NOT use deter_coeff (turbine-only)."""
-        mgr, s = self._mgr_with_ship()
+        """Ships must NOT use deter_coeff (turbine-only). _force_u=0 guarantees a reaction
+        (the DEPONS ship prob caps ~0.2, so seeded draws can't be relied on to react)."""
+        mgr, s = self._mgr_with_ship(sl=200.0)
         x = np.array([50.0 + 2000.0 / 400.0]); y = np.array([50.0])  # 2 km
         p1 = self._params(); p1.deter_coeff = 0.012
         p2 = self._params(); p2.deter_coeff = 0.5
-        dx1, _ = mgr.calculate_aggregate_deterrence_vectorized(x, y, p1, base_seed=7, tick=3)
-        dx2, _ = mgr.calculate_aggregate_deterrence_vectorized(x, y, p2, base_seed=7, tick=3)
-        assert dx1[0] == pytest.approx(dx2[0])
+        dx1, _ = mgr.calculate_aggregate_deterrence_vectorized(x, y, p1, _force_u=0.0)
+        dx2, _ = mgr.calculate_aggregate_deterrence_vectorized(x, y, p2, _force_u=0.0)
+        assert dx1[0] != 0.0                       # precondition: actually deterred (non-vacuous)
+        assert dx1[0] == pytest.approx(dx2[0])     # deter_coeff has no effect on ships
 
     def test_loudest_ship_wins_not_sum(self):
         """Two ships near one porpoise -> only the higher-RL ship contributes (DEPONS recordStep)."""
@@ -318,32 +327,34 @@ class TestVectorizedPath:
         p = self._params()
         # Loud ship close (west), quiet ship far (east). Porpoise between, nearer the loud one.
         loud = Ship(id=1, x=48.0, y=50.0, vessel_type=VesselClass.CARGO); loud._is_active = True
-        loud.noise.base_source_level = 190.0
+        loud.noise.base_source_level = 195.0
         quiet = Ship(id=2, x=60.0, y=50.0, vessel_type=VesselClass.CARGO); quiet._is_active = True
-        quiet.noise.base_source_level = 170.0
-        mgr = ShipManager([loud, quiet]); mgr.enabled = True
+        quiet.noise.base_source_level = 175.0
         px = np.array([50.0]); py = np.array([50.0])
-        # Force reaction by drawing u=0 for both via identity seeds -> compare to single loud ship
-        dx_both, dy_both = mgr.calculate_aggregate_deterrence_vectorized(px, py, p, base_seed=5, tick=2)
+        mgr = ShipManager([loud, quiet]); mgr.enabled = True
         mgr_loud = ShipManager([loud]); mgr_loud.enabled = True
-        dx_loud, dy_loud = mgr_loud.calculate_aggregate_deterrence_vectorized(px, py, p, base_seed=5, tick=2)
-        # Loudest ship's contribution dominates; result equals loud-only (no additive quiet term)
-        assert dx_both[0] == pytest.approx(dx_loud[0])
-        assert dy_both[0] == pytest.approx(dy_loud[0])
+        mgr_quiet = ShipManager([quiet]); mgr_quiet.enabled = True
+        dx_both, _ = mgr.calculate_aggregate_deterrence_vectorized(px, py, p, _force_u=0.0)
+        dx_loud, _ = mgr_loud.calculate_aggregate_deterrence_vectorized(px, py, p, _force_u=0.0)
+        dx_quiet, _ = mgr_quiet.calculate_aggregate_deterrence_vectorized(px, py, p, _force_u=0.0)
+        assert dx_loud[0] != 0.0 and dx_quiet[0] != 0.0     # both would deter alone
+        assert dx_both[0] == pytest.approx(dx_loud[0])      # loudest wins...
+        assert dx_both[0] != pytest.approx(dx_loud[0] + dx_quiet[0])  # ...NOT a sum
 
     def test_order_and_membership_invariance(self):
         from cenop.agents.ship import Ship, ShipManager, VesselClass
         p = self._params()
-        a = Ship(id=1, x=49.0, y=50.0, vessel_type=VesselClass.CARGO); a._is_active = True; a.noise.base_source_level = 185.0
-        b = Ship(id=2, x=51.0, y=50.0, vessel_type=VesselClass.CARGO); b._is_active = True; b.noise.base_source_level = 180.0
-        far = Ship(id=3, x=500.0, y=900.0, vessel_type=VesselClass.CARGO); far._is_active = True; far.noise.base_source_level = 190.0
+        a = Ship(id=1, x=49.0, y=50.0, vessel_type=VesselClass.CARGO); a._is_active = True; a.noise.base_source_level = 195.0
+        b = Ship(id=2, x=51.0, y=50.0, vessel_type=VesselClass.CARGO); b._is_active = True; b.noise.base_source_level = 190.0
+        far = Ship(id=3, x=500.0, y=900.0, vessel_type=VesselClass.CARGO); far._is_active = True; far.noise.base_source_level = 195.0
         px = np.array([50.0]); py = np.array([50.0])
         ab = ShipManager([a, b]); ab.enabled = True
         ba = ShipManager([b, a]); ba.enabled = True
         abfar = ShipManager([a, b, far]); abfar.enabled = True
-        r_ab = ab.calculate_aggregate_deterrence_vectorized(px, py, p, base_seed=9, tick=4)
-        r_ba = ba.calculate_aggregate_deterrence_vectorized(px, py, p, base_seed=9, tick=4)
-        r_abfar = abfar.calculate_aggregate_deterrence_vectorized(px, py, p, base_seed=9, tick=4)
+        r_ab = ab.calculate_aggregate_deterrence_vectorized(px, py, p, _force_u=0.0)
+        r_ba = ba.calculate_aggregate_deterrence_vectorized(px, py, p, _force_u=0.0)
+        r_abfar = abfar.calculate_aggregate_deterrence_vectorized(px, py, p, _force_u=0.0)
+        assert r_ab[0][0] != 0.0                            # precondition: non-vacuous
         assert r_ab[0][0] == pytest.approx(r_ba[0][0])      # order invariant
         assert r_ab[0][0] == pytest.approx(r_abfar[0][0])   # far out-of-range ship has no effect
 ```
@@ -378,12 +389,23 @@ Replace the whole method body (the loop using `str_val`/`deter_probabilistic`/`p
         month: int = 1,
         base_seed: int = 0,
         tick: int = 0,
+        _force_u: Optional[float] = None,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Aggregate DEPONS ship deterrence over active ships (loudest ship wins).
 
         Per porpoise, keeps the contribution of the highest-received-level ship
         (DEPONS ShipDeterrence.recordStep), not a sum. Reaction draws are seeded
         per (base_seed, tick, ship.id) so results are invariant to ship order/count.
+
+        NOTE: per-ship SeedSequence draws preserve the marginal Bernoulli
+        probability but DELIBERATELY do not reproduce DEPONS' global-RNG draw
+        order (impossible under SoA). Only the reaction *rate* matches DEPONS.
+
+        _force_u (test-only): if set, every porpoise's reaction draw for every
+        ship is this constant instead of the seeded draw. The DEPONS ship-response
+        probability never approaches 1 (it caps ~0.2), so reaction-dependent
+        semantics (loudest-ship-wins, order invariance, no-deter_coeff) can only be
+        tested deterministically by forcing u (e.g. 0.0 = always react).
         """
         n = porpoise_x.shape[0]
         total_dx = np.zeros(n, dtype=np.float64)
@@ -425,17 +447,22 @@ Replace the whole method body (the loop using `str_val`/`deter_probabilistic`/`p
                     params.beta_hat, params.alpha_hat,
                 )
                 rl_masked = source_level - tl
-                nodata = (depths <= 0.0) | (grains == -9999.0)
-                rl_masked = np.where(nodata, 0.0, rl_masked)   # DEPONS Ship.java:300
+                # DEPONS Ship.java:296-307: NODATA (depth/grain/salinity <= -9999 or depth<=0)
+                # OR TL<=0 -> received level 0.
+                nodata = (depths <= 0.0) | (grains <= -9999.0) | (sal <= -9999.0)
+                rl_masked = np.where(nodata | (tl <= 0.0), 0.0, rl_masked)
             else:
                 tl = params.beta_hat * np.log10(d_masked) + params.alpha_hat * d_masked
                 rl_masked = source_level - tl
             rl_masked = np.maximum(rl_masked, 0.0)
             rl[in_range] = rl_masked
 
-            # Identity-seeded reaction draws (order/count invariant)
-            rng = np.random.default_rng(np.random.SeedSequence([base_seed, tick, int(ship.id)]))
-            u = rng.random(n)
+            # Identity-seeded reaction draws (order/count invariant), or forced (tests)
+            if _force_u is not None:
+                u = np.full(n, float(_force_u), dtype=np.float64)
+            else:
+                rng = np.random.default_rng(np.random.SeedSequence([base_seed, tick, int(ship.id)]))
+                u = rng.random(n)
 
             # Each Ship owns a ShipDeterrenceModel (ship.py:172); ShipManager has none.
             vx, vy, prob, mag, react = ship.deterrence_model.deterrence_components(
@@ -451,19 +478,44 @@ Replace the whole method body (the loop using `str_val`/`deter_probabilistic`/`p
         return (total_dx, total_dy)
 ```
 
-- [ ] **Step 5: Remove the now-unused turbine-model import**
+- [ ] **Step 5: Remove the now-orphaned import (avoid ruff F401 commit failure)**
 
-In `src/cenop/agents/ship.py`, remove `response_probability_from_rl` and `calculate_deterrence_vector` from the `from cenop.behavior.sound import (...)` block **only if** no longer referenced (check Task 5 first — the scalar aggregator still imports `calculate_deterrence_vector` until Task 5 removes it). For now leave the imports; Task 5 cleans them.
+After the rewrite, `response_probability_from_rl` is unused in `ship.py` (its only uses were in the deleted block). The auto-format hook runs ruff (F401), so it MUST be removed now or the commit fails / leaves a dirty tree. Remove **only** `response_probability_from_rl` from the `from cenop.behavior.sound import (...)` block (lines ~22-28). KEEP `calculate_deterrence_vector` — it is still used by `Ship.get_deterrence_vector` until Task 5. Verify:
 
-- [ ] **Step 6: Run tests to verify they pass**
+Run: `... && ruff check src/cenop/agents/ship.py`
+Expected: no F401 for `response_probability_from_rl`.
 
-Run: `... python3 -m pytest tests/test_ship_deterrence_port.py -k "VectorizedPath" -v`
-Expected: PASS (6 tests).
+- [ ] **Step 5b: Move the superseded test rewrite into THIS commit (keep the suite green)**
+
+`tests/test_deterrence.py::test_no_normalization_vectorized_ship` (line ~77) asserts the OLD raw-displacement ship formula (`dx[0] > 1.0`). The Task 3 rewrite makes it fail, and it must not stay red across Tasks 4-6. Replace its body now with the new-model assertion (forces a reaction via `_force_u=0.0`):
+
+```python
+    def test_ship_vectorized_uses_unit_vector_times_magnitude(self):
+        """Ships use DEPONS unit-vector x magnitude (NOT raw displacement x deter_coeff)."""
+        from cenop.agents.ship import Ship, ShipManager, VesselClass
+        from cenop.parameters.simulation_params import SimulationParameters
+        params = SimulationParameters()
+        s = Ship(id=1, x=50.0, y=50.0, vessel_type=VesselClass.CARGO)
+        s._is_active = True; s.noise.base_source_level = 200.0
+        mgr = ShipManager([s]); mgr.enabled = True
+        px = np.array([50.0 + 2000.0 / 400.0]); py = np.array([50.0])  # 2 km east
+        dx, dy = mgr.calculate_aggregate_deterrence_vectorized(px, py, params, _force_u=0.0)
+        assert dx[0] != 0.0          # forced reaction -> non-zero
+        assert 0.0 < abs(dx[0]) < 5.0  # unit-vector x mag, NOT raw 5-cell displacement
+        assert dx[0] > 0.0           # pushed east, away from ship
+```
+
+(Delete the old `params.deter_threshold = 0.0` / `assert dx[0] > 1.0` version. Note: Task 7 no longer needs to rewrite this test.)
+
+- [ ] **Step 6: Run tests to verify they pass (incl. the rewritten superseded test — suite stays green)**
+
+Run: `... python3 -m pytest tests/test_ship_deterrence_port.py -k "VectorizedPath" tests/test_deterrence.py -q`
+Expected: PASS — the 6 VectorizedPath tests AND the rewritten `test_ship_vectorized_uses_unit_vector_times_magnitude` (no lingering `dx>1.0` assertion). Confirms this commit leaves the suite green.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/cenop/agents/ship.py tests/test_ship_deterrence_port.py
+git add src/cenop/agents/ship.py tests/test_deterrence.py tests/test_ship_deterrence_port.py
 git commit -m "feat: vectorized ship deterrence uses DEPONS model (Tships, 10km cap, loudest-ship, seeded draws)"
 ```
 
@@ -495,19 +547,43 @@ class TestSimulationDeterminism:
         sim._ship_manager.ships = [loud]; sim._ship_manager.enabled = True
         return sim
 
-    def test_same_seed_identical_ship_deterrence(self):
-        s1 = self._sim_with_ship(); s2 = self._sim_with_ship()
-        for _ in range(5):
-            s1.step(); s2.step()
+    def test_tick_varies_ship_draws_after_wiring(self):
+        """Before wiring, every tick uses base_seed=0/tick=0, so the per-ship reaction
+        draw is IDENTICAL every tick; after wiring (tick threaded) the draw varies.
+        Hold porpoise positions fixed so the only source of variation is the seed/tick."""
         import numpy as np
-        np.testing.assert_array_equal(s1.population_manager.deter_strength,
-                                      s2.population_manager.deter_strength)
+        sim = self._sim_with_ship()
+        pm = sim.population_manager
+        snaps = []
+        for _ in range(6):
+            # freeze porpoises so deter_strength changes ONLY if the ship draw changes
+            pre_x, pre_y = pm.x.copy(), pm.y.copy()
+            sim.step()
+            pm.x[:] = pre_x; pm.y[:] = pre_y
+            pm._recompute_cell_indices()
+            snaps.append(pm.deter_strength.copy())
+        # With tick threaded, at least two ticks must differ (draws vary by tick).
+        assert any(not np.array_equal(snaps[0], s) for s in snaps[1:])
+
+    def test_reproducible_across_sequential_runs(self):
+        """Green guard: two identically-seeded sims (run SEQUENTIALLY to avoid global
+        np.random cross-talk) produce identical ship deterrence."""
+        import numpy as np
+        s1 = self._sim_with_ship()
+        for _ in range(5):
+            s1.step()
+        d1 = s1.population_manager.deter_strength.copy()
+        s2 = self._sim_with_ship()   # constructed AFTER s1 finishes
+        for _ in range(5):
+            s2.step()
+        d2 = s2.population_manager.deter_strength.copy()
+        np.testing.assert_array_equal(d1, d2)
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `... python3 -m pytest tests/test_ship_deterrence_port.py -k "SimulationDeterminism" -v`
-Expected: FAIL or ERROR — `calculate_aggregate_deterrence_vectorized` is called without `base_seed`/`tick`, so per-ship draws fall back to seed 0/tick 0 each call (still deterministic, but the test also guards the wiring). If it passes accidentally, proceed; the wiring step below makes it correct.
+Expected: FAIL — before wiring, `base_seed`/`tick` default to 0 every tick, so the frozen-porpoise `deter_strength` is identical across all ticks and `any(...)` is False.
 
 - [ ] **Step 3: Wire seed + tick**
 
@@ -637,29 +713,36 @@ Replace its `get_deterrence_vector(..., deter_coeff)` body with a per-ship loop 
         if not self.enabled:
             return (0.0, 0.0, 0.0)
         best_rl = -np.inf
-        best_dx = 0.0
-        best_dy = 0.0
-        best_mag = 0.0
+        best_dx = best_dy = best_mag = 0.0
+        max_dist_m = min(MAX_DETER_DIST_M, params.deter_max_distance * 1000.0)
+        min_dist_m = params.deter_min_distance_ships * 1000.0
+        tships = getattr(params, "deter_ships_min_db", 80.0)
         for ship in self.get_active_ships():
-            should, _, magnitude, dist_km = ship.calculate_deterrence(
-                porpoise_x, porpoise_y, params, is_day, cell_size,
-                cell_data=cell_data, month=month,
-            )
-            dist_m = max(dist_km * 1000.0, 1.0)
-            rl = ship.get_received_level(
-                porpoise_x, porpoise_y, params.alpha_hat, params.beta_hat, cell_size)
-            if rl > best_rl:
-                best_rl = rl
-                if should and magnitude > 0:
-                    gdx = porpoise_x - ship.x
-                    gdy = porpoise_y - ship.y
-                    best_dx = (gdx / dist_m) * magnitude
-                    best_dy = (gdy / dist_m) * magnitude
-                    best_mag = magnitude
-                else:
-                    best_dx, best_dy, best_mag = 0.0, 0.0, 0.0
+            gdx = porpoise_x - ship.x
+            gdy = porpoise_y - ship.y
+            dist_m = max(float(np.hypot(gdx * cell_size, gdy * cell_size)), 1.0)
+            if not (dist_m > min_dist_m and dist_m <= max_dist_m):
+                continue
+            # Compute RL ONCE; use the same value for selection and the kernel (no double-compute).
+            rl = max(0.0, ship.get_received_level(
+                porpoise_x, porpoise_y, params.alpha_hat, params.beta_hat, cell_size))
+            if rl <= best_rl:
+                continue
+            best_rl = rl
+            vx, vy, _, mag, react = ship.deterrence_model.deterrence_components(
+                np.array([rl]), np.array([dist_m]), np.array([gdx]), np.array([gdy]),
+                is_day, np.array([np.random.random()]), tships)
+            best_dx, best_dy = float(vx[0]), float(vy[0])
+            best_mag = float(mag[0]) if bool(react[0]) else 0.0
         return (best_mag, best_dx, best_dy)
 ```
+
+- [ ] **Step 4b: Delete the now-dead `Ship.get_deterrence_vector` and remove its import**
+
+After Step 4, nothing calls `Ship.get_deterrence_vector` (grep confirms no caller outside `ship.py`). Delete the method (`ship.py` ~lines 375-387) and remove `calculate_deterrence_vector` from the `from cenop.behavior.sound import (...)` block (it is now unused). Verify:
+
+Run: `... && ruff check src/cenop/agents/ship.py`
+Expected: no F401 unused-import errors.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
@@ -705,18 +788,32 @@ class TestDeterStrengthL2:
 Run: `... python3 -m pytest tests/test_ship_deterrence_port.py -k "DeterStrengthL2" -v`
 Expected: FAIL — gets 7.0 (L1) instead of 5.0 (L2).
 
-- [ ] **Step 3: Change both sites**
+- [ ] **Step 3: Change ALL THREE NumPy sites + the JAX kernel**
 
-In `src/cenop/agents/population.py`, replace **both** occurrences of:
+In `src/cenop/agents/population.py` there are **three** L1 sites (lines ~1033, ~1236, and ~2191-2192 in the JAX-step path). Replace every occurrence of the expression:
 
 ```python
-            self.deter_strength[mask] = np.abs(d_dx[mask]) + np.abs(d_dy[mask])
+np.abs(d_dx[mask]) + np.abs(d_dy[mask])
 ```
 
 with:
 
 ```python
-            self.deter_strength[mask] = np.hypot(d_dx[mask], d_dy[mask])
+np.hypot(d_dx[mask], d_dy[mask])
+```
+
+(Use a single `replace_all` on that substring, then confirm with `grep -n "np.abs(d_dx" src/cenop/agents/population.py` returns nothing.)
+
+Also change the JAX kernel `src/cenop/optimizations/jax_kernels.py:371` from:
+
+```python
+    deter_strength = jnp.abs(deter_dx) + jnp.abs(deter_dy)
+```
+
+to:
+
+```python
+    deter_strength = jnp.hypot(deter_dx, deter_dy)
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -724,16 +821,22 @@ with:
 Run: `... python3 -m pytest tests/test_ship_deterrence_port.py -k "DeterStrengthL2" -v`
 Expected: PASS.
 
-- [ ] **Step 5: Run turbine + JAX deterrence tests for regressions**
+- [ ] **Step 5: Update the JAX test that pins L1, then run turbine + JAX tests**
 
-Run: `... python3 -m pytest tests/test_deterrence.py tests/test_depons_deterrence.py tests/test_jax_tick.py -q`
-Expected: PASS. (If a JAX test pins L1 `deter_strength`, update it to L2 — JAX `jax_kernels`/`tick_jax` derive strength similarly; align if needed.)
+`tests/test_jax_tick.py::test_deter_strength_computed` (~line 689) computes `expected = np.abs(deter_dx) + np.abs(deter_dy)`. Change it to:
+
+```python
+        expected = np.hypot(deter_dx, deter_dy)
+```
+
+Then run: `... python3 -m pytest tests/test_deterrence.py tests/test_depons_deterrence.py tests/test_jax_tick.py -q`
+Expected: PASS (NumPy and JAX backends now both L2; the JAX test asserts hypot).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/cenop/agents/population.py tests/test_ship_deterrence_port.py
-git commit -m "fix: deter_strength uses Euclidean (L2) magnitude to match DEPONS"
+git add src/cenop/agents/population.py src/cenop/optimizations/jax_kernels.py tests/test_jax_tick.py tests/test_ship_deterrence_port.py
+git commit -m "fix: deter_strength uses Euclidean (L2) magnitude to match DEPONS (NumPy + JAX)"
 ```
 
 ---
@@ -744,28 +847,58 @@ git commit -m "fix: deter_strength uses Euclidean (L2) magnitude to match DEPONS
 - Modify: `tests/test_deterrence.py` (`test_no_normalization_vectorized_ship` ~line 77)
 - Create/extend: `tests/test_ship_deterrence_port.py`
 
-- [ ] **Step 1: Rewrite the superseded test**
-
-In `tests/test_deterrence.py`, replace `test_no_normalization_vectorized_ship` body with an assertion of the NEW model (ships use unit-vector × magnitude, not raw displacement):
+- [ ] **Step 1: Add the missing edge-case tests** (the superseded `test_no_normalization_vectorized_ship` was already rewritten in Task 3 Step 5b — do NOT redo it)
 
 ```python
-    def test_ship_vectorized_uses_unit_vector_times_magnitude(self):
-        """Ships use DEPONS unit-vector x magnitude (NOT raw displacement x deter_coeff)."""
+class TestEdgeCases:
+    def _model(self):
+        return ShipDeterrenceModel()
+
+    def test_u_equals_prob_does_not_react(self):
+        """Strict '<': u == prob must NOT react."""
+        m = self._model()
+        rl = np.array([130.0]); dist_m = np.array([1500.0])
+        p = float(m.calculate_deterrence_probability(130.0, 1.5, True))
+        vx, vy, prob, mag, react = m.deterrence_components(
+            rl, dist_m, np.array([3.0]), np.array([0.0]), True, np.array([p]), tships=80.0)
+        assert react[0] == False
+
+    def test_day_night_select_different_coefficients(self):
+        """Night uses different std/coeffs; pship_noise_night=0 makes prob noise-independent."""
+        m = self._model()
+        p_lo = m.calculate_deterrence_probability(90.0, 2.0, is_day=False)
+        p_hi = m.calculate_deterrence_probability(150.0, 2.0, is_day=False)
+        assert float(p_lo) == pytest.approx(float(p_hi))  # night prob independent of RL
+        # Day prob DOES depend on RL:
+        d_lo = m.calculate_deterrence_probability(90.0, 2.0, is_day=True)
+        d_hi = m.calculate_deterrence_probability(150.0, 2.0, is_day=True)
+        assert float(d_hi) > float(d_lo)
+
+    def test_porpoise_on_ship_gives_finite_zero_direction(self):
+        """dist clamps to 1 m; grid disp 0 -> zero (defined, finite) vector."""
+        m = self._model()
+        vx, vy, *_ = m.deterrence_components(
+            np.array([200.0]), np.array([1.0]), np.array([0.0]), np.array([0.0]),
+            True, np.array([0.0]), tships=80.0)
+        assert np.isfinite(vx[0]) and vx[0] == 0.0 and vy[0] == 0.0
+
+    def test_nodata_cell_gives_zero_rl_weston(self):
+        """WestonFlux path: a NODATA cell -> RL 0 -> no deterrence (DEPONS Ship.java:300)."""
+        import numpy as np
         from cenop.agents.ship import Ship, ShipManager, VesselClass
         from cenop.parameters.simulation_params import SimulationParameters
-        params = SimulationParameters()
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        params = SimulationParameters(); params.weston_flux_percell = True
+        land = create_homogeneous_landscape(width=100, height=100, depth=20.0, food_prob=0.5)
+        land._depth[:] = -9999.0  # all NODATA depth
         s = Ship(id=1, x=50.0, y=50.0, vessel_type=VesselClass.CARGO)
-        s._is_active = True; s.noise.base_source_level = 200.0
+        s._is_active = True; s.noise.base_source_level = 210.0
         mgr = ShipManager([s]); mgr.enabled = True
-        px = np.array([50.0 + 2000.0 / 400.0]); py = np.array([50.0])  # 2 km east
-        dx, dy = mgr.calculate_aggregate_deterrence_vectorized(px, py, params, base_seed=3, tick=1)
-        # If deterred: dx == (grid_dx / dist_m) * magnitude, a small O(mag/dist_m) value, NOT raw 5 cells.
-        if dx[0] != 0.0:
-            assert abs(dx[0]) < 5.0  # not the old raw-displacement formula
-            assert dx[0] > 0.0       # pushed east, away from ship
+        px = np.array([50.5]); py = np.array([50.0])
+        dx, dy = mgr.calculate_aggregate_deterrence_vectorized(
+            px, py, params, cell_data=land, _force_u=0.0)
+        assert dx[0] == 0.0 and dy[0] == 0.0  # NODATA -> RL 0 -> gate fails even with forced react
 ```
-
-(Delete the old `assert dx[0] > 1.0` version and its `params.deter_threshold = 0.0` setup — that model no longer exists for ships.)
 
 - [ ] **Step 2: Add integration + characterization tests**
 
@@ -798,6 +931,29 @@ class TestIntegration:
         for _ in range(10):
             sim.step()
         assert float(np.max(sim.population_manager.deter_strength)) == 0.0
+
+
+class TestCharacterizationSnapshot:
+    """Pinned reference values for the kernel — locks the new behavior against drift.
+    Recompute these expected numbers ONCE during implementation (print them), verify
+    they are sane (vx>0 east, exp-magnitude), then hard-code them here."""
+
+    def test_kernel_snapshot_day(self):
+        import numpy as np
+        from cenop.behavior.sound import ShipDeterrenceModel
+        m = ShipDeterrenceModel()
+        rl = np.array([160.0, 100.0, 79.0])          # high / mid / below-Tships
+        dist_m = np.array([800.0, 3000.0, 500.0])
+        gdx = np.array([2.0, -7.5, 1.25]); gdy = np.array([0.0, 0.0, 0.0])
+        u = np.array([0.0, 0.0, 0.0])                # force reaction where gated
+        vx, vy, prob, mag, react = m.deterrence_components(
+            rl, dist_m, gdx, gdy, is_day=True, u_draw=u, tships=80.0)
+        # Sanity (assert before pinning): 3rd porpoise gated out (RL 79 < 80).
+        assert react.tolist() == [True, True, False]
+        assert vx[0] > 0.0 and vx[1] < 0.0 and vx[2] == 0.0
+        # PIN exact values (fill in from the implementation's printed output):
+        # np.testing.assert_allclose(vx, [<v0>, <v1>, 0.0], rtol=1e-9)
+        # np.testing.assert_allclose(mag, [<m0>, <m1>, <m2>], rtol=1e-9)
 ```
 
 - [ ] **Step 3: Run the full file + the rewritten test**
@@ -850,15 +1006,17 @@ Expected: `max deter_strength` > 0 (was 0 before the fix).
 Run: `eval "$(micromamba shell hook --shell bash)" && micromamba activate shiny && cd /home/razinka/cenjas/CENOP && python3 scripts/run_kattegat_reference.py --count 2000 --years 2 --seed 42 --ships --out output/kattegat_ref_ships`
 Expected: completes; overwrites the compact baseline files.
 
-- [ ] **Step 4: Update the investigation doc status**
+- [ ] **Step 4: Update the investigation doc status + write baseline provenance**
 
 In `docs/superpowers/specs/2026-06-03-ship-deterrence-parity-investigation.md`, change **Status** to note the fix landed and cite the implementing commits; mark the "Recommended fix" section as implemented.
+
+Write `output/kattegat_ref_ships/PROVENANCE.txt` recording: that this baseline SUPERSEDES the prior near-zero-deterrence baseline, the producing commit hash (`git rev-parse HEAD`), the command used (`scripts/run_kattegat_reference.py --count 2000 --years 2 --seed 42 --ships`), and the date. (PROVENANCE.txt is a compact file — not matched by the gitignore patterns for `PorpoiseStatistics.txt`/`Dispersal.txt`.)
 
 - [ ] **Step 5: Commit (compact baseline files only; heavy files are gitignored)**
 
 ```bash
 cd /home/razinka/cenjas/CENOP
-git add output/kattegat_ref_ships/Population.txt output/kattegat_ref_ships/Energy.txt output/kattegat_ref_ships/Mortality.txt docs/superpowers/specs/2026-06-03-ship-deterrence-parity-investigation.md
+git add output/kattegat_ref_ships/Population.txt output/kattegat_ref_ships/Energy.txt output/kattegat_ref_ships/Mortality.txt output/kattegat_ref_ships/PROVENANCE.txt docs/superpowers/specs/2026-06-03-ship-deterrence-parity-investigation.md
 git commit -m "test: regenerate Kattegat ship baseline with live DEPONS ship deterrence; close investigation"
 ```
 
@@ -868,5 +1026,6 @@ git commit -m "test: regenerate Kattegat ship baseline with live DEPONS ship det
 
 - **Source level** stays CENOP's class-based value (no JOMOPANS rewiring) → DEPONS *response* model, not absolute SL parity.
 - **Sub-tick interpolation** is not implemented; with one step per tick the loudest-ship-wins rule is the DEPONS `recordStep` collapse. Documented parity gap.
-- **`deter_strength`** is a single combined turbine+ship magnitude (no separate ship/turbine strengths, no `max()` stuck-detection, no `deterTime`/`deterDecay` persistence) — accepted divergence unless that persistence is later required.
+- **`deter_strength`** is a single combined turbine+ship magnitude (no separate ship/turbine strengths, no `max()` stuck-detection, no `deterTime`/`deterDecay` persistence) — accepted divergence unless that persistence is later required. NOTE: with CENOP default `deter_time=0` this matches DEPONS; if `deter_time>0` is ever set, CENOP will diverge (no per-source decay/halving) — out of scope here.
+- **RNG-stream divergence (documented, intentional):** reaction draws are seeded per `(base_seed, tick, ship.id)` so they are invariant to ship order/count. This preserves the marginal Bernoulli probability but does NOT reproduce DEPONS' global-RNG draw order (impossible under SoA). Only the reaction *rate* matches DEPONS, not the exact per-agent draw sequence.
 - **Numba** kernel deferred; revisit only if Task 8 perf is inadequate.

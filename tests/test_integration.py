@@ -193,11 +193,12 @@ class TestShipDeterrenceIntegration:
         )
         ship._is_active = True
         manager.ships.append(ship)
-        
-        # Create porpoise positions near ship (cargo ships have ~175 dB source level)
-        # Max deterrence at threshold 158: 175 - 158 = 17 dB margin
-        # TL = 20*log10(d) => d = 10^(17/20) = ~7m
-        # Need very close porpoises for ship deterrence to trigger
+
+        # Pin an explicit SL so deterrence is guaranteed regardless of JOMOPANS defaults.
+        # With SL=200 dB and Tships=80 dB the received level easily exceeds the threshold
+        # for porpoises within a few km, making the assertion robust.
+        ship.noise.base_source_level = 200.0
+
         params = SimulationParameters()
 
         # porpoises within the ship deterrence band (>100 m, <=10 km)

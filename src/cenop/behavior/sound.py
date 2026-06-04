@@ -201,32 +201,28 @@ class ShipNoise:
     Ship noise depends on vessel type, length, and speed.
     """
     
-    # Base source level (dB re 1 µPa @ 1m)
-    base_source_level: float = 175.0
-    
-    # Vessel length (meters) - affects source level
+    # Explicit source-level override (dB re 1 µPa @ 1m). When None, SL is computed
+    # from the calibrated JOMOPANS model. Set by ships.json `impact` or by tests.
+    base_source_level: float = None
+
+    # Vessel class — drives the JOMOPANS source-level model (set from Ship.vessel_type).
+    vessel_class: object = None
+
+    # Vessel length (m) and speed (knots) — JOMOPANS inputs.
     length: float = 100.0
-    
-    # Vessel speed (knots) - affects source level
     speed: float = 12.0
-    
-    # VHF frequency weighting for porpoise hearing
-    vhf_weighting: float = -10.0  # Adjustment for high frequency
-    
+
     def get_source_level(self) -> float:
+        """Source level (dB re 1 µPa @ 1m).
+
+        Returns the explicit override if set, else the calibrated JOMOPANS
+        decidecade band-12 SL (DEPONS Ship.java:286 / JOMOPANS_BAND=12).
         """
-        Calculate source level based on vessel characteristics.
-        
-        Simplified JOMOPANS model:
-        SL = SL_base + 60*log10(L/100) + 20*log10(v/12)
-        """
-        # Length correction (reference 100m)
-        length_correction = 60 * np.log10(self.length / 100.0) if self.length > 0 else 0
-        
-        # Speed correction (reference 12 knots)
-        speed_correction = 20 * np.log10(self.speed / 12.0) if self.speed > 0 else 0
-        
-        return self.base_source_level + length_correction + speed_correction + self.vhf_weighting
+        if self.base_source_level is not None:
+            return self.base_source_level
+        # Lazy import breaks the sound -> jomopans -> ship -> sound module cycle.
+        from cenop.behavior.jomopans_spl import jomopans_spl
+        return jomopans_spl(self.vessel_class, self.speed, self.length, band=12)
 
 
 class ShipDeterrenceModel:

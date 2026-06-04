@@ -430,3 +430,44 @@ class TestIsDisturbedThreshold:
         pop.deter_strength[0] = 0.04
         df = pop.to_dataframe()
         assert bool(df["is_disturbed"].iloc[0]) is True
+
+
+class TestJomopansSourceLevel:
+    def test_default_uses_jomopans(self):
+        """With no base_source_level override, get_source_level == jomopans_spl band 12."""
+        from cenop.behavior.sound import ShipNoise
+        from cenop.behavior.jomopans_spl import jomopans_spl
+        from cenop.agents.ship import VesselClass
+        n = ShipNoise(vessel_class=VesselClass.CARGO, length=200.0, speed=12.0)
+        expected = jomopans_spl(VesselClass.CARGO, 12.0, 200.0, band=12)
+        assert n.get_source_level() == expected
+
+    def test_explicit_override_wins(self):
+        """An explicit base_source_level overrides JOMOPANS (ships.json impact / tests)."""
+        from cenop.behavior.sound import ShipNoise
+        from cenop.agents.ship import VesselClass
+        n = ShipNoise(vessel_class=VesselClass.CARGO, length=200.0, speed=12.0,
+                      base_source_level=170.0)
+        assert n.get_source_level() == 170.0
+
+    def test_speed_zero_silent(self):
+        """JOMOPANS returns 0.0 for a stationary ship."""
+        from cenop.behavior.sound import ShipNoise
+        from cenop.agents.ship import VesselClass
+        n = ShipNoise(vessel_class=VesselClass.CARGO, length=200.0, speed=0.0)
+        assert n.get_source_level() == 0.0
+
+    def test_class_dependence(self):
+        """Different vessel classes give different SL (JOMOPANS, not a flat default)."""
+        from cenop.behavior.sound import ShipNoise
+        from cenop.agents.ship import VesselClass
+        a = ShipNoise(vessel_class=VesselClass.CARGO, length=200.0, speed=12.0)
+        b = ShipNoise(vessel_class=VesselClass.FISHING, length=200.0, speed=12.0)
+        assert a.get_source_level() != b.get_source_level()
+
+    def test_post_init_leaves_override_none(self):
+        """Ship.__post_init__ must NOT seed base_source_level (so JOMOPANS is the default)."""
+        from cenop.agents.ship import Ship, VesselClass
+        s = Ship(id=0, x=0.0, y=0.0, vessel_type=VesselClass.CARGO, vessel_length=200.0)
+        assert s.noise.base_source_level is None
+        assert s.noise.vessel_class == VesselClass.CARGO

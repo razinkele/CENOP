@@ -174,12 +174,11 @@ class Ship(Agent):
     deterrence_model: ShipDeterrenceModel = field(default_factory=ShipDeterrenceModel)
     
     def __post_init__(self):
-        """Initialize noise model with vessel characteristics."""
-        base_level = VESSEL_BASE_LEVELS.get(self.vessel_type, 168.0)
+        """Initialize the noise model (JOMOPANS source level by default)."""
         self.noise = ShipNoise(
-            base_source_level=base_level,
+            vessel_class=self.vessel_type,
             length=self.vessel_length,
-            speed=self.current_speed
+            speed=self.current_speed,
         )
     
     def is_active(self, tick: Optional[int] = None) -> bool:

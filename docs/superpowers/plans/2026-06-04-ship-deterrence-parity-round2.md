@@ -10,6 +10,14 @@
 
 **Spec:** `docs/superpowers/specs/2026-06-04-ship-deterrence-parity-round2-design.md`
 
+**Revised after a four-angle plan review (verified against code; DEPONS parity confirmed
+faithful — band 12, units, turbine-only, all 12 type mappings correct):** added the
+route-parsing per-buoy-speed fix (`ship.py:817` hardcoded `speed=10.0` would feed JOMOPANS a
+flat 10 kn — the real bug behind the per-buoy-speed goal) + a test; fixed the Task 4 test
+fixture (`dispersal_target_distance=1e9`, else distance-completion deactivates dispersal
+regardless of the gate → guaranteed red); made `import re` an explicit step; added an
+end-to-end JAX dispersal-separation test; corrected two drifted line refs.
+
 ---
 
 ## Conventions
@@ -218,13 +226,39 @@ class TestShipJsonLoader:
         # Lengths and classes vary (not all OTHER/100m)
         assert len({s.vessel_length for s in mgr.ships}) > 1
         assert len({s.vessel_type for s in mgr.ships}) > 1
+
+    def test_loader_preserves_real_per_buoy_speed(self):
+        """Route buoys keep the JSON per-waypoint speeds (not a hardcoded 10.0), so
+        JOMOPANS sees real speeds."""
+        from cenop.agents.ship import ShipManager
+        mgr = ShipManager()
+        mgr.load_from_json("data/Kattegat/ships.json",
+                           utm_origin_x=529473.0, utm_origin_y=5972242.0, cell_size=400.0)
+        speeds = {round(b.speed, 3) for s in mgr.ships for b in s.route.buoys}
+        assert speeds != {10.0}          # not all the hardcoded default
+        assert len(speeds) > 1           # real per-waypoint variation preserved
 ```
 
 - [ ] **Step 2: Run, verify FAIL**
 `... python3 -m pytest tests/test_ship_deterrence_port.py -k ShipJsonLoader -v` → FAIL (`_vessel_class_from_type` undefined; loader forces base_source_level=170 and uses constant length/OTHER).
 
-- [ ] **Step 3: Add the type-mapping helper**
-In `src/cenop/agents/ship.py`, after the `VesselClass` enum (and after `import re` — add `import re` to the top imports if absent), add:
+- [ ] **Step 3a: Add `import re`** to the top imports of `src/cenop/agents/ship.py` (it is currently absent and is needed by the helper below). Run `grep -n "^import re" src/cenop/agents/ship.py` after to confirm.
+
+- [ ] **Step 3b: Fix the route-parsing loop to read per-waypoint speed (the real per-buoy-speed fix).**
+The route-parsing loop hardcodes the buoy speed at `src/cenop/agents/ship.py:817`:
+```python
+                buoy = Buoy(x=grid_x, y=grid_y, speed=10.0, pause_ticks=0)
+```
+This **discards the real per-waypoint speeds** the Kattegat `ships.json` provides (e.g. 34.29) — so JOMOPANS (speed-dependent) would see a flat 10 kn. Change it to read the waypoint fields:
+```python
+                buoy = Buoy(x=grid_x, y=grid_y,
+                            speed=waypoint.get("speed", 10.0),
+                            pause_ticks=waypoint.get("pause", 0))
+```
+(`Ship.update` already syncs `noise.speed` from the current buoy each tick, so JOMOPANS then sees the real per-segment speed — matching DEPONS `Ship.getSpeed()`.)
+
+- [ ] **Step 3c: Add the type-mapping helper**
+In `src/cenop/agents/ship.py`, after the `VesselClass` enum, add:
 ```python
 def _vessel_class_from_type(type_str: str) -> VesselClass:
     """Map a ships.json `type` string to a VesselClass (DEPONS VesselClass.forValue
@@ -313,6 +347,10 @@ class TestTurbineOnlyDispersal:
         pop = PorpoisePopulation(count=1, params=params, landscape=land)
         pop.is_dispersing[0] = True
         pop.dispersal_start_x[0] = pop.x[0]; pop.dispersal_start_y[0] = pop.y[0]
+        # CRITICAL: dispersal_target_distance defaults to 0.0, so the distance-completion
+        # check (distances >= 0.95*target) would deactivate dispersal regardless of the
+        # deterrence gate, masking what we're testing. Set it huge so only the gate can fire.
+        pop.dispersal_target_distance[0] = 1e9
         return pop
 
     def test_ship_only_deterrence_does_not_deactivate_dispersal(self):
@@ -349,7 +387,7 @@ class TestTurbineOnlyDispersal:
              ambient_rl: Optional[np.ndarray] = None,
              turbine_deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]] = None):
 ```
-Then at the **very top** of `step` (before the `if self._use_jax: self._step_jax(...)` dispatch at ~line 2522, so BOTH backends see it), populate the instance buffer:
+Then at the **very top** of `step` (before the `if self._use_jax: self._step_jax(...)` dispatch at ~line 2547, after the `if not mask.any(): return` guard, so BOTH backends see it), populate the instance buffer:
 ```python
         if turbine_deterrence_vectors is not None:
             _t_dx, _t_dy = turbine_deterrence_vectors
@@ -411,6 +449,27 @@ class TestTurbineOnlyDispersalJax:
             is_day_boundary=False)
         assert bool(new_disp[0]) is False   # turbine-deterred -> dispersal off
         assert bool(new_disp[1]) is True    # not turbine-deterred -> still dispersing
+
+    def test_step_jax_ship_only_keeps_dispersing(self):
+        """End-to-end JAX: ship-only deterrence (turbine zero) must NOT deactivate dispersal
+        — guards that _step_jax wires the TURBINE-only array (not the combined one) to the
+        dispersal gate (a combined/turbine arg-swap would fail this)."""
+        import numpy as np
+        from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        from cenop.agents.population import PorpoisePopulation
+        params = SimulationParameters(porpoise_count=1, use_jax=True)
+        land = create_homogeneous_landscape(width=50, height=50, depth=20.0, food_prob=0.5)
+        pop = PorpoisePopulation(count=1, params=params, landscape=land)
+        if not getattr(pop, "_use_jax", False):
+            import pytest; pytest.skip("JAX not active")
+        pop.is_dispersing[0] = True
+        pop.dispersal_start_x[0] = pop.x[0]; pop.dispersal_start_y[0] = pop.y[0]
+        pop.dispersal_target_distance[0] = 1e9
+        d = (np.array([0.05], dtype=np.float64), np.array([0.0], dtype=np.float64))
+        t = (np.array([0.0], dtype=np.float64), np.array([0.0], dtype=np.float64))
+        pop.step(deterrence_vectors=d, turbine_deterrence_vectors=t)
+        assert bool(pop.is_dispersing[0]) is True
 ```
 (Match the real positional/kwarg order of `jax_dispersal_update` as you edit it — read the current signature at `jax_kernels.py:812`.)
 
@@ -439,7 +498,7 @@ to:
 ```
 (Leave the separate `is_disturbed` and `deter_magnitude` params — those drive BMR/reporting and stay combined.)
 
-- [ ] **Step 5: Point the JAX dispersal arg at the turbine buffer in `population.py::_step_jax`.** No signature change needed — `self._turbine_deter_strength` is already populated by `step()` (Task 4 Step 4) before the JAX dispatch. In the `jax_tick_energy(...)` call (~2408-2430), change the dispersal-strength argument — the second `jnp.asarray(self.deter_strength)` (the one positioned after `days_declining_energy`, ~line 2428, which feeds `jax_dispersal_update`) — to:
+- [ ] **Step 5: Point the JAX dispersal arg at the turbine buffer in `population.py::_step_jax`.** No signature change needed — `self._turbine_deter_strength` is already populated by `step()` (Task 4 Step 4) before the JAX dispatch. In the `jax_tick_energy(...)` call (~2408-2430), change the dispersal-strength argument — the `jnp.asarray(self.deter_strength)` positioned **immediately after `days_declining_energy`** (~line 2431, which feeds `jax_dispersal_update` for the dispersal gate — distinct from the earlier `self.deter_strength > 0` at ~2415 and `self.deter_strength` at ~2416 that feed `is_disturbed`/`deter_magnitude`) — to:
 ```python
             jnp.asarray(self._turbine_deter_strength),
 ```

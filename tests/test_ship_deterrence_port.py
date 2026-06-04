@@ -471,3 +471,46 @@ class TestJomopansSourceLevel:
         s = Ship(id=0, x=0.0, y=0.0, vessel_type=VesselClass.CARGO, vessel_length=200.0)
         assert s.noise.base_source_level is None
         assert s.noise.vessel_class == VesselClass.CARGO
+
+
+class TestShipJsonLoader:
+    def test_type_string_mapping_all_kattegat_types(self):
+        """All 12 Kattegat ships.json `type` strings map to a valid VesselClass."""
+        from cenop.agents.ship import _vessel_class_from_type, VesselClass
+        cases = {
+            "Bulker": VesselClass.BULKER, "Containership": VesselClass.CONTAINER,
+            "Tanker": VesselClass.TANKER, "Government/Research": VesselClass.GOVERNMENT,
+            "Cruise": VesselClass.CRUISE, "Dredger": VesselClass.DREDGER,
+            "Passenger": VesselClass.PASSENGER, "Tug": VesselClass.TUG,
+            "Recreational": VesselClass.RECREATIONAL, "Fishing": VesselClass.FISHING,
+            "Naval": VesselClass.NAVAL, "Other": VesselClass.OTHER,
+        }
+        for s, vc in cases.items():
+            assert _vessel_class_from_type(s) == vc, s
+
+    def test_unknown_type_raises(self):
+        from cenop.agents.ship import _vessel_class_from_type
+        import pytest
+        with pytest.raises(ValueError):
+            _vessel_class_from_type("Submarine")
+
+    def test_loader_reads_type_length_and_no_forced_impact(self):
+        """Loader maps real type/length and does NOT force a 170 dB override when impact absent."""
+        from cenop.agents.ship import ShipManager
+        mgr = ShipManager()
+        mgr.load_from_json("data/Kattegat/ships.json",
+                           utm_origin_x=529473.0, utm_origin_y=5972242.0, cell_size=400.0)
+        assert mgr.count > 0
+        assert all(s.noise.base_source_level is None for s in mgr.ships)
+        assert len({s.vessel_length for s in mgr.ships}) > 1
+        assert len({s.vessel_type for s in mgr.ships}) > 1
+
+    def test_loader_preserves_real_per_buoy_speed(self):
+        """Route buoys keep the JSON per-waypoint speeds (not a hardcoded 10.0)."""
+        from cenop.agents.ship import ShipManager
+        mgr = ShipManager()
+        mgr.load_from_json("data/Kattegat/ships.json",
+                           utm_origin_x=529473.0, utm_origin_y=5972242.0, cell_size=400.0)
+        speeds = {round(b.speed, 3) for s in mgr.ships for b in s.route.buoys}
+        assert speeds != {10.0}
+        assert len(speeds) > 1

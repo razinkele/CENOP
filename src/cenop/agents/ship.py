@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import re
 import numpy as np
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, List, Optional, Tuple
@@ -85,6 +86,23 @@ class VesselClass(Enum):
     TUG = "tug"
     VEHICLE_CARRIER = "vehicle_carrier"
     OTHER = "other"
+
+
+def _vessel_class_from_type(type_str: str) -> VesselClass:
+    """Map a ships.json `type` string to a VesselClass (DEPONS VesselClass.forValue
+    normalization: strip [-/ _], uppercase, match enum name). Raises on unknown type
+    (fail-fast, matching DEPONS JomopansEchoSPL)."""
+    norm = re.sub(r"[-/ _]", "", (type_str or "")).upper()
+    aliases = {
+        "CONTAINERSHIP": VesselClass.CONTAINER,
+        "GOVERNMENTRESEARCH": VesselClass.GOVERNMENT,
+    }
+    if norm in aliases:
+        return aliases[norm]
+    for vc in VesselClass:
+        if vc.name.replace("_", "") == norm:
+            return vc
+    raise ValueError(f"Unknown ship type: {type_str!r}")
 
 
 # Base source levels by vessel class (dB re 1 µPa @ 1m) — fallback when JOMOPANS not used
@@ -813,7 +831,9 @@ class ShipManager:
                 grid_y = (utm_y - utm_origin_y) / cell_size
                 
                 # Default speed from route or ship (will be overridden per ship)
-                buoy = Buoy(x=grid_x, y=grid_y, speed=10.0, pause_ticks=0)
+                buoy = Buoy(x=grid_x, y=grid_y,
+                            speed=waypoint.get("speed", 10.0),
+                            pause_ticks=waypoint.get("pause", 0))
                 buoys.append(buoy)
                 
             routes_dict[route_name] = Route(name=route_name, buoys=buoys)
@@ -822,56 +842,39 @@ class ShipManager:
         self.ships = []
         for i, ship_data in enumerate(data.get("ships", [])):
             name = ship_data.get("name", f"ship_{i}")
-            speed = ship_data.get("speed", 10.0)  # knots
-            impact = ship_data.get("impact", 170.0)  # dB source level
+            speed = ship_data.get("speed")          # ship-level override; None -> keep buoy speeds
+            impact = ship_data.get("impact")        # explicit SL override; None -> JOMOPANS
             start_tick = ship_data.get("start", 0)
             route_name = ship_data.get("route", "")
-            
-            # Get route
+            length_m = ship_data.get("length", 100.0)
+
             route = routes_dict.get(route_name, Route())
-            
-            # Update buoy speeds from ship speed
-            for buoy in route.buoys:
-                buoy.speed = speed
-            
-            # Initial position from first buoy
+
+            # Only overwrite buoy speeds when the ship record gives an explicit speed;
+            # otherwise preserve the per-waypoint speeds the JSON route provides (JOMOPANS
+            # is speed-dependent, so clobbering them with a default would corrupt SL).
+            if speed is not None:
+                for buoy in route.buoys:
+                    buoy.speed = speed
+
             x, y = 0.0, 0.0
             if route.buoys:
                 x = route.buoys[0].x
                 y = route.buoys[0].y
-            
-            # Check for survey configuration (special ship type)
-            survey = ship_data.get("survey", {})
-            is_survey = bool(survey.get("point", {}).get("x"))
-            
-            # Determine vessel type based on name/impact
-            vessel_type = VesselClass.OTHER
-            if "cargo" in name.lower():
-                vessel_type = VesselClass.CARGO
-            elif "tanker" in name.lower():
-                vessel_type = VesselClass.TANKER
-            elif "survey" in name.lower() or is_survey:
-                vessel_type = VesselClass.OTHER  # Survey vessels
-            elif "fishing" in name.lower():
-                vessel_type = VesselClass.FISHING
-            
+
+            vessel_type = _vessel_class_from_type(ship_data.get("type", "Other"))
+
             ship = Ship(
-                id=i,
-                x=x,
-                y=y,
-                heading=0.0,
-                name=name,
-                vessel_type=vessel_type,
-                vessel_length=100.0,  # Default length
-                route=route,
-                tick_start=start_tick,
-                tick_end=2147483647
+                id=i, x=x, y=y, heading=0.0, name=name,
+                vessel_type=vessel_type, vessel_length=length_m,
+                route=route, tick_start=start_tick, tick_end=2147483647,
             )
-            
-            # Override source level from impact if provided
-            if impact > 0:
+
+            # Explicit dB override only when impact is present and positive (CENOP extension;
+            # DEPONS always uses JOMOPANS). Absent impact -> base_source_level stays None -> JOMOPANS.
+            if impact is not None and impact > 0:
                 ship.noise.base_source_level = impact
-            
+
             self.ships.append(ship)
             
         logger.info("Loaded %d ships with %d routes from %s", len(self.ships), len(routes_dict), json_file)

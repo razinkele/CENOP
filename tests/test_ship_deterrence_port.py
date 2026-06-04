@@ -522,3 +522,37 @@ class TestShipJsonLoader:
         speeds = {round(b.speed, 3) for s in mgr.ships for b in s.route.buoys}
         assert speeds != {10.0}
         assert len(speeds) > 1
+
+
+class TestTurbineOnlyDispersal:
+    def _pop(self):
+        import numpy as np
+        from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        from cenop.agents.population import PorpoisePopulation
+        params = SimulationParameters(porpoise_count=1)
+        land = create_homogeneous_landscape(width=50, height=50, depth=20.0, food_prob=0.5)
+        pop = PorpoisePopulation(count=1, params=params, landscape=land)
+        pop.is_dispersing[0] = True
+        pop.dispersal_start_x[0] = pop.x[0]; pop.dispersal_start_y[0] = pop.y[0]
+        # CRITICAL: dispersal_target_distance defaults to 0.0, so the distance-completion
+        # check (distances >= 0.95*target) would deactivate dispersal regardless of the
+        # deterrence gate, masking what we're testing. Set it huge so only the gate can fire.
+        pop.dispersal_target_distance[0] = 1e9
+        return pop
+
+    def test_ship_only_deterrence_does_not_deactivate_dispersal(self):
+        import numpy as np
+        pop = self._pop()
+        d = (np.array([0.05], dtype=np.float64), np.array([0.0], dtype=np.float64))
+        t = (np.array([0.0], dtype=np.float64), np.array([0.0], dtype=np.float64))
+        pop.step(deterrence_vectors=d, turbine_deterrence_vectors=t)
+        assert bool(pop.is_dispersing[0]) is True
+
+    def test_turbine_deterrence_deactivates_dispersal(self):
+        import numpy as np
+        pop = self._pop()
+        d = (np.array([0.05], dtype=np.float64), np.array([0.0], dtype=np.float64))
+        t = (np.array([0.05], dtype=np.float64), np.array([0.0], dtype=np.float64))
+        pop.step(deterrence_vectors=d, turbine_deterrence_vectors=t)
+        assert bool(pop.is_dispersing[0]) is False

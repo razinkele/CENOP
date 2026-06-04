@@ -335,22 +335,29 @@ class TestEnergyBasedDispersalStop:
         assert should_stop is False, f"2.0 is not > {past_min} (3.0), should continue"
 
     def test_deterrence_deactivates_dispersal(self):
-        """Deterrence applied to dispersing agent stops dispersal.
+        """Turbine deterrence applied to a dispersing agent stops dispersal; ship
+        deterrence does NOT.
 
-        Java: Porpoise.java:1277-1278
+        Java: Porpoise.java:1277-1278 deactivates dispersal only for turbine/
+        sound-source deterrence (applyDeterrence), not for ships
+        (applyShipDeterrence). The gate therefore keys on the turbine-only
+        deterrence strength, not the combined deter_strength.
         """
         is_dispersing = np.array([True, True, False, True, False])
-        deter_strength = np.array([1.0, 0.0, 1.0, 0.5, 0.0])
+        # Combined deterrence is non-zero for several agents (e.g. from ships)...
+        deter_strength = np.array([1.0, 1.0, 1.0, 0.5, 0.0])
+        # ...but only these have turbine-sourced deterrence.
+        turbine_deter_strength = np.array([1.0, 0.0, 1.0, 0.5, 0.0])
         active = np.array([True, True, True, True, True])
 
-        deterred_and_dispersing = active & (deter_strength > 0) & is_dispersing
+        deterred_and_dispersing = active & (turbine_deter_strength > 0) & is_dispersing
         is_dispersing[deterred_and_dispersing] = False
 
-        # Agent 0: was dispersing + deterred -> stopped
+        # Agent 0: was dispersing + turbine-deterred -> stopped
         assert is_dispersing[0] is np.False_
-        # Agent 1: was dispersing + not deterred -> still dispersing
+        # Agent 1: was dispersing + ship-only deterred (no turbine) -> still dispersing
         assert is_dispersing[1] is np.True_
-        # Agent 3: was dispersing + deterred -> stopped
+        # Agent 3: was dispersing + turbine-deterred -> stopped
         assert is_dispersing[3] is np.False_
 
 

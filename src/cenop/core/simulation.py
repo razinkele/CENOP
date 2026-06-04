@@ -534,7 +534,8 @@ class Simulation:
         # 5. Step population (Vectorized)
         self.population_manager.step(
             deterrence_vectors=(total_dx, total_dy),
-            ambient_rl=ambient_rl
+            ambient_rl=ambient_rl,
+            turbine_deterrence_vectors=(turb_dx, turb_dy),
         )
 
         # 6. Update Statistics

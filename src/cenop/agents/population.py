@@ -143,6 +143,9 @@ class PorpoisePopulation:
         
         # Deterrence status
         self.deter_strength = np.zeros(count, dtype=np.float32)
+        # Turbine-only deterrence strength — DEPONS deactivates dispersal for turbine/
+        # sound-source deterrence only, NOT ships (Porpoise.java:1277).
+        self._turbine_deter_strength = np.zeros(count, dtype=np.float32)
         # Tracks any porpoise deterred at least once during the reporting period
         self._was_deterred = np.zeros(count, dtype=bool)
 
@@ -2515,7 +2518,9 @@ class PorpoisePopulation:
             return float(self.params.e_warm)
         return 1.0
 
-    def step(self, deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]] = None, ambient_rl: Optional[np.ndarray] = None):
+    def step(self, deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]] = None,
+             ambient_rl: Optional[np.ndarray] = None,
+             turbine_deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]] = None):
         """
         Main simulation step for the entire population.
 
@@ -2542,6 +2547,12 @@ class PorpoisePopulation:
         mask = self.active_mask
         if not mask.any():
             return
+
+        if turbine_deterrence_vectors is not None:
+            _t_dx, _t_dy = turbine_deterrence_vectors
+            np.hypot(_t_dx, _t_dy, out=self._turbine_deter_strength)
+        else:
+            self._turbine_deter_strength.fill(0.0)
 
         # JAX JIT path — replaces Numba/NumPy for movement + energy
         if self._use_jax:
@@ -3059,7 +3070,7 @@ class PorpoisePopulation:
         distances = np.sqrt(dx * dx + dy * dy)
 
         # --- Deterrence deactivates dispersal (Java Porpoise.java:1277-1278) ---
-        deterred = dispersing & (self.deter_strength > 0)
+        deterred = dispersing & (self._turbine_deter_strength > 0)
         if deterred.any():
             self.is_dispersing[deterred] = False
             self.dispersal_distance_traveled[deterred] = 0.0

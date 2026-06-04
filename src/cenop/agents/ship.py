@@ -485,6 +485,8 @@ class ShipManager:
         min_dist_m = params.deter_min_distance_ships * 1000.0
         max_dist_m = min(MAX_DETER_DIST_M, params.deter_max_distance * 1000.0)
         tships = getattr(params, "deter_ships_min_db", 80.0)
+        weston = (params.weston_flux_percell and cell_data is not None
+                  and getattr(cell_data, "_sediment", None) is not None)
 
         for ship in active_ships:
             grid_dx = porpoise_x - ship.x          # cell units
@@ -492,56 +494,53 @@ class ShipManager:
             dist_m = np.hypot(grid_dx * cell_size, grid_dy * cell_size)
             np.maximum(dist_m, 1.0, out=dist_m)
 
-            in_range = (dist_m > min_dist_m) & (dist_m <= max_dist_m)
-            if not np.any(in_range):
+            # Work ONLY on in-range porpoises (the 10 km cap keeps this a small subset).
+            idx = np.flatnonzero((dist_m > min_dist_m) & (dist_m <= max_dist_m))
+            if idx.size == 0:
                 continue
 
-            # Received level (clamped >= 0; NODATA -> 0)
-            rl = np.zeros(n, dtype=np.float64)
-            d_masked = dist_m[in_range]
+            d_sub = dist_m[idx]
+            gdx_sub = grid_dx[idx]
+            gdy_sub = grid_dy[idx]
             source_level = ship.noise.get_source_level()
-            if (params.weston_flux_percell and cell_data is not None
-                    and getattr(cell_data, "_sediment", None) is not None):
-                pos = np.column_stack((porpoise_x[in_range], porpoise_y[in_range]))
+            if weston:
+                pos = np.column_stack((porpoise_x[idx], porpoise_y[idx]))
                 depths = cell_data.get_depths_vectorized(pos)
                 grains = cell_data.get_sediments_vectorized(pos)
                 sal = cell_data.get_salinities_vectorized(pos, month)
                 tl = _compute_tl_percell(
-                    d_masked, depths, grains, sal,
+                    d_sub, depths, grains, sal,
                     params.weston_flux_default_temperature,
                     params.beta_hat, params.alpha_hat,
                 )
-                rl_masked = source_level - tl
+                rl_sub = source_level - tl
                 # DEPONS Ship.java:296-307 + valueIsNoData (value <= -9999):
                 # NODATA on depth/grain/salinity OR TL<=0 -> received level 0.
-                # (DEPONS evaluates NODATA at the SHIP cell; CENOP uses the porpoise
-                #  cell here — accepted SoA divergence. Porpoises require depth>=wmin
-                #  so depth<=0 cannot occur for a valid porpoise; tl<=0 guards bad geometry.)
                 nodata = (depths <= -9999.0) | (grains <= -9999.0) | (sal <= -9999.0)
-                rl_masked = np.where(nodata | (tl <= 0.0), 0.0, rl_masked)
+                rl_sub = np.where(nodata | (tl <= 0.0), 0.0, rl_sub)
             else:
-                tl = params.beta_hat * np.log10(d_masked) + params.alpha_hat * d_masked
-                rl_masked = source_level - tl
-            rl_masked = np.maximum(rl_masked, 0.0)
-            rl[in_range] = rl_masked
+                tl = params.beta_hat * np.log10(d_sub) + params.alpha_hat * d_sub
+                rl_sub = source_level - tl
+            rl_sub = np.maximum(rl_sub, 0.0)
 
-            # Identity-seeded reaction draws (order/count invariant), or forced (tests)
+            # Reaction draws: the full-N rng stream indexed by GLOBAL porpoise index keeps
+            # each (ship, porpoise) draw invariant to ship order/count; then subset by idx.
             if _force_u is not None:
-                u = np.full(n, float(_force_u), dtype=np.float64)
+                u_sub = np.full(idx.size, float(_force_u), dtype=np.float64)
             else:
                 rng = np.random.default_rng(np.random.SeedSequence([base_seed, tick, int(ship.id)]))
-                u = rng.random(n)
+                u_sub = rng.random(n)[idx]
 
-            # Each Ship owns a ShipDeterrenceModel (ship.py:172); ShipManager has none.
             vx, vy, prob, mag, react = ship.deterrence_model.deterrence_components(
-                rl, dist_m, grid_dx, grid_dy, is_day, u, tships)
+                rl_sub, d_sub, gdx_sub, gdy_sub, is_day, u_sub, tships)
 
-            # Loudest gated ship wins this porpoise's slot (vector is 0 if it didn't react)
-            gated = in_range & (rl > tships)
-            wins = gated & (rl > best_rl)
-            best_rl = np.where(wins, rl, best_rl)
-            total_dx = np.where(wins, vx, total_dx)
-            total_dy = np.where(wins, vy, total_dy)
+            # Loudest gated ship wins each porpoise's slot (vector is 0 if it didn't react).
+            gated = rl_sub > tships
+            wins = gated & (rl_sub > best_rl[idx])
+            sel = idx[wins]
+            best_rl[sel] = rl_sub[wins]
+            total_dx[sel] = vx[wins]
+            total_dy[sel] = vy[wins]
 
         return (total_dx, total_dy)
 

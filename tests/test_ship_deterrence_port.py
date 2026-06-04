@@ -379,3 +379,38 @@ class TestDeterStrengthL2:
         d_dy = np.array([4.0], dtype=np.float64)
         pop.step(deterrence_vectors=(d_dx, d_dy))
         assert pop.deter_strength[0] == pytest.approx(5.0)  # hypot(3,4), not 7
+
+
+class TestVectorizedPerfRefactor:
+    def test_mixed_in_and_out_of_range_correct(self):
+        """In-range porpoises deterred; out-of-range exactly zero; one vectorized call."""
+        from cenop.agents.ship import Ship, ShipManager, VesselClass
+        from cenop.parameters.simulation_params import SimulationParameters
+        p = SimulationParameters()
+        s = Ship(id=1, x=50.0, y=50.0, vessel_type=VesselClass.CARGO)
+        s._is_active = True; s.noise.base_source_level = 205.0
+        mgr = ShipManager([s]); mgr.enabled = True
+        # idx 0: in-range 2 km east; idx 1: out-of-range 50 km east; idx 2: in-range 1 km west
+        px = np.array([50.0 + 2000.0/400.0, 50.0 + 50000.0/400.0, 50.0 - 1000.0/400.0])
+        py = np.array([50.0, 50.0, 50.0])
+        dx, dy = mgr.calculate_aggregate_deterrence_vectorized(px, py, p, _force_u=0.0)
+        assert dx[0] > 0.0          # pushed east (in-range, reacting)
+        assert dx[1] == 0.0 and dy[1] == 0.0   # out of 10 km cap -> exactly zero
+        assert dx[2] < 0.0          # pushed west (in-range, reacting)
+
+    def test_seed_order_invariance_still_holds(self):
+        from cenop.agents.ship import Ship, ShipManager, VesselClass
+        from cenop.parameters.simulation_params import SimulationParameters
+        p = SimulationParameters()
+        def mk(sid, sx):
+            s = Ship(id=sid, x=sx, y=50.0, vessel_type=VesselClass.CARGO)
+            s._is_active = True; s.noise.base_source_level = 195.0
+            return s
+        a, b = mk(1, 49.0), mk(2, 51.0)
+        px = np.array([50.0]); py = np.array([50.0])
+        r1 = ShipManager([a, b]); r1.enabled = True
+        r2 = ShipManager([b, a]); r2.enabled = True
+        d1 = r1.calculate_aggregate_deterrence_vectorized(px, py, p, base_seed=3, tick=7)
+        d2 = r2.calculate_aggregate_deterrence_vectorized(px, py, p, base_seed=3, tick=7)
+        np.testing.assert_array_equal(d1[0], d2[0])
+        np.testing.assert_array_equal(d1[1], d2[1])

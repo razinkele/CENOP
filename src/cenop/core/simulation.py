@@ -490,6 +490,7 @@ class Simulation:
                     px, py, self.params, is_day=self.time_manager.is_daytime,
                     cell_size=400.0, cell_data=self._cell_data,
                     month=self.state.month,
+                    base_seed=self._seed, tick=int(self.time_manager.tick),
                 )
             )
         else:

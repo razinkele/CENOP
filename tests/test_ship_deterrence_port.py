@@ -161,3 +161,56 @@ class TestVectorizedPath:
         assert r_ab[0][0] != 0.0                            # precondition: non-vacuous
         assert r_ab[0][0] == pytest.approx(r_ba[0][0])      # order invariant
         assert r_ab[0][0] == pytest.approx(r_abfar[0][0])   # far out-of-range ship has no effect
+
+
+class TestSimulationDeterminism:
+    def _sim_with_ship(self):
+        import numpy as np
+        from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        from cenop.core.simulation import Simulation
+        from cenop.agents.ship import Ship, VesselClass
+        params = SimulationParameters(porpoise_count=50, sim_years=1, random_seed=42, ships_enabled=True)
+        land = create_homogeneous_landscape(width=100, height=100, depth=20.0, food_prob=0.5)
+        sim = Simulation(params=params, cell_data=land, seed=42)
+        sim.initialize()
+        # Replace any sample ship with one guaranteed near the porpoises
+        loud = Ship(id=1, x=50.0, y=50.0, vessel_type=VesselClass.CARGO)
+        loud._is_active = True; loud.noise.base_source_level = 195.0
+        sim._ship_manager.ships = [loud]; sim._ship_manager.enabled = True
+        return sim
+
+    def test_tick_varies_ship_draws_after_wiring(self):
+        """Before wiring, every tick uses base_seed=0/tick=0, so the per-ship reaction
+        draw is IDENTICAL every tick; after wiring (tick threaded) the draw varies.
+        Hold porpoise positions fixed so the only source of variation is the seed/tick."""
+        import numpy as np
+        sim = self._sim_with_ship()
+        pm = sim.population_manager
+        n0 = int(pm.active_mask.sum())
+        snaps = []
+        for _ in range(30):
+            # freeze porpoises so deter_strength changes ONLY if the ship draw changes
+            pre_x, pre_y = pm.x.copy(), pm.y.copy()
+            sim.step()
+            pm.x[:] = pre_x; pm.y[:] = pre_y
+            pm._recompute_cell_indices()
+            # guard: no births/deaths, so any deter_strength change is purely the draw
+            assert int(pm.active_mask.sum()) == n0
+            snaps.append(pm.deter_strength.copy())
+        # With tick threaded, at least two ticks must differ (draws vary by tick).
+        assert any(not np.array_equal(snaps[0], s) for s in snaps[1:])
+
+    def test_reproducible_across_sequential_runs(self):
+        """Green guard: two identically-seeded sims (run SEQUENTIALLY to avoid global
+        np.random cross-talk) produce identical ship deterrence."""
+        import numpy as np
+        s1 = self._sim_with_ship()
+        for _ in range(5):
+            s1.step()
+        d1 = s1.population_manager.deter_strength.copy()
+        s2 = self._sim_with_ship()   # constructed AFTER s1 finishes
+        for _ in range(5):
+            s2.step()
+        d2 = s2.population_manager.deter_strength.copy()
+        np.testing.assert_array_equal(d1, d2)

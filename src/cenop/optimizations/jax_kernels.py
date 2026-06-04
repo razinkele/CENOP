@@ -811,7 +811,7 @@ def jax_energy_history_update(energy, active_mask, energy_ticks_today,
 
 def jax_dispersal_update(is_dispersing, dispersal_start_x, dispersal_start_y,
                           dispersal_target_distance, dispersal_distance_traveled,
-                          days_declining_energy, x, y, deter_strength,
+                          days_declining_energy, x, y, turbine_deter_strength,
                           energy_history, active_mask, is_day_boundary):
     """Update dispersal: deterrence cancel, energy stop, distance check.
 
@@ -828,7 +828,7 @@ def jax_dispersal_update(is_dispersing, dispersal_start_x, dispersal_start_y,
     dispersal_distance_traveled : float32[n]
     days_declining_energy : int32[n]
     x, y : float32[n] — current position
-    deter_strength : float32[n]
+    turbine_deter_strength : float32[n]
     energy_history : float32[n, hist_len]
     active_mask : bool[n]
     is_day_boundary : jnp.bool_
@@ -840,7 +840,7 @@ def jax_dispersal_update(is_dispersing, dispersal_start_x, dispersal_start_y,
     dispersing = active_mask & is_dispersing
 
     # 1. Deterrence cancels dispersal
-    deterred = dispersing & (deter_strength > 0)
+    deterred = dispersing & (turbine_deter_strength > 0)
     is_dispersing = jnp.where(deterred, False, is_dispersing)
     dispersal_distance_traveled = jnp.where(deterred, 0.0, dispersal_distance_traveled)
     days_declining_energy = jnp.where(deterred, 0, days_declining_energy)

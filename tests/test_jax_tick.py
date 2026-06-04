@@ -1246,7 +1246,7 @@ class TestJaxDispersalUpdate:
     """Tests for jax_dispersal_update kernel."""
 
     def test_deterrence_cancels_dispersal(self):
-        """Deterrence should cancel dispersal."""
+        """Turbine deterrence should cancel dispersal."""
         from cenop.optimizations.jax_kernels import jax_dispersal_update
 
         n = 5
@@ -1262,7 +1262,7 @@ class TestJaxDispersalUpdate:
             days_declining_energy=jnp.full(n, 3, dtype=jnp.int32),
             x=jnp.full(n, 10.0, dtype=jnp.float32),
             y=jnp.full(n, 10.0, dtype=jnp.float32),
-            deter_strength=deter,
+            turbine_deter_strength=deter,
             energy_history=jnp.zeros((n, 8), dtype=jnp.float32),
             active_mask=jnp.ones(n, dtype=bool),
             is_day_boundary=jnp.bool_(False),
@@ -1292,7 +1292,7 @@ class TestJaxDispersalUpdate:
             # Agent 2: at (100, 0) -> dist=100 >= 95 -> complete
             x=jnp.array([96.0, 50.0, 100.0], dtype=jnp.float32),
             y=jnp.zeros(n, dtype=jnp.float32),
-            deter_strength=jnp.zeros(n, dtype=jnp.float32),
+            turbine_deter_strength=jnp.zeros(n, dtype=jnp.float32),
             energy_history=jnp.zeros((n, 8), dtype=jnp.float32),
             active_mask=jnp.ones(n, dtype=bool),
             is_day_boundary=jnp.bool_(False),

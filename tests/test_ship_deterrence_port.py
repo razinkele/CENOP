@@ -556,3 +556,41 @@ class TestTurbineOnlyDispersal:
         t = (np.array([0.05], dtype=np.float64), np.array([0.0], dtype=np.float64))
         pop.step(deterrence_vectors=d, turbine_deterrence_vectors=t)
         assert bool(pop.is_dispersing[0]) is False
+
+
+class TestTurbineOnlyDispersalJax:
+    def test_jax_dispersal_uses_turbine_strength(self):
+        import numpy as np, jax.numpy as jnp
+        from cenop.optimizations.jax_kernels import jax_dispersal_update
+        n = 2
+        is_dispersing = jnp.array([True, True])
+        zeros = jnp.zeros(n); ddt = jnp.zeros(n); dde = jnp.zeros(n, dtype=jnp.int32)
+        x = jnp.zeros(n); y = jnp.zeros(n)
+        eh = jnp.zeros((n, 8)); active = jnp.array([True, True])
+        # turbine strength nonzero only for agent 0
+        turb = jnp.array([0.05, 0.0])
+        new_disp, _, _ = jax_dispersal_update(
+            is_dispersing, zeros, zeros, jnp.full(n, 1e9), ddt, dde, x, y,
+            turbine_deter_strength=turb, energy_history=eh, active_mask=active,
+            is_day_boundary=False)
+        assert bool(new_disp[0]) is False
+        assert bool(new_disp[1]) is True
+
+    def test_step_jax_ship_only_keeps_dispersing(self):
+        """End-to-end JAX: ship-only deterrence (turbine zero) must NOT deactivate dispersal."""
+        import numpy as np
+        from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        from cenop.agents.population import PorpoisePopulation
+        params = SimulationParameters(porpoise_count=1, use_jax=True)
+        land = create_homogeneous_landscape(width=50, height=50, depth=20.0, food_prob=0.5)
+        pop = PorpoisePopulation(count=1, params=params, landscape=land)
+        if not getattr(pop, "_use_jax", False):
+            import pytest; pytest.skip("JAX not active")
+        pop.is_dispersing[0] = True
+        pop.dispersal_start_x[0] = pop.x[0]; pop.dispersal_start_y[0] = pop.y[0]
+        pop.dispersal_target_distance[0] = 1e9
+        d = (np.array([0.05], dtype=np.float64), np.array([0.0], dtype=np.float64))
+        t = (np.array([0.0], dtype=np.float64), np.array([0.0], dtype=np.float64))
+        pop.step(deterrence_vectors=d, turbine_deterrence_vectors=t)
+        assert bool(pop.is_dispersing[0]) is True

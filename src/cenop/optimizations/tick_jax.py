@@ -279,7 +279,7 @@ def jax_tick_energy(
     dispersal_target_distance,
     dispersal_distance_traveled,
     days_declining_energy,
-    deter_strength,
+    turbine_deter_strength,
     # Scalar parameters
     scaling,
     e_use_per_30_min,
@@ -366,7 +366,7 @@ def jax_tick_energy(
             days_declining_energy,
             x,
             y,
-            deter_strength,
+            turbine_deter_strength,
             new_energy_history,
             new_active_mask,
             is_day_boundary,

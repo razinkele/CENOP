@@ -2431,7 +2431,7 @@ class PorpoisePopulation:
             jnp.asarray(self.dispersal_target_distance),
             jnp.asarray(self.dispersal_distance_traveled),
             jnp.asarray(self.days_declining_energy.astype(np.int32)),
-            jnp.asarray(self.deter_strength),
+            jnp.asarray(self._turbine_deter_strength),
             jnp.float32(scaling),
             float(self.params.e_use_per_30_min),
             float(self.params.e_lact),

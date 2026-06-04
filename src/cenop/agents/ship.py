@@ -105,24 +105,7 @@ def _vessel_class_from_type(type_str: str) -> VesselClass:
     raise ValueError(f"Unknown ship type: {type_str!r}")
 
 
-# Base source levels by vessel class (dB re 1 µPa @ 1m) — fallback when JOMOPANS not used
-VESSEL_BASE_LEVELS = {
-    VesselClass.BULKER: 177.0,
-    VesselClass.CARGO: 175.0,
-    VesselClass.CHEMICAL_TANKER: 177.0,
-    VesselClass.CONTAINER: 175.0,
-    VesselClass.CRUISE: 172.0,
-    VesselClass.DREDGER: 170.0,
-    VesselClass.FISHING: 165.0,
-    VesselClass.GOVERNMENT: 168.0,
-    VesselClass.NAVAL: 170.0,
-    VesselClass.PASSENGER: 172.0,
-    VesselClass.RECREATIONAL: 168.0,
-    VesselClass.TANKER: 177.0,
-    VesselClass.TUG: 170.0,
-    VesselClass.VEHICLE_CARRIER: 175.0,
-    VesselClass.OTHER: 168.0,
-}
+
 
 
 @dataclass
@@ -830,7 +813,7 @@ class ShipManager:
                 grid_x = (utm_x - utm_origin_x) / cell_size
                 grid_y = (utm_y - utm_origin_y) / cell_size
                 
-                # Default speed from route or ship (will be overridden per ship)
+                # Speed from waypoint JSON; may be overridden per-ship below if ship record supplies an explicit speed.
                 buoy = Buoy(x=grid_x, y=grid_y,
                             speed=waypoint.get("speed", 10.0),
                             pause_ticks=waypoint.get("pause", 0))

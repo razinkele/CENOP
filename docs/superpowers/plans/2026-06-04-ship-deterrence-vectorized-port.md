@@ -881,10 +881,11 @@ git commit -m "fix: deter_strength uses Euclidean (L2) magnitude to match DEPONS
 
 ---
 
-## Task 7: Rewrite the superseded test + add integration & characterization tests
+## Task 7: Add edge-case, integration & characterization tests
+
+(The superseded `test_no_normalization_vectorized_ship` was already rewritten in Task 3 Step 5b — Task 7 does NOT touch `tests/test_deterrence.py`.)
 
 **Files:**
-- Modify: `tests/test_deterrence.py` (`test_no_normalization_vectorized_ship` ~line 77)
 - Create/extend: `tests/test_ship_deterrence_port.py`
 
 - [ ] **Step 1: Add the missing edge-case tests** (the superseded `test_no_normalization_vectorized_ship` was already rewritten in Task 3 Step 5b — do NOT redo it)
@@ -1009,7 +1010,7 @@ Expected: PASS. Fix any test that pinned the old ship-deterrence behavior (searc
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tests/test_deterrence.py tests/test_ship_deterrence_port.py
+git add tests/test_ship_deterrence_port.py
 git commit -m "test: ship deterrence integration + characterization; supersede raw-displacement ship test"
 ```
 

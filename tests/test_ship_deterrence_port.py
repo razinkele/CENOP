@@ -228,7 +228,6 @@ class TestScalarOracleConsistency:
         s._is_active = True; s.noise.base_source_level = 180.0
         px, py = 50.0 + 2000.0 / 400.0, 50.0  # 2 km east
         # Force u=0 by monkeypatching np.random in the scalar path
-        import cenop.agents.ship as shipmod
         orig = np.random.random
         np.random.random = lambda *a, **k: 0.0
         try:
@@ -245,6 +244,7 @@ class TestScalarOracleConsistency:
         _, _, kprob, kmag, kreact = m.deterrence_components(
             rl, dist_m, gdx, gdy, True, np.array([0.0]), tships=p.deter_ships_min_db)
         assert should == bool(kreact[0])
+        assert should is True  # u=0 + 180 dB ship at 2 km must react; guards against both-False pass
         assert prob == pytest.approx(float(kprob[0]))
         assert mag == pytest.approx(float(kmag[0]))
 

@@ -352,6 +352,8 @@ class Ship(Agent):
 
         # Tships gate: skip deterrence below minimum RL (Java Ship.java:228)
         tships = getattr(params, 'deter_ships_min_db', 80.0)
+        # Fast-path: skip array allocation + kernel call when RL is below threshold
+        # (the kernel also gates on tships, so this only short-circuits the no-reaction case).
         if spl <= tships:
             return (False, 0.0, 0.0, distance_km)
 

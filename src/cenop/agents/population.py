@@ -1030,7 +1030,7 @@ class PorpoisePopulation:
         # Prepare deterrence vectors (track strength before kernel)
         if deterrence_vectors is not None:
             d_dx, d_dy = deterrence_vectors
-            self.deter_strength[mask] = np.abs(d_dx[mask]) + np.abs(d_dy[mask])
+            self.deter_strength[mask] = np.hypot(d_dx[mask], d_dy[mask])
             self._was_deterred |= (self.deter_strength > 0) & mask
         else:
             d_dx = self._zero_f64
@@ -1233,7 +1233,7 @@ class PorpoisePopulation:
         # Deterrence tracking
         if deterrence_vectors is not None:
             d_dx, d_dy = deterrence_vectors
-            self.deter_strength[mask] = np.abs(d_dx[mask]) + np.abs(d_dy[mask])
+            self.deter_strength[mask] = np.hypot(d_dx[mask], d_dy[mask])
             self._was_deterred |= (self.deter_strength > 0) & mask
         else:
             self.deter_strength[mask] = 0.0
@@ -2188,9 +2188,7 @@ class PorpoisePopulation:
         # Deterrence
         if deterrence_vectors is not None:
             d_dx, d_dy = deterrence_vectors
-            self.deter_strength[mask] = (
-                np.abs(d_dx[mask]) + np.abs(d_dy[mask])
-            )
+            self.deter_strength[mask] = np.hypot(d_dx[mask], d_dy[mask])
             self._was_deterred |= (self.deter_strength > 0) & mask
         else:
             d_dx = np.zeros(self.count, dtype=np.float64)

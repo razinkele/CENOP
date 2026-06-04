@@ -368,7 +368,7 @@ def jax_heading_composition(
     total_dy = dy_unit * crw_contrib + vt_y + deter_dy + social_dy
 
     # Deterrence strength (for tracking)
-    deter_strength = jnp.abs(deter_dx) + jnp.abs(deter_dy)
+    deter_strength = jnp.hypot(deter_dx, deter_dy)
     deter_strength = jnp.where(mask, deter_strength, 0.0)
 
     # 5. New heading from composite vector

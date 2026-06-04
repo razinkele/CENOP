@@ -258,3 +258,19 @@ class TestScalarOracleConsistency:
         at_floor = 50.0 + 100.0 / 400.0   # exactly 100 m
         should, *_ = s.calculate_deterrence(at_floor, 50.0, p, is_day=True)
         assert should == False  # 100 m is excluded (strict >)
+
+
+class TestDeterStrengthL2:
+    def test_deter_strength_is_euclidean(self):
+        """DEPONS ShipDeterrence.java:75 uses sqrt(dx^2+dy^2), not |dx|+|dy|."""
+        import numpy as np
+        from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        from cenop.agents.population import PorpoisePopulation
+        params = SimulationParameters(porpoise_count=1)
+        land = create_homogeneous_landscape(width=50, height=50, depth=20.0, food_prob=0.5)
+        pop = PorpoisePopulation(count=1, params=params, landscape=land)
+        d_dx = np.array([3.0], dtype=np.float64)
+        d_dy = np.array([4.0], dtype=np.float64)
+        pop.step(deterrence_vectors=(d_dx, d_dy))
+        assert pop.deter_strength[0] == pytest.approx(5.0)  # hypot(3,4), not 7

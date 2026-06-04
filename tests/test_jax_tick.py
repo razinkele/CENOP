@@ -673,7 +673,7 @@ class TestJaxHeadingAndPosition:
         )
 
     def test_deter_strength_computed(self):
-        """Deterrence strength should be |deter_dx| + |deter_dy|."""
+        """Deterrence strength should be hypot(deter_dx, deter_dy) (Euclidean L2, DEPONS ShipDeterrence.java:75)."""
         from cenop.optimizations.jax_kernels import jax_heading_composition
 
         inputs = _make_heading_inputs(n=20, seed=14)
@@ -686,9 +686,7 @@ class TestJaxHeadingAndPosition:
 
         result = jax_heading_composition(**inputs)
         deter_strength = np.asarray(result[6])
-        expected = np.abs(np.asarray(inputs["deter_dx"])) + np.abs(
-            np.asarray(inputs["deter_dy"])
-        )
+        expected = np.hypot(np.asarray(inputs["deter_dx"]), np.asarray(inputs["deter_dy"]))
 
         np.testing.assert_allclose(deter_strength, expected, rtol=1e-10)
 

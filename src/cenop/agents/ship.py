@@ -516,6 +516,9 @@ class ShipManager:
                 rl_sub = source_level - tl
                 # DEPONS Ship.java:296-307 + valueIsNoData (value <= -9999):
                 # NODATA on depth/grain/salinity OR TL<=0 -> received level 0.
+                # (DEPONS evaluates NODATA at the SHIP cell; CENOP uses the porpoise
+                #  cell here — accepted SoA divergence. Porpoises require depth>=wmin
+                #  so depth<=0 cannot occur for a valid porpoise; tl<=0 guards bad geometry.)
                 nodata = (depths <= -9999.0) | (grains <= -9999.0) | (sal <= -9999.0)
                 rl_sub = np.where(nodata | (tl <= 0.0), 0.0, rl_sub)
             else:
@@ -531,7 +534,7 @@ class ShipManager:
                 rng = np.random.default_rng(np.random.SeedSequence([base_seed, tick, int(ship.id)]))
                 u_sub = rng.random(n)[idx]
 
-            vx, vy, prob, mag, react = ship.deterrence_model.deterrence_components(
+            vx, vy, _, _, react = ship.deterrence_model.deterrence_components(
                 rl_sub, d_sub, gdx_sub, gdy_sub, is_day, u_sub, tships)
 
             # Loudest gated ship wins each porpoise's slot (vector is 0 if it didn't react).

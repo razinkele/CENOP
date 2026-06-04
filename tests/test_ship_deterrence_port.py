@@ -235,8 +235,8 @@ class TestScalarOracleConsistency:
         finally:
             np.random.random = orig
         # Independently compute via kernel, using the SAME RL the implementation uses.
-        # (ShipNoise.get_source_level applies JOMOPANS length/speed/vhf corrections, so
-        #  RL != base_source_level - TL; derive it from the ship's own received-level method.)
+        # (ShipNoise.get_source_level returns the JOMOPANS band-12 SL when no override is set,
+        #  so RL != base_source_level - TL; derive it from the ship's own received-level method.)
         m = ShipDeterrenceModel()
         gdx = np.array([px - 50.0]); gdy = np.array([0.0])
         dist_m = np.array([2000.0])

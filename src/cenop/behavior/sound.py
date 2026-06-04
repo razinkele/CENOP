@@ -9,8 +9,11 @@ from __future__ import annotations
 
 import numpy as np
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import TYPE_CHECKING, Optional, Tuple
 from enum import Enum
+
+if TYPE_CHECKING:
+    from cenop.agents.ship import VesselClass
 
 
 class NoiseSourceType(Enum):
@@ -203,10 +206,10 @@ class ShipNoise:
     
     # Explicit source-level override (dB re 1 µPa @ 1m). When None, SL is computed
     # from the calibrated JOMOPANS model. Set by ships.json `impact` or by tests.
-    base_source_level: float = None
+    base_source_level: Optional[float] = None
 
     # Vessel class — drives the JOMOPANS source-level model (set from Ship.vessel_type).
-    vessel_class: object = None
+    vessel_class: "Optional[VesselClass]" = None
 
     # Vessel length (m) and speed (knots) — JOMOPANS inputs.
     length: float = 100.0

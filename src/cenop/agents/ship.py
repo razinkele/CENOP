@@ -406,14 +406,21 @@ class ShipManager:
         month: int = 1,
     ) -> Tuple[float, float, float]:
         """
-        Calculate aggregate deterrence from all ships.
-        
+        Calculate aggregate deterrence from all ships (scalar oracle path).
+
+        NOTE: NOT on the production tick path (Simulation.step uses
+        calculate_aggregate_deterrence_vectorized). This per-porpoise oracle
+        computes RL via get_received_level (simple alpha/beta TL only) and does
+        NOT honor weston_flux_percell, unlike the vectorized path and
+        Ship.calculate_deterrence. Acceptable because it is off the production
+        path; do not wire it in without reconciling the TL models first.
+
         Args:
             porpoise_x, porpoise_y: Porpoise position
             params: Simulation parameters
             is_day: True for daytime
             cell_size: Cell size in meters
-            
+
         Returns:
             (max_magnitude, total_dx, total_dy)
         """

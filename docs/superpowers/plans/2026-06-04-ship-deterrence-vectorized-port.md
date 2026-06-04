@@ -17,6 +17,12 @@
 - Task 4 red step now genuinely fails-first (tick-varies-draws) + a sequential-run reproducibility guard (no global-RNG cross-talk).
 - NODATA→RL=0 now also tests salinity and `TL≤0`; documented the intentional RNG-stream divergence; added u==prob / day-night / on-ship / NODATA edge tests and a pinned characterization snapshot; added baseline provenance.
 
+**Revised v3 after a second four-angle plan review (verified against code):**
+- Task 3 now also repairs the **two existing `test_integration.py` ship tests** (porpoises at 8–200 m + old model) that the 100 m floor / seeded-low-prob would turn red (Step 5c).
+- `test_scalar_matches_kernel` derived RL from raw `base_source_level`, but `ShipNoise.get_source_level` applies JOMOPANS length/speed/vhf corrections (~−11 dB) → false-fail; now uses `s.get_received_level(...)`.
+- NODATA depth test corrected `depths<=0` → `depths<=-9999` to match DEPONS `valueIsNoData` (avoids zeroing shallow-but-valid water); noted ship-cell-vs-porpoise-cell SoA divergence.
+- Fixed stale "two sites" text (→ three + JAX kernel) and the JAX-test snippet (`inputs["deter_dx"]`, not bare locals); hardened `test_tick_varies` with a no-births/deaths guard.
+
 ---
 
 ## Conventions
@@ -38,7 +44,8 @@
 - **Modify** `src/cenop/core/simulation.py`
   - Thread `base_seed` + `tick` into the vectorized ship call.
 - **Modify** `src/cenop/agents/population.py`
-  - `deter_strength`: L1 (`|dx|+|dy|`) → L2 (`hypot`), at both sites (~line 1033 and ~line 1236).
+  - `deter_strength`: L1 (`|dx|+|dy|`) → L2 (`hypot`), at **all three** sites (~1033, ~1236, ~2191-2192).
+- **Modify** `src/cenop/optimizations/jax_kernels.py` (`deter_strength` L1→L2 at ~line 371) and `tests/test_jax_tick.py` (its pinning assertion).
 - **Modify** `tests/test_deterrence.py`
   - Rewrite `test_no_normalization_vectorized_ship` (it pins the removed turbine-on-ships formula). Keep the turbine version.
 - **Create** `tests/test_ship_deterrence_port.py` — kernel, gate, vector, RNG, integration, characterization tests.
@@ -447,9 +454,12 @@ Replace the whole method body (the loop using `str_val`/`deter_probabilistic`/`p
                     params.beta_hat, params.alpha_hat,
                 )
                 rl_masked = source_level - tl
-                # DEPONS Ship.java:296-307: NODATA (depth/grain/salinity <= -9999 or depth<=0)
-                # OR TL<=0 -> received level 0.
-                nodata = (depths <= 0.0) | (grains <= -9999.0) | (sal <= -9999.0)
+                # DEPONS Ship.java:296-307 + valueIsNoData (value <= -9999):
+                # NODATA on depth/grain/salinity OR TL<=0 -> received level 0.
+                # (DEPONS evaluates NODATA at the SHIP cell; CENOP uses the porpoise
+                #  cell here — accepted SoA divergence. Porpoises require depth>=wmin
+                #  so depth<=0 cannot occur for a valid porpoise; tl<=0 guards bad geometry.)
+                nodata = (depths <= -9999.0) | (grains <= -9999.0) | (sal <= -9999.0)
                 rl_masked = np.where(nodata | (tl <= 0.0), 0.0, rl_masked)
             else:
                 tl = params.beta_hat * np.log10(d_masked) + params.alpha_hat * d_masked
@@ -507,15 +517,29 @@ Expected: no F401 for `response_probability_from_rl`.
 
 (Delete the old `params.deter_threshold = 0.0` / `assert dx[0] > 1.0` version. Note: Task 7 no longer needs to rewrite this test.)
 
+- [ ] **Step 5c: Fix the two existing integration tests that assume the old model**
+
+`tests/test_integration.py` has TWO tests that call `calculate_aggregate_deterrence_vectorized` and assert `np.any(total_deterrence > 0)` with porpoises 8–200 m from the ship (lines ~54-75 and ~163-219). After the 100 m floor + seeded low prob (~0.1), those go red and stay red. Fix BOTH in this commit: place at least one porpoise in `(100 m, 10 km)` and force a reaction. For each, change the porpoise array so the nearest in-range porpoise is e.g. 0.5 cells (200 m) and add `_force_u=0.0` to the call:
+
+```python
+        # porpoises within the ship deterrence band (>100 m, <=10 km)
+        porpoise_x = np.array([50.5, 51.0, 52.0, 55.0], dtype=np.float32)  # 200 m .. 2 km
+        porpoise_y = np.array([50.0, 50.0, 50.0, 50.0], dtype=np.float32)
+        dx, dy = manager.calculate_aggregate_deterrence_vectorized(
+            porpoise_x, porpoise_y, params, _force_u=0.0)
+```
+
+Run after editing: `... python3 -m pytest tests/test_integration.py -q` → PASS.
+
 - [ ] **Step 6: Run tests to verify they pass (incl. the rewritten superseded test — suite stays green)**
 
-Run: `... python3 -m pytest tests/test_ship_deterrence_port.py -k "VectorizedPath" tests/test_deterrence.py -q`
-Expected: PASS — the 6 VectorizedPath tests AND the rewritten `test_ship_vectorized_uses_unit_vector_times_magnitude` (no lingering `dx>1.0` assertion). Confirms this commit leaves the suite green.
+Run: `... python3 -m pytest tests/test_ship_deterrence_port.py -k "VectorizedPath" tests/test_deterrence.py tests/test_integration.py -q`
+Expected: PASS — the 6 VectorizedPath tests, the rewritten `test_ship_vectorized_uses_unit_vector_times_magnitude`, AND the two repaired `test_integration.py` ship tests. Confirms this commit leaves the suite green.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/cenop/agents/ship.py tests/test_deterrence.py tests/test_ship_deterrence_port.py
+git add src/cenop/agents/ship.py tests/test_deterrence.py tests/test_integration.py tests/test_ship_deterrence_port.py
 git commit -m "feat: vectorized ship deterrence uses DEPONS model (Tships, 10km cap, loudest-ship, seeded draws)"
 ```
 
@@ -554,6 +578,7 @@ class TestSimulationDeterminism:
         import numpy as np
         sim = self._sim_with_ship()
         pm = sim.population_manager
+        n0 = int(pm.active_mask.sum())
         snaps = []
         for _ in range(6):
             # freeze porpoises so deter_strength changes ONLY if the ship draw changes
@@ -561,6 +586,8 @@ class TestSimulationDeterminism:
             sim.step()
             pm.x[:] = pre_x; pm.y[:] = pre_y
             pm._recompute_cell_indices()
+            # guard: no births/deaths, so any deter_strength change is purely the draw
+            assert int(pm.active_mask.sum()) == n0
             snaps.append(pm.deter_strength.copy())
         # With tick threaded, at least two ticks must differ (draws vary by tick).
         assert any(not np.array_equal(snaps[0], s) for s in snaps[1:])
@@ -654,11 +681,13 @@ class TestScalarOracleConsistency:
             should, prob, mag, dkm = s.calculate_deterrence(px, py, p, is_day=True)
         finally:
             np.random.random = orig
-        # Independently compute via kernel
+        # Independently compute via kernel, using the SAME RL the implementation uses.
+        # (ShipNoise.get_source_level applies JOMOPANS length/speed/vhf corrections, so
+        #  RL != base_source_level - TL; derive it from the ship's own received-level method.)
         m = ShipDeterrenceModel()
         gdx = np.array([px - 50.0]); gdy = np.array([0.0])
-        dist_m = np.array([2000.0]); rl_simple = 180.0 - (p.beta_hat * np.log10(2000.0) + p.alpha_hat * 2000.0)
-        rl = np.array([max(0.0, rl_simple)])
+        dist_m = np.array([2000.0])
+        rl = np.array([max(0.0, s.get_received_level(px, py, p.alpha_hat, p.beta_hat, 400.0))])
         _, _, kprob, kmag, kreact = m.deterrence_components(
             rl, dist_m, gdx, gdy, True, np.array([0.0]), tships=p.deter_ships_min_db)
         assert should == bool(kreact[0])
@@ -761,7 +790,8 @@ git commit -m "refactor: scalar ship deterrence + aggregator share the kernel; s
 ## Task 6: Switch `deter_strength` from L1 to L2 (decision S1)
 
 **Files:**
-- Modify: `src/cenop/agents/population.py` (two sites: ~line 1033 and ~line 1236)
+- Modify: `src/cenop/agents/population.py` (three sites: ~1033, ~1236, ~2191-2192)
+- Modify: `src/cenop/optimizations/jax_kernels.py` (~line 371) and `tests/test_jax_tick.py` (pinning assertion)
 - Test: `tests/test_ship_deterrence_port.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -823,10 +853,12 @@ Expected: PASS.
 
 - [ ] **Step 5: Update the JAX test that pins L1, then run turbine + JAX tests**
 
-`tests/test_jax_tick.py::test_deter_strength_computed` (~line 689) computes `expected = np.abs(deter_dx) + np.abs(deter_dy)`. Change it to:
+`tests/test_jax_tick.py::test_deter_strength_computed` (~line 689) computes
+`expected = np.abs(np.asarray(inputs["deter_dx"])) + np.abs(np.asarray(inputs["deter_dy"]))`.
+Change it to (keep the exact local names used there — they reference `inputs[...]`, not bare locals):
 
 ```python
-        expected = np.hypot(deter_dx, deter_dy)
+        expected = np.hypot(np.asarray(inputs["deter_dx"]), np.asarray(inputs["deter_dy"]))
 ```
 
 Then run: `... python3 -m pytest tests/test_deterrence.py tests/test_depons_deterrence.py tests/test_jax_tick.py -q`

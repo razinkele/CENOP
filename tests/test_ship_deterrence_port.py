@@ -260,6 +260,111 @@ class TestScalarOracleConsistency:
         assert should == False  # 100 m is excluded (strict >)
 
 
+class TestEdgeCases:
+    def _model(self):
+        return ShipDeterrenceModel()
+
+    def test_u_equals_prob_does_not_react(self):
+        """Strict '<': u == prob must NOT react."""
+        m = self._model()
+        rl = np.array([130.0]); dist_m = np.array([1500.0])
+        p = float(m.calculate_deterrence_probability(130.0, 1.5, True))
+        vx, vy, prob, mag, react = m.deterrence_components(
+            rl, dist_m, np.array([3.0]), np.array([0.0]), True, np.array([p]), tships=80.0)
+        assert react[0] == False
+
+    def test_day_night_select_different_coefficients(self):
+        """Night uses different std/coeffs; pship_noise_night=0 makes prob noise-independent."""
+        m = self._model()
+        p_lo = m.calculate_deterrence_probability(90.0, 2.0, is_day=False)
+        p_hi = m.calculate_deterrence_probability(150.0, 2.0, is_day=False)
+        assert float(p_lo) == pytest.approx(float(p_hi))  # night prob independent of RL
+        # Day prob DOES depend on RL:
+        d_lo = m.calculate_deterrence_probability(90.0, 2.0, is_day=True)
+        d_hi = m.calculate_deterrence_probability(150.0, 2.0, is_day=True)
+        assert float(d_hi) > float(d_lo)
+
+    def test_porpoise_on_ship_gives_finite_zero_direction(self):
+        """dist clamps to 1 m; grid disp 0 -> zero (defined, finite) vector."""
+        m = self._model()
+        vx, vy, *_ = m.deterrence_components(
+            np.array([200.0]), np.array([1.0]), np.array([0.0]), np.array([0.0]),
+            True, np.array([0.0]), tships=80.0)
+        assert np.isfinite(vx[0]) and vx[0] == 0.0 and vy[0] == 0.0
+
+    def test_nodata_cell_gives_zero_rl_weston(self):
+        """WestonFlux path: a NODATA cell -> RL 0 -> no deterrence (DEPONS Ship.java:300)."""
+        import numpy as np
+        from cenop.agents.ship import Ship, ShipManager, VesselClass
+        from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        params = SimulationParameters(); params.weston_flux_percell = True
+        land = create_homogeneous_landscape(width=100, height=100, depth=20.0, food_prob=0.5)
+        land._depth[:] = -9999.0  # all NODATA depth
+        s = Ship(id=1, x=50.0, y=50.0, vessel_type=VesselClass.CARGO)
+        s._is_active = True; s.noise.base_source_level = 210.0
+        mgr = ShipManager([s]); mgr.enabled = True
+        px = np.array([50.5]); py = np.array([50.0])
+        dx, dy = mgr.calculate_aggregate_deterrence_vectorized(
+            px, py, params, cell_data=land, _force_u=0.0)
+        assert dx[0] == 0.0 and dy[0] == 0.0  # NODATA -> RL 0 -> gate fails even with forced react
+
+
+class TestIntegration:
+    def _sim(self, source_level):
+        import numpy as np
+        from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        from cenop.core.simulation import Simulation
+        from cenop.agents.ship import Ship, VesselClass
+        params = SimulationParameters(porpoise_count=200, sim_years=1, random_seed=42, ships_enabled=True)
+        land = create_homogeneous_landscape(width=100, height=100, depth=20.0, food_prob=0.5)
+        sim = Simulation(params=params, cell_data=land, seed=42); sim.initialize()
+        ship = Ship(id=1, x=50.0, y=50.0, vessel_type=VesselClass.CARGO)
+        ship._is_active = True; ship.noise.base_source_level = source_level
+        sim._ship_manager.ships = [ship]; sim._ship_manager.enabled = True
+        return sim
+
+    def test_loud_ship_deters_some_porpoises(self):
+        import numpy as np
+        sim = self._sim(source_level=210.0)
+        for _ in range(10):
+            sim.step()
+        assert float(np.max(sim.population_manager.deter_strength)) > 0.0
+
+    def test_quiet_ship_below_tships_does_not_deter(self):
+        import numpy as np
+        sim = self._sim(source_level=70.0)  # RL stays below Tships=80 everywhere
+        for _ in range(10):
+            sim.step()
+        assert float(np.max(sim.population_manager.deter_strength)) == 0.0
+
+
+class TestCharacterizationSnapshot:
+    """Pinned reference values for the kernel — locks the new behavior against drift."""
+
+    def test_kernel_snapshot_day(self):
+        import numpy as np
+        from cenop.behavior.sound import ShipDeterrenceModel
+        m = ShipDeterrenceModel()
+        rl = np.array([160.0, 100.0, 79.0])          # high / mid / below-Tships
+        dist_m = np.array([800.0, 3000.0, 500.0])
+        gdx = np.array([2.0, -7.5, 1.25]); gdy = np.array([0.0, 0.0, 0.0])
+        u = np.array([0.0, 0.0, 0.0])                # force reaction where gated
+        vx, vy, prob, mag, react = m.deterrence_components(
+            rl, dist_m, gdx, gdy, is_day=True, u_draw=u, tships=80.0)
+        # Sanity: 3rd porpoise gated out (RL 79 < 80).
+        assert react.tolist() == [True, True, False]
+        assert vx[0] > 0.0 and vx[1] < 0.0 and vx[2] == 0.0
+        # PINNED reference values (computed 2026-06-04):
+        np.testing.assert_allclose(vx, [0.0661084953394404, -0.054404584935397474, 0.0], rtol=1e-9)
+        np.testing.assert_allclose(
+            mag,
+            [26.443398135776157, 21.76183397415899, 21.221962101845463],
+            rtol=1e-9,
+        )
+
+
 class TestDeterStrengthL2:
     def test_deter_strength_is_euclidean(self):
         """DEPONS ShipDeterrence.java:75 uses sqrt(dx^2+dy^2), not |dx|+|dy|."""

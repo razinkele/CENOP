@@ -298,7 +298,7 @@ class ShipDeterrenceModel:
         spl: float,
         distance_km: float,
         is_day: bool = True
-    ) -> float:
+    ):
         """Calculate probability of deterrence response.
 
         Inputs are standardized using dataset means/SDs (Java Ship.java:349-398).
@@ -331,7 +331,7 @@ class ShipDeterrenceModel:
         spl: float,
         distance_km: float,
         is_day: bool = True
-    ) -> float:
+    ):
         """Calculate deterrence magnitude with standardized inputs."""
         if is_day:
             std = self.STD_MAG_DAY

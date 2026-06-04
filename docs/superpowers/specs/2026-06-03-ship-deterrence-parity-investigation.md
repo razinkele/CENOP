@@ -1,7 +1,7 @@
 # Ship-Deterrence Parity Investigation
 
 **Date:** 2026-06-03
-**Status:** Investigation / findings (no code changes)
+**Status:** RESOLVED (2026-06-04) — the vectorized production path now implements the DEPONS ship model. Fixed on branch `ship-deterrence-port` per plan `docs/superpowers/plans/2026-06-04-ship-deterrence-vectorized-port.md` (kernel + Tships gate + 10 km cap + loudest-ship-wins + L2 strength + seeded reaction draws; perf-optimized via in-range compaction). Verified: ship deterrence is now live on the Kattegat baseline (`deter_strength` nonzero, was 0). The "Recommended fix" below is implemented.
 **Trigger:** Kattegat ships reference baseline (`output/kattegat_ref_ships/`) showed
 `deter_strength = 0` for the entire run despite 637 active 170 dB ships overlapping
 2000 porpoises. Root-cause analysis revealed a structural parity gap.
@@ -110,7 +110,7 @@ The vectorized path is, in effect, the **turbine** deterrence model (`rl − 152
 - **`deter_max_distance` 50→1000 km change** is mis-wired for ships (should be capped at
   10 km); currently harmless only because the 152 dB gate fires first.
 
-## Recommended fix (for a follow-up plan, not done here)
+## Recommended fix — ✅ IMPLEMENTED (2026-06-04, branch `ship-deterrence-port`)
 
 Make the **vectorized** path implement the DEPONS ship model:
 

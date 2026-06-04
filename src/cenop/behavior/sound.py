@@ -353,6 +353,46 @@ class ShipDeterrenceModel:
             )
         return np.exp(np.clip(magnitude, -50.0, 50.0))
 
+    def deterrence_components(
+        self,
+        rl: np.ndarray,
+        dist_m: np.ndarray,
+        grid_dx: np.ndarray,
+        grid_dy: np.ndarray,
+        is_day: bool,
+        u_draw: np.ndarray,
+        tships: float,
+    ):
+        """DEPONS ship deterrence per porpoise for ONE ship (vectorized).
+
+        Args (all arrays shape (N,) except is_day/tships):
+            rl       received level (dB), already clamped >= 0
+            dist_m   porpoise<->ship distance (m), already clamped >= 1
+            grid_dx  (porpoise_x - ship_x) in GRID/cell units
+            grid_dy  (porpoise_y - ship_y) in GRID/cell units
+            u_draw   uniform(0,1) draws for the Bernoulli reaction
+            tships   minimum RL (dB) to react (deter_ships_min_db)
+
+        Returns (vx, vy, prob, mag, react) arrays. Vector is
+        DEPONS unit-vector (grid displacement / metre distance) x magnitude,
+        zeroed where the porpoise does not react. No deter_coeff (turbine-only).
+        """
+        rl = np.asarray(rl, dtype=np.float64)
+        dist_m = np.asarray(dist_m, dtype=np.float64)
+        dist_km = dist_m / 1000.0
+        prob = np.asarray(
+            self.calculate_deterrence_probability(rl, dist_km, is_day), dtype=np.float64
+        )
+        mag = np.asarray(
+            self.calculate_deterrence_magnitude(rl, dist_km, is_day), dtype=np.float64
+        )
+        gate = rl > tships
+        react = gate & (np.asarray(u_draw, dtype=np.float64) < prob)
+        eff_mag = np.where(react, mag, 0.0)
+        vx = (np.asarray(grid_dx, dtype=np.float64) / dist_m) * eff_mag
+        vy = (np.asarray(grid_dy, dtype=np.float64) / dist_m) * eff_mag
+        return vx, vy, prob, mag, react
+
 
 def response_probability_from_rl(
     received_level: float | np.ndarray,

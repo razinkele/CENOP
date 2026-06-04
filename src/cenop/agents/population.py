@@ -2715,7 +2715,7 @@ class PorpoisePopulation:
             behavioral_state = np.ones(self.count, dtype=np.int32)
 
         # Disturbance flag (boolean): whether deter strength exceeds a small threshold
-        is_disturbed = self.deter_strength > 0.1
+        is_disturbed = self.deter_strength > 0.01
 
         # Get depth at current position for debugging land-avoidance
         if self.landscape is not None and hasattr(self.landscape, '_depth'):

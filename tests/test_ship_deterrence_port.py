@@ -414,3 +414,19 @@ class TestVectorizedPerfRefactor:
         d2 = r2.calculate_aggregate_deterrence_vectorized(px, py, p, base_seed=3, tick=7)
         np.testing.assert_array_equal(d1[0], d2[0])
         np.testing.assert_array_equal(d1[1], d2[1])
+
+
+class TestIsDisturbedThreshold:
+    def test_ship_magnitude_reports_disturbed(self):
+        """is_disturbed must fire for ship-scale deterrence (~0.04), matching the
+        disturbance-memory threshold (>0.01), not the old >0.1."""
+        import numpy as np
+        from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        from cenop.agents.population import PorpoisePopulation
+        params = SimulationParameters(porpoise_count=1)
+        land = create_homogeneous_landscape(width=50, height=50, depth=20.0, food_prob=0.5)
+        pop = PorpoisePopulation(count=1, params=params, landscape=land)
+        pop.deter_strength[0] = 0.04
+        df = pop.to_dataframe()
+        assert bool(df["is_disturbed"].iloc[0]) is True

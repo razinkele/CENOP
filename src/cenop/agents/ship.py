@@ -23,7 +23,6 @@ from cenop.behavior.sound import (
     ShipNoise,
     ShipDeterrenceModel,
     calculate_received_level,
-    calculate_deterrence_vector,
 )
 from cenop.behavior.weston_flux import weston_flux_tl
 
@@ -318,11 +317,10 @@ class Ship(Agent):
         distance_m = np.sqrt(dx**2 + dy**2)
         distance_km = distance_m / 1000.0
         
-        # Check min/max distances
-        max_dist_km = min(10.0, params.deter_max_distance)  # Ship max is 10km
-        min_dist_km = params.deter_min_distance_ships
-        
-        if distance_km > max_dist_km or distance_km < min_dist_km:
+        # Distance gates — DEPONS Ship.java:220-222 (strict > at floor, <= at cap)
+        max_dist_m = min(MAX_DETER_DIST_M, params.deter_max_distance * 1000.0)
+        min_dist_m = params.deter_min_distance_ships * 1000.0
+        if not (distance_m > min_dist_m and distance_m <= max_dist_m):
             return (False, 0.0, 0.0, distance_km)
             
         # Calculate received level
@@ -357,37 +355,14 @@ class Ship(Agent):
         if spl <= tships:
             return (False, 0.0, 0.0, distance_km)
 
-        # Calculate deterrence probability
-        prob = self.deterrence_model.calculate_deterrence_probability(
-            spl, distance_km, is_day
-        )
-        
-        # Probabilistic response
-        should_deter = np.random.random() < prob
-        
-        if not should_deter:
-            return (False, prob, 0.0, distance_km)
-            
-        # Calculate deterrence magnitude
-        magnitude = self.deterrence_model.calculate_deterrence_magnitude(
-            spl, distance_km, is_day
-        )
-        
-        return (True, prob, magnitude, distance_km)
-        
-    def get_deterrence_vector(
-        self,
-        porpoise_x: float,
-        porpoise_y: float,
-        strength: float,
-        deter_coeff: float = 0.07
-    ) -> Tuple[float, float]:
-        """Calculate deterrence vector for a porpoise."""
-        return calculate_deterrence_vector(
-            porpoise_x, porpoise_y,
-            self.x, self.y,
-            strength, deter_coeff
-        )
+        rl = np.array([max(0.0, float(spl))], dtype=np.float64)
+        gdx = np.array([porpoise_x - self.x], dtype=np.float64)
+        gdy = np.array([porpoise_y - self.y], dtype=np.float64)
+        dm = np.array([max(distance_m, 1.0)], dtype=np.float64)
+        u = np.array([np.random.random()], dtype=np.float64)
+        _, _, prob, mag, react = self.deterrence_model.deterrence_components(
+            rl, dm, gdx, gdy, is_day, u, getattr(params, "deter_ships_min_db", 80.0))
+        return (bool(react[0]), float(prob[0]), float(mag[0]) if react[0] else 0.0, distance_km)
 
 
 class ShipManager:
@@ -442,30 +417,29 @@ class ShipManager:
         """
         if not self.enabled:
             return (0.0, 0.0, 0.0)
-            
-        max_magnitude = 0.0
-        total_dx = 0.0
-        total_dy = 0.0
-        
+        best_rl = -np.inf
+        best_dx = best_dy = best_mag = 0.0
+        max_dist_m = min(MAX_DETER_DIST_M, params.deter_max_distance * 1000.0)
+        min_dist_m = params.deter_min_distance_ships * 1000.0
+        tships = getattr(params, "deter_ships_min_db", 80.0)
         for ship in self.get_active_ships():
-            should_deter, _, magnitude, _ = ship.calculate_deterrence(
-                porpoise_x, porpoise_y, params, is_day, cell_size,
-                cell_data=cell_data, month=month,
-            )
-            
-            if should_deter and magnitude > 0:
-                dx, dy = ship.get_deterrence_vector(
-                    porpoise_x, porpoise_y,
-                    magnitude, params.deter_coeff
-                )
-                
-                if magnitude > max_magnitude:
-                    max_magnitude = magnitude
-                    
-                total_dx += dx
-                total_dy += dy
-                
-        return (max_magnitude, total_dx, total_dy)
+            gdx = porpoise_x - ship.x
+            gdy = porpoise_y - ship.y
+            dist_m = max(float(np.hypot(gdx * cell_size, gdy * cell_size)), 1.0)
+            if not (dist_m > min_dist_m and dist_m <= max_dist_m):
+                continue
+            # Compute RL ONCE; use the same value for selection and the kernel (no double-compute).
+            rl = max(0.0, ship.get_received_level(
+                porpoise_x, porpoise_y, params.alpha_hat, params.beta_hat, cell_size))
+            if rl <= best_rl:
+                continue
+            best_rl = rl
+            vx, vy, _, mag, react = ship.deterrence_model.deterrence_components(
+                np.array([rl]), np.array([dist_m]), np.array([gdx]), np.array([gdy]),
+                is_day, np.array([np.random.random()]), tships)
+            best_dx, best_dy = float(vx[0]), float(vy[0])
+            best_mag = float(mag[0]) if bool(react[0]) else 0.0
+        return (best_mag, best_dx, best_dy)
 
     def calculate_aggregate_deterrence_vectorized(
         self,

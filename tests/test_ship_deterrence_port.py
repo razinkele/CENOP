@@ -214,3 +214,47 @@ class TestSimulationDeterminism:
             s2.step()
         d2 = s2.population_manager.deter_strength.copy()
         np.testing.assert_array_equal(d1, d2)
+
+
+class TestScalarOracleConsistency:
+    def test_scalar_matches_kernel(self):
+        """Ship.calculate_deterrence must agree with the shared kernel for a fixed u."""
+        import numpy as np
+        from cenop.agents.ship import Ship, VesselClass
+        from cenop.behavior.sound import ShipDeterrenceModel
+        from cenop.parameters.simulation_params import SimulationParameters
+        p = SimulationParameters()
+        s = Ship(id=1, x=50.0, y=50.0, vessel_type=VesselClass.CARGO)
+        s._is_active = True; s.noise.base_source_level = 180.0
+        px, py = 50.0 + 2000.0 / 400.0, 50.0  # 2 km east
+        # Force u=0 by monkeypatching np.random in the scalar path
+        import cenop.agents.ship as shipmod
+        orig = np.random.random
+        np.random.random = lambda *a, **k: 0.0
+        try:
+            should, prob, mag, dkm = s.calculate_deterrence(px, py, p, is_day=True)
+        finally:
+            np.random.random = orig
+        # Independently compute via kernel, using the SAME RL the implementation uses.
+        # (ShipNoise.get_source_level applies JOMOPANS length/speed/vhf corrections, so
+        #  RL != base_source_level - TL; derive it from the ship's own received-level method.)
+        m = ShipDeterrenceModel()
+        gdx = np.array([px - 50.0]); gdy = np.array([0.0])
+        dist_m = np.array([2000.0])
+        rl = np.array([max(0.0, s.get_received_level(px, py, p.alpha_hat, p.beta_hat, 400.0))])
+        _, _, kprob, kmag, kreact = m.deterrence_components(
+            rl, dist_m, gdx, gdy, True, np.array([0.0]), tships=p.deter_ships_min_db)
+        assert should == bool(kreact[0])
+        assert prob == pytest.approx(float(kprob[0]))
+        assert mag == pytest.approx(float(kmag[0]))
+
+    def test_min_distance_boundary_strict(self):
+        """DEPONS uses strict '>' at the min-distance floor (Ship.java:220)."""
+        from cenop.agents.ship import Ship, VesselClass
+        from cenop.parameters.simulation_params import SimulationParameters
+        p = SimulationParameters()  # min = 0.1 km = 100 m
+        s = Ship(id=1, x=50.0, y=50.0, vessel_type=VesselClass.CARGO)
+        s._is_active = True; s.noise.base_source_level = 200.0
+        at_floor = 50.0 + 100.0 / 400.0   # exactly 100 m
+        should, *_ = s.calculate_deterrence(at_floor, 50.0, p, is_day=True)
+        assert should == False  # 100 m is excluded (strict >)

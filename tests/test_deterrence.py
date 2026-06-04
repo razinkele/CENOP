@@ -74,26 +74,19 @@ class TestTurbineDeterrenceVector:
         # With no normalization, the vector should encode distance
         assert dx[0] > 1.0, f"Vectorized dx should encode distance, got {dx[0]} (unit vector?)"
 
-    def test_no_normalization_vectorized_ship(self):
-        """ShipManager vectorized path should also use raw displacement."""
+    def test_ship_vectorized_uses_unit_vector_times_magnitude(self):
+        """Ships use DEPONS unit-vector x magnitude (NOT raw displacement x deter_coeff)."""
         from cenop.agents.ship import Ship, ShipManager, VesselClass
         from cenop.parameters.simulation_params import SimulationParameters
-
         params = SimulationParameters()
-        params.deter_coeff = 1.0
-        params.deter_threshold = 0.0
-        params.deter_probabilistic = False
-
-        s = Ship(id=0, x=50.0, y=50.0, vessel_type=VesselClass.CARGO)
-        s._is_active = True
-        mgr = ShipManager([s])
-        mgr.enabled = True
-
-        px = np.array([55.0])
-        py = np.array([50.0])
-        dx, dy = mgr.calculate_aggregate_deterrence_vectorized(px, py, params, cell_size=400.0)
-
-        assert dx[0] > 1.0, f"Ship vectorized dx should encode distance, got {dx[0]} (unit vector?)"
+        s = Ship(id=1, x=50.0, y=50.0, vessel_type=VesselClass.CARGO)
+        s._is_active = True; s.noise.base_source_level = 200.0
+        mgr = ShipManager([s]); mgr.enabled = True
+        px = np.array([50.0 + 2000.0 / 400.0]); py = np.array([50.0])  # 2 km east
+        dx, dy = mgr.calculate_aggregate_deterrence_vectorized(px, py, params, _force_u=0.0)
+        assert dx[0] != 0.0          # forced reaction -> non-zero
+        assert 0.0 < abs(dx[0]) < 5.0  # unit-vector x mag, NOT raw 5-cell displacement
+        assert dx[0] > 0.0           # pushed east, away from ship
 
 
 class TestTLParameterDefaults:

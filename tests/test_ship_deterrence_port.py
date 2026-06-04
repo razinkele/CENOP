@@ -75,3 +75,89 @@ class TestDeterrenceComponents:
         assert react[0] == False
         assert vx[0] == 0.0 and vy[0] == 0.0
         assert mag[0] > 0.0  # magnitude still computed, just not applied
+
+
+class TestVectorizedPath:
+    def _mgr_with_ship(self, sx=50.0, sy=50.0, sl=170.0):
+        from cenop.agents.ship import Ship, ShipManager, VesselClass
+        s = Ship(id=1, x=sx, y=sy, vessel_type=VesselClass.CARGO)
+        s._is_active = True
+        s.noise.base_source_level = sl
+        mgr = ShipManager([s]); mgr.enabled = True
+        return mgr, s
+
+    def _params(self):
+        from cenop.parameters.simulation_params import SimulationParameters
+        return SimulationParameters()
+
+    def test_10km_cap_boundary(self):
+        """Default deter_max_distance=1000 km, but ships are capped at 10 km."""
+        mgr, s = self._mgr_with_ship()
+        p = self._params()
+        near_x = np.array([50.0 + 9900.0 / 400.0]); y = np.array([50.0])
+        far_x = np.array([50.0 + 10100.0 / 400.0])
+        dxn, _ = mgr.calculate_aggregate_deterrence_vectorized(near_x, y, p, base_seed=1, tick=1)
+        dxf, _ = mgr.calculate_aggregate_deterrence_vectorized(far_x, y, p, base_seed=1, tick=1)
+        assert dxf[0] == 0.0
+
+    def test_deter_max_distance_tightens_cap(self):
+        mgr, s = self._mgr_with_ship()
+        p = self._params(); p.deter_max_distance = 5.0  # km -> cap = 5 km
+        x = np.array([50.0 + 6000.0 / 400.0]); y = np.array([50.0])  # 6 km
+        dx, _ = mgr.calculate_aggregate_deterrence_vectorized(x, y, p, base_seed=1, tick=1)
+        assert dx[0] == 0.0  # beyond 5 km cap
+
+    def test_min_distance_floor(self):
+        mgr, s = self._mgr_with_ship()
+        p = self._params()  # deter_min_distance_ships = 0.1 km = 100 m
+        x99 = np.array([50.0 + 99.0 / 400.0]); y = np.array([50.0])   # 99 m
+        dx99, _ = mgr.calculate_aggregate_deterrence_vectorized(x99, y, p, base_seed=1, tick=1)
+        assert dx99[0] == 0.0  # inside the 100 m floor -> excluded
+
+    def test_deter_coeff_does_not_affect_ship_vector(self):
+        """Ships must NOT use deter_coeff (turbine-only). _force_u=0 guarantees a reaction
+        (the DEPONS ship prob caps ~0.2, so seeded draws can't be relied on to react)."""
+        mgr, s = self._mgr_with_ship(sl=200.0)
+        x = np.array([50.0 + 2000.0 / 400.0]); y = np.array([50.0])  # 2 km
+        p1 = self._params(); p1.deter_coeff = 0.012
+        p2 = self._params(); p2.deter_coeff = 0.5
+        dx1, _ = mgr.calculate_aggregate_deterrence_vectorized(x, y, p1, _force_u=0.0)
+        dx2, _ = mgr.calculate_aggregate_deterrence_vectorized(x, y, p2, _force_u=0.0)
+        assert dx1[0] != 0.0                       # precondition: actually deterred (non-vacuous)
+        assert dx1[0] == pytest.approx(dx2[0])     # deter_coeff has no effect on ships
+
+    def test_loudest_ship_wins_not_sum(self):
+        """Two ships near one porpoise -> only the higher-RL ship contributes (DEPONS recordStep)."""
+        from cenop.agents.ship import Ship, ShipManager, VesselClass
+        p = self._params()
+        loud = Ship(id=1, x=48.0, y=50.0, vessel_type=VesselClass.CARGO); loud._is_active = True
+        loud.noise.base_source_level = 195.0
+        quiet = Ship(id=2, x=60.0, y=50.0, vessel_type=VesselClass.CARGO); quiet._is_active = True
+        quiet.noise.base_source_level = 175.0
+        px = np.array([50.0]); py = np.array([50.0])
+        mgr = ShipManager([loud, quiet]); mgr.enabled = True
+        mgr_loud = ShipManager([loud]); mgr_loud.enabled = True
+        mgr_quiet = ShipManager([quiet]); mgr_quiet.enabled = True
+        dx_both, _ = mgr.calculate_aggregate_deterrence_vectorized(px, py, p, _force_u=0.0)
+        dx_loud, _ = mgr_loud.calculate_aggregate_deterrence_vectorized(px, py, p, _force_u=0.0)
+        dx_quiet, _ = mgr_quiet.calculate_aggregate_deterrence_vectorized(px, py, p, _force_u=0.0)
+        assert dx_loud[0] != 0.0 and dx_quiet[0] != 0.0     # both would deter alone
+        assert dx_both[0] == pytest.approx(dx_loud[0])      # loudest wins...
+        assert dx_both[0] != pytest.approx(dx_loud[0] + dx_quiet[0])  # ...NOT a sum
+
+    def test_order_and_membership_invariance(self):
+        from cenop.agents.ship import Ship, ShipManager, VesselClass
+        p = self._params()
+        a = Ship(id=1, x=49.0, y=50.0, vessel_type=VesselClass.CARGO); a._is_active = True; a.noise.base_source_level = 195.0
+        b = Ship(id=2, x=51.0, y=50.0, vessel_type=VesselClass.CARGO); b._is_active = True; b.noise.base_source_level = 190.0
+        far = Ship(id=3, x=500.0, y=900.0, vessel_type=VesselClass.CARGO); far._is_active = True; far.noise.base_source_level = 195.0
+        px = np.array([50.0]); py = np.array([50.0])
+        ab = ShipManager([a, b]); ab.enabled = True
+        ba = ShipManager([b, a]); ba.enabled = True
+        abfar = ShipManager([a, b, far]); abfar.enabled = True
+        r_ab = ab.calculate_aggregate_deterrence_vectorized(px, py, p, _force_u=0.0)
+        r_ba = ba.calculate_aggregate_deterrence_vectorized(px, py, p, _force_u=0.0)
+        r_abfar = abfar.calculate_aggregate_deterrence_vectorized(px, py, p, _force_u=0.0)
+        assert r_ab[0][0] != 0.0                            # precondition: non-vacuous
+        assert r_ab[0][0] == pytest.approx(r_ba[0][0])      # order invariant
+        assert r_ab[0][0] == pytest.approx(r_abfar[0][0])   # far out-of-range ship has no effect

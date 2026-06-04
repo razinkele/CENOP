@@ -198,16 +198,14 @@ class TestShipDeterrenceIntegration:
         # Max deterrence at threshold 158: 175 - 158 = 17 dB margin
         # TL = 20*log10(d) => d = 10^(17/20) = ~7m
         # Need very close porpoises for ship deterrence to trigger
-        porpoise_x = np.array([50.02, 50.05, 50.1, 50.5], dtype=np.float32)  # Very close
-        porpoise_y = np.array([50.0, 50.0, 50.0, 50.0], dtype=np.float32)
-        
         params = SimulationParameters()
-        
-        # Calculate deterrence
+
+        # porpoises within the ship deterrence band (>100 m, <=10 km)
+        porpoise_x = np.array([50.5, 51.0, 52.0, 55.0], dtype=np.float32)  # 200 m .. 2 km
+        porpoise_y = np.array([50.0, 50.0, 50.0, 50.0], dtype=np.float32)
         dx, dy = manager.calculate_aggregate_deterrence_vectorized(
-            porpoise_x, porpoise_y, params, is_day=True, cell_size=400.0
-        )
-        
+            porpoise_x, porpoise_y, params, _force_u=0.0)
+
         print(f"Ship deterrence dx: {dx}")
         print(f"Ship deterrence dy: {dy}")
         

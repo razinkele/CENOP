@@ -24,7 +24,6 @@ from cenop.behavior.sound import (
     ShipDeterrenceModel,
     calculate_received_level,
     calculate_deterrence_vector,
-    response_probability_from_rl,
 )
 from cenop.behavior.weston_flux import weston_flux_tl
 
@@ -34,6 +33,10 @@ try:
     _NUMBA = True
 except ImportError:
     _NUMBA = False
+
+
+# DEPONS Ship.java:51 — ship deterrence is hard-capped at 10 km regardless of dmax_deter.
+MAX_DETER_DIST_M = 10_000.0
 
 
 def _compute_tl_percell(d_masked, depths, grain_sizes, salinities,
@@ -468,139 +471,102 @@ class ShipManager:
         self,
         porpoise_x: np.ndarray,
         porpoise_y: np.ndarray,
-        params: SimulationParameters,
+        params: "SimulationParameters",
         is_day: bool = True,
         cell_size: float = 400.0,
         cell_data=None,
         month: int = 1,
+        base_seed: int = 0,
+        tick: int = 0,
+        _force_u: Optional[float] = None,
     ) -> Tuple[np.ndarray, np.ndarray]:
+        """Aggregate DEPONS ship deterrence over active ships (loudest ship wins).
+
+        Per porpoise, keeps the contribution of the highest-received-level ship
+        (DEPONS ShipDeterrence.recordStep), not a sum. Reaction draws are seeded
+        per (base_seed, tick, ship.id) so results are invariant to ship order/count.
+
+        NOTE: per-ship SeedSequence draws preserve the marginal Bernoulli
+        probability but DELIBERATELY do not reproduce DEPONS' global-RNG draw
+        order (impossible under SoA). Only the reaction *rate* matches DEPONS.
+
+        _force_u (test-only): if set, every porpoise's reaction draw for every
+        ship is this constant instead of the seeded draw. The DEPONS ship-response
+        probability never approaches 1 (it caps ~0.2), so reaction-dependent
+        semantics (loudest-ship-wins, order invariance, no-deter_coeff) can only be
+        tested deterministically by forcing u (e.g. 0.0 = always react).
         """
-        Calculate aggregate deterrence vector from all ships for a population.
-        """
+        n = porpoise_x.shape[0]
+        total_dx = np.zeros(n, dtype=np.float64)
+        total_dy = np.zeros(n, dtype=np.float64)
         if not self.enabled:
-            zeros = np.zeros_like(porpoise_x)
-            return (zeros, zeros)
-            
-        total_dx = np.zeros_like(porpoise_x)
-        total_dy = np.zeros_like(porpoise_y)
-        
+            return (total_dx, total_dy)
         active_ships = self.get_active_ships()
         if not active_ships:
             return (total_dx, total_dy)
-            
-        max_dist_m = params.deter_max_distance * 1000.0
-        
-        for ship in active_ships:
-            # Check ship probability (if day/night dependent)
-            # Implemented in Ship.calculate_deterrence, but usually simpler here:
-            # Ships are generally always active if active, 
-            # BUT ShipDeterrenceModel uses probability to decide if a ping happens?
-            # Looking at original method: ship.calculate_deterrence
-            # It checks prob_response.
-            
-            # If the ship noise model is probabilistic, we might need to roll dice per porpoise
-            # or per ship-step. Usually per ship-step.
-            # Assuming deterministic propagation here for performance or 
-            # simplifying to mean impact.
-            
-            # 1. Distances
-            # ship.x is current position (updated by Ship.update)
-            dx_m = (porpoise_x - ship.x) * cell_size
-            dy_m = (porpoise_y - ship.y) * cell_size
-            dist_sq = dx_m**2 + dy_m**2
-            dist_m = np.sqrt(dist_sq)
-            
-            np.maximum(dist_m, 1.0, out=dist_m)
-            
-            # 2. Range Mask
-            in_range_mask = dist_m < max_dist_m
-            if not np.any(in_range_mask):
-                continue
-                
-            # 3. Source Level
-            source_level = ship.noise.get_source_level()
-            
-            # 4. Transmission Loss & Strength
-            d_masked = dist_m[in_range_mask]
-            if (
-                params.weston_flux_percell
-                and cell_data is not None
-                and getattr(cell_data, "_sediment", None) is not None
-            ):
-                # Per-cell WestonFlux: look up depth/sediment/salinity
-                masked_positions = np.column_stack((
-                    porpoise_x[in_range_mask],
-                    porpoise_y[in_range_mask],
-                ))
-                depths = cell_data.get_depths_vectorized(
-                    masked_positions
-                )
-                grain_sizes = cell_data.get_sediments_vectorized(
-                    masked_positions
-                )
-                salinities = cell_data.get_salinities_vectorized(
-                    masked_positions, month
-                )
-                temperature = params.weston_flux_default_temperature
 
-                # Per-porpoise TL with NODATA fallback
+        best_rl = np.full(n, -np.inf, dtype=np.float64)
+        min_dist_m = params.deter_min_distance_ships * 1000.0
+        max_dist_m = min(MAX_DETER_DIST_M, params.deter_max_distance * 1000.0)
+        tships = getattr(params, "deter_ships_min_db", 80.0)
+
+        for ship in active_ships:
+            grid_dx = porpoise_x - ship.x          # cell units
+            grid_dy = porpoise_y - ship.y
+            dist_m = np.hypot(grid_dx * cell_size, grid_dy * cell_size)
+            np.maximum(dist_m, 1.0, out=dist_m)
+
+            in_range = (dist_m > min_dist_m) & (dist_m <= max_dist_m)
+            if not np.any(in_range):
+                continue
+
+            # Received level (clamped >= 0; NODATA -> 0)
+            rl = np.zeros(n, dtype=np.float64)
+            d_masked = dist_m[in_range]
+            source_level = ship.noise.get_source_level()
+            if (params.weston_flux_percell and cell_data is not None
+                    and getattr(cell_data, "_sediment", None) is not None):
+                pos = np.column_stack((porpoise_x[in_range], porpoise_y[in_range]))
+                depths = cell_data.get_depths_vectorized(pos)
+                grains = cell_data.get_sediments_vectorized(pos)
+                sal = cell_data.get_salinities_vectorized(pos, month)
                 tl = _compute_tl_percell(
-                    d_masked, depths, grain_sizes, salinities,
-                    temperature, params.beta_hat, params.alpha_hat,
+                    d_masked, depths, grains, sal,
+                    params.weston_flux_default_temperature,
+                    params.beta_hat, params.alpha_hat,
                 )
+                rl_masked = source_level - tl
+                # DEPONS Ship.java:296-307 + valueIsNoData (value <= -9999):
+                # NODATA on depth/grain/salinity OR TL<=0 -> received level 0.
+                # (DEPONS evaluates NODATA at the SHIP cell; CENOP uses the porpoise
+                #  cell here — accepted SoA divergence. Porpoises require depth>=wmin
+                #  so depth<=0 cannot occur for a valid porpoise; tl<=0 guards bad geometry.)
+                nodata = (depths <= -9999.0) | (grains <= -9999.0) | (sal <= -9999.0)
+                rl_masked = np.where(nodata | (tl <= 0.0), 0.0, rl_masked)
             else:
-                # Simple formula (default, fully vectorized)
-                tl = (
-                    params.beta_hat * np.log10(d_masked)
-                    + params.alpha_hat * d_masked
-                )
-            rl = source_level - tl
-            str_val = rl - params.deter_threshold
-            
-            # Probabilistic deterrence: match scalar path behavior
-            # Roll per-ship to decide if this ship's ping deters this tick
-            prob_response = getattr(ship, 'prob_response', 1.0)
-            if prob_response < 1.0 and np.random.random() > prob_response:
-                continue
-            
-            deter_mask_local = str_val > 0
-            if not np.any(deter_mask_local):
-                continue
-            
-            # Probabilistic scaling
-            if params.deter_probabilistic:
-                p = response_probability_from_rl(
-                    rl, params.deter_threshold, params.deter_response_slope
-                )
+                tl = params.beta_hat * np.log10(d_masked) + params.alpha_hat * d_masked
+                rl_masked = source_level - tl
+            rl_masked = np.maximum(rl_masked, 0.0)
+            rl[in_range] = rl_masked
+
+            # Identity-seeded reaction draws (order/count invariant), or forced (tests)
+            if _force_u is not None:
+                u = np.full(n, float(_force_u), dtype=np.float64)
             else:
-                p = None
-            
-            # 5. Vectors
-            full_mask = np.zeros_like(in_range_mask)
-            full_mask[in_range_mask] = deter_mask_local
-            
-            # Apply p where appropriate
-            s_final = np.zeros_like(d_masked)
-            s_final[deter_mask_local] = str_val[deter_mask_local]
-            if p is not None:
-                p_full = np.zeros_like(d_masked)
-                p_full[:] = p
-                s_final = s_final * p_full
-            
-            # Map back to full mask arrays
-            # s_final corresponds to positions in d_masked (in_range_mask true positions)
-            # Build array aligned with full_mask
-            strength_full = np.zeros_like(dist_m)
-            strength_full[in_range_mask] = s_final
-            
-            s = strength_full[full_mask]
-            # DEPONS 3.2: raw displacement, NOT unit vector (Porpoise.java:1290-1292)
-            vec_x = dx_m[full_mask] * s * params.deter_coeff
-            vec_y = dy_m[full_mask] * s * params.deter_coeff
-            
-            total_dx[full_mask] += vec_x
-            total_dy[full_mask] += vec_y
-            
+                rng = np.random.default_rng(np.random.SeedSequence([base_seed, tick, int(ship.id)]))
+                u = rng.random(n)
+
+            # Each Ship owns a ShipDeterrenceModel (ship.py:172); ShipManager has none.
+            vx, vy, prob, mag, react = ship.deterrence_model.deterrence_components(
+                rl, dist_m, grid_dx, grid_dy, is_day, u, tships)
+
+            # Loudest gated ship wins this porpoise's slot (vector is 0 if it didn't react)
+            gated = in_range & (rl > tships)
+            wins = gated & (rl > best_rl)
+            best_rl = np.where(wins, rl, best_rl)
+            total_dx = np.where(wins, vx, total_dx)
+            total_dy = np.where(wins, vy, total_dy)
+
         return (total_dx, total_dy)
 
     def ambient_received_level_at_positions(

@@ -494,6 +494,14 @@ class TestShipJsonLoader:
         with pytest.raises(ValueError):
             _vessel_class_from_type("Submarine")
 
+    def test_none_or_empty_type_defaults_to_other(self):
+        from cenop.agents.ship import _vessel_class_from_type, VesselClass
+        # The loader passes `ship_data.get("type") or "Other"`, so None/"" -> "Other".
+        assert _vessel_class_from_type("Other") == VesselClass.OTHER
+        # And a simulated null-type ship_data dict resolves via the `or "Other"` guard:
+        ship_data = {"type": None}
+        assert _vessel_class_from_type(ship_data.get("type") or "Other") == VesselClass.OTHER
+
     def test_loader_reads_type_length_and_no_forced_impact(self):
         """Loader maps real type/length and does NOT force a 170 dB override when impact absent."""
         from cenop.agents.ship import ShipManager

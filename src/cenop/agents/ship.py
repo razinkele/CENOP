@@ -842,6 +842,8 @@ class ShipManager:
         self.ships = []
         for i, ship_data in enumerate(data.get("ships", [])):
             name = ship_data.get("name", f"ship_{i}")
+            if ship_data.get("survey"):
+                logger.debug("Ship %s: 'survey' field present but not modeled (ignored)", name)
             speed = ship_data.get("speed")          # ship-level override; None -> keep buoy speeds
             impact = ship_data.get("impact")        # explicit SL override; None -> JOMOPANS
             start_tick = ship_data.get("start", 0)
@@ -862,7 +864,7 @@ class ShipManager:
                 x = route.buoys[0].x
                 y = route.buoys[0].y
 
-            vessel_type = _vessel_class_from_type(ship_data.get("type", "Other"))
+            vessel_type = _vessel_class_from_type(ship_data.get("type") or "Other")
 
             ship = Ship(
                 id=i, x=x, y=y, heading=0.0, name=name,

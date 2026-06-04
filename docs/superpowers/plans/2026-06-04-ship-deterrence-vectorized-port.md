@@ -23,6 +23,12 @@
 - NODATA depth test corrected `depths<=0` → `depths<=-9999` to match DEPONS `valueIsNoData` (avoids zeroing shallow-but-valid water); noted ship-cell-vs-porpoise-cell SoA divergence.
 - Fixed stale "two sites" text (→ three + JAX kernel) and the JAX-test snippet (`inputs["deter_dx"]`, not bare locals); hardened `test_tick_varies` with a no-births/deaths guard.
 
+**Revised v4 after a third four-angle plan review (verified against code):**
+- **Step 5c corrected** — it wrongly targeted `test_turbine_manager_creates_deterrence_vectors` (a TURBINE test that's unaffected and whose method rejects `_force_u` → `TypeError`). Now targets ONLY the real ship test `test_ship_manager_creates_deterrence_vectors`.
+- Task 5 Step 3 edit boundary reworded to preserve the `spl` block (two separate edits, not one span that would delete it).
+- Task 6 Step 5 notes the JAX-test assertion is multi-line (no single-line exact match) + stale docstring.
+- Documented two downstream consequences (verified): ship deterrence now deactivates dispersal (DEPONS divergence — decision flagged) and `is_disturbed > 0.1` reporting flag is mis-scaled vs the ~0.05–0.07 ship `deter_strength`.
+
 ---
 
 ## Conventions
@@ -517,9 +523,9 @@ Expected: no F401 for `response_probability_from_rl`.
 
 (Delete the old `params.deter_threshold = 0.0` / `assert dx[0] > 1.0` version. Note: Task 7 no longer needs to rewrite this test.)
 
-- [ ] **Step 5c: Fix the two existing integration tests that assume the old model**
+- [ ] **Step 5c: Fix the ONE existing ship integration test that assumes the old model**
 
-`tests/test_integration.py` has TWO tests that call `calculate_aggregate_deterrence_vectorized` and assert `np.any(total_deterrence > 0)` with porpoises 8–200 m from the ship (lines ~54-75 and ~163-219). After the 100 m floor + seeded low prob (~0.1), those go red and stay red. Fix BOTH in this commit: place at least one porpoise in `(100 m, 10 km)` and force a reaction. For each, change the porpoise array so the nearest in-range porpoise is e.g. 0.5 cells (200 m) and add `_force_u=0.0` to the call:
+Exactly one `test_integration.py` test calls `ShipManager.calculate_aggregate_deterrence_vectorized` and breaks: `test_ship_manager_creates_deterrence_vectors` (~lines 163-219). Its porpoises are at 8/20/40/200 m; the 100 m floor culls the first three and the 200 m one won't reliably react under the seeded low prob (~0.1) → `np.any(total_deterrence > 0)` goes red. Reposition the porpoises into `(100 m, 10 km)` and force a reaction:
 
 ```python
         # porpoises within the ship deterrence band (>100 m, <=10 km)
@@ -528,6 +534,8 @@ Expected: no F401 for `response_probability_from_rl`.
         dx, dy = manager.calculate_aggregate_deterrence_vectorized(
             porpoise_x, porpoise_y, params, _force_u=0.0)
 ```
+
+**Do NOT touch `test_turbine_manager_creates_deterrence_vectors` (~lines 16-77).** That is a TURBINE test (`TurbineManager.calculate_aggregate_deterrence_vectorized`, which this plan does not modify and which does NOT accept `_force_u`); it stays green untouched. Adding `_force_u` there would raise `TypeError`.
 
 Run after editing: `... python3 -m pytest tests/test_integration.py -q` → PASS.
 
@@ -713,7 +721,7 @@ Expected: FAIL — scalar magnitude differs (until it uses the kernel) and/or th
 
 - [ ] **Step 3: Refactor `Ship.calculate_deterrence` onto the kernel**
 
-In `src/cenop/agents/ship.py`, replace the gate + probability/magnitude tail of `calculate_deterrence` (from the `max_dist_km = min(10.0, ...)` line through the final `return (True, prob, magnitude, distance_km)`) with a kernel call. Keep the RL computation (`spl`) you already have; then:
+In `src/cenop/agents/ship.py`, refactor `calculate_deterrence` in two separate edits, **keeping the existing `spl` (received-level) block intact** (it sits between the distance-gate and the tail): (a) replace the distance-gate lines (`max_dist_km = min(10.0, ...)` ... `if distance_km > max_dist_km or distance_km < min_dist_km: return ...`, ~lines 319-323); and (b) replace the probability/magnitude tail (`prob = self.deterrence_model...` through the final `return (True, prob, magnitude, distance_km)`, ~lines 356-373). Do NOT delete the `spl`-computation block (~lines 326-350). The replacements:
 
 ```python
         # Distance gates — DEPONS Ship.java:220-222 (strict > at floor, <= at cap)
@@ -855,7 +863,7 @@ Expected: PASS.
 
 `tests/test_jax_tick.py::test_deter_strength_computed` (~line 689) computes
 `expected = np.abs(np.asarray(inputs["deter_dx"])) + np.abs(np.asarray(inputs["deter_dy"]))`.
-Change it to (keep the exact local names used there — they reference `inputs[...]`, not bare locals):
+In the live file this expression is wrapped across ~3 lines (`np.abs(...) + np.abs(\n  np.asarray(...)\n)`) — match the actual multi-line form, don't expect a single-line exact match. Replace the whole expression with (and update the stale docstring at ~line 676 that says "|deter_dx| + |deter_dy|"):
 
 ```python
         expected = np.hypot(np.asarray(inputs["deter_dx"]), np.asarray(inputs["deter_dy"]))
@@ -1061,3 +1069,5 @@ git commit -m "test: regenerate Kattegat ship baseline with live DEPONS ship det
 - **`deter_strength`** is a single combined turbine+ship magnitude (no separate ship/turbine strengths, no `max()` stuck-detection, no `deterTime`/`deterDecay` persistence) — accepted divergence unless that persistence is later required. NOTE: with CENOP default `deter_time=0` this matches DEPONS; if `deter_time>0` is ever set, CENOP will diverge (no per-source decay/halving) — out of scope here.
 - **RNG-stream divergence (documented, intentional):** reaction draws are seeded per `(base_seed, tick, ship.id)` so they are invariant to ship order/count. This preserves the marginal Bernoulli probability but does NOT reproduce DEPONS' global-RNG draw order (impossible under SoA). Only the reaction *rate* matches DEPONS, not the exact per-agent draw sequence.
 - **Numba** kernel deferred; revisit only if Task 8 perf is inadequate.
+- **NEW behavioral consequence — ship deterrence now deactivates dispersal.** `population.py:3064` deactivates dispersal on the *combined* `deter_strength > 0` (`deterred = dispersing & (deter_strength > 0)`). DEPONS only deactivates dispersal for turbine/SoundSource deterrence (`Porpoise.java:1277`), NOT ship deterrence (`applyShipDeterrence` does not call `deactivate`). With ships now live, ship encounters will stop dispersal — a divergence from DEPONS that was dormant only because ship deterrence was previously ~0. **Decision (confirm during implementation):** accept as a consequence of the single combined `deter_strength` (document), OR gate line 3064 on turbine-only deterrence. Add a test pinning the chosen behavior.
+- **Threshold rescale check (reporting):** the ship vector magnitude is `mag/cell_size ≈ exp(~3)/400 ≈ 0.05–0.07` per axis, so `deter_strength` for a ship-deterred porpoise is ~0.05–0.07. The disturbance-memory threshold `deter_strength > 0.01` (`population.py:1630`, movement-affecting) still fires, but any `> 0.1` reporting flag (e.g. `is_disturbed` in `to_dataframe`) would never fire for ship-only deterrence. Audit `deter_strength` magic-number thresholds against the new scale during Task 7 and adjust/justify.

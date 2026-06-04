@@ -324,7 +324,7 @@ class ShipDeterrenceModel:
 
         linear_clipped = np.clip(linear, -500, 500)
         prob = 1.0 / (1.0 + np.exp(-linear_clipped))
-        return float(np.clip(prob, 0.0, 1.0))
+        return np.clip(prob, 0.0, 1.0)
         
     def calculate_deterrence_magnitude(
         self,
@@ -351,7 +351,7 @@ class ShipDeterrenceModel:
                 self.cship_dist_x_noise_night * ((spl - std['noise_mean']) / std['noise_sd']) *
                     ((distance_km - std['dist_mean']) / std['dist_sd'])
             )
-        return max(0.0, magnitude)
+        return np.exp(np.clip(magnitude, -50.0, 50.0))
 
 
 def response_probability_from_rl(

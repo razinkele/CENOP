@@ -1,25 +1,33 @@
 Kattegat ship-scenario reference baseline — PROVENANCE
 =======================================================
 
-Date generated:   2026-06-04
-Producing code:   branch ship-deterrence-port, commit d3b945d
-                  (DEPONS ship-deterrence vectorized port; see
-                   docs/superpowers/plans/2026-06-04-ship-deterrence-vectorized-port.md
-                   and docs/superpowers/specs/2026-06-03-ship-deterrence-parity-investigation.md)
+Date generated:   2026-06-05
+Producing code:   branch ship-deterrence-parity-r2, commit 8e198c1
+                  (Ship-Deterrence Parity Round 2; see
+                   docs/superpowers/plans/2026-06-04-ship-deterrence-parity-round2.md
+                   and docs/superpowers/specs/2026-06-04-ship-deterrence-parity-round2-design.md)
 Command:          python3 scripts/run_kattegat_reference.py --count 2000 --years 2 --seed 42 --ships
 Landscape:        data/Kattegat (600x1000 cells), 637 real ship routes from data/Kattegat/ships.json
 Seed:             42 (deterministic; DEPONS parameters.xml randomSeed is __NULL__)
 
-SUPERSEDES the prior baseline (commit 27824e1), which was generated BEFORE the
-ship-deterrence fix and showed deter_strength == 0 for the entire run because the
-production vectorized path applied the turbine deterrence model to ships.
+SUPERSEDES the prior baseline (commit 27824e1, then 7232419), which used a flat
+class-based ship source level (~170-175 dB for all ships) and let ship deterrence
+deactivate dispersal.
 
-This baseline reflects LIVE DEPONS ship deterrence (Tships=80 dB gate, 10 km cap,
-probabilistic pship_*/cship_* response, loudest-ship-wins, L2 deter_strength):
-  - 2 yr (34,560 ticks), N=2000, population stable (2000 -> 1998)
-  - 38,093 nonzero deter_strength records, max 0.0409
-    (the ~0.04 magnitude is < the 0.1 UI is_disturbed flag but > the 0.01
-     disturbance-memory threshold — see the threshold-audit note in the plan)
+This baseline reflects the Round-2 parity fixes:
+  - JOMOPANS per-vessel source level: ship SL now depends on the real vessel type,
+    length, and per-buoy speed read from ships.json (band 12). Realistic SLs are
+    lower than the old flat 170 dB for most classes, so fewer porpoises clear the
+    Tships=80 dB gate at range -> fewer deterrence events than the prior baseline.
+  - Turbine-only dispersal deactivation: ship deterrence no longer deactivates
+    dispersal (DEPONS deactivates only for turbine/sound-source deterrence). This
+    scenario has no turbines, so dispersal is unaffected by the ships here.
+  - is_disturbed reporting threshold lowered 0.1 -> 0.01 (captures ship deterrence).
+
+Run summary:
+  - 2 yr (34,560 ticks), N=2000, population stable (2000 -> 1996)
+  - 10,123 nonzero deter_strength records, max 0.0409
+    (compare: prior baseline had 38,093 nonzero at flat 170 dB SL)
 
 Committed files are the compact DEPONS-format outputs (Population.txt, Energy.txt,
 Mortality.txt) plus this PROVENANCE.txt. The heavy per-individual / per-event files

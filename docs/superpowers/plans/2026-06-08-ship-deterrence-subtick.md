@@ -26,6 +26,28 @@
 - `tests/test_ship_deterrence_port.py` — new test classes appended.
 - `output/kattegat_ref_ships/` — regenerated baseline (Task 5).
 
+**Per-task discipline:** each task appends ONLY its own test class(es) to
+`tests/test_ship_deterrence_port.py` before committing — do not paste all tasks' test
+classes up front, or an earlier task's commit would be red. `git add` only the files the
+task changed.
+
+---
+
+### Task 0: Create the working branch
+
+**Files:** none (git only).
+
+- [ ] **Step 1: Branch off CENOP-JASMINE**
+
+Confirm a clean tree on `CENOP-JASMINE` (HEAD should be `3363366` or later with the spec/plan commits), then create the feature branch:
+
+```bash
+git -C /home/razinka/cenjas/CENOP status --short
+git -C /home/razinka/cenjas/CENOP switch -c ship-deterrence-subtick CENOP-JASMINE
+```
+
+Expected: now on branch `ship-deterrence-subtick`. All subsequent commits land here.
+
 ---
 
 ### Task 1: Shared received-level helper (pure refactor)
@@ -166,30 +188,43 @@ class TestScalarAggregatorTL:
         return mgr, s
 
     def test_scalar_uses_weston_when_enabled(self):
-        """Scalar aggregator RL must use WestonFlux (per-cell) when enabled, not alpha/beta."""
+        """Scalar aggregator RL must use WestonFlux (per-cell) when enabled, NOT alpha/beta.
+
+        Non-vacuous: the WestonFlux RL and the alpha/beta RL both gate in and react here
+        (so 'dx != 0' alone cannot distinguish them). We assert the produced vector matches
+        the WestonFlux-derived reference and DIFFERS from the alpha/beta-derived reference.
+        At RED (scalar still uses alpha/beta) `dx_w != alphabeta_ref` fails."""
         import numpy as np
         from cenop.parameters.simulation_params import SimulationParameters
         from cenop.landscape.cell_data import create_homogeneous_landscape
         from cenop.agents.ship import _ship_received_level
+        from cenop.behavior.sound import ShipDeterrenceModel
         mgr, s = self._mgr()
         p = SimulationParameters(); p.weston_flux_percell = True
         land = create_homogeneous_landscape(width=100, height=100, depth=20.0, food_prob=0.5)
         px, py = 50.0 + 2000.0 / 400.0, 50.0
-        # Force a reaction so the path is non-vacuous.
         orig = np.random.random
-        np.random.random = lambda *a, **k: 0.0
+        np.random.random = lambda *a, **k: 0.0   # force reaction (u=0 < prob)
         try:
             mag_w, dx_w, dy_w = mgr.calculate_aggregate_deterrence(
                 px, py, p, is_day=True, cell_data=land, month=1)
         finally:
             np.random.random = orig
-        # Expected RL via the shared helper (WestonFlux) must drive a non-zero vector.
-        weston = True
-        dist_m = np.array([2000.0])
-        rl = _ship_received_level(s.noise.get_source_level(), dist_m,
-                                  np.array([px]), np.array([py]), p, land, 1, weston)
-        assert rl[0] > p.deter_ships_min_db        # precondition: gated in
-        assert dx_w != 0.0                         # scalar produced deterrence via WestonFlux
+        # Reference vectors from the two RL models (force react u=0):
+        m = ShipDeterrenceModel()
+        dist_m = np.array([2000.0]); gdx = np.array([px - 50.0]); gdy = np.array([0.0])
+        rl_w = _ship_received_level(s.noise.get_source_level(), dist_m,
+                                    np.array([px]), np.array([py]), p, land, 1, True)
+        rl_ab = _ship_received_level(s.noise.get_source_level(), dist_m,
+                                     np.array([px]), np.array([py]), p, None, 1, False)
+        assert rl_w[0] > p.deter_ships_min_db and rl_ab[0] > p.deter_ships_min_db  # both gated in
+        assert rl_w[0] != pytest.approx(rl_ab[0])                                  # models differ
+        vx_w = float(m.deterrence_components(rl_w, dist_m, gdx, gdy, True,
+                                             np.array([0.0]), p.deter_ships_min_db)[0][0])
+        vx_ab = float(m.deterrence_components(rl_ab, dist_m, gdx, gdy, True,
+                                              np.array([0.0]), p.deter_ships_min_db)[0][0])
+        assert dx_w == pytest.approx(vx_w)         # scalar used WestonFlux RL
+        assert dx_w != pytest.approx(vx_ab)        # ... NOT alpha/beta RL
 
     def test_scalar_without_celldata_uses_alpha_beta(self):
         """No cell_data -> alpha/beta TL (unchanged legacy behavior)."""
@@ -457,8 +492,12 @@ class TestSubTickInterpolation:
         mgr = ShipManager([A, B]); mgr.enabled = True
         dx, dy = mgr.calculate_aggregate_deterrence_vectorized(px, py, p, _force_u=0.0)
 
-        # Brute-force reference: per slot keep max-RL ship's vector, then sum.
+        # Brute-force reference (true oracle): apply BOTH gates the impl applies, keep the
+        # max-RL ship per slot, sum. No midpoint pre-cull (independent of the optimization).
+        from cenop.agents.ship import MAX_DETER_DIST_M
         cell = 400.0
+        min_m = p.deter_min_distance_ships * 1000.0
+        max_m = min(MAX_DETER_DIST_M, p.deter_max_distance * 1000.0)
         def slot_rl_vec(s, i):
             sub_x = s._prev_x + (s.x - s._prev_x) * i / 30.0
             sub_y = s._prev_y + (s.y - s._prev_y) * i / 30.0
@@ -468,26 +507,28 @@ class TestSubTickInterpolation:
                                 - (p.beta_hat*np.log10(dist_m[0]) + p.alpha_hat*dist_m[0])))
             vx, vy, _, _, _ = s.deterrence_model.deterrence_components(
                 np.array([rl]), dist_m, gdx, gdy, True, np.array([0.0]), p.deter_ships_min_db)
-            return rl, float(vx[0]), float(vy[0])
+            return rl, float(vx[0]), float(vy[0]), float(dist_m[0])
         exp_x = exp_y = 0.0; winners = set()
         for i in range(1, 31):
-            ra, vax, vay = slot_rl_vec(A, i)
-            rb, vbx, vby = slot_rl_vec(B, i)
-            if ra > p.deter_ships_min_db or rb > p.deter_ships_min_db:
-                if ra >= rb:
-                    exp_x += vax; exp_y += vay; winners.add(1)
-                else:
-                    exp_x += vbx; exp_y += vby; winners.add(2)
+            ra, vax, vay, da = slot_rl_vec(A, i)
+            rb, vbx, vby, db = slot_rl_vec(B, i)
+            a_ok = (min_m < da <= max_m) and ra > p.deter_ships_min_db
+            b_ok = (min_m < db <= max_m) and rb > p.deter_ships_min_db
+            # Lowest id wins ties (impl processes sorted by id, strict '>' keeps the
+            # first-processed; A has id=1 so 'ra >= rb' favors A consistently).
+            if a_ok and (not b_ok or ra >= rb):
+                exp_x += vax; exp_y += vay; winners.add(1)
+            elif b_ok:
+                exp_x += vbx; exp_y += vby; winners.add(2)
         assert winners == {1, 2}                    # both ships win some slots
         assert dx[0] == pytest.approx(exp_x)
         assert dy[0] == pytest.approx(exp_y)
 
     def test_gated_nonreacting_winner_contributes_zero(self):
-        """A gated ship that does NOT react stores a zero vector in its slots (DEPONS
-        recordStep keeps the max-RL step with deterX=0 when reactingOrNot=0). With a uniform
-        non-reacting draw the total is exactly zero even though every slot is gated in.
-        Combined with test_per_slot_max_rl_ship_wins (winner = max RL), this composes to the
-        DEPONS 'loud non-reacting ship occupies the slot, blocking a quieter one' behavior."""
+        """Characterization (passes at RED too): a gated ship that does NOT react stores a
+        zero vector (DEPONS recordStep keeps the max-RL step with deterX=0 when
+        reactingOrNot=0). With a uniform non-reacting draw the total is exactly zero even
+        though every slot is gated in."""
         import numpy as np
         from cenop.agents.ship import ShipManager
         p = self._params()
@@ -496,12 +537,86 @@ class TestSubTickInterpolation:
         mgr = ShipManager([loud]); mgr.enabled = True
         dx, dy = mgr.calculate_aggregate_deterrence_vectorized(px, py, p, _force_u=1.0)  # never react
         assert dx[0] == 0.0 and dy[0] == 0.0
+
+    def test_louder_ship_fully_blocks_quieter(self):
+        """Blocking (DEPONS recordStep): a ship with higher RL at every slot wins every slot,
+        so the quieter ship is fully blocked. The two-ship result equals the loud-only result
+        and is NOT their sum. Seeded draws (loud's own per-ship stream decides reactions)."""
+        import numpy as np
+        from cenop.agents.ship import ShipManager
+        p = self._params(); seed, tick = 7, 3
+        def loud(): return self._ship(1, 49.0, 50.0, sl=205.0)   # closer + louder -> higher RL
+        def quiet(): return self._ship(2, 45.0, 50.0, sl=185.0)  # farther + quieter, still gated
+        px = np.array([50.0]); py = np.array([50.0])
+        both = ShipManager([loud(), quiet()]); both.enabled = True
+        only_l = ShipManager([loud()]); only_l.enabled = True
+        only_q = ShipManager([quiet()]); only_q.enabled = True
+        b = both.calculate_aggregate_deterrence_vectorized(px, py, p, base_seed=seed, tick=tick)
+        l = only_l.calculate_aggregate_deterrence_vectorized(px, py, p, base_seed=seed, tick=tick)
+        q = only_q.calculate_aggregate_deterrence_vectorized(px, py, p, base_seed=seed, tick=tick)
+        np.testing.assert_array_equal(b[0], l[0])   # quiet fully blocked: both == loud-only
+        np.testing.assert_array_equal(b[1], l[1])
+        if q[0][0] != 0.0:                           # quiet would deter alone -> result is not a sum
+            assert b[0][0] != pytest.approx(l[0][0] + q[0][0])
+
+    def test_porpoise_count_invariance_subtick(self):
+        """Count/membership invariance (guards the (n, STEPS) draw layout): appending an
+        out-of-range porpoise must not change an in-range porpoise's vector. FAILS if the
+        draws are laid out (STEPS, n) instead of (n, STEPS)."""
+        import numpy as np
+        from cenop.agents.ship import ShipManager
+        p = self._params()
+        s = self._ship(1, 50.0, 50.0, prev=(45.0, 50.0), sl=205.0)  # moving ship
+        mgr = ShipManager([s]); mgr.enabled = True
+        px1 = np.array([52.0]); py1 = np.array([50.0])
+        d1 = mgr.calculate_aggregate_deterrence_vectorized(px1, py1, p, base_seed=4, tick=9)
+        px2 = np.array([52.0, 800.0]); py2 = np.array([50.0, 50.0])  # far porpoise appended
+        d2 = mgr.calculate_aggregate_deterrence_vectorized(px2, py2, p, base_seed=4, tick=9)
+        assert d2[0][0] == pytest.approx(d1[0][0])   # in-range porpoise unchanged by the far one
+        assert d2[1][0] == pytest.approx(d1[1][0])
+        assert d2[0][1] == 0.0 and d2[1][1] == 0.0   # far porpoise: no deterrence
+
+    def test_moving_ship_weston_subtick_matches_reference(self):
+        """Moving ship + WestonFlux: per-slot RL via WestonFlux at 30 DISTINCT positions,
+        summed, matches an unculled brute-force reference using _ship_received_level(weston=True)."""
+        import numpy as np
+        from cenop.agents.ship import ShipManager, _ship_received_level, MAX_DETER_DIST_M
+        from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        p = SimulationParameters(); p.weston_flux_percell = True
+        land = create_homogeneous_landscape(width=100, height=100, depth=20.0, food_prob=0.5)
+        s = self._ship(1, 60.0, 50.0, prev=(40.0, 50.0), sl=205.0)  # sweep east along y=50
+        mgr = ShipManager([s]); mgr.enabled = True
+        px = np.array([50.0]); py = np.array([55.0])
+        dx, dy = mgr.calculate_aggregate_deterrence_vectorized(
+            px, py, p, cell_data=land, month=1, _force_u=0.0)
+        cell = 400.0
+        min_m = p.deter_min_distance_ships * 1000.0
+        max_m = min(MAX_DETER_DIST_M, p.deter_max_distance * 1000.0)
+        exp_x = exp_y = 0.0
+        for i in range(1, 31):
+            sub_x = 40.0 + 20.0 * i / 30.0; sub_y = 50.0
+            gdx = np.array([px[0]-sub_x]); gdy = np.array([py[0]-sub_y])
+            d = np.array([max(float(np.hypot(gdx[0]*cell, gdy[0]*cell)), 1.0)])
+            if not (min_m < d[0] <= max_m):
+                continue
+            rl = _ship_received_level(s.noise.get_source_level(), d,
+                                      np.array([px[0]]), np.array([py[0]]), p, land, 1, True)
+            if rl[0] <= p.deter_ships_min_db:
+                continue
+            vx, vy, _, _, _ = s.deterrence_model.deterrence_components(
+                rl, d, gdx, gdy, True, np.array([0.0]), p.deter_ships_min_db)
+            exp_x += float(vx[0]); exp_y += float(vy[0])
+        assert exp_x != 0.0 or exp_y != 0.0          # non-vacuous
+        assert dx[0] == pytest.approx(exp_x)
+        assert dy[0] == pytest.approx(exp_y)
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Step 2: Run tests to verify the sub-tick behavior tests fail**
 
 Run: `micromamba run -n shiny python3 -m pytest tests/test_ship_deterrence_port.py::TestSubTickInterpolation -q`
-Expected: FAIL — the current single-position aggregator returns the single-slot vector (≈ 1× not 30×; no per-slot behavior).
+Expected: the SUB-TICK behavior tests FAIL — `test_stationary_ship_is_30x_single_position`, `test_moving_ship_sums_distinct_substep_vectors`, `test_substep_endpoints_exclude_start_include_end`, `test_per_slot_max_rl_ship_wins`, `test_moving_ship_weston_subtick_matches_reference` (the current single-position aggregator returns ≈1× the single-slot vector, no per-slot sum).
+The CHARACTERIZATION / GUARD tests PASS at RED — `test_gated_nonreacting_winner_contributes_zero`, `test_louder_ship_fully_blocks_quieter` (current loudest-ship-wins already gives both==loud-only), and `test_porpoise_count_invariance_subtick` (the current 1-D `rng.random(n)` is already count-invariant). They pin behavior that must be PRESERVED; their passing at RED is expected, not a problem.
 
 - [ ] **Step 3: Rewrite the vectorized aggregator**
 
@@ -534,7 +649,13 @@ Replace the entire body of `calculate_aggregate_deterrence_vectorized` (lines ~4
         weston = (params.weston_flux_percell and cell_data is not None
                   and getattr(cell_data, "_sediment", None) is not None)
 
-        for ship in active_ships:
+        # Process ships in ascending id order so the result is invariant to the input
+        # ship-list order, including on an exact RL tie (the strict `>` winner test below
+        # keeps the FIRST-processed ship, i.e. the lowest id, on a tie). This preserves
+        # this method's documented order/count invariance — without sorting, the
+        # per-ship (n, STEPS) reaction streams would make an exact-RL-tie winner (and hence
+        # the stream used) depend on list order.
+        for ship in sorted(active_ships, key=lambda s: int(s.id)):
             prev_x = getattr(ship, "_prev_x", ship.x)
             prev_y = getattr(ship, "_prev_y", ship.y)
             sub_x = prev_x + (ship.x - prev_x) * t_frac   # (STEPS,)
@@ -554,13 +675,18 @@ Replace the entire body of `calculate_aggregate_deterrence_vectorized` (lines ~4
                 continue
 
             source_level = ship.noise.get_source_level()
-            # Reaction draws: full (STEPS, n) stream seeded per (base_seed, tick, ship.id),
-            # indexed by GLOBAL porpoise index -> invariant to ship order/count. Only the
-            # marginal Bernoulli RATE matches DEPONS (global draw order is unreproducible).
+            # Reaction draws: PORPOISE-MAJOR (n, STEPS) stream seeded per
+            # (base_seed, tick, ship.id). Porpoise i's 30 slot-draws are the contiguous
+            # block u_all[i, :], so they depend ONLY on the global porpoise index i, not on
+            # the total count n -> invariant to ship order AND porpoise count/membership.
+            # (A (STEPS, n) layout would NOT be count-invariant: C-order interleaves
+            # porpoise i's draws at flat positions i, n+i, 2n+i, ... which shift with n.)
+            # Only the marginal Bernoulli RATE matches DEPONS (global draw order is
+            # unreproducible under SoA).
             if _force_u is None:
                 rng = np.random.default_rng(
                     np.random.SeedSequence([base_seed, tick, int(ship.id)]))
-                u_all = rng.random((STEPS, n))
+                u_all = rng.random((n, STEPS))
             else:
                 u_all = None
 
@@ -580,7 +706,7 @@ Replace the entire body of `calculate_aggregate_deterrence_vectorized` (lines ~4
                     source_level, d_k, porpoise_x[sub], porpoise_y[sub],
                     params, cell_data, month, weston)
                 if _force_u is None:
-                    u_k = u_all[k][sub]
+                    u_k = u_all[sub, k]
                 else:
                     u_k = np.full(sub.size, float(_force_u), dtype=np.float64)
                 vx, vy, _, _, _ = ship.deterrence_model.deterrence_components(
@@ -656,9 +782,17 @@ Note the SHA for the PROVENANCE file.
 - [ ] **Step 2: Regenerate the baseline**
 
 Run: `micromamba run -n shiny python3 scripts/run_kattegat_reference.py --count 2000 --years 2 --seed 42 --ships`
-Expected: completes; population remains stable (~2000); prints a nonzero `deter_strength` event count.
+Expected: completes; prints a nonzero `deter_strength` event count (was 10,123 in the prior baseline — expect MORE events/higher magnitudes now, since sub-tick integrates over the swept path).
 
-- [ ] **Step 3: Update PROVENANCE.txt**
+- [ ] **Step 3: Objective stability gate (do NOT skip)**
+
+Read the final population from `output/kattegat_ref_ships/Population.txt` (last row). The prior baseline ended ~1996 from 2000. Apply an explicit gate:
+- If the end-of-run population is within **[1800, 2050]** (i.e. within ~10% of the ~2000 start, no collapse/explosion), proceed.
+- If it is OUTSIDE that band, STOP — this signals the swept-path change is over- or under-deterring beyond expectation. Investigate (do not commit the new numbers as "the baseline"); re-open the algorithm before committing.
+
+Record the actual end population, nonzero `deter_strength` event count, and max `deter_strength` for the PROVENANCE file.
+
+- [ ] **Step 4: Update PROVENANCE.txt**
 
 Edit `output/kattegat_ref_ships/PROVENANCE.txt`: set the date to 2026-06-08, the producing commit to the Task-4 SHA, and add a paragraph:
 
@@ -671,9 +805,9 @@ higher than the single-end-of-tick-position prior baseline. Report the new nonze
 deter_strength event count and max below.
 ```
 
-Fill in the actual event count / max / population endpoints printed by Step 2.
+Fill in the actual event count / max / population endpoints recorded in Step 3.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add output/kattegat_ref_ships/
@@ -689,14 +823,20 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 **Spec coverage:**
 - §3.1 swept-path source → Task 3.
 - §4.1 `_prev` first-statement / post_init init → Task 3 (all three tests).
-- §4.2 sub-tick aggregation (i=1..30, per-slot max-RL, sum, gated-non-reacting blocks) → Task 4 (all tests).
-- §4.3 RNG `(30,n)` per-ship seed → Task 4 implementation + existing `test_seed_order_invariance_still_holds` / `test_tick_varies` cover invariance.
+- §4.2 sub-tick aggregation (i=1..30, per-slot max-RL, sum, gated-non-reacting blocks) → Task 4 (`test_per_slot_max_rl_ship_wins`, `test_gated_nonreacting_winner_contributes_zero`, `test_louder_ship_fully_blocks_quieter`).
+- §4.3 RNG per-ship seed → Task 4 uses a **porpoise-major `(n, STEPS)`** draw (count-invariant; see Task 4 Step 3 comment) + `test_porpoise_count_invariance_subtick`, `test_louder_ship_fully_blocks_quieter` (seeded), and existing `test_seed_order_invariance_still_holds` / `test_tick_varies`. Order invariance across ships is enforced by the `sorted(id)` processing in Task 4.
 - §4.4 shared RL helper + scalar TL fix → Tasks 1 & 2.
 - §5 test impact + baseline regen → Task 4 Steps 5-6, Task 5.
 - §6 files → matches File Structure.
 
 **Placeholder scan:** no TBD/TODO; every code step shows complete code; commands are exact.
 
-**Type/name consistency:** `_ship_received_level(source_level, dist_m, px, py, params, cell_data, month, weston)` signature identical across Tasks 1, 2, 4. `_prev_x/_prev_y` consistent across Tasks 3, 4. `STEPS=30`, `t_frac`, `best_rl/accum_dx/accum_dy` defined and used within Task 4. `deterrence_components(rl, dist_m, gdx, gdy, is_day, u, tships)` argument order matches existing usage.
+**Type/name consistency:** `_ship_received_level(source_level, dist_m, px, py, params, cell_data, month, weston)` signature identical across Tasks 1, 2, 4. `_prev_x/_prev_y` consistent across Tasks 3, 4. `STEPS=30`, `t_frac`, `best_rl/accum_dx/accum_dy` defined and used within Task 4. `u_all` is `(n, STEPS)` and indexed `u_all[sub, k]`. `deterrence_components(rl, dist_m, gdx, gdy, is_day, u, tships)` argument order matches existing usage.
 
 **Note on the perf pre-cull:** the midpoint candidate radius `max_dist + 0.5·seg_len` is a correct *superset* (any in-range porpoise at any slot is within `max_dist` of a segment point, hence within `max_dist + half_len` of the midpoint), so it cannot drop a porpoise that the brute-force reference includes — `test_per_slot_max_rl_ship_wins` and `test_moving_ship_sums_distinct_substep_vectors` validate the implementation against unculled reference loops.
+
+**Deliberate divergence from spec §5 "Revise" list:** spec §5 lists `test_kernel_snapshot_day` and `test_loudest_ship_wins_not_sum` under tests to revise. Verified unnecessary: `test_kernel_snapshot_day` exercises `ShipDeterrenceModel.deterrence_components` directly (not the aggregator), and `test_loudest_ship_wins_not_sum` asserts only equality/ratio invariants on stationary ships (`_prev==cur` → 30 identical slots → invariants preserved). Neither needs editing; the plan's "Test-impact note" governs.
+
+**Documented minor divergence (newly relevant under sub-tick):** `_ship_received_level` evaluates depth/grain/salinity (incl. NODATA) at the **porpoise** position, fixed across all 30 slots; DEPONS `calculateReceivedLevelFor` evaluates them at each **sub-step ship** position (which varies along the swept path). For a ship whose path crosses a NODATA cell mid-tick, DEPONS zeros only the affected slots while CENOP does not. This is an extension of the already-accepted "NODATA-at-porpoise-cell" SoA divergence (spec §3.1); magnitude is unchanged for homogeneous water and it is within the documented envelope. No code change required.
+
+**C1 fix (order-invariance under per-ship streams):** processing ships in `sorted(id)` order makes the exact-RL-tie winner — and thus the per-ship reaction stream used — independent of input list order, preserving the method's documented order/count invariance and keeping `test_seed_order_invariance_still_holds` green. The `(n, STEPS)` draw layout (not `(STEPS, n)`) preserves count invariance.

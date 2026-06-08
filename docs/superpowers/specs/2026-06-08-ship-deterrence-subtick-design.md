@@ -190,12 +190,26 @@ All new tests in `tests/test_ship_deterrence_port.py`.
   `prev == cur`, `_force_u` fixed) — confirms the shared helper + per-position kernel
   match across paths.
 
-**Revise (new sum-over-slots semantics):**
-- `test_kernel_snapshot_day` and any magnitude/snapshot assertions that assumed a single
-  draw → expected values become the slot-wise sum (recompute with `_force_u` or the
-  stationary 30× identity).
-- `test_loudest_ship_wins_not_sum` — re-verify: per-slot loudest still dominates, so
-  `dx_both ≈ dx_loud ≠ dx_loud + dx_quiet`; adjust magnitudes if needed.
+**Revise:** review confirmed NO existing test needs magnitude edits. The aggregator tests
+assert *invariants* (sign/zero/equality/ratio) and use stationary test ships
+(`_prev == cur` → 30 identical slots → invariants preserved). `test_kernel_snapshot_day`
+exercises `ShipDeterrenceModel.deterrence_components` directly (not the aggregator) and is
+unaffected; `test_loudest_ship_wins_not_sum` holds unchanged (per-slot loudest dominates so
+`dx_both ≈ dx_loud ≠ dx_loud + dx_quiet`). Any existing-test failure after the rewrite
+should be treated as a real regression, not rebaselined.
+
+**Determinism caveats (resolved in the plan):** (a) reaction draws use a **porpoise-major
+`(n, STEPS)`** layout so a porpoise's slot-draws depend only on its global index, not the
+total count (count/membership invariance); (b) ships are processed in `sorted(id)` order so
+an exact-RL-tie winner — and thus the per-ship stream used — is independent of input list
+order (preserves order invariance and `test_seed_order_invariance_still_holds`).
+
+**Minor divergence (newly relevant under sub-tick):** `_ship_received_level` evaluates
+depth/grain/salinity (incl. NODATA) at the **porpoise** position, fixed across all 30 slots,
+whereas DEPONS evaluates them at each **sub-step ship** position. For a ship crossing a
+NODATA cell mid-tick, DEPONS zeros only the affected slots; CENOP does not. This extends the
+already-accepted "NODATA-at-porpoise-cell" divergence (§3.1) and is within the documented
+envelope.
 
 **Regression:** full `tests/test_ship_deterrence_port.py`, `test_deterrence.py`,
 `test_weston_flux.py`, `test_integration.py` (unfiltered — do not let a `-k` filter

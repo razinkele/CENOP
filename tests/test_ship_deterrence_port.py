@@ -594,3 +594,40 @@ class TestTurbineOnlyDispersalJax:
         t = (np.array([0.0], dtype=np.float64), np.array([0.0], dtype=np.float64))
         pop.step(deterrence_vectors=d, turbine_deterrence_vectors=t)
         assert bool(pop.is_dispersing[0]) is True
+
+
+class TestSharedReceivedLevel:
+    def test_non_weston_uses_alpha_beta(self):
+        import numpy as np
+        from cenop.agents.ship import _ship_received_level
+        from cenop.parameters.simulation_params import SimulationParameters
+        p = SimulationParameters()
+        dist_m = np.array([2000.0])
+        px = np.array([50.0]); py = np.array([50.0])
+        rl = _ship_received_level(180.0, dist_m, px, py, p,
+                                  cell_data=None, month=1, weston=False)
+        expected = 180.0 - (p.beta_hat * np.log10(2000.0) + p.alpha_hat * 2000.0)
+        assert rl[0] == pytest.approx(max(0.0, expected))
+
+    def test_weston_nodata_gives_zero(self):
+        import numpy as np
+        from cenop.agents.ship import _ship_received_level
+        from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        p = SimulationParameters(); p.weston_flux_percell = True
+        land = create_homogeneous_landscape(width=100, height=100, depth=20.0, food_prob=0.5)
+        land._depth[:] = -9999.0  # all NODATA depth
+        dist_m = np.array([2000.0])
+        px = np.array([50.0]); py = np.array([50.0])
+        rl = _ship_received_level(210.0, dist_m, px, py, p,
+                                  cell_data=land, month=1, weston=True)
+        assert rl[0] == 0.0
+
+    def test_clamped_non_negative(self):
+        import numpy as np
+        from cenop.agents.ship import _ship_received_level
+        from cenop.parameters.simulation_params import SimulationParameters
+        p = SimulationParameters()
+        rl = _ship_received_level(10.0, np.array([9000.0]), np.array([0.0]),
+                                  np.array([0.0]), p, cell_data=None, month=1, weston=False)
+        assert rl[0] == 0.0

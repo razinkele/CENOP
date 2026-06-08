@@ -61,6 +61,35 @@ def _compute_tl_percell(d_masked, depths, grain_sizes, salinities,
 if _NUMBA:
     _compute_tl_percell = njit(cache=True)(_compute_tl_percell)
 
+
+def _ship_received_level(source_level, dist_m, px, py, params, cell_data, month, weston):
+    """Received level (dB, clamped >= 0) at the given porpoise positions for one ship.
+
+    WestonFlux per-cell when `weston`, else simple alpha/beta TL. NODATA on
+    depth/grain/salinity OR TL <= 0 -> RL 0 (DEPONS Ship.java:296-307 + valueIsNoData).
+    All array args are the in-range subset; `source_level` is a scalar. NODATA/depth are
+    evaluated at the PORPOISE position (an accepted SoA divergence; DEPONS uses the ship
+    cell).
+    """
+    if weston:
+        pos = np.column_stack((px, py))
+        depths = cell_data.get_depths_vectorized(pos)
+        grains = cell_data.get_sediments_vectorized(pos)
+        sal = cell_data.get_salinities_vectorized(pos, month)
+        tl = _compute_tl_percell(
+            dist_m, depths, grains, sal,
+            params.weston_flux_default_temperature,
+            params.beta_hat, params.alpha_hat,
+        )
+        rl = source_level - tl
+        nodata = (depths <= -9999.0) | (grains <= -9999.0) | (sal <= -9999.0)
+        rl = np.where(nodata | (tl <= 0.0), 0.0, rl)
+    else:
+        tl = params.beta_hat * np.log10(dist_m) + params.alpha_hat * dist_m
+        rl = source_level - tl
+    return np.maximum(rl, 0.0)
+
+
 if TYPE_CHECKING:
     from cenop.parameters.simulation_params import SimulationParameters
     from cenop.landscape.cell_data import CellData
@@ -510,28 +539,9 @@ class ShipManager:
             gdx_sub = grid_dx[idx]
             gdy_sub = grid_dy[idx]
             source_level = ship.noise.get_source_level()
-            if weston:
-                pos = np.column_stack((porpoise_x[idx], porpoise_y[idx]))
-                depths = cell_data.get_depths_vectorized(pos)
-                grains = cell_data.get_sediments_vectorized(pos)
-                sal = cell_data.get_salinities_vectorized(pos, month)
-                tl = _compute_tl_percell(
-                    d_sub, depths, grains, sal,
-                    params.weston_flux_default_temperature,
-                    params.beta_hat, params.alpha_hat,
-                )
-                rl_sub = source_level - tl
-                # DEPONS Ship.java:296-307 + valueIsNoData (value <= -9999):
-                # NODATA on depth/grain/salinity OR TL<=0 -> received level 0.
-                # (DEPONS evaluates NODATA at the SHIP cell; CENOP uses the porpoise
-                #  cell here — accepted SoA divergence. Porpoises require depth>=wmin
-                #  so depth<=0 cannot occur for a valid porpoise; tl<=0 guards bad geometry.)
-                nodata = (depths <= -9999.0) | (grains <= -9999.0) | (sal <= -9999.0)
-                rl_sub = np.where(nodata | (tl <= 0.0), 0.0, rl_sub)
-            else:
-                tl = params.beta_hat * np.log10(d_sub) + params.alpha_hat * d_sub
-                rl_sub = source_level - tl
-            rl_sub = np.maximum(rl_sub, 0.0)
+            rl_sub = _ship_received_level(
+                source_level, d_sub, porpoise_x[idx], porpoise_y[idx],
+                params, cell_data, month, weston)
 
             # Reaction draws: the full-N rng stream indexed by GLOBAL porpoise index keeps
             # each (ship, porpoise) draw invariant to ship order/count; then subset by idx.

@@ -941,3 +941,53 @@ class TestSubTickInterpolation:
         assert exp_x != 0.0 or exp_y != 0.0          # non-vacuous
         assert dx[0] == pytest.approx(exp_x)
         assert dy[0] == pytest.approx(exp_y)
+
+    def test_vectorized_matches_bruteforce_multi(self):
+        """Multi-ship, multi-porpoise, mixed-range, seeded: aggregator matches an independent
+        brute-force per-(porpoise,slot,ship) reference (max-RL ship wins, lowest id on tie,
+        winner's own per-ship draw decides reacting, sum over 30 slots)."""
+        import numpy as np
+        from cenop.agents.ship import ShipManager, MAX_DETER_DIST_M
+        p = self._params(); seed, tick = 13, 6
+        ships = [
+            self._ship(1, 52.0, 50.0, prev=(48.0, 50.0), sl=200.0),
+            self._ship(2, 49.0, 53.0, prev=(49.0, 47.0), sl=195.0),
+            self._ship(3, 300.0, 300.0, sl=205.0),  # far -> out of range for all
+        ]
+        px = np.array([50.0, 51.0, 47.0, 500.0])     # last is far out of range
+        py = np.array([50.0, 49.0, 52.0, 500.0])
+        mgr = ShipManager(list(ships)); mgr.enabled = True
+        dx, dy = mgr.calculate_aggregate_deterrence_vectorized(
+            px, py, p, base_seed=seed, tick=tick)
+        cell = 400.0
+        min_m = p.deter_min_distance_ships * 1000.0
+        max_m = min(MAX_DETER_DIST_M, p.deter_max_distance * 1000.0)
+        n = px.shape[0]
+        draws = {}
+        for s in ships:
+            rng = np.random.default_rng(np.random.SeedSequence([seed, tick, int(s.id)]))
+            draws[int(s.id)] = rng.random((n, 30))
+        exp_x = np.zeros(n); exp_y = np.zeros(n)
+        for pi in range(n):
+            for k in range(1, 31):
+                best = -np.inf; bvx = bvy = 0.0
+                for s in sorted(ships, key=lambda z: int(z.id)):
+                    sx = s._prev_x + (s.x - s._prev_x) * k / 30.0
+                    sy = s._prev_y + (s.y - s._prev_y) * k / 30.0
+                    gdx = np.array([px[pi] - sx]); gdy = np.array([py[pi] - sy])
+                    d = np.array([max(float(np.hypot(gdx[0]*cell, gdy[0]*cell)), 1.0)])
+                    if not (min_m < d[0] <= max_m):
+                        continue
+                    rl = max(0.0, float(s.noise.get_source_level()
+                                        - (p.beta_hat*np.log10(d[0]) + p.alpha_hat*d[0])))
+                    if not (rl > p.deter_ships_min_db):
+                        continue
+                    if rl > best:   # strict: first-processed (lowest id) keeps ties
+                        u = np.array([draws[int(s.id)][pi, k-1]])
+                        vx, vy, _, _, _ = s.deterrence_model.deterrence_components(
+                            np.array([rl]), d, gdx, gdy, True, u, p.deter_ships_min_db)
+                        best = rl; bvx = float(vx[0]); bvy = float(vy[0])
+                exp_x[pi] += bvx; exp_y[pi] += bvy
+        np.testing.assert_allclose(dx, exp_x, rtol=1e-9, atol=1e-12)
+        np.testing.assert_allclose(dy, exp_y, rtol=1e-9, atol=1e-12)
+        assert np.any(exp_x != 0.0) or np.any(exp_y != 0.0)   # non-vacuous

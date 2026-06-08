@@ -593,32 +593,35 @@ class ShipManager:
 
             px_c = porpoise_x[cand]
             py_c = porpoise_y[cand]
-            for k in range(STEPS):
-                gdx = px_c - sub_x[k]
-                gdy = py_c - sub_y[k]
-                dist_m = np.hypot(gdx * cell_size, gdy * cell_size)
-                np.maximum(dist_m, 1.0, out=dist_m)
-                inr = (dist_m > min_dist_m) & (dist_m <= max_dist_m)
-                if not inr.any():
-                    continue
-                sub = cand[inr]                # global porpoise indices in range at slot k
-                d_k = dist_m[inr]
-                rl_k = _ship_received_level(
-                    source_level, d_k, porpoise_x[sub], porpoise_y[sub],
-                    params, cell_data, month, weston)
-                if _force_u is None:
-                    u_k = u_all[sub, k]
-                else:
-                    u_k = np.full(sub.size, float(_force_u), dtype=np.float64)
-                vx, vy, _, _, _ = ship.deterrence_model.deterrence_components(
-                    rl_k, d_k, gdx[inr], gdy[inr], is_day, u_k, tships)
-                # Loudest gated ship wins this slot; its vector is 0 if it did not react.
-                gated = rl_k > tships
-                wins = gated & (rl_k > best_rl[sub, k])
-                sel = sub[wins]
-                best_rl[sel, k] = rl_k[wins]
-                accum_dx[sel, k] = vx[wins]
-                accum_dy[sel, k] = vy[wins]
+            m = cand.size
+            # Vectorize over all STEPS sub-steps at once (replaces the per-slot Python loop).
+            gdx = px_c[:, None] - sub_x[None, :]          # (m, STEPS)
+            gdy = py_c[:, None] - sub_y[None, :]
+            dist_m = np.hypot(gdx * cell_size, gdy * cell_size)
+            np.maximum(dist_m, 1.0, out=dist_m)
+            # RL per (porpoise, slot): tile porpoise positions across slots (row-major) so the
+            # shared helper's per-cell WestonFlux lookups stay correct; reshape back to (m, STEPS).
+            px_flat = np.repeat(px_c, STEPS)
+            py_flat = np.repeat(py_c, STEPS)
+            rl = _ship_received_level(
+                source_level, dist_m.ravel(), px_flat, py_flat,
+                params, cell_data, month, weston).reshape(m, STEPS)
+            if _force_u is None:
+                u_slab = u_all[cand, :]                   # (m, STEPS), porpoise-major rows
+            else:
+                u_slab = np.full((m, STEPS), float(_force_u), dtype=np.float64)
+            vx, vy, _, _, _ = ship.deterrence_model.deterrence_components(
+                rl.ravel(), dist_m.ravel(), gdx.ravel(), gdy.ravel(),
+                is_day, u_slab.ravel(), tships)
+            vx = vx.reshape(m, STEPS); vy = vy.reshape(m, STEPS)
+            # In-range + Tships gate; loudest gated ship wins each (porpoise, slot); its vector
+            # is 0 if it did not react. Slots a ship does not win keep the incumbent value.
+            in_range = (dist_m > min_dist_m) & (dist_m <= max_dist_m)
+            cur_best = best_rl[cand, :]
+            wins = in_range & (rl > tships) & (rl > cur_best)
+            best_rl[cand, :] = np.where(wins, rl, cur_best)
+            accum_dx[cand, :] = np.where(wins, vx, accum_dx[cand, :])
+            accum_dy[cand, :] = np.where(wins, vy, accum_dy[cand, :])
 
         total_dx = accum_dx.sum(axis=1)
         total_dy = accum_dy.sum(axis=1)

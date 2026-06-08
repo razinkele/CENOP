@@ -210,6 +210,8 @@ class Ship(Agent):
             length=self.vessel_length,
             speed=self.current_speed,
         )
+        self._prev_x = self.x
+        self._prev_y = self.y
     
     def is_active(self, tick: Optional[int] = None) -> bool:
         """Check if ship is present at given tick."""
@@ -220,10 +222,13 @@ class Ship(Agent):
     def update(self, current_tick: int) -> None:
         """
         Update ship position and status for current tick.
-        
+
         Args:
             current_tick: Current simulation tick
         """
+        # Start-of-tick position for sub-tick swept-path deterrence (set before any
+        # early return so paused/inactive ships keep prev == current).
+        self._prev_x, self._prev_y = self.x, self.y
         # Check if active
         self._is_active = self.tick_start <= current_tick < self.tick_end
         

@@ -702,3 +702,28 @@ class TestScalarAggregatorTL:
             rl, np.array([2000.0]), np.array([px - 50.0]), np.array([0.0]),
             True, np.array([0.0]), p.deter_ships_min_db)[0][0])
         assert dx == pytest.approx(vx_ref)        # matches alpha/beta reference exactly
+
+
+class TestShipPrevPosition:
+    def test_post_init_sets_prev_to_initial(self):
+        from cenop.agents.ship import Ship, VesselClass
+        s = Ship(id=0, x=7.0, y=9.0, vessel_type=VesselClass.CARGO)
+        assert s._prev_x == 7.0 and s._prev_y == 9.0
+
+    def test_update_records_pre_move_position(self):
+        from cenop.agents.ship import Ship, Route, Buoy, VesselClass
+        route = Route(buoys=[Buoy(x=0.0, y=0.0, speed=10.0),
+                             Buoy(x=100.0, y=0.0, speed=10.0)])
+        s = Ship(id=1, x=0.0, y=0.0, route=route, vessel_type=VesselClass.CARGO)
+        s.tick_start = 0; s.tick_end = 100
+        s.update(1)
+        assert (s._prev_x, s._prev_y) == (0.0, 0.0)   # start-of-tick position
+        assert s.x != 0.0                              # moved toward the next buoy
+
+    def test_update_inactive_leaves_prev_equal_current(self):
+        from cenop.agents.ship import Ship, VesselClass
+        s = Ship(id=1, x=5.0, y=5.0, vessel_type=VesselClass.CARGO)
+        s.tick_start = 10; s.tick_end = 20   # inactive at tick 1
+        s.update(1)
+        assert (s._prev_x, s._prev_y) == (5.0, 5.0)
+        assert (s.x, s.y) == (5.0, 5.0)

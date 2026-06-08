@@ -631,3 +631,74 @@ class TestSharedReceivedLevel:
         rl = _ship_received_level(10.0, np.array([9000.0]), np.array([0.0]),
                                   np.array([0.0]), p, cell_data=None, month=1, weston=False)
         assert rl[0] == 0.0
+
+
+class TestScalarAggregatorTL:
+    def _mgr(self, sl=205.0):
+        from cenop.agents.ship import Ship, ShipManager, VesselClass
+        s = Ship(id=1, x=50.0, y=50.0, vessel_type=VesselClass.CARGO)
+        s._is_active = True; s.noise.base_source_level = sl
+        mgr = ShipManager([s]); mgr.enabled = True
+        return mgr, s
+
+    def test_scalar_uses_weston_when_enabled(self):
+        """Scalar aggregator RL must use WestonFlux (per-cell) when enabled, NOT alpha/beta.
+
+        Non-vacuous: the WestonFlux RL and the alpha/beta RL both gate in and react here
+        (so 'dx != 0' alone cannot distinguish them). We assert the produced vector matches
+        the WestonFlux-derived reference and DIFFERS from the alpha/beta-derived reference.
+        At RED (scalar still uses alpha/beta) `dx_w != alphabeta_ref` fails."""
+        import numpy as np
+        from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        from cenop.agents.ship import _ship_received_level
+        from cenop.behavior.sound import ShipDeterrenceModel
+        mgr, s = self._mgr()
+        p = SimulationParameters(); p.weston_flux_percell = True
+        land = create_homogeneous_landscape(width=100, height=100, depth=20.0, food_prob=0.5)
+        px, py = 50.0 + 2000.0 / 400.0, 50.0
+        orig = np.random.random
+        np.random.random = lambda *a, **k: 0.0   # force reaction (u=0 < prob)
+        try:
+            mag_w, dx_w, dy_w = mgr.calculate_aggregate_deterrence(
+                px, py, p, is_day=True, cell_data=land, month=1)
+        finally:
+            np.random.random = orig
+        # Reference vectors from the two RL models (force react u=0):
+        m = ShipDeterrenceModel()
+        dist_m = np.array([2000.0]); gdx = np.array([px - 50.0]); gdy = np.array([0.0])
+        rl_w = _ship_received_level(s.noise.get_source_level(), dist_m,
+                                    np.array([px]), np.array([py]), p, land, 1, True)
+        rl_ab = _ship_received_level(s.noise.get_source_level(), dist_m,
+                                     np.array([px]), np.array([py]), p, None, 1, False)
+        assert rl_w[0] > p.deter_ships_min_db and rl_ab[0] > p.deter_ships_min_db  # both gated in
+        assert rl_w[0] != pytest.approx(rl_ab[0])                                  # models differ
+        vx_w = float(m.deterrence_components(rl_w, dist_m, gdx, gdy, True,
+                                             np.array([0.0]), p.deter_ships_min_db)[0][0])
+        vx_ab = float(m.deterrence_components(rl_ab, dist_m, gdx, gdy, True,
+                                              np.array([0.0]), p.deter_ships_min_db)[0][0])
+        assert dx_w == pytest.approx(vx_w)         # scalar used WestonFlux RL
+        assert dx_w != pytest.approx(vx_ab)        # ... NOT alpha/beta RL
+
+    def test_scalar_without_celldata_uses_alpha_beta(self):
+        """No cell_data -> alpha/beta TL (unchanged legacy behavior)."""
+        import numpy as np
+        from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.agents.ship import _ship_received_level
+        mgr, s = self._mgr()
+        p = SimulationParameters()
+        px, py = 50.0 + 2000.0 / 400.0, 50.0
+        orig = np.random.random
+        np.random.random = lambda *a, **k: 0.0
+        try:
+            mag, dx, dy = mgr.calculate_aggregate_deterrence(px, py, p, is_day=True)
+        finally:
+            np.random.random = orig
+        from cenop.behavior.sound import ShipDeterrenceModel
+        rl = _ship_received_level(s.noise.get_source_level(), np.array([2000.0]),
+                                  np.array([px]), np.array([py]), p, None, 1, False)
+        assert rl[0] > p.deter_ships_min_db
+        vx_ref = float(ShipDeterrenceModel().deterrence_components(
+            rl, np.array([2000.0]), np.array([px - 50.0]), np.array([0.0]),
+            True, np.array([0.0]), p.deter_ships_min_db)[0][0])
+        assert dx == pytest.approx(vx_ref)        # matches alpha/beta reference exactly

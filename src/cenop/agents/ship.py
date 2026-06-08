@@ -438,17 +438,20 @@ class ShipManager:
         Calculate aggregate deterrence from all ships (scalar oracle path).
 
         NOTE: NOT on the production tick path (Simulation.step uses
-        calculate_aggregate_deterrence_vectorized). This per-porpoise oracle
-        computes RL via get_received_level (simple alpha/beta TL only) and does
-        NOT honor weston_flux_percell, unlike the vectorized path and
-        Ship.calculate_deterrence. Acceptable because it is off the production
-        path; do not wire it in without reconciling the TL models first.
+        calculate_aggregate_deterrence_vectorized). This per-porpoise oracle is a
+        SINGLE-POSITION + loudest-ship oracle (no sub-tick interpolation). Its RL now
+        flows through the shared _ship_received_level helper, so it honors
+        weston_flux_percell exactly like the vectorized path. It is deliberately NOT a
+        sub-tick oracle; do not use it to validate sub-tick aggregation.
 
         Args:
             porpoise_x, porpoise_y: Porpoise position
             params: Simulation parameters
             is_day: True for daytime
             cell_size: Cell size in meters
+            cell_data: Landscape cell data (enables per-cell WestonFlux TL when
+                weston_flux_percell is set); None falls back to alpha/beta TL
+            month: Month index (1-12) for salinity lookup in the WestonFlux path
 
         Returns:
             (max_magnitude, total_dx, total_dy)
@@ -460,6 +463,8 @@ class ShipManager:
         max_dist_m = min(MAX_DETER_DIST_M, params.deter_max_distance * 1000.0)
         min_dist_m = params.deter_min_distance_ships * 1000.0
         tships = getattr(params, "deter_ships_min_db", 80.0)
+        weston = (params.weston_flux_percell and cell_data is not None
+                  and getattr(cell_data, "_sediment", None) is not None)
         for ship in self.get_active_ships():
             gdx = porpoise_x - ship.x
             gdy = porpoise_y - ship.y
@@ -467,8 +472,10 @@ class ShipManager:
             if not (dist_m > min_dist_m and dist_m <= max_dist_m):
                 continue
             # Compute RL ONCE; use the same value for selection and the kernel (no double-compute).
-            rl = max(0.0, ship.get_received_level(
-                porpoise_x, porpoise_y, params.alpha_hat, params.beta_hat, cell_size))
+            source_level = ship.noise.get_source_level()
+            rl = float(_ship_received_level(
+                source_level, np.array([dist_m]), np.array([porpoise_x]),
+                np.array([porpoise_y]), params, cell_data, month, weston)[0])
             if rl <= best_rl:
                 continue
             best_rl = rl

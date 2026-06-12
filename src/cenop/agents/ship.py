@@ -62,20 +62,20 @@ if _NUMBA:
     _compute_tl_percell = njit(cache=True)(_compute_tl_percell)
 
 
-def _ship_received_level(source_level, dist_m, px, py, params, cell_data, month, weston):
-    """Received level (dB, clamped >= 0) at the given porpoise positions for one ship.
+def _ship_received_level_from_env(source_level, dist_m, depths, grains, sal, params, weston):
+    """Received level (dB, clamped >= 0) from a ship, given the porpoise-cell environment
+    already fetched.
 
-    WestonFlux per-cell when `weston`, else simple alpha/beta TL. NODATA on
-    depth/grain/salinity OR TL <= 0 -> RL 0 (DEPONS Ship.java:296-307 + valueIsNoData).
-    All array args are the in-range subset; `source_level` is a scalar. NODATA/depth are
-    evaluated at the PORPOISE position (an accepted SoA divergence; DEPONS uses the ship
-    cell).
+    WestonFlux per-cell when `weston` (using the supplied `depths`/`grains`/`sal`), else
+    simple alpha/beta TL (env args ignored). NODATA on depth/grain/salinity OR TL <= 0 ->
+    RL 0 (DEPONS Ship.java:296-307 + valueIsNoData). `dist_m` (and, when weston, the env
+    arrays) are the in-range subset; `source_level` is a scalar.
+
+    Splitting the per-cell lookups out of the RL formula lets callers that evaluate one
+    porpoise at many distances (sub-tick interpolation) fetch the fixed-per-tick
+    environment once instead of once per sub-step.
     """
     if weston:
-        pos = np.column_stack((px, py))
-        depths = cell_data.get_depths_vectorized(pos)
-        grains = cell_data.get_sediments_vectorized(pos)
-        sal = cell_data.get_salinities_vectorized(pos, month)
         tl = _compute_tl_percell(
             dist_m, depths, grains, sal,
             params.weston_flux_default_temperature,
@@ -88,6 +88,25 @@ def _ship_received_level(source_level, dist_m, px, py, params, cell_data, month,
         tl = params.beta_hat * np.log10(dist_m) + params.alpha_hat * dist_m
         rl = source_level - tl
     return np.maximum(rl, 0.0)
+
+
+def _ship_received_level(source_level, dist_m, px, py, params, cell_data, month, weston):
+    """Received level (dB, clamped >= 0) at the given porpoise positions for one ship.
+
+    Fetches the per-cell WestonFlux environment at the porpoise positions (when `weston`)
+    then delegates to `_ship_received_level_from_env`. All array args are the in-range
+    subset; `source_level` is a scalar. NODATA/depth are evaluated at the PORPOISE position
+    (an accepted SoA divergence; DEPONS uses the ship cell).
+    """
+    if weston:
+        pos = np.column_stack((px, py))
+        depths = cell_data.get_depths_vectorized(pos)
+        grains = cell_data.get_sediments_vectorized(pos)
+        sal = cell_data.get_salinities_vectorized(pos, month)
+    else:
+        depths = grains = sal = None
+    return _ship_received_level_from_env(
+        source_level, dist_m, depths, grains, sal, params, weston)
 
 
 if TYPE_CHECKING:
@@ -599,13 +618,23 @@ class ShipManager:
             gdy = py_c[:, None] - sub_y[None, :]
             dist_m = np.hypot(gdx * cell_size, gdy * cell_size)
             np.maximum(dist_m, 1.0, out=dist_m)
-            # RL per (porpoise, slot): tile porpoise positions across slots (row-major) so the
-            # shared helper's per-cell WestonFlux lookups stay correct; reshape back to (m, STEPS).
-            px_flat = np.repeat(px_c, STEPS)
-            py_flat = np.repeat(py_c, STEPS)
-            rl = _ship_received_level(
-                source_level, dist_m.ravel(), px_flat, py_flat,
-                params, cell_data, month, weston).reshape(m, STEPS)
+            # Fixed-per-tick porpoise-cell environment for WestonFlux: fetch ONCE per
+            # candidate (m lookups), not once per (porpoise, sub-step) -- depth/grain/
+            # salinity are at the porpoise cell and don't vary across the ship's 30
+            # sub-positions, only the distance does. Tile the looked-up values across slots
+            # (row-major, to match dist_m.ravel()); the per-slot TL formula still recomputes
+            # because distance varies. Lookups are pure per-row, so repeat(lookup(p)) ==
+            # lookup(repeat(p)) -> bit-identical to the per-substep fetch it replaces.
+            if weston:
+                pos_c = np.column_stack((px_c, py_c))
+                depths_flat = np.repeat(cell_data.get_depths_vectorized(pos_c), STEPS)
+                grains_flat = np.repeat(cell_data.get_sediments_vectorized(pos_c), STEPS)
+                sal_flat = np.repeat(cell_data.get_salinities_vectorized(pos_c, month), STEPS)
+            else:
+                depths_flat = grains_flat = sal_flat = None
+            rl = _ship_received_level_from_env(
+                source_level, dist_m.ravel(), depths_flat, grains_flat, sal_flat,
+                params, weston).reshape(m, STEPS)
             if _force_u is None:
                 u_slab = u_all[cand, :]                   # (m, STEPS), porpoise-major rows
             else:

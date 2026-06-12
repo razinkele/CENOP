@@ -991,3 +991,74 @@ class TestSubTickInterpolation:
         np.testing.assert_allclose(dx, exp_x, rtol=1e-9, atol=1e-12)
         np.testing.assert_allclose(dy, exp_y, rtol=1e-9, atol=1e-12)
         assert np.any(exp_x != 0.0) or np.any(exp_y != 0.0)   # non-vacuous
+
+
+class TestSubTickWestonHeterogeneous:
+    """Guard for the WestonFlux per-cell-lookup optimization: on a HETEROGENEOUS
+    landscape (porpoises on cells with distinct depths -> distinct RL), the sub-tick
+    aggregator must match a brute-force reference that re-fetches the per-cell
+    environment at each porpoise via the single-position _ship_received_level helper.
+    Homogeneous-landscape tests cannot catch a tiling/alignment bug in the optimized
+    per-candidate-set env lookup; this one can."""
+
+    def _ship(self, sid, x, y, prev, sl=205.0):
+        from cenop.agents.ship import Ship, VesselClass
+        s = Ship(id=sid, x=x, y=y, vessel_type=VesselClass.CARGO)
+        s._is_active = True
+        s.noise.base_source_level = sl
+        s._prev_x, s._prev_y = prev
+        return s
+
+    def test_heterogeneous_depths_match_single_position_reference(self):
+        from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        from cenop.agents.ship import ShipManager, _ship_received_level, MAX_DETER_DIST_M
+
+        p = SimulationParameters()
+        p.weston_flux_percell = True
+        land = create_homogeneous_landscape(width=100, height=100, depth=20.0, food_prob=0.5)
+
+        # Three porpoises north of an east-west swept path, each on a cell with a
+        # DISTINCT depth so their WestonFlux RL differs (non-vacuous heterogeneity).
+        px = np.array([45.0, 50.0, 55.0])
+        py = np.array([53.0, 52.0, 51.0])
+        depths = {(53, 45): 8.0, (52, 50): 30.0, (51, 55): 50.0}
+        for (yi, xi), d in depths.items():
+            land._depth[yi, xi] = d
+
+        s = self._ship(1, 60.0, 50.0, prev=(40.0, 50.0), sl=205.0)  # sweep east, y=50
+        mgr = ShipManager([s])
+        mgr.enabled = True
+        dx, dy = mgr.calculate_aggregate_deterrence_vectorized(
+            px, py, p, cell_data=land, month=1, _force_u=0.0)
+
+        cell = 400.0
+        min_m = p.deter_min_distance_ships * 1000.0
+        max_m = min(MAX_DETER_DIST_M, p.deter_max_distance * 1000.0)
+        exp_x = np.zeros(3)
+        exp_y = np.zeros(3)
+        for pi in range(3):
+            for i in range(1, 31):
+                sub_x = 40.0 + 20.0 * i / 30.0
+                sub_y = 50.0
+                gdx = np.array([px[pi] - sub_x])
+                gdy = np.array([py[pi] - sub_y])
+                d = np.array([max(float(np.hypot(gdx[0] * cell, gdy[0] * cell)), 1.0)])
+                if not (min_m < d[0] <= max_m):
+                    continue
+                rl = _ship_received_level(
+                    s.noise.get_source_level(), d,
+                    np.array([px[pi]]), np.array([py[pi]]), p, land, 1, True)
+                if rl[0] <= p.deter_ships_min_db:
+                    continue
+                vx, vy, _, _, _ = s.deterrence_model.deterrence_components(
+                    rl, d, gdx, gdy, True, np.array([0.0]), p.deter_ships_min_db)
+                exp_x[pi] += float(vx[0])
+                exp_y[pi] += float(vy[0])
+
+        # Non-vacuous: all three react, and their distinct depths give distinct RL ->
+        # distinct per-porpoise deterrence (so a mis-tiled lookup would change results).
+        assert np.all(exp_y > 0.0)
+        assert len(set(np.round(exp_y, 9))) == 3
+        np.testing.assert_allclose(dx, exp_x, rtol=1e-9, atol=1e-12)
+        np.testing.assert_allclose(dy, exp_y, rtol=1e-9, atol=1e-12)

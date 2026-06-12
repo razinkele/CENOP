@@ -20,6 +20,7 @@ from typing import Dict, Any
 class TestPopulationDynamicsValidation:
     """Validate population dynamics match DEPONS reference patterns."""
     
+    @pytest.mark.slow
     def test_population_stability_one_year(self):
         """Population should remain stable (±30%) over one year without disturbance."""
         from cenop.agents.population import PorpoisePopulation
@@ -50,6 +51,7 @@ class TestPopulationDynamicsValidation:
         assert 0.70 <= change_ratio <= 1.30, \
             f"Population changed by {(change_ratio-1)*100:.1f}%, expected ±30%"
     
+    @pytest.mark.slow
     def test_birth_rate_realistic(self):
         """Annual birth rate should match DEPONS pattern (~60% of eligible females)."""
         from cenop.agents.population import PorpoisePopulation
@@ -90,6 +92,7 @@ class TestPopulationDynamicsValidation:
         assert mothers_with_calves > 0 or final_pop > initial_pop * 0.9, \
             "Expected some reproduction to occur"
     
+    @pytest.mark.slow
     def test_mortality_rate_age_dependent(self):
         """Mortality should be higher for juveniles and elderly."""
         from cenop.agents.population import PorpoisePopulation
@@ -127,6 +130,7 @@ class TestPopulationDynamicsValidation:
         assert adult_mortality <= max(juvenile_mortality, elderly_mortality) * 1.5, \
             "Adult mortality should be lower than or similar to juvenile/elderly"
     
+    @pytest.mark.slow
     def test_age_distribution_remains_valid(self):
         """Age distribution should remain realistic over time."""
         from cenop.agents.population import PorpoisePopulation
@@ -159,6 +163,7 @@ class TestPopulationDynamicsValidation:
             # Max age should not exceed harbor porpoise lifespan (~24 years)
             assert max_age <= 30, f"Max age {max_age:.1f} exceeds realistic maximum"
     
+    @pytest.mark.slow
     def test_energy_distribution_stable(self):
         """Energy distribution should remain stable with adequate food."""
         from cenop.agents.population import PorpoisePopulation
@@ -573,6 +578,7 @@ class TestDEPONSComparisonValidation:
     - Deterrence response: 50% probability at ~1km for pile driving
     """
     
+    @pytest.mark.slow
     def test_annual_mortality_rate_realistic(self):
         """Verify annual mortality rates match DEPONS expectations."""
         from cenop.agents.population import PorpoisePopulation

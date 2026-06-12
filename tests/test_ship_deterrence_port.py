@@ -1062,3 +1062,111 @@ class TestSubTickWestonHeterogeneous:
         assert len(set(np.round(exp_y, 9))) == 3
         np.testing.assert_allclose(dx, exp_x, rtol=1e-9, atol=1e-12)
         np.testing.assert_allclose(dy, exp_y, rtol=1e-9, atol=1e-12)
+
+
+class TestSubTickOutOfRangeSlots:
+    """Guard for the out-of-range-slot optimization: on a LONG swept path a fixed
+    porpoise is out of range (dist > max) at the far slots and in range at the near
+    slots. The aggregator must compute deterrence ONLY for the in-range slots and match
+    a brute-force reference that explicitly gates `min < dist <= max`. Existing tests use
+    short sweeps where every slot is in range, so they cannot catch a regression that
+    leaks out-of-range slots into the sum."""
+
+    def _params(self):
+        from cenop.parameters.simulation_params import SimulationParameters
+        return SimulationParameters()
+
+    def _ship(self, sid, x, y, prev, sl=205.0):
+        from cenop.agents.ship import Ship, VesselClass
+        s = Ship(id=sid, x=x, y=y, vessel_type=VesselClass.CARGO)
+        s._is_active = True
+        s.noise.base_source_level = sl
+        s._prev_x, s._prev_y = prev
+        return s
+
+    def _ranges(self, p):
+        from cenop.agents.ship import MAX_DETER_DIST_M
+        min_m = p.deter_min_distance_ships * 1000.0
+        max_m = min(MAX_DETER_DIST_M, p.deter_max_distance * 1000.0)
+        return min_m, max_m
+
+    def test_long_sweep_excludes_out_of_range_slots_non_weston(self):
+        from cenop.agents.ship import ShipManager
+        p = self._params()
+        s = self._ship(1, 50.0, 50.0, prev=(0.0, 50.0), sl=205.0)  # 50-cell sweep east
+        mgr = ShipManager([s])
+        mgr.enabled = True
+        px = np.array([60.0])
+        py = np.array([52.0])
+        dx, dy = mgr.calculate_aggregate_deterrence_vectorized(px, py, p, _force_u=0.0)
+
+        cell = 400.0
+        min_m, max_m = self._ranges(p)
+        exp_x = exp_y = 0.0
+        n_in = n_out = 0
+        for i in range(1, 31):
+            sub_x = 0.0 + 50.0 * i / 30.0
+            gdx = np.array([60.0 - sub_x])
+            gdy = np.array([2.0])
+            d = np.array([max(float(np.hypot(gdx[0] * cell, gdy[0] * cell)), 1.0)])
+            if not (min_m < d[0] <= max_m):
+                n_out += 1
+                continue
+            n_in += 1
+            rl = np.array([max(0.0, float(
+                s.noise.get_source_level()
+                - (p.beta_hat * np.log10(d[0]) + p.alpha_hat * d[0])))])
+            if rl[0] <= p.deter_ships_min_db:
+                continue
+            vx, vy, _, _, _ = s.deterrence_model.deterrence_components(
+                rl, d, gdx, gdy, True, np.array([0.0]), p.deter_ships_min_db)
+            exp_x += float(vx[0])
+            exp_y += float(vy[0])
+        assert n_out > 0 and n_in > 0          # genuinely mixed (else vacuous)
+        assert exp_y > 0.0                      # non-vacuous: in-range slots deter
+        assert dx[0] == pytest.approx(exp_x)
+        assert dy[0] == pytest.approx(exp_y)
+
+    def test_long_sweep_excludes_out_of_range_slots_weston(self):
+        from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        from cenop.agents.ship import ShipManager, _ship_received_level
+        p = SimulationParameters()
+        p.weston_flux_percell = True
+        land = create_homogeneous_landscape(width=100, height=100, depth=20.0, food_prob=0.5)
+        land._depth[52, 60] = 37.0  # porpoise cell depth (weston env path, distinct value)
+
+        s = self._ship(1, 50.0, 50.0, prev=(0.0, 50.0), sl=205.0)
+        mgr = ShipManager([s])
+        mgr.enabled = True
+        px = np.array([60.0])
+        py = np.array([52.0])
+        dx, dy = mgr.calculate_aggregate_deterrence_vectorized(
+            px, py, p, cell_data=land, month=1, _force_u=0.0)
+
+        cell = 400.0
+        min_m, max_m = self._ranges(p)
+        exp_x = exp_y = 0.0
+        n_in = n_out = 0
+        for i in range(1, 31):
+            sub_x = 0.0 + 50.0 * i / 30.0
+            gdx = np.array([60.0 - sub_x])
+            gdy = np.array([2.0])
+            d = np.array([max(float(np.hypot(gdx[0] * cell, gdy[0] * cell)), 1.0)])
+            if not (min_m < d[0] <= max_m):
+                n_out += 1
+                continue
+            n_in += 1
+            rl = _ship_received_level(
+                s.noise.get_source_level(), d,
+                np.array([60.0]), np.array([52.0]), p, land, 1, True)
+            if rl[0] <= p.deter_ships_min_db:
+                continue
+            vx, vy, _, _, _ = s.deterrence_model.deterrence_components(
+                rl, d, gdx, gdy, True, np.array([0.0]), p.deter_ships_min_db)
+            exp_x += float(vx[0])
+            exp_y += float(vy[0])
+        assert n_out > 0 and n_in > 0
+        assert exp_y > 0.0
+        assert dx[0] == pytest.approx(exp_x)
+        assert dy[0] == pytest.approx(exp_y)

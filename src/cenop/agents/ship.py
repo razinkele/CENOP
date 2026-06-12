@@ -613,41 +613,62 @@ class ShipManager:
             px_c = porpoise_x[cand]
             py_c = porpoise_y[cand]
             m = cand.size
-            # Vectorize over all STEPS sub-steps at once (replaces the per-slot Python loop).
-            gdx = px_c[:, None] - sub_x[None, :]          # (m, STEPS)
+            # Distances for every (candidate porpoise, sub-step) pair (m, STEPS).
+            gdx = px_c[:, None] - sub_x[None, :]
             gdy = py_c[:, None] - sub_y[None, :]
             dist_m = np.hypot(gdx * cell_size, gdy * cell_size)
             np.maximum(dist_m, 1.0, out=dist_m)
+
+            # Only in-range pairs can deter; the rest are gated out and their RL/vector
+            # would be discarded. Compute the WestonFlux TL and the deterrence kernel for
+            # the in-range pairs ONLY (a candidate near a long swept path is out of range
+            # at the far sub-steps). `ir` indexes the flattened (m, STEPS) grid in C-order,
+            # so the porpoise row of each pair is `ir // STEPS`.
+            in_range = (dist_m > min_dist_m) & (dist_m <= max_dist_m)
+            ir = np.flatnonzero(in_range.ravel())
+            if ir.size == 0:
+                continue
+            rows = ir // STEPS
+            d_ir = dist_m.ravel()[ir]
+            gdx_ir = gdx.ravel()[ir]
+            gdy_ir = gdy.ravel()[ir]
+
             # Fixed-per-tick porpoise-cell environment for WestonFlux: fetch ONCE per
-            # candidate (m lookups), not once per (porpoise, sub-step) -- depth/grain/
-            # salinity are at the porpoise cell and don't vary across the ship's 30
-            # sub-positions, only the distance does. Tile the looked-up values across slots
-            # (row-major, to match dist_m.ravel()); the per-slot TL formula still recomputes
-            # because distance varies. Lookups are pure per-row, so repeat(lookup(p)) ==
-            # lookup(repeat(p)) -> bit-identical to the per-substep fetch it replaces.
+            # candidate (m lookups) -- depth/grain/salinity are at the porpoise cell and
+            # don't vary across the ship's sub-positions, only the distance does -- then
+            # index by the in-range pairs' porpoise rows. The per-pair TL formula still
+            # recomputes because distance varies.
             if weston:
                 pos_c = np.column_stack((px_c, py_c))
-                depths_flat = np.repeat(cell_data.get_depths_vectorized(pos_c), STEPS)
-                grains_flat = np.repeat(cell_data.get_sediments_vectorized(pos_c), STEPS)
-                sal_flat = np.repeat(cell_data.get_salinities_vectorized(pos_c, month), STEPS)
+                depths_ir = cell_data.get_depths_vectorized(pos_c)[rows]
+                grains_ir = cell_data.get_sediments_vectorized(pos_c)[rows]
+                sal_ir = cell_data.get_salinities_vectorized(pos_c, month)[rows]
             else:
-                depths_flat = grains_flat = sal_flat = None
-            rl = _ship_received_level_from_env(
-                source_level, dist_m.ravel(), depths_flat, grains_flat, sal_flat,
-                params, weston).reshape(m, STEPS)
+                depths_ir = grains_ir = sal_ir = None
+            rl_ir = _ship_received_level_from_env(
+                source_level, d_ir, depths_ir, grains_ir, sal_ir, params, weston)
+
             if _force_u is None:
-                u_slab = u_all[cand, :]                   # (m, STEPS), porpoise-major rows
+                u_ir = u_all[cand, :].ravel()[ir]         # porpoise-major rows
             else:
-                u_slab = np.full((m, STEPS), float(_force_u), dtype=np.float64)
-            vx, vy, _, _, _ = ship.deterrence_model.deterrence_components(
-                rl.ravel(), dist_m.ravel(), gdx.ravel(), gdy.ravel(),
-                is_day, u_slab.ravel(), tships)
-            vx = vx.reshape(m, STEPS); vy = vy.reshape(m, STEPS)
-            # In-range + Tships gate; loudest gated ship wins each (porpoise, slot); its vector
-            # is 0 if it did not react. Slots a ship does not win keep the incumbent value.
-            in_range = (dist_m > min_dist_m) & (dist_m <= max_dist_m)
+                u_ir = np.full(ir.size, float(_force_u), dtype=np.float64)
+            vx_ir, vy_ir, _, _, _ = ship.deterrence_model.deterrence_components(
+                rl_ir, d_ir, gdx_ir, gdy_ir, is_day, u_ir, tships)
+
+            # Scatter back onto the (m, STEPS) grid: out-of-range slots keep RL = -inf
+            # (so the `rl > tships` winner test excludes them, exactly as the explicit
+            # in_range mask did) and a zero vector.
+            rl = np.full((m, STEPS), -np.inf, dtype=np.float64)
+            vx = np.zeros((m, STEPS), dtype=np.float64)
+            vy = np.zeros((m, STEPS), dtype=np.float64)
+            rl.ravel()[ir] = rl_ir
+            vx.ravel()[ir] = vx_ir
+            vy.ravel()[ir] = vy_ir
+
+            # Loudest gated ship wins each (porpoise, slot); its vector is 0 if it did not
+            # react. Slots a ship does not win keep the incumbent value.
             cur_best = best_rl[cand, :]
-            wins = in_range & (rl > tships) & (rl > cur_best)
+            wins = (rl > tships) & (rl > cur_best)
             best_rl[cand, :] = np.where(wins, rl, cur_best)
             accum_dx[cand, :] = np.where(wins, vx, accum_dx[cand, :])
             accum_dy[cand, :] = np.where(wins, vy, accum_dy[cand, :])

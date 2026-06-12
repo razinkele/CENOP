@@ -119,14 +119,21 @@ the evidence that makes CENOP defensible for research use.
 **Rationale:** Reduce the maintenance tax of four backends and decide whether the 2.6×
 gap is worth closing — but only after Tier 0b can prove changes preserve behavior.
 
-### B1 — Decide the JAX backend's fate
-- With 0b quantifying the cost of keeping JAX correct, choose: (i) invest (GPU batching to
-  make it competitive for large N), or (ii) deprecate and remove it (cut the surface that
-  every cross-cutting change must keep in sync — e.g. the sub-tick `turbine_deter_strength`
-  plumbing).
-- **Acceptance:** a short decision record (context, options, choice, rationale) committed,
-  and the chosen action executed (investment plan opened, or JAX path removed with tests/
-  docs updated).
+### B1 — Decide the JAX **and Cython** backends' fate
+- With 0b quantifying the cost of keeping JAX correct, choose for JAX: (i) invest (GPU
+  batching to make it competitive for large N), or (ii) deprecate and remove it (cut the
+  surface that every cross-cutting change must keep in sync — e.g. the sub-tick
+  `turbine_deter_strength` plumbing).
+- **Cython, now with hard evidence (Tier 0b):** the Cython fast path is broken in three
+  ways — float64 `food_grid` dtype crash, ~3.6-cell post-CRW move-math divergence from the
+  reference, and non-seeded global-`np.random` mortality (so it ignores `random_seed`). It
+  is gated off in production (comm defaults True), so this is latent. Decide: repair it
+  (fix the crash + move math + RNG source, then flip the Tier-0b `xfail` to a green guard),
+  or remove it. See `docs/backend-equivalence.md` "Known Cython-backend defects" and
+  `tests/test_backend_equivalence.py::test_cython_postcrw_matches_reference`.
+- **Acceptance:** a short decision record per backend (context, options, choice, rationale)
+  committed, and the chosen action executed (investment plan opened, or backend removed with
+  tests/docs updated; if Cython is repaired, the `xfail` marker is removed).
 
 ### B2 — Profile and attack the 2.6× Numba→Java gap
 - Use `/profile` on the N=500 Kattegat tick to rank hot spots (likely CRW, land avoidance,

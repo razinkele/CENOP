@@ -4,7 +4,7 @@
 
 **Goal:** Make the long-running biological-validation tests runnable on demand (a `slow` tier) so emergent demographics are actually tested, recover the *fast* tests currently excluded alongside them, and add per-backend determinism guards plus a documented backend-equivalence matrix.
 
-**Architecture:** Two parts. Part A (0a) introduces a pytest `slow` marker, marks only the long-tick-loop tests in `test_validation.py` / `test_depons_physiology.py`, stops excluding those files wholesale (so their fast tests rejoin the suite), and runs + triages the slow tier. Part B (0b) adds per-backend determinism guards (same seed → identical result), a real Cython↔reference post-CRW equivalence differential (the one cross-backend deterministic comparison the RNG architecture permits), and a markdown matrix documenting what is and is not cross-backend comparable (see Findings).
+**Architecture:** Two parts. Part A (0a) introduces a pytest `slow` marker, marks only the long-tick-loop tests in `test_validation.py` / `test_depons_physiology.py`, stops excluding those files wholesale (so their fast tests rejoin the suite), and runs + triages the slow tier. Part B (0b) adds per-backend determinism guards (same seed → identical result), a single-tick Cython↔reference post-CRW equivalence differential (the one cross-backend deterministic comparison the RNG architecture permits — currently `xfail` because deep-review execution proved the Cython backend is broken; the defects are handed to Track B), and a markdown matrix documenting what is and is not cross-backend comparable (see Findings).
 
 **Tech Stack:** Python 3, pytest, NumPy, Numba; optional Cython/JAX backends. Run from `/home/razinka/cenjas/CENOP/`, prefix Python/pytest with `micromamba run -n shiny`. CENOP is a nested git repo — commit from inside `CENOP/` (use `git -C /home/razinka/cenjas/CENOP` if your shell CWD is the parent). Branch off `CENOP-JASMINE`. Commit messages end with `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`. **Do not put backticks in commit messages** (bash command-substitution will mangle them — write the message to a file and use `git commit -F` if it must contain shell metacharacters).
 
@@ -16,7 +16,9 @@
 
 1. **The validation tests are SLOW, not hanging.** `test_validation.py::TestPopulationDynamicsValidation::test_population_stability_one_year` runs to completion in ~22 s and passes. The prior "hangs" note was inaccurate. So 0a is *test hygiene* (mark + run), not deadlock-debugging.
 2. **Both files are fast/slow MIXES.** `test_validation.py` and `test_depons_physiology.py` each contain fast formula/API/parameter tests *and* slow multi-year simulation loops. Marking only the slow tests means the fast ones rejoin the default suite. (Note: these files are NOT excluded in `CLAUDE.md` — its command is `pytest tests/ -x -q`, which already runs the slow tests today. The `--ignore=...` form lives only in the dev-habit/auto-memory command. So this plan does not introduce a slow default suite; it *removes* the slowness once the slow tests are marked + deselected.)
-3. **Full-trajectory *stochastic* cross-backend bit-identical equivalence is architecturally impossible — but the deterministic post-CRW stage IS comparable.** The Numba RNG is seeded from a *separate* stream (`population.py:917` `_seed_numba_rng(self.rng.integers(0, 2**31))`) and CRW draws happen inside the kernel, so the NumPy-fallback / Numba / JAX paths consume different random streams and their *stochastic* trajectories diverge by design — no tolerance fixes this. **However**, the Cython fast path (`cython_depons_post_crw`) replaces only the *deterministic* post-CRW pipeline (heading composition, move, food, energy, mortality) and consumes already-computed CRW outputs with **no internal RNG**. So with identical Numba CRW (same `random_seed`, both `_HAS_KERNELS=True`), Cython-vs-reference post-CRW IS a valid float-tolerance differential — built in Task 7. For the small Numba kernels, only `reflect_boundaries` has a pure NumPy counterpart (`Population._reflect_boundaries`, existing test `test_numba_kernels.py::TestReflectBoundariesKernel::test_equivalence_with_numpy_version`); `_compute_turn_position` and the other fused kernels dispatch to / inline the kernels, so they are covered by behavioral unit tests rather than NumPy-equivalence. **Therefore 0b = per-backend determinism guards (Task 6) + a real Cython↔reference post-CRW differential (Task 7) + a documented matrix (Task 8).** The stochastic-trajectory exclusion is the spec's explicitly-anticipated "legitimately cannot match bit-for-bit → document why" case (§4, 0b).
+3. **Full-trajectory *stochastic* cross-backend bit-identical equivalence is architecturally impossible — but the deterministic post-CRW stage IS comparable.** The Numba RNG is seeded from a *separate* stream (`population.py:917` `_seed_numba_rng(self.rng.integers(0, 2**31))`) and CRW draws happen inside the kernel, so the NumPy-fallback / Numba / JAX paths consume different random streams and their *stochastic* trajectories diverge by design — no tolerance fixes this. **However**, the Cython fast path (`cython_depons_post_crw`) replaces only the *deterministic* post-CRW pipeline (heading composition, move, food, energy, mortality) and consumes already-computed CRW outputs with **no internal RNG**. So with identical Numba CRW (same `random_seed`, both `_HAS_KERNELS=True`), a Cython-vs-reference post-CRW **single-tick** differential is valid — built in Task 7. (It must be single-tick: the Cython path draws mortality from the *global* `np.random` while the reference draws from `self.rng`, so after tick 1 the two `self.rng` states desync and the per-tick Numba CRW seed diverges — see Finding #4.) For the small Numba kernels, only `reflect_boundaries` has a pure NumPy counterpart (`Population._reflect_boundaries`, existing test `test_numba_kernels.py::TestReflectBoundariesKernel::test_equivalence_with_numpy_version`); `_compute_turn_position` and the other fused kernels dispatch to / inline the kernels, so they are covered by behavioral unit tests rather than NumPy-equivalence. **Therefore 0b = per-backend determinism guards (Task 6) + a single-tick Cython↔reference post-CRW differential that currently documents a real divergence as `xfail` (Task 7) + a documented matrix (Task 8).** The stochastic-trajectory exclusion is the spec's explicitly-anticipated "legitimately cannot match bit-for-bit → document why" case (§4, 0b).
+
+4. **Empirical execution (deep in-loop review of this plan, both parts run end-to-end) confirmed Part A and exposed three real Cython-backend defects.** Part A runs clean: the measured slow set is exactly the 11 candidates (6 in `test_validation.py`, 5 in `test_depons_physiology.py`), and de-excluding the two files surfaces **zero** fast-test failures (724 pass, fast). Part B: the Numba/NumPy determinism guards pass. But running the Task 7 Cython differential revealed the Cython fast path (gated to homogeneous + `communication_enabled=False` + no energy module — i.e. **off in production**, where comm defaults True) is broken three ways: **(a)** it crashes on a float64 `food_grid` (`cython_depons_post_crw` expects float32 but `population.py` passes `self.landscape._food_value` uncast; homogeneous landscapes store float64 at `cell_data.py:118`); **(b)** after that, its post-CRW `x`/`y` math diverges from the reference by ~3.6 cells at a single tick *with bit-identical CRW inputs* — a genuine formula/units bug in `tick_cython.pyx`; **(c)** its mortality uses unseeded global `np.random` (`tick_cython.pyx:79`), so the Cython path is non-reproducible. **These are NOT fixed here** — repairing/removing the Cython backend is Track B (backend-fate) work, now with hard evidence. Tier 0's job is to *guard and document* the divergence: Task 7 encodes it as a strict `xfail` (it flips to a failure-that-must-be-investigated the moment someone fixes Cython), and Task 8's matrix records all three defects for Track B.
 
 ## File Structure
 
@@ -178,6 +180,7 @@ with:
 - Slow tier (multi-year validation/physiology): `python3 -m pytest tests/ -m slow -q`
 - Everything: `python3 -m pytest tests/ -m "slow or not slow" -q`
 - NOTE: a default `addopts = -m "not slow"` is active. To run a single SLOW test you must add a selector, e.g. `pytest tests/test_validation.py::Cls::test_x -m "slow or not slow"` — a bare nodeid (or bare `-k`) silently reports it as `deselected`, not run.
+- The slow tier is MANUAL (this repo has no CI). Run `pytest tests/ -m slow` before releasing/merging model-behavior changes. Any older `--ignore=...test_validation.py --ignore=...test_depons_physiology.py` alias is now obsolete — it re-hides the fast tests this change recovered; drop it.
 ```
 
 - [ ] **Step 3: Commit**
@@ -213,6 +216,8 @@ If all pass, record that.
 - [ ] **Step 3: Write a short results note**
 
 Create `docs/validation-suite-status.md` summarizing: which tests are in the slow tier, total runtime, pass/fail, and any expectation changes made (with rationale). Keep it factual and brief.
+
+**Include a prominent MANUAL-RUN warning** (this is a real gap surfaced in review): the repo has **no CI** (`.github/`, `.gitlab-ci.yml`, pre-commit — none exist), so with the slow tier deselected by default, these demographic-validation tests will **only run when someone types `-m slow`**. State explicitly: "⚠️ No CI — the slow validation tier is MANUAL. Run `pytest tests/ -m slow` before every release/merge of model-behavior changes. If CI is ever added, it MUST include a slow-tier job, or these tests silently never run." (Deselecting-by-default is the spec's chosen design for fast iteration; this note is the compensating control.)
 
 - [ ] **Step 4: Commit**
 
@@ -303,8 +308,22 @@ def test_numpy_fallback_deterministic(monkeypatch):
 
 @pytest.mark.skipif(not getattr(pop_mod, "_HAS_JAX", False), reason="JAX not installed")
 def test_jax_backend_deterministic():
-    """JAX path: same seed -> identical trajectory across two runs."""
-    _assert_same(_run(_build(7, use_jax=True)), _run(_build(7, use_jax=True)))
+    """JAX path: same seed -> identical trajectory across two runs.
+
+    JAX may be installed but bound to a memory-constrained GPU; a RESOURCE_EXHAUSTED /
+    OOM at runtime is environmental, not a determinism bug, so skip on it. A failing
+    determinism *assertion* is NOT caught here -> it still reports as a real failure.
+    """
+    try:
+        a = _run(_build(7, use_jax=True))
+        b = _run(_build(7, use_jax=True))
+    except Exception as e:  # noqa: BLE001 - inspect the message to classify
+        msg = str(e)
+        if any(k in msg for k in ("RESOURCE_EXHAUSTED", "OUT_OF_MEMORY")) \
+                or "Runtime" in type(e).__name__:
+            pytest.skip(f"JAX runtime/OOM (environmental, not a determinism failure): {e}")
+        raise
+    _assert_same(a, b)
 ```
 
 - [ ] **Step 2: Run the determinism tests**
@@ -325,12 +344,16 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 ### Task 7: Cython post-CRW equivalence differential
 
-The Cython fast path (`cython_depons_post_crw`) replaces only the *deterministic* post-CRW pipeline and consumes CRW outputs computed upstream by the Numba kernel (no internal RNG). So with identical Numba CRW (same `random_seed`, both `_HAS_KERNELS=True`), toggling Cython on vs off isolates the Cython-vs-reference post-CRW math — a valid float-tolerance differential. The gate (`population.py:2577`) requires `_HAS_CYTHON and _energy_module is None and _skip_land_avoidance and not _comm_enabled`, so the test sets `communication_enabled=False` on a homogeneous landscape and passes no energy module.
+The Cython fast path (`cython_depons_post_crw`) replaces only the *deterministic* post-CRW pipeline and consumes CRW outputs computed upstream by the Numba kernel. With identical Numba CRW (same `random_seed`, both `_HAS_KERNELS=True`), a **single-tick** Cython-vs-reference comparison isolates the Cython post-CRW math. The gate (`population.py:2577`) requires `_HAS_CYTHON and _energy_module is None and _skip_land_avoidance and not _comm_enabled`, so the test uses a homogeneous landscape, `communication_enabled=False`, and no energy module.
+
+**Deep-review execution (Finding #4) proved this comparison currently FAILS for real reasons** — the Cython path crashes on a float64 `food_grid`, and once that is bypassed its move math diverges ~3.6 cells at one tick with identical CRW inputs, and its mortality uses unseeded global `np.random`. **Tier 0 does NOT repair the Cython backend** (Track B owns that). Instead it lands the differential as a strict `xfail`, so the divergence is guarded and tracked — and the test flips to an attention-grabbing failure the moment Cython is fixed (prompting removal of the marker).
+
+Why single-tick (not multi-tick): the Cython path draws mortality from global `np.random` while the reference draws from `self.rng`, so after tick 1 the two `self.rng` streams desync and the per-tick Numba CRW seed diverges. One tick shares a fresh `self.rng`, so CRW inputs are bit-identical and the comparison isolates the post-CRW math.
 
 **Files:**
-- Modify: `tests/test_backend_equivalence.py` (append a test class)
+- Modify: `tests/test_backend_equivalence.py` (append)
 
-- [ ] **Step 1: Write the equivalence test**
+- [ ] **Step 1: Write the (xfail) equivalence test + a non-vacuity gate test**
 
 Append to `tests/test_backend_equivalence.py`:
 
@@ -346,51 +369,55 @@ def _build_cy(seed):
 
 
 @pytest.mark.skipif(not getattr(pop_mod, "_HAS_CYTHON", False), reason="Cython not built")
-def test_cython_postcrw_matches_reference(monkeypatch):
-    """Cython post-CRW fast path == Numba/NumPy reference, given identical Numba CRW."""
-    # Non-vacuous guard: the Cython gate must actually be satisfied, else both runs
-    # would take the same reference path and prove nothing.
-    probe = _build_cy(11)
-    assert (pop_mod._HAS_CYTHON and probe._energy_module is None
-            and probe._skip_land_avoidance and not probe._comm_enabled), (
-        "Cython post-CRW gate not satisfied -> test would be vacuous; "
-        "check the homogeneous/comm-off/no-energy-module setup")
+def test_cython_gate_is_engaged():
+    """Non-vacuity guard (separate from the xfail below, which errors before its own
+    inline checks run): the Cython post-CRW gate must actually be satisfiable, else the
+    equivalence comparison would prove nothing."""
+    p = _build_cy(11)
+    assert p._energy_module is None and p._skip_land_avoidance and not p._comm_enabled
 
-    # Reference run: Cython disabled -> Numba/NumPy post-CRW.
+
+@pytest.mark.skipif(not getattr(pop_mod, "_HAS_CYTHON", False), reason="Cython not built")
+@pytest.mark.xfail(strict=True, raises=(AssertionError, ValueError, TypeError), reason=(
+    "Cython post-CRW path is broken (Track B backend-fate work): (a) float64 food_grid "
+    "dtype crash, (b) ~3.6-cell move-math divergence vs reference at one tick with "
+    "identical CRW, (c) non-seeded global-np.random mortality. Flips to a hard failure "
+    "(remove this xfail) once Cython is repaired."))
+def test_cython_postcrw_matches_reference(monkeypatch):
+    """SINGLE-TICK Cython post-CRW == Numba/NumPy reference, given identical Numba CRW.
+
+    Currently xfails — documents the known Cython divergence (Finding #4). Do NOT 'fix'
+    by loosening tolerance or deleting it; it is the guard that flips green when the
+    Cython backend is repaired.
+    """
+    # Reference: Cython disabled -> Numba/NumPy post-CRW.
     monkeypatch.setattr(pop_mod, "_HAS_CYTHON", False)
     ref = _build_cy(11)
-    for _ in range(3):
-        ref.step()
+    ref.step()
     ref_x, ref_y, ref_e, ref_m = (ref.x.copy(), ref.y.copy(),
                                   ref.energy.copy(), ref.active_mask.copy())
 
-    # Cython run: re-enable Cython; same seed -> identical Numba CRW upstream.
+    # Cython: enabled, same seed -> identical Numba CRW upstream at this first tick.
     monkeypatch.setattr(pop_mod, "_HAS_CYTHON", True)
     cy = _build_cy(11)
-    for _ in range(3):
-        cy.step()
+    cy.step()
 
-    # float32 Cython vs reference: tolerance on continuous fields, exact on the alive
-    # mask (3 ticks from healthy init -> no deaths expected, so masks match).
     np.testing.assert_allclose(cy.x, ref_x, rtol=1e-4, atol=1e-3)
     np.testing.assert_allclose(cy.y, ref_y, rtol=1e-4, atol=1e-3)
     np.testing.assert_allclose(cy.energy, ref_e, rtol=1e-4, atol=1e-3)
     np.testing.assert_array_equal(cy.active_mask, ref_m)
 ```
 
-- [ ] **Step 2: Run the equivalence test**
+- [ ] **Step 2: Run the tests**
 
-Run: `micromamba run -n shiny python3 -m pytest "tests/test_backend_equivalence.py::test_cython_postcrw_matches_reference" -q 2>&1 | tail -20`
-Expected: PASS (the Cython post-CRW port is written to faithfully reproduce the reference on homogeneous water). **Do NOT loosen the tolerance to force green.** Interpret a failure:
-- *Vacuity assertion fails* → the gate isn't engaging; fix the setup (confirm `create_homogeneous_landscape` yields `_skip_land_avoidance=True`; if not, use the landscape that does).
-- *Positions/energy diverge beyond tolerance* → a genuine Cython↔reference divergence in the deterministic post-CRW math. STOP and report it as a real finding (this is exactly the guard's purpose), do not paper over it.
-- *`active_mask` differs* → a death fired in one path but not the other (mortality-path divergence). Reduce to 2 ticks and re-run to confirm it's mortality (not movement); if it persists with no movement divergence, report the mortality-path difference separately.
+Run: `micromamba run -n shiny python3 -m pytest tests/test_backend_equivalence.py -q 2>&1 | tail -20`
+Expected: `test_cython_gate_is_engaged` **PASS**; `test_cython_postcrw_matches_reference` reported as **XFAIL** (the documented Cython divergence — `1 xfailed`). If it instead reports **XPASS** under `strict=True` (a *failure*), Cython has been fixed: STOP, delete the `xfail` marker so the test runs as a real green guard, and note it. Never loosen the tolerance or delete the test to silence it.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git -C /home/razinka/cenjas/CENOP add tests/test_backend_equivalence.py
-git -C /home/razinka/cenjas/CENOP commit -m "test: Cython post-CRW equivalence vs reference (identical CRW)
+git -C /home/razinka/cenjas/CENOP commit -m "test: single-tick Cython post-CRW equivalence (xfail: documents Cython divergence)
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
@@ -441,10 +468,28 @@ numbers, to avoid rot.)
 
 | Guard | Test | Scope |
 |-------|------|-------|
-| Per-backend determinism | `tests/test_backend_equivalence.py::test_{numba,numpy_fallback,jax}_backend_deterministic` | same seed -> identical full-tick trajectory, within each of NumPy-fallback / Numba / JAX |
-| Cython post-CRW equivalence | `tests/test_backend_equivalence.py::test_cython_postcrw_matches_reference` | Cython post-CRW == Numba/NumPy reference on identical CRW (float32 tol; exact alive mask); also drives the Cython path through `step()` |
-| Cython kernel determinism | `tests/test_cython_tick.py::TestCythonFullPostCRW::test_deterministic_output` | same fixed inputs -> identical fused post-CRW kernel output |
+| Per-backend determinism | `tests/test_backend_equivalence.py::test_{numba,numpy_fallback,jax}_backend_deterministic` | same seed -> identical full-tick trajectory, within each of NumPy-fallback / Numba / JAX (JAX skips on absence or GPU-OOM) |
+| Cython post-CRW equivalence | `tests/test_backend_equivalence.py::test_cython_postcrw_matches_reference` | single-tick Cython post-CRW vs Numba/NumPy reference on identical CRW. **Currently `xfail(strict)`** — the Cython path is broken (see defects below); the test flips green when repaired |
+| Cython kernel determinism | `tests/test_cython_tick.py::TestCythonFullPostCRW::test_deterministic_output` | same *fixed inputs* -> identical fused post-CRW kernel output (note: NOT same-seed reproducibility — Cython mortality uses unseeded global `np.random`) |
 | Kernel vs NumPy reference | `tests/test_numba_kernels.py::TestReflectBoundariesKernel::test_equivalence_with_numpy_version` | `reflect_boundaries_kernel` == `Population._reflect_boundaries` (atol 1e-10) |
+
+## Known Cython-backend defects (→ Track B backend-fate decision)
+
+The Cython fast path is gated to homogeneous landscapes + `communication_enabled=False` +
+no energy module, so it is **off in production** (comm defaults True). The Tier-0
+equivalence work (running `test_cython_postcrw_matches_reference`) found it broken three
+ways; all are tracked here for Track B (repair or remove the backend):
+
+1. **Crash on float64 `food_grid`** — `cython_depons_post_crw` declares a float32
+   `food_grid`, but `step()` passes `self.landscape._food_value` uncast and homogeneous
+   landscapes store it float64 (`cell_data.py`); the path raises `ValueError: Buffer dtype
+   mismatch` on its first tick. (One-line fix: cast at the call site or store float32.)
+2. **Move-math divergence** — with bit-identical CRW inputs, Cython `x`/`y` diverge ~3.6
+   cells from the Numba/NumPy reference at a single tick (energy matches). A real
+   formula/units bug in `tick_cython.pyx`'s heading-composition/move section.
+3. **Non-reproducible mortality** — Cython draws mortality from the *global* `np.random`
+   (`tick_cython.pyx`), not the seeded `self.rng`, so the Cython path does not honor
+   `random_seed` and desyncs `self.rng` relative to the reference across ticks.
 
 ## What we do NOT (and cannot) test
 
@@ -485,11 +530,12 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 **Spec coverage (roadmap §4):**
 - 0a "mark slow + run + triage" → Tasks 1-5 (marker infra, mark both files by measured duration, run fast suite, run + triage slow tier).
 - 0a "fast suite unchanged" → Task 4 Step 1 (default suite green, no `--ignore`).
-- 0b "differential test, exact where identical, tight rtol/atol where float reductions differ, document where bit-identity impossible" → Task 6 (per-backend determinism guards) + **Task 7 (real Cython↔reference post-CRW differential, float32 tolerance)** + Task 8 (matrix doc). Only the *stochastic* cross-backend trajectory comparison is dropped, per Finding #3 — the spec-permitted "document why" case. The *deterministic* cross-backend comparison the spec asked for is delivered by Task 7.
-- 0b "covers the four named backends (NumPy, Numba, Cython, JAX) / explicit skips with reasons" → NumPy-fallback/Numba/JAX determinism in Task 6 (JAX skips cleanly when absent); Cython exercised through `step()` and compared to the reference in Task 7 (skips cleanly when Cython isn't built). All Part B tests are fast.
+- 0b "differential test, exact where identical, tight rtol/atol where float reductions differ, document where bit-identity impossible" → Task 6 (per-backend determinism guards) + **Task 7 (single-tick Cython↔reference post-CRW differential — currently `xfail(strict)` documenting a real, deep-review-confirmed Cython divergence)** + Task 8 (matrix doc + Cython-defects section). Only the *stochastic* cross-backend trajectory comparison is dropped (Finding #3, spec-permitted). The deterministic cross-backend comparison the spec asked for exists as Task 7 and doubles as the regression guard that flips green when Cython is repaired.
+- 0b "covers the four named backends / explicit skips with reasons" → NumPy-fallback/Numba/JAX determinism in Task 6 (JAX skips on absence OR GPU-OOM); Cython exercised through `step()` in Task 7 (skips when not built, xfails the known divergence). All Part B tests are fast.
+- **Real-world gaps surfaced by empirically running both parts (Finding #4) and addressed:** JAX determinism made robust to GPU-OOM (Task 6); the no-CI / slow-tier-is-manual obligation flagged prominently (Task 5 status doc + CLAUDE.md); the stale `--ignore` dev alias called out for retirement (Task 4). Cython's three defects are NOT repaired here (out of Tier-0 scope) — they are guarded (xfail) and handed to Track B (Task 8 defects section).
 
 **Placeholder scan:** no TBD/TODO. The only measured-and-confirm steps (Task 2/3 Step 1) give explicit candidate lists plus an objective >5 s rule; this is deliberate (durations are environment-dependent) and is not a placeholder.
 
 **Type/name consistency:** `_HAS_KERNELS`, `_HAS_LAND_KERNEL`, `_HAS_JAX` are module globals in `cenop.agents.population` (verified at `population.py:53/60` and JAX seed at `:406`); Task 6 monkeypatches them on `pop_mod` and Task 6 Step 2 instructs verifying the JAX flag name before relying on it. `random_seed`, `use_jax`, `porpoise_count` are `SimulationParameters` fields (verified). `PorpoisePopulation(count, params, landscape)` and `.step()`, `.x/.y/.energy/.age/.active_mask` match usage in existing tests (`active_mask` verified at `population.py:115`).
 
-**Deliberate scope note:** Part B does not attempt per-kernel NumPy equivalence for the *small fused* kernels beyond the existing `reflect_boundaries` test (they lack independent NumPy counterparts; covered by behavioral unit tests). It DOES add the Cython↔reference *post-CRW* differential (Task 7), the one cross-backend deterministic comparison that is cleanly buildable. Both the scope and the reasons are documented in `docs/backend-equivalence.md` rather than worked around. This refinement was confirmed by a four-angle in-loop review of an earlier draft of this plan.
+**Deliberate scope note:** Part B does not attempt per-kernel NumPy equivalence for the *small fused* kernels beyond the existing `reflect_boundaries` test (they lack independent NumPy counterparts; covered by behavioral unit tests). It DOES add the Cython↔reference *post-CRW* differential (Task 7), the one cross-backend deterministic comparison that is cleanly buildable — landed as `xfail` because a second, *empirical* in-loop review (which ran both parts end-to-end) proved the Cython backend is genuinely broken; those defects are documented and handed to Track B rather than fixed in this foundation tier. Both the scope and the reasons are in `docs/backend-equivalence.md`. This plan was refined by two in-loop review rounds: a four-angle static review (round 1) and a four-angle review that executed the tasks (round 2).

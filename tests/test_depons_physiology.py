@@ -150,6 +150,7 @@ class TestPopulationTrajectory:
         pop = PorpoisePopulation(500, params, landscape)
         return params, landscape, pop
 
+    @pytest.mark.slow
     def test_population_stability_short_term(self, simulation_setup):
         """Population should remain relatively stable over 1 year."""
         params, landscape, pop = simulation_setup
@@ -169,6 +170,7 @@ class TestPopulationTrajectory:
         change_ratio = final_pop / initial_pop
         assert 0.7 < change_ratio < 1.3, f"Population changed by {change_ratio:.2f}x in 1 year"
 
+    @pytest.mark.slow
     def test_age_distribution_evolves(self, simulation_setup):
         """Age distribution should evolve over time."""
         params, landscape, pop = simulation_setup
@@ -203,6 +205,7 @@ class TestPopulationTrajectory:
 class TestDEPONSTrajectoryComparison:
     """Compare population trajectories to DEPONS 3.0 reference values."""
 
+    @pytest.mark.slow
     def test_annual_mortality_rate(self):
         """Overall annual mortality should be low for well-fed population (DEPONS 3.2).
 
@@ -242,6 +245,7 @@ class TestDEPONSTrajectoryComparison:
         # Allow up to 10% for stochastic variation; minimum near-zero (no invented floors)
         assert mortality_rate < 0.10, f"Mortality rate {mortality_rate:.1%} unexpectedly high for well-fed population"
 
+    @pytest.mark.slow
     def test_energy_dynamics_over_year(self):
         """Mean energy should remain stable over a year."""
         params = SimulationParameters(
@@ -273,6 +277,7 @@ class TestDEPONSTrajectoryComparison:
         # Homogeneous landscape with food_prob=0.3 should give 8-18 range
         assert 5 < mean_energy < 18, f"Mean energy {mean_energy:.1f} outside expected range (5-18)"
 
+    @pytest.mark.slow
     def test_female_reproduction_rate(self):
         """Eligible females should reproduce during breeding season (DEPONS 3.2).
 

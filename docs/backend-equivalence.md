@@ -25,7 +25,7 @@ numbers, to avoid rot.)
 
 | Guard | Test | Scope |
 |-------|------|-------|
-| Per-backend determinism | `tests/test_backend_equivalence.py::test_{numba,numpy_fallback,jax}_backend_deterministic` | same seed -> identical full-tick trajectory, within each of NumPy-fallback / Numba / JAX (JAX skips on absence or GPU-OOM) |
+| Per-backend determinism | `tests/test_backend_equivalence.py::test_{numba_backend,numpy_fallback,jax_backend}_deterministic` | same seed -> identical full-tick trajectory, within each of NumPy-fallback / Numba / JAX (JAX skips on absence or GPU-OOM) |
 | Cython post-CRW equivalence | `tests/test_backend_equivalence.py::test_cython_postcrw_matches_reference` | single-tick Cython post-CRW vs Numba/NumPy reference on identical CRW. **Currently `xfail(strict)`** — the Cython path is broken (see defects below); the test flips green when repaired |
 | Cython kernel determinism | `tests/test_cython_tick.py::TestCythonFullPostCRW::test_deterministic_output` | same *fixed inputs* -> identical fused post-CRW kernel output (note: NOT same-seed reproducibility — Cython mortality uses unseeded global `np.random`) |
 | Kernel vs NumPy reference | `tests/test_numba_kernels.py::TestReflectBoundariesKernel::test_equivalence_with_numpy_version` | `reflect_boundaries_kernel` == `Population._reflect_boundaries` (atol 1e-10) |

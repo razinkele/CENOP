@@ -766,6 +766,128 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
+### Task 4b: Vectorize the 30-slot inner loop (behavior-preserving perf)
+
+The Task 4 implementation uses a Python `for k in range(30)` loop per ship. Over 637 ships that is ~19k interpreter iterations per tick, making a 2-year baseline run take hours. This task replaces the inner loop with batched NumPy over all 30 sub-steps at once — a behavior-preserving optimization (the design's "re-tune perf with the cull if needed"). It must produce results IDENTICAL to the loop version, so the existing `TestSubTickInterpolation` exact-value tests are the primary equivalence guard; we add one richer multi-ship/multi-porpoise/seeded equivalence test first (it must pass on the CURRENT loop impl), then refactor and confirm it (and all 8 existing) stay green.
+
+**Files:** Modify `src/cenop/agents/ship.py` (`calculate_aggregate_deterrence_vectorized` inner loop); Test `tests/test_ship_deterrence_port.py`.
+
+- [ ] **Step 1: Add the equivalence guard test (passes on the current loop impl)** — append to `TestSubTickInterpolation`:
+
+```python
+    def test_vectorized_matches_bruteforce_multi(self):
+        """Multi-ship, multi-porpoise, mixed-range, seeded: aggregator matches an independent
+        brute-force per-(porpoise,slot,ship) reference (max-RL ship wins, lowest id on tie,
+        winner's own per-ship draw decides reacting, sum over 30 slots)."""
+        import numpy as np
+        from cenop.agents.ship import ShipManager, MAX_DETER_DIST_M
+        p = self._params(); seed, tick = 13, 6
+        ships = [
+            self._ship(1, 52.0, 50.0, prev=(48.0, 50.0), sl=200.0),
+            self._ship(2, 49.0, 53.0, prev=(49.0, 47.0), sl=195.0),
+            self._ship(3, 300.0, 300.0, sl=205.0),  # far -> out of range for all
+        ]
+        px = np.array([50.0, 51.0, 47.0, 500.0])     # last is far out of range
+        py = np.array([50.0, 49.0, 52.0, 500.0])
+        mgr = ShipManager(list(ships)); mgr.enabled = True
+        dx, dy = mgr.calculate_aggregate_deterrence_vectorized(
+            px, py, p, base_seed=seed, tick=tick)
+        cell = 400.0
+        min_m = p.deter_min_distance_ships * 1000.0
+        max_m = min(MAX_DETER_DIST_M, p.deter_max_distance * 1000.0)
+        n = px.shape[0]
+        draws = {}
+        for s in ships:
+            rng = np.random.default_rng(np.random.SeedSequence([seed, tick, int(s.id)]))
+            draws[int(s.id)] = rng.random((n, 30))
+        exp_x = np.zeros(n); exp_y = np.zeros(n)
+        for pi in range(n):
+            for k in range(1, 31):
+                best = -np.inf; bvx = bvy = 0.0
+                for s in sorted(ships, key=lambda z: int(z.id)):
+                    sx = s._prev_x + (s.x - s._prev_x) * k / 30.0
+                    sy = s._prev_y + (s.y - s._prev_y) * k / 30.0
+                    gdx = np.array([px[pi] - sx]); gdy = np.array([py[pi] - sy])
+                    d = np.array([max(float(np.hypot(gdx[0]*cell, gdy[0]*cell)), 1.0)])
+                    if not (min_m < d[0] <= max_m):
+                        continue
+                    rl = max(0.0, float(s.noise.get_source_level()
+                                        - (p.beta_hat*np.log10(d[0]) + p.alpha_hat*d[0])))
+                    if not (rl > p.deter_ships_min_db):
+                        continue
+                    if rl > best:   # strict: first-processed (lowest id) keeps ties
+                        u = np.array([draws[int(s.id)][pi, k-1]])
+                        vx, vy, _, _, _ = s.deterrence_model.deterrence_components(
+                            np.array([rl]), d, gdx, gdy, True, u, p.deter_ships_min_db)
+                        best = rl; bvx = float(vx[0]); bvy = float(vy[0])
+                exp_x[pi] += bvx; exp_y[pi] += bvy
+        np.testing.assert_allclose(dx, exp_x, rtol=1e-9, atol=1e-12)
+        np.testing.assert_allclose(dy, exp_y, rtol=1e-9, atol=1e-12)
+        assert np.any(exp_x != 0.0) or np.any(exp_y != 0.0)   # non-vacuous
+```
+
+- [ ] **Step 2: Run it on the CURRENT (loop) implementation — must PASS**
+
+Run: `micromamba run -n shiny python3 -m pytest tests/test_ship_deterrence_port.py::TestSubTickInterpolation::test_vectorized_matches_bruteforce_multi -q`
+Expected: PASS (the reference matches the loop impl). This validates the reference before we refactor.
+
+- [ ] **Step 3: Refactor the inner loop to batched NumPy**
+
+In `calculate_aggregate_deterrence_vectorized`, replace the per-ship block that starts at `px_c = porpoise_x[cand]` and contains the `for k in range(STEPS):` loop (through the end of that loop) with:
+
+```python
+            px_c = porpoise_x[cand]
+            py_c = porpoise_y[cand]
+            m = cand.size
+            # Vectorize over all STEPS sub-steps at once (replaces the per-slot Python loop).
+            gdx = px_c[:, None] - sub_x[None, :]          # (m, STEPS)
+            gdy = py_c[:, None] - sub_y[None, :]
+            dist_m = np.hypot(gdx * cell_size, gdy * cell_size)
+            np.maximum(dist_m, 1.0, out=dist_m)
+            # RL per (porpoise, slot): tile porpoise positions across slots (row-major) so the
+            # shared helper's per-cell WestonFlux lookups stay correct; reshape back to (m, STEPS).
+            px_flat = np.repeat(px_c, STEPS)
+            py_flat = np.repeat(py_c, STEPS)
+            rl = _ship_received_level(
+                source_level, dist_m.ravel(), px_flat, py_flat,
+                params, cell_data, month, weston).reshape(m, STEPS)
+            if _force_u is None:
+                u_slab = u_all[cand, :]                   # (m, STEPS), porpoise-major rows
+            else:
+                u_slab = np.full((m, STEPS), float(_force_u), dtype=np.float64)
+            vx, vy, _, _, _ = ship.deterrence_model.deterrence_components(
+                rl.ravel(), dist_m.ravel(), gdx.ravel(), gdy.ravel(),
+                is_day, u_slab.ravel(), tships)
+            vx = vx.reshape(m, STEPS); vy = vy.reshape(m, STEPS)
+            # In-range + Tships gate; loudest gated ship wins each (porpoise, slot); its vector
+            # is 0 if it did not react. Slots a ship does not win keep the incumbent value.
+            in_range = (dist_m > min_dist_m) & (dist_m <= max_dist_m)
+            cur_best = best_rl[cand, :]
+            wins = in_range & (rl > tships) & (rl > cur_best)
+            best_rl[cand, :] = np.where(wins, rl, cur_best)
+            accum_dx[cand, :] = np.where(wins, vx, accum_dx[cand, :])
+            accum_dy[cand, :] = np.where(wins, vy, accum_dy[cand, :])
+```
+
+Keep the `u_all = rng.random((n, STEPS))` draw (still porpoise-major) and everything before `px_c = ...` unchanged. The trailing `total_dx = accum_dx.sum(axis=1)` etc. is unchanged.
+
+Rationale for equivalence: for in-range slots, `rl`/`vx`/`vy` are computed by the same helper/kernel with the same inputs as the loop version, and the winner test is the same (`gated & rl > best_rl`); out-of-range slots have `in_range == False` so `wins == False` and the incumbent value is preserved (identical to the loop's `continue`).
+
+- [ ] **Step 4: Run the full sub-tick + regression suite — all must stay GREEN**
+
+Run: `micromamba run -n shiny python3 -m pytest tests/test_ship_deterrence_port.py tests/test_deterrence.py tests/test_weston_flux.py tests/test_integration.py -q`
+Expected: PASS (all `TestSubTickInterpolation` exact-value tests + the new equivalence test stay green; results bit-identical to the loop version). Run from the repo root so the `TestShipJsonLoader` data-path tests also pass.
+
+- [ ] **Step 5: Quick speed check (optional, informational)**
+
+Time ~300 ticks of a small ships sim to confirm the speedup, e.g. a short `--years` run, and note ticks/sec. No hard gate.
+
+- [ ] **Step 6: Commit**
+
+`git -C /home/razinka/cenjas/CENOP add src/cenop/agents/ship.py tests/test_ship_deterrence_port.py` then commit with body `perf: vectorize 30-slot ship-deterrence inner loop (behavior-preserving)` + blank line + trailer.
+
+---
+
 ### Task 5: Regenerate the Kattegat ship baseline
 
 Sub-tick interpolation raises ship-deterrence magnitudes (integration over the swept path), so the committed ship baseline must be regenerated.
@@ -781,7 +903,9 @@ Note the SHA for the PROVENANCE file.
 
 - [ ] **Step 2: Regenerate the baseline**
 
-Run: `micromamba run -n shiny python3 scripts/run_kattegat_reference.py --count 2000 --years 2 --seed 42 --ships`
+Run: `micromamba run -n shiny python3 scripts/run_kattegat_reference.py --count 2000 --years 2 --seed 42 --ships --out output/kattegat_ref_ships`
+
+NOTE: the script's `--out` defaults to `output/kattegat_ref` (the UNDISTURBED baseline). You MUST pass `--out output/kattegat_ref_ships` or you will clobber the undisturbed baseline instead of regenerating the ships one.
 Expected: completes; prints a nonzero `deter_strength` event count (was 10,123 in the prior baseline — expect MORE events/higher magnitudes now, since sub-tick integrates over the swept path).
 
 - [ ] **Step 3: Objective stability gate (do NOT skip)**

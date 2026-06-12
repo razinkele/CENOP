@@ -61,6 +61,35 @@ def _compute_tl_percell(d_masked, depths, grain_sizes, salinities,
 if _NUMBA:
     _compute_tl_percell = njit(cache=True)(_compute_tl_percell)
 
+
+def _ship_received_level(source_level, dist_m, px, py, params, cell_data, month, weston):
+    """Received level (dB, clamped >= 0) at the given porpoise positions for one ship.
+
+    WestonFlux per-cell when `weston`, else simple alpha/beta TL. NODATA on
+    depth/grain/salinity OR TL <= 0 -> RL 0 (DEPONS Ship.java:296-307 + valueIsNoData).
+    All array args are the in-range subset; `source_level` is a scalar. NODATA/depth are
+    evaluated at the PORPOISE position (an accepted SoA divergence; DEPONS uses the ship
+    cell).
+    """
+    if weston:
+        pos = np.column_stack((px, py))
+        depths = cell_data.get_depths_vectorized(pos)
+        grains = cell_data.get_sediments_vectorized(pos)
+        sal = cell_data.get_salinities_vectorized(pos, month)
+        tl = _compute_tl_percell(
+            dist_m, depths, grains, sal,
+            params.weston_flux_default_temperature,
+            params.beta_hat, params.alpha_hat,
+        )
+        rl = source_level - tl
+        nodata = (depths <= -9999.0) | (grains <= -9999.0) | (sal <= -9999.0)
+        rl = np.where(nodata | (tl <= 0.0), 0.0, rl)
+    else:
+        tl = params.beta_hat * np.log10(dist_m) + params.alpha_hat * dist_m
+        rl = source_level - tl
+    return np.maximum(rl, 0.0)
+
+
 if TYPE_CHECKING:
     from cenop.parameters.simulation_params import SimulationParameters
     from cenop.landscape.cell_data import CellData
@@ -181,6 +210,8 @@ class Ship(Agent):
             length=self.vessel_length,
             speed=self.current_speed,
         )
+        self._prev_x = self.x
+        self._prev_y = self.y
     
     def is_active(self, tick: Optional[int] = None) -> bool:
         """Check if ship is present at given tick."""
@@ -191,10 +222,13 @@ class Ship(Agent):
     def update(self, current_tick: int) -> None:
         """
         Update ship position and status for current tick.
-        
+
         Args:
             current_tick: Current simulation tick
         """
+        # Start-of-tick position for sub-tick swept-path deterrence (set before any
+        # early return so paused/inactive ships keep prev == current).
+        self._prev_x, self._prev_y = self.x, self.y
         # Check if active
         self._is_active = self.tick_start <= current_tick < self.tick_end
         
@@ -409,17 +443,20 @@ class ShipManager:
         Calculate aggregate deterrence from all ships (scalar oracle path).
 
         NOTE: NOT on the production tick path (Simulation.step uses
-        calculate_aggregate_deterrence_vectorized). This per-porpoise oracle
-        computes RL via get_received_level (simple alpha/beta TL only) and does
-        NOT honor weston_flux_percell, unlike the vectorized path and
-        Ship.calculate_deterrence. Acceptable because it is off the production
-        path; do not wire it in without reconciling the TL models first.
+        calculate_aggregate_deterrence_vectorized). This per-porpoise oracle is a
+        SINGLE-POSITION + loudest-ship oracle (no sub-tick interpolation). Its RL now
+        flows through the shared _ship_received_level helper, so it honors
+        weston_flux_percell exactly like the vectorized path. It is deliberately NOT a
+        sub-tick oracle; do not use it to validate sub-tick aggregation.
 
         Args:
             porpoise_x, porpoise_y: Porpoise position
             params: Simulation parameters
             is_day: True for daytime
             cell_size: Cell size in meters
+            cell_data: Landscape cell data (enables per-cell WestonFlux TL when
+                weston_flux_percell is set); None falls back to alpha/beta TL
+            month: Month index (1-12) for salinity lookup in the WestonFlux path
 
         Returns:
             (max_magnitude, total_dx, total_dy)
@@ -431,6 +468,8 @@ class ShipManager:
         max_dist_m = min(MAX_DETER_DIST_M, params.deter_max_distance * 1000.0)
         min_dist_m = params.deter_min_distance_ships * 1000.0
         tships = getattr(params, "deter_ships_min_db", 80.0)
+        weston = (params.weston_flux_percell and cell_data is not None
+                  and getattr(cell_data, "_sediment", None) is not None)
         for ship in self.get_active_ships():
             gdx = porpoise_x - ship.x
             gdy = porpoise_y - ship.y
@@ -438,8 +477,10 @@ class ShipManager:
             if not (dist_m > min_dist_m and dist_m <= max_dist_m):
                 continue
             # Compute RL ONCE; use the same value for selection and the kernel (no double-compute).
-            rl = max(0.0, ship.get_received_level(
-                porpoise_x, porpoise_y, params.alpha_hat, params.beta_hat, cell_size))
+            source_level = ship.noise.get_source_level()
+            rl = float(_ship_received_level(
+                source_level, np.array([dist_m]), np.array([porpoise_x]),
+                np.array([porpoise_y]), params, cell_data, month, weston)[0])
             if rl <= best_rl:
                 continue
             best_rl = rl
@@ -463,11 +504,15 @@ class ShipManager:
         tick: int = 0,
         _force_u: Optional[float] = None,
     ) -> Tuple[np.ndarray, np.ndarray]:
-        """Aggregate DEPONS ship deterrence over active ships (loudest ship wins).
+        """Aggregate DEPONS ship deterrence over active ships with 30-substep
+        within-tick interpolation (Ship.java interpolateStep).
 
-        Per porpoise, keeps the contribution of the highest-received-level ship
-        (DEPONS ShipDeterrence.recordStep), not a sum. Reaction draws are seeded
-        per (base_seed, tick, ship.id) so results are invariant to ship order/count.
+        For each ship, 30 sub-positions are interpolated along the ship's within-tick
+        swept path (start-of-tick `_prev_x/_prev_y` -> end-of-tick `x/y`), positions
+        start + (end-start)*i/30 for i=1..30. Per porpoise, per sub-step slot, the
+        ship with the maximum received level wins (ShipDeterrence.recordStep); the 30
+        slots are summed into the returned vector (deterrenceVtX/Y). A gated ship that
+        does not react occupies its slot with a zero vector.
 
         NOTE: per-ship SeedSequence draws preserve the marginal Bernoulli
         probability but DELIBERATELY do not reproduce DEPONS' global-RNG draw
@@ -488,70 +533,98 @@ class ShipManager:
         if not active_ships:
             return (total_dx, total_dy)
 
-        best_rl = np.full(n, -np.inf, dtype=np.float64)
+        STEPS = 30
+        # DEPONS interpolateStep: positions start + (end-start)*i/30 for i=1..30
+        # (excludes start, includes end).
+        t_frac = np.arange(1, STEPS + 1, dtype=np.float64) / STEPS
+
+        # Per (porpoise, sub-step slot): keep the max-RL ship's vector, then sum slots
+        # (DEPONS ShipDeterrence.recordStep + deterrenceVtX/Y).
+        best_rl = np.full((n, STEPS), -np.inf, dtype=np.float64)
+        accum_dx = np.zeros((n, STEPS), dtype=np.float64)
+        accum_dy = np.zeros((n, STEPS), dtype=np.float64)
+
         min_dist_m = params.deter_min_distance_ships * 1000.0
         max_dist_m = min(MAX_DETER_DIST_M, params.deter_max_distance * 1000.0)
         tships = getattr(params, "deter_ships_min_db", 80.0)
         weston = (params.weston_flux_percell and cell_data is not None
                   and getattr(cell_data, "_sediment", None) is not None)
 
-        for ship in active_ships:
-            grid_dx = porpoise_x - ship.x          # cell units
-            grid_dy = porpoise_y - ship.y
-            dist_m = np.hypot(grid_dx * cell_size, grid_dy * cell_size)
-            np.maximum(dist_m, 1.0, out=dist_m)
+        # Process ships in ascending id order so the result is invariant to the input
+        # ship-list order, including on an exact RL tie (the strict `>` winner test below
+        # keeps the FIRST-processed ship, i.e. the lowest id, on a tie). This preserves
+        # this method's documented order/count invariance -- without sorting, the
+        # per-ship (n, STEPS) reaction streams would make an exact-RL-tie winner (and hence
+        # the stream used) depend on list order.
+        for ship in sorted(active_ships, key=lambda s: int(s.id)):
+            prev_x = getattr(ship, "_prev_x", ship.x)
+            prev_y = getattr(ship, "_prev_y", ship.y)
+            sub_x = prev_x + (ship.x - prev_x) * t_frac   # (STEPS,)
+            sub_y = prev_y + (ship.y - prev_y) * t_frac
 
-            # Work ONLY on in-range porpoises (the 10 km cap keeps this a small subset).
-            idx = np.flatnonzero((dist_m > min_dist_m) & (dist_m <= max_dist_m))
-            if idx.size == 0:
+            # Pre-cull: any porpoise in range at some slot lies within max_dist of the
+            # swept segment, hence within (max_dist + half segment length) of its midpoint.
+            mid_x = 0.5 * (prev_x + ship.x)
+            mid_y = 0.5 * (prev_y + ship.y)
+            seg_len_m = float(np.hypot((ship.x - prev_x) * cell_size,
+                                       (ship.y - prev_y) * cell_size))
+            cand_r = max_dist_m + 0.5 * seg_len_m
+            mid_d = np.hypot((porpoise_x - mid_x) * cell_size,
+                             (porpoise_y - mid_y) * cell_size)
+            cand = np.flatnonzero(mid_d <= cand_r)
+            if cand.size == 0:
                 continue
 
-            d_sub = dist_m[idx]
-            gdx_sub = grid_dx[idx]
-            gdy_sub = grid_dy[idx]
             source_level = ship.noise.get_source_level()
-            if weston:
-                pos = np.column_stack((porpoise_x[idx], porpoise_y[idx]))
-                depths = cell_data.get_depths_vectorized(pos)
-                grains = cell_data.get_sediments_vectorized(pos)
-                sal = cell_data.get_salinities_vectorized(pos, month)
-                tl = _compute_tl_percell(
-                    d_sub, depths, grains, sal,
-                    params.weston_flux_default_temperature,
-                    params.beta_hat, params.alpha_hat,
-                )
-                rl_sub = source_level - tl
-                # DEPONS Ship.java:296-307 + valueIsNoData (value <= -9999):
-                # NODATA on depth/grain/salinity OR TL<=0 -> received level 0.
-                # (DEPONS evaluates NODATA at the SHIP cell; CENOP uses the porpoise
-                #  cell here — accepted SoA divergence. Porpoises require depth>=wmin
-                #  so depth<=0 cannot occur for a valid porpoise; tl<=0 guards bad geometry.)
-                nodata = (depths <= -9999.0) | (grains <= -9999.0) | (sal <= -9999.0)
-                rl_sub = np.where(nodata | (tl <= 0.0), 0.0, rl_sub)
+            # Reaction draws: PORPOISE-MAJOR (n, STEPS) stream seeded per
+            # (base_seed, tick, ship.id). Porpoise i's 30 slot-draws are the contiguous
+            # block u_all[i, :], so they depend ONLY on the global porpoise index i, not on
+            # the total count n -> invariant to ship order AND porpoise count/membership.
+            # (A (STEPS, n) layout would NOT be count-invariant: C-order interleaves
+            # porpoise i's draws at flat positions i, n+i, 2n+i, ... which shift with n.)
+            # Only the marginal Bernoulli RATE matches DEPONS (global draw order is
+            # unreproducible under SoA).
+            if _force_u is None:
+                rng = np.random.default_rng(
+                    np.random.SeedSequence([base_seed, tick, int(ship.id)]))
+                u_all = rng.random((n, STEPS))
             else:
-                tl = params.beta_hat * np.log10(d_sub) + params.alpha_hat * d_sub
-                rl_sub = source_level - tl
-            rl_sub = np.maximum(rl_sub, 0.0)
+                u_all = None
 
-            # Reaction draws: the full-N rng stream indexed by GLOBAL porpoise index keeps
-            # each (ship, porpoise) draw invariant to ship order/count; then subset by idx.
-            if _force_u is not None:
-                u_sub = np.full(idx.size, float(_force_u), dtype=np.float64)
+            px_c = porpoise_x[cand]
+            py_c = porpoise_y[cand]
+            m = cand.size
+            # Vectorize over all STEPS sub-steps at once (replaces the per-slot Python loop).
+            gdx = px_c[:, None] - sub_x[None, :]          # (m, STEPS)
+            gdy = py_c[:, None] - sub_y[None, :]
+            dist_m = np.hypot(gdx * cell_size, gdy * cell_size)
+            np.maximum(dist_m, 1.0, out=dist_m)
+            # RL per (porpoise, slot): tile porpoise positions across slots (row-major) so the
+            # shared helper's per-cell WestonFlux lookups stay correct; reshape back to (m, STEPS).
+            px_flat = np.repeat(px_c, STEPS)
+            py_flat = np.repeat(py_c, STEPS)
+            rl = _ship_received_level(
+                source_level, dist_m.ravel(), px_flat, py_flat,
+                params, cell_data, month, weston).reshape(m, STEPS)
+            if _force_u is None:
+                u_slab = u_all[cand, :]                   # (m, STEPS), porpoise-major rows
             else:
-                rng = np.random.default_rng(np.random.SeedSequence([base_seed, tick, int(ship.id)]))
-                u_sub = rng.random(n)[idx]
+                u_slab = np.full((m, STEPS), float(_force_u), dtype=np.float64)
+            vx, vy, _, _, _ = ship.deterrence_model.deterrence_components(
+                rl.ravel(), dist_m.ravel(), gdx.ravel(), gdy.ravel(),
+                is_day, u_slab.ravel(), tships)
+            vx = vx.reshape(m, STEPS); vy = vy.reshape(m, STEPS)
+            # In-range + Tships gate; loudest gated ship wins each (porpoise, slot); its vector
+            # is 0 if it did not react. Slots a ship does not win keep the incumbent value.
+            in_range = (dist_m > min_dist_m) & (dist_m <= max_dist_m)
+            cur_best = best_rl[cand, :]
+            wins = in_range & (rl > tships) & (rl > cur_best)
+            best_rl[cand, :] = np.where(wins, rl, cur_best)
+            accum_dx[cand, :] = np.where(wins, vx, accum_dx[cand, :])
+            accum_dy[cand, :] = np.where(wins, vy, accum_dy[cand, :])
 
-            vx, vy, _, _, react = ship.deterrence_model.deterrence_components(
-                rl_sub, d_sub, gdx_sub, gdy_sub, is_day, u_sub, tships)
-
-            # Loudest gated ship wins each porpoise's slot (vector is 0 if it didn't react).
-            gated = rl_sub > tships
-            wins = gated & (rl_sub > best_rl[idx])
-            sel = idx[wins]
-            best_rl[sel] = rl_sub[wins]
-            total_dx[sel] = vx[wins]
-            total_dy[sel] = vy[wins]
-
+        total_dx = accum_dx.sum(axis=1)
+        total_dy = accum_dy.sum(axis=1)
         return (total_dx, total_dy)
 
     def ambient_received_level_at_positions(

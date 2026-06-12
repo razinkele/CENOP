@@ -1,33 +1,37 @@
 Kattegat ship-scenario reference baseline — PROVENANCE
 =======================================================
 
-Date generated:   2026-06-05
-Producing code:   branch ship-deterrence-parity-r2, commit 8e198c1
-                  (Ship-Deterrence Parity Round 2; see
-                   docs/superpowers/plans/2026-06-04-ship-deterrence-parity-round2.md
-                   and docs/superpowers/specs/2026-06-04-ship-deterrence-parity-round2-design.md)
-Command:          python3 scripts/run_kattegat_reference.py --count 2000 --years 2 --seed 42 --ships
+Date generated:   2026-06-08
+Producing code:   branch ship-deterrence-subtick, commit eca6f96
+                  (Ship-Deterrence Sub-Tick Interpolation; see
+                   docs/superpowers/plans/2026-06-08-ship-deterrence-subtick.md
+                   and docs/superpowers/specs/2026-06-08-ship-deterrence-subtick-design.md)
+Command:          python3 scripts/run_kattegat_reference.py --count 2000 --years 2 \
+                    --seed 42 --ships --out output/kattegat_ref_ships
 Landscape:        data/Kattegat (600x1000 cells), 637 real ship routes from data/Kattegat/ships.json
 Seed:             42 (deterministic; DEPONS parameters.xml randomSeed is __NULL__)
 
-SUPERSEDES the prior baseline (commit 27824e1, then 7232419), which used a flat
-class-based ship source level (~170-175 dB for all ships) and let ship deterrence
-deactivate dispersal.
+SUPERSEDES the prior baseline (commit 8e198c1, Ship-Deterrence Parity Round 2),
+which evaluated ship deterrence at a SINGLE end-of-tick ship position.
 
-This baseline reflects the Round-2 parity fixes:
-  - JOMOPANS per-vessel source level: ship SL now depends on the real vessel type,
-    length, and per-buoy speed read from ships.json (band 12). Realistic SLs are
-    lower than the old flat 170 dB for most classes, so fewer porpoises clear the
-    Tships=80 dB gate at range -> fewer deterrence events than the prior baseline.
-  - Turbine-only dispersal deactivation: ship deterrence no longer deactivates
-    dispersal (DEPONS deactivates only for turbine/sound-source deterrence). This
-    scenario has no turbines, so dispersal is unaffected by the ships here.
-  - is_disturbed reporting threshold lowered 0.1 -> 0.01 (captures ship deterrence).
+This baseline reflects the sub-tick interpolation change (DEPONS Ship.java
+interpolateStep parity): ship deterrence is now evaluated at 30 interpolated ship
+positions along each ship's within-tick swept path (start-of-tick -> end-of-tick).
+Per porpoise, per sub-step slot, the maximum-received-level ship wins
+(ShipDeterrence.recordStep); the 30 slots are summed into the per-tick deterrence
+vector (deterrenceVtX/Y). Because each sub-step draws its own reaction Bernoulli,
+deterrence is integrated over the ship's passage, so per-tick magnitudes and the
+number of nonzero deterrence events are substantially higher than the prior
+single-position baseline. The scalar test-only aggregator's transmission loss was
+also made consistent with the production path via a shared received-level helper.
 
 Run summary:
-  - 2 yr (34,560 ticks), N=2000, population stable (2000 -> 1996)
-  - 10,123 nonzero deter_strength records, max 0.0409
-    (compare: prior baseline had 38,093 nonzero at flat 170 dB SL)
+  - 2 yr (34,560 ticks), N=2000, population stable (2000 -> 1998; min 1987, max 2000)
+  - 188,072 nonzero deter_strength records, max 0.3168
+    (compare: prior single-position baseline had 10,123 nonzero, max 0.0409
+     -> ~18.6x more events, ~7.7x larger peak, as expected from swept-path integration)
+  - Population stability confirms the increased deterrence is not pathological
+    over-deterrence.
 
 Committed files are the compact DEPONS-format outputs (Population.txt, Energy.txt,
 Mortality.txt) plus this PROVENANCE.txt. The heavy per-individual / per-event files

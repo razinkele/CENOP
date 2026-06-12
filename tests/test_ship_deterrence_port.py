@@ -594,3 +594,400 @@ class TestTurbineOnlyDispersalJax:
         t = (np.array([0.0], dtype=np.float64), np.array([0.0], dtype=np.float64))
         pop.step(deterrence_vectors=d, turbine_deterrence_vectors=t)
         assert bool(pop.is_dispersing[0]) is True
+
+
+class TestSharedReceivedLevel:
+    def test_non_weston_uses_alpha_beta(self):
+        import numpy as np
+        from cenop.agents.ship import _ship_received_level
+        from cenop.parameters.simulation_params import SimulationParameters
+        p = SimulationParameters()
+        dist_m = np.array([2000.0])
+        px = np.array([50.0]); py = np.array([50.0])
+        rl = _ship_received_level(180.0, dist_m, px, py, p,
+                                  cell_data=None, month=1, weston=False)
+        expected = 180.0 - (p.beta_hat * np.log10(2000.0) + p.alpha_hat * 2000.0)
+        assert rl[0] == pytest.approx(max(0.0, expected))
+
+    def test_weston_nodata_gives_zero(self):
+        import numpy as np
+        from cenop.agents.ship import _ship_received_level
+        from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        p = SimulationParameters(); p.weston_flux_percell = True
+        land = create_homogeneous_landscape(width=100, height=100, depth=20.0, food_prob=0.5)
+        land._depth[:] = -9999.0  # all NODATA depth
+        dist_m = np.array([2000.0])
+        px = np.array([50.0]); py = np.array([50.0])
+        rl = _ship_received_level(210.0, dist_m, px, py, p,
+                                  cell_data=land, month=1, weston=True)
+        assert rl[0] == 0.0
+
+    def test_clamped_non_negative(self):
+        import numpy as np
+        from cenop.agents.ship import _ship_received_level
+        from cenop.parameters.simulation_params import SimulationParameters
+        p = SimulationParameters()
+        rl = _ship_received_level(10.0, np.array([9000.0]), np.array([0.0]),
+                                  np.array([0.0]), p, cell_data=None, month=1, weston=False)
+        assert rl[0] == 0.0
+
+
+class TestScalarAggregatorTL:
+    def _mgr(self, sl=205.0):
+        from cenop.agents.ship import Ship, ShipManager, VesselClass
+        s = Ship(id=1, x=50.0, y=50.0, vessel_type=VesselClass.CARGO)
+        s._is_active = True; s.noise.base_source_level = sl
+        mgr = ShipManager([s]); mgr.enabled = True
+        return mgr, s
+
+    def test_scalar_uses_weston_when_enabled(self):
+        """Scalar aggregator RL must use WestonFlux (per-cell) when enabled, NOT alpha/beta.
+
+        Non-vacuous: the WestonFlux RL and the alpha/beta RL both gate in and react here
+        (so 'dx != 0' alone cannot distinguish them). We assert the produced vector matches
+        the WestonFlux-derived reference and DIFFERS from the alpha/beta-derived reference.
+        At RED (scalar still uses alpha/beta) `dx_w != alphabeta_ref` fails."""
+        import numpy as np
+        from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        from cenop.agents.ship import _ship_received_level
+        from cenop.behavior.sound import ShipDeterrenceModel
+        mgr, s = self._mgr()
+        p = SimulationParameters(); p.weston_flux_percell = True
+        land = create_homogeneous_landscape(width=100, height=100, depth=20.0, food_prob=0.5)
+        px, py = 50.0 + 2000.0 / 400.0, 50.0
+        orig = np.random.random
+        np.random.random = lambda *a, **k: 0.0   # force reaction (u=0 < prob)
+        try:
+            mag_w, dx_w, dy_w = mgr.calculate_aggregate_deterrence(
+                px, py, p, is_day=True, cell_data=land, month=1)
+        finally:
+            np.random.random = orig
+        # Reference vectors from the two RL models (force react u=0):
+        m = ShipDeterrenceModel()
+        dist_m = np.array([2000.0]); gdx = np.array([px - 50.0]); gdy = np.array([0.0])
+        rl_w = _ship_received_level(s.noise.get_source_level(), dist_m,
+                                    np.array([px]), np.array([py]), p, land, 1, True)
+        rl_ab = _ship_received_level(s.noise.get_source_level(), dist_m,
+                                     np.array([px]), np.array([py]), p, None, 1, False)
+        assert rl_w[0] > p.deter_ships_min_db and rl_ab[0] > p.deter_ships_min_db  # both gated in
+        assert rl_w[0] != pytest.approx(rl_ab[0])                                  # models differ
+        vx_w = float(m.deterrence_components(rl_w, dist_m, gdx, gdy, True,
+                                             np.array([0.0]), p.deter_ships_min_db)[0][0])
+        vx_ab = float(m.deterrence_components(rl_ab, dist_m, gdx, gdy, True,
+                                              np.array([0.0]), p.deter_ships_min_db)[0][0])
+        assert dx_w == pytest.approx(vx_w)         # scalar used WestonFlux RL
+        assert dx_w != pytest.approx(vx_ab)        # ... NOT alpha/beta RL
+
+    def test_scalar_without_celldata_uses_alpha_beta(self):
+        """No cell_data -> alpha/beta TL (unchanged legacy behavior)."""
+        import numpy as np
+        from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.agents.ship import _ship_received_level
+        mgr, s = self._mgr()
+        p = SimulationParameters()
+        px, py = 50.0 + 2000.0 / 400.0, 50.0
+        orig = np.random.random
+        np.random.random = lambda *a, **k: 0.0
+        try:
+            mag, dx, dy = mgr.calculate_aggregate_deterrence(px, py, p, is_day=True)
+        finally:
+            np.random.random = orig
+        from cenop.behavior.sound import ShipDeterrenceModel
+        rl = _ship_received_level(s.noise.get_source_level(), np.array([2000.0]),
+                                  np.array([px]), np.array([py]), p, None, 1, False)
+        assert rl[0] > p.deter_ships_min_db
+        vx_ref = float(ShipDeterrenceModel().deterrence_components(
+            rl, np.array([2000.0]), np.array([px - 50.0]), np.array([0.0]),
+            True, np.array([0.0]), p.deter_ships_min_db)[0][0])
+        assert dx == pytest.approx(vx_ref)        # matches alpha/beta reference exactly
+
+
+class TestShipPrevPosition:
+    def test_post_init_sets_prev_to_initial(self):
+        from cenop.agents.ship import Ship, VesselClass
+        s = Ship(id=0, x=7.0, y=9.0, vessel_type=VesselClass.CARGO)
+        assert s._prev_x == 7.0 and s._prev_y == 9.0
+
+    def test_update_records_pre_move_position(self):
+        from cenop.agents.ship import Ship, Route, Buoy, VesselClass
+        route = Route(buoys=[Buoy(x=0.0, y=0.0, speed=10.0),
+                             Buoy(x=100.0, y=0.0, speed=10.0)])
+        s = Ship(id=1, x=0.0, y=0.0, route=route, vessel_type=VesselClass.CARGO)
+        s.tick_start = 0; s.tick_end = 100
+        s.update(1)
+        assert (s._prev_x, s._prev_y) == (0.0, 0.0)   # start-of-tick position
+        assert s.x != 0.0                              # moved toward the next buoy
+
+    def test_update_inactive_leaves_prev_equal_current(self):
+        from cenop.agents.ship import Ship, VesselClass
+        s = Ship(id=1, x=5.0, y=5.0, vessel_type=VesselClass.CARGO)
+        s.tick_start = 10; s.tick_end = 20   # inactive at tick 1
+        s.update(1)
+        assert (s._prev_x, s._prev_y) == (5.0, 5.0)
+        assert (s.x, s.y) == (5.0, 5.0)
+
+
+class TestSubTickInterpolation:
+    def _params(self):
+        from cenop.parameters.simulation_params import SimulationParameters
+        return SimulationParameters()
+
+    def _ship(self, sid, x, y, prev=None, sl=205.0):
+        from cenop.agents.ship import Ship, VesselClass
+        s = Ship(id=sid, x=x, y=y, vessel_type=VesselClass.CARGO)
+        s._is_active = True; s.noise.base_source_level = sl
+        if prev is not None:
+            s._prev_x, s._prev_y = prev
+        else:
+            s._prev_x, s._prev_y = x, y
+        return s
+
+    def _kernel_vec(self, s, px, py, p, sub_x, sub_y, cell=400.0):
+        """Single-slot kernel vector for a ship sub-position (force react), using the same
+        non-WestonFlux RL the implementation uses: source_level - (beta*log10(d) + alpha*d)."""
+        import numpy as np
+        gdx = np.array([px - sub_x]); gdy = np.array([py - sub_y])
+        dist_m = np.array([max(float(np.hypot(gdx[0]*cell, gdy[0]*cell)), 1.0)])
+        tl = p.beta_hat * np.log10(dist_m[0]) + p.alpha_hat * dist_m[0]
+        rl = np.array([max(0.0, float(s.noise.get_source_level() - tl))])
+        vx, vy, _, _, _ = s.deterrence_model.deterrence_components(
+            rl, dist_m, gdx, gdy, True, np.array([0.0]), p.deter_ships_min_db)
+        return float(vx[0]), float(vy[0])
+
+    def test_stationary_ship_is_30x_single_position(self):
+        """prev == cur -> 30 identical slots -> total == 30 x single-position vector (force_u=0)."""
+        import numpy as np
+        from cenop.agents.ship import ShipManager
+        p = self._params()
+        s = self._ship(1, 50.0, 50.0)   # prev == cur
+        mgr = ShipManager([s]); mgr.enabled = True
+        px = np.array([50.0 + 2000.0/400.0]); py = np.array([50.0])
+        dx, dy = mgr.calculate_aggregate_deterrence_vectorized(px, py, p, _force_u=0.0)
+        vx1, vy1 = self._kernel_vec(s, px[0], py[0], p, 50.0, 50.0)
+        assert dx[0] == pytest.approx(30.0 * vx1)
+        assert dy[0] == pytest.approx(30.0 * vy1)
+
+    def test_moving_ship_sums_distinct_substep_vectors(self):
+        """Total equals the slot-wise sum over i=1..30 sub-positions (force_u=0)."""
+        import numpy as np
+        from cenop.agents.ship import ShipManager
+        p = self._params()
+        # Swept path 40->60 east along y=50; porpoise north at (50, 60).
+        s = self._ship(1, 60.0, 50.0, prev=(40.0, 50.0))
+        mgr = ShipManager([s]); mgr.enabled = True
+        px = np.array([50.0]); py = np.array([60.0])
+        dx, dy = mgr.calculate_aggregate_deterrence_vectorized(px, py, p, _force_u=0.0)
+        exp_x = exp_y = 0.0
+        for i in range(1, 31):
+            sub_x = 40.0 + (60.0 - 40.0) * i / 30.0
+            sub_y = 50.0
+            vx, vy = self._kernel_vec(s, px[0], py[0], p, sub_x, sub_y)
+            exp_x += vx; exp_y += vy
+        assert exp_y > 0.0                  # non-vacuous: some slots gated + reacting
+        assert dx[0] == pytest.approx(exp_x)
+        assert dy[0] == pytest.approx(exp_y)
+        assert dy[0] > 0.0   # net push north, away from the east-west path
+
+    def test_substep_endpoints_exclude_start_include_end(self):
+        """i=1..30: first sub-position is start+delta/30, last is exactly the end position."""
+        import numpy as np
+        from cenop.agents.ship import ShipManager
+        p = self._params()
+        s = self._ship(1, 10.0, 0.0, prev=(0.0, 0.0))
+        mgr = ShipManager([s]); mgr.enabled = True
+        px = np.array([10.0]); py = np.array([5.0])   # near the END (10,0), north
+        dx, dy = mgr.calculate_aggregate_deterrence_vectorized(px, py, p, _force_u=0.0)
+        exp_x = exp_y = 0.0
+        for i in range(1, 31):
+            sub_x = 0.0 + 10.0 * i / 30.0
+            vx, vy = self._kernel_vec(s, px[0], py[0], p, sub_x, 0.0)
+            exp_x += vx; exp_y += vy
+        assert dx[0] == pytest.approx(exp_x)
+        assert dy[0] == pytest.approx(exp_y)
+
+    def test_per_slot_max_rl_ship_wins(self):
+        """Different ships win different slots (DEPONS recordStep). Aggregator must match a
+        brute-force per-slot max-RL+sum reference, and the winner set must include BOTH ships."""
+        import numpy as np
+        from cenop.agents.ship import ShipManager, VesselClass
+        p = self._params()
+        # Asymmetric crossing so the distance curves cross inside i=1..30:
+        #   A approaches  (dist_A = 6 - i/6, from ~5.83 down to 1 cell),
+        #   B recedes     (dist_B = 1 + i/6, from ~1.17 up to 6 cells).
+        # B is closer for i<15 (B wins), A is closer for i>15 (A wins) -> both win slots.
+        A = self._ship(1, 49.0, 50.0, prev=(44.0, 50.0), sl=195.0)   # approaching
+        B = self._ship(2, 56.0, 50.0, prev=(51.0, 50.0), sl=195.0)   # receding
+        px = np.array([50.0]); py = np.array([50.0])
+        mgr = ShipManager([A, B]); mgr.enabled = True
+        dx, dy = mgr.calculate_aggregate_deterrence_vectorized(px, py, p, _force_u=0.0)
+
+        # Brute-force reference (true oracle): apply BOTH gates the impl applies, keep the
+        # max-RL ship per slot, sum. No midpoint pre-cull (independent of the optimization).
+        from cenop.agents.ship import MAX_DETER_DIST_M
+        cell = 400.0
+        min_m = p.deter_min_distance_ships * 1000.0
+        max_m = min(MAX_DETER_DIST_M, p.deter_max_distance * 1000.0)
+        def slot_rl_vec(s, i):
+            sub_x = s._prev_x + (s.x - s._prev_x) * i / 30.0
+            sub_y = s._prev_y + (s.y - s._prev_y) * i / 30.0
+            gdx = np.array([px[0] - sub_x]); gdy = np.array([py[0] - sub_y])
+            dist_m = np.array([max(float(np.hypot(gdx[0]*cell, gdy[0]*cell)), 1.0)])
+            rl = max(0.0, float(s.noise.get_source_level()
+                                - (p.beta_hat*np.log10(dist_m[0]) + p.alpha_hat*dist_m[0])))
+            vx, vy, _, _, _ = s.deterrence_model.deterrence_components(
+                np.array([rl]), dist_m, gdx, gdy, True, np.array([0.0]), p.deter_ships_min_db)
+            return rl, float(vx[0]), float(vy[0]), float(dist_m[0])
+        exp_x = exp_y = 0.0; winners = set()
+        for i in range(1, 31):
+            ra, vax, vay, da = slot_rl_vec(A, i)
+            rb, vbx, vby, db = slot_rl_vec(B, i)
+            a_ok = (min_m < da <= max_m) and ra > p.deter_ships_min_db
+            b_ok = (min_m < db <= max_m) and rb > p.deter_ships_min_db
+            # Lowest id wins ties (impl processes sorted by id, strict '>' keeps the
+            # first-processed; A has id=1 so 'ra >= rb' favors A consistently).
+            if a_ok and (not b_ok or ra >= rb):
+                exp_x += vax; exp_y += vay; winners.add(1)
+            elif b_ok:
+                exp_x += vbx; exp_y += vby; winners.add(2)
+        assert winners == {1, 2}                    # both ships win some slots
+        assert dx[0] == pytest.approx(exp_x)
+        assert dy[0] == pytest.approx(exp_y)
+
+    def test_gated_nonreacting_winner_contributes_zero(self):
+        """Characterization (passes at RED too): a gated ship that does NOT react stores a
+        zero vector (DEPONS recordStep keeps the max-RL step with deterX=0 when
+        reactingOrNot=0). With a uniform non-reacting draw the total is exactly zero even
+        though every slot is gated in."""
+        import numpy as np
+        from cenop.agents.ship import ShipManager
+        p = self._params()
+        loud = self._ship(1, 49.0, 50.0, sl=205.0)   # gated in (RL >> Tships)
+        px = np.array([50.0]); py = np.array([50.0])
+        mgr = ShipManager([loud]); mgr.enabled = True
+        dx, dy = mgr.calculate_aggregate_deterrence_vectorized(px, py, p, _force_u=1.0)  # never react
+        assert dx[0] == 0.0 and dy[0] == 0.0
+
+    def test_louder_ship_fully_blocks_quieter(self):
+        """Blocking (DEPONS recordStep): a ship with higher RL at every slot wins every slot,
+        so the quieter ship is fully blocked. The two-ship result equals the loud-only result
+        and is NOT their sum. Seeded draws (loud's own per-ship stream decides reactions)."""
+        import numpy as np
+        from cenop.agents.ship import ShipManager
+        p = self._params(); seed, tick = 7, 3
+        def loud(): return self._ship(1, 49.0, 50.0, sl=205.0)   # closer + louder -> higher RL
+        def quiet(): return self._ship(2, 45.0, 50.0, sl=185.0)  # farther + quieter, still gated
+        px = np.array([50.0]); py = np.array([50.0])
+        both = ShipManager([loud(), quiet()]); both.enabled = True
+        only_l = ShipManager([loud()]); only_l.enabled = True
+        only_q = ShipManager([quiet()]); only_q.enabled = True
+        b = both.calculate_aggregate_deterrence_vectorized(px, py, p, base_seed=seed, tick=tick)
+        l = only_l.calculate_aggregate_deterrence_vectorized(px, py, p, base_seed=seed, tick=tick)
+        q = only_q.calculate_aggregate_deterrence_vectorized(px, py, p, base_seed=seed, tick=tick)
+        np.testing.assert_array_equal(b[0], l[0])   # quiet fully blocked: both == loud-only
+        np.testing.assert_array_equal(b[1], l[1])
+        if q[0][0] != 0.0:                           # quiet would deter alone -> result is not a sum
+            assert b[0][0] != pytest.approx(l[0][0] + q[0][0])
+
+    def test_porpoise_count_invariance_subtick(self):
+        """Count/membership invariance (guards the (n, STEPS) draw layout): appending an
+        out-of-range porpoise must not change an in-range porpoise's vector. FAILS if the
+        draws are laid out (STEPS, n) instead of (n, STEPS)."""
+        import numpy as np
+        from cenop.agents.ship import ShipManager
+        p = self._params()
+        s = self._ship(1, 50.0, 50.0, prev=(45.0, 50.0), sl=205.0)  # moving ship
+        mgr = ShipManager([s]); mgr.enabled = True
+        px1 = np.array([52.0]); py1 = np.array([50.0])
+        d1 = mgr.calculate_aggregate_deterrence_vectorized(px1, py1, p, base_seed=4, tick=9)
+        px2 = np.array([52.0, 800.0]); py2 = np.array([50.0, 50.0])  # far porpoise appended
+        d2 = mgr.calculate_aggregate_deterrence_vectorized(px2, py2, p, base_seed=4, tick=9)
+        assert d2[0][0] == pytest.approx(d1[0][0])   # in-range porpoise unchanged by the far one
+        assert d2[1][0] == pytest.approx(d1[1][0])
+        assert d2[0][1] == 0.0 and d2[1][1] == 0.0   # far porpoise: no deterrence
+
+    def test_moving_ship_weston_subtick_matches_reference(self):
+        """Moving ship + WestonFlux: per-slot RL via WestonFlux at 30 DISTINCT positions,
+        summed, matches an unculled brute-force reference using _ship_received_level(weston=True)."""
+        import numpy as np
+        from cenop.agents.ship import ShipManager, _ship_received_level, MAX_DETER_DIST_M
+        from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        p = SimulationParameters(); p.weston_flux_percell = True
+        land = create_homogeneous_landscape(width=100, height=100, depth=20.0, food_prob=0.5)
+        s = self._ship(1, 60.0, 50.0, prev=(40.0, 50.0), sl=205.0)  # sweep east along y=50
+        mgr = ShipManager([s]); mgr.enabled = True
+        px = np.array([50.0]); py = np.array([55.0])
+        dx, dy = mgr.calculate_aggregate_deterrence_vectorized(
+            px, py, p, cell_data=land, month=1, _force_u=0.0)
+        cell = 400.0
+        min_m = p.deter_min_distance_ships * 1000.0
+        max_m = min(MAX_DETER_DIST_M, p.deter_max_distance * 1000.0)
+        exp_x = exp_y = 0.0
+        for i in range(1, 31):
+            sub_x = 40.0 + 20.0 * i / 30.0; sub_y = 50.0
+            gdx = np.array([px[0]-sub_x]); gdy = np.array([py[0]-sub_y])
+            d = np.array([max(float(np.hypot(gdx[0]*cell, gdy[0]*cell)), 1.0)])
+            if not (min_m < d[0] <= max_m):
+                continue
+            rl = _ship_received_level(s.noise.get_source_level(), d,
+                                      np.array([px[0]]), np.array([py[0]]), p, land, 1, True)
+            if rl[0] <= p.deter_ships_min_db:
+                continue
+            vx, vy, _, _, _ = s.deterrence_model.deterrence_components(
+                rl, d, gdx, gdy, True, np.array([0.0]), p.deter_ships_min_db)
+            exp_x += float(vx[0]); exp_y += float(vy[0])
+        assert exp_x != 0.0 or exp_y != 0.0          # non-vacuous
+        assert dx[0] == pytest.approx(exp_x)
+        assert dy[0] == pytest.approx(exp_y)
+
+    def test_vectorized_matches_bruteforce_multi(self):
+        """Multi-ship, multi-porpoise, mixed-range, seeded: aggregator matches an independent
+        brute-force per-(porpoise,slot,ship) reference (max-RL ship wins, lowest id on tie,
+        winner's own per-ship draw decides reacting, sum over 30 slots)."""
+        import numpy as np
+        from cenop.agents.ship import ShipManager, MAX_DETER_DIST_M
+        p = self._params(); seed, tick = 13, 6
+        ships = [
+            self._ship(1, 52.0, 50.0, prev=(48.0, 50.0), sl=200.0),
+            self._ship(2, 49.0, 53.0, prev=(49.0, 47.0), sl=195.0),
+            self._ship(3, 300.0, 300.0, sl=205.0),  # far -> out of range for all
+        ]
+        px = np.array([50.0, 51.0, 47.0, 500.0])     # last is far out of range
+        py = np.array([50.0, 49.0, 52.0, 500.0])
+        mgr = ShipManager(list(ships)); mgr.enabled = True
+        dx, dy = mgr.calculate_aggregate_deterrence_vectorized(
+            px, py, p, base_seed=seed, tick=tick)
+        cell = 400.0
+        min_m = p.deter_min_distance_ships * 1000.0
+        max_m = min(MAX_DETER_DIST_M, p.deter_max_distance * 1000.0)
+        n = px.shape[0]
+        draws = {}
+        for s in ships:
+            rng = np.random.default_rng(np.random.SeedSequence([seed, tick, int(s.id)]))
+            draws[int(s.id)] = rng.random((n, 30))
+        exp_x = np.zeros(n); exp_y = np.zeros(n)
+        for pi in range(n):
+            for k in range(1, 31):
+                best = -np.inf; bvx = bvy = 0.0
+                for s in sorted(ships, key=lambda z: int(z.id)):
+                    sx = s._prev_x + (s.x - s._prev_x) * k / 30.0
+                    sy = s._prev_y + (s.y - s._prev_y) * k / 30.0
+                    gdx = np.array([px[pi] - sx]); gdy = np.array([py[pi] - sy])
+                    d = np.array([max(float(np.hypot(gdx[0]*cell, gdy[0]*cell)), 1.0)])
+                    if not (min_m < d[0] <= max_m):
+                        continue
+                    rl = max(0.0, float(s.noise.get_source_level()
+                                        - (p.beta_hat*np.log10(d[0]) + p.alpha_hat*d[0])))
+                    if not (rl > p.deter_ships_min_db):
+                        continue
+                    if rl > best:   # strict: first-processed (lowest id) keeps ties
+                        u = np.array([draws[int(s.id)][pi, k-1]])
+                        vx, vy, _, _, _ = s.deterrence_model.deterrence_components(
+                            np.array([rl]), d, gdx, gdy, True, u, p.deter_ships_min_db)
+                        best = rl; bvx = float(vx[0]); bvy = float(vy[0])
+                exp_x[pi] += bvx; exp_y[pi] += bvy
+        np.testing.assert_allclose(dx, exp_x, rtol=1e-9, atol=1e-12)
+        np.testing.assert_allclose(dy, exp_y, rtol=1e-9, atol=1e-12)
+        assert np.any(exp_x != 0.0) or np.any(exp_y != 0.0)   # non-vacuous

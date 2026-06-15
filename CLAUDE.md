@@ -6,7 +6,11 @@
 - Run from `/home/razinka/cenjas/CENOP/` for all commands
 
 ## Testing
-- `cd /home/razinka/cenjas/CENOP && python3 -m pytest tests/ -x -q`
+- Fast suite (default; slow sim tests deselected): `cd /home/razinka/cenjas/CENOP && python3 -m pytest tests/ -x -q`
+- Slow tier (multi-year validation/physiology): `python3 -m pytest tests/ -m slow -q`
+- Everything: `python3 -m pytest tests/ -m "slow or not slow" -q`
+- NOTE: a default `addopts = -m "not slow"` is active. To run a single SLOW test you must add a selector, e.g. `pytest tests/test_validation.py::Cls::test_x -m "slow or not slow"` — a bare nodeid (or bare `-k`) silently reports it as `deselected`, not run.
+- The slow tier is MANUAL (this repo has no CI). Run `pytest tests/ -m slow` before releasing/merging model-behavior changes. Any older `--ignore=...test_validation.py --ignore=...test_depons_physiology.py` alias is now obsolete — it re-hides the fast tests this change recovered; drop it.
 - 502+ tests across 22 test files; naming convention: `test_<module>.py` matches `src/cenop/<module>.py`
 - Numba/coverage compatibility: `tests/conftest.py` patches `coverage.types`
 

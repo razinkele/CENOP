@@ -373,5 +373,35 @@ class TestPerTickSimulationStatistics:
         assert sim.state.deaths >= sim.state.deaths_starvation
 
 
+class TestMonthlyStatsResetPerCause:
+    """Task 16b: monthly reset must cover per-cause death counters too.
+
+    ``_write_population`` emits ``deaths`` and the three per-cause fields in
+    the same per-tick row, so they must share monthly scope. Before this fix
+    only ``births``/``deaths`` were reset each month, leaving the per-cause
+    counters to accumulate as lifetime totals.
+    """
+
+    def test_monthly_tasks_resets_per_cause_death_counters(self):
+        from cenop.core.simulation import Simulation
+        from cenop.parameters import SimulationParameters
+
+        params = SimulationParameters(porpoise_count=20, landscape="Homogeneous", random_seed=7)
+        sim = Simulation(params)
+        sim.state.deaths = 5
+        sim.state.births = 3
+        sim.state.deaths_starvation = 4
+        sim.state.deaths_old_age = 1
+        sim.state.deaths_bycatch = 0
+
+        sim._monthly_tasks()
+
+        assert sim.state.births == 0
+        assert sim.state.deaths == 0
+        assert sim.state.deaths_starvation == 0
+        assert sim.state.deaths_old_age == 0
+        assert sim.state.deaths_bycatch == 0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

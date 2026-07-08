@@ -639,7 +639,10 @@ class Simulation:
         # Reset monthly statistics
         self.state.births = 0
         self.state.deaths = 0
-        
+        self.state.deaths_starvation = 0
+        self.state.deaths_old_age = 0
+        self.state.deaths_bycatch = 0
+
         # Update month in landscape data
         if self._cell_data is not None:
             self._cell_data.set_month(self.state.month)

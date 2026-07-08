@@ -4,12 +4,26 @@ Extracted verbatim from PorpoisePopulation._update_movement (NumPy fallback bran
 the inline path and the injected movement module produce identical RNG draws and results.
 Java ref: Porpoise.java move() (332-397 rejection loops, 556-589 composition).
 """
+
 from __future__ import annotations
 
 import numpy as np
 
-def generate_crw_angle_step(rng, prev_angle, prev_log_mov, depths, salinity, mask, params,
-                            pres_angle, log_mov, env_mod_angle, rand_angle, rand_len):
+
+def generate_crw_angle_step(
+    rng,
+    prev_angle,
+    prev_log_mov,
+    depths,
+    salinity,
+    mask,
+    params,
+    pres_angle,
+    log_mov,
+    env_mod_angle,
+    rand_angle,
+    rand_len,
+):
     """Fill pres_angle (f64) and log_mov (f64). Does NOT update prev_log_mov."""
     count = pres_angle.shape[0]
 
@@ -83,9 +97,25 @@ def generate_crw_angle_step(rng, prev_angle, prev_log_mov, depths, salinity, mas
     if (violations & mask).any():
         log_mov[violations & mask] = params.max_mov
 
-def compose_movement(heading, pres_angle, log_mov, ve_total, vt_x, vt_y, d_dx, d_dy,
-                     is_dispersing, mask, inertia_const, disp_step,
-                     rads, dx, dy, step_dist):
+
+def compose_movement(
+    heading,
+    pres_angle,
+    log_mov,
+    ve_total,
+    vt_x,
+    vt_y,
+    d_dx,
+    d_dy,
+    is_dispersing,
+    mask,
+    inertia_const,
+    disp_step,
+    rads,
+    dx,
+    dy,
+    step_dist,
+):
     """DEPONS heading composition + displacement. Mutates heading, dx, dy, step_dist.
 
     Assumes heading already has pres_angle added and any dispersal override applied.

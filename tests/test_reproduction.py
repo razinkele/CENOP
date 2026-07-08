@@ -538,3 +538,77 @@ class TestWeanedCalfSlotReset:
         assert pop._prev_x[1] == pop.x[1]
         assert pop._prev_y[1] == pop.y[1]
         assert pop.x[1] == 40.0 and pop.y[1] == 55.0
+
+
+class TestRecycledSlotNestedStateReset:
+    """Follow-up to Finding #4: _reset_recycled_slots must ALSO clear the dead
+    occupant's per-agent PYTHON-OBJECT / nested-module / identity state that the
+    SoA-only reset leaves behind — PSM preferred_distance + memory, the export id,
+    and (when attached) the behavior-FSM + energy-state rows.
+    """
+
+    def _pop(self, count=6):
+        return PorpoisePopulation(count=count, params=SimulationParameters(random_seed=13))
+
+    def test_reset_redraws_psm_and_assigns_fresh_id(self):
+        from cenop.behavior.psm import MemCellData
+
+        pop = self._pop(6)
+        slot = 3
+        pop.x[slot] = 10.0
+        pop.y[slot] = 20.0
+        pop._psm_instances[slot].preferred_distance = 999.0  # dead-occupant sentinel
+        pop._psm_instances[slot]._mem_cells[0] = MemCellData(ticks_spent=5, food_obtained=2.0)
+        old_id = int(pop.ids[slot])
+
+        pop._reset_recycled_slots(np.array([slot], dtype=np.intp))
+
+        assert pop._psm_instances[slot].preferred_distance != 999.0  # redrawn
+        assert len(pop._psm_instances[slot]._mem_cells) == 0          # memory cleared
+        assert int(pop.ids[slot]) == 6                                # first recycled id == count
+        assert int(pop.ids[slot]) != old_id
+
+    def test_reset_clears_behavior_and_energy_rows_when_attached(self):
+        from cenop.behavior.states import BehaviorState, BehaviorStateVector
+        from cenop.physiology.energy_budget import EnergyState
+
+        pop = self._pop(6)
+        pop._behavior_state = BehaviorStateVector.create(pop.count)
+        pop._energy_state = EnergyState.create(pop.count)
+        pop._energy_state.energy = pop.energy  # preserve the shared-view invariant
+        slot = 2
+        pop.x[slot] = 5.0
+        pop.y[slot] = 5.0
+        pop._behavior_state.state[slot] = BehaviorState.DISPERSING.value
+        pop._behavior_state.state_duration[slot] = 42
+        pop._behavior_state.previous_state[slot] = BehaviorState.DISPERSING.value
+        pop._energy_state.cumulative_energy_deficit[slot] = 7.0
+        pop._energy_state.disturbance_events[slot] = 9
+        pop._energy_state.body_mass[slot] = 12345.0
+
+        pop._reset_recycled_slots(np.array([slot], dtype=np.intp))
+
+        assert pop._behavior_state.state[slot] == BehaviorState.FORAGING.value
+        assert pop._behavior_state.previous_state[slot] == BehaviorState.FORAGING.value
+        assert pop._behavior_state.state_duration[slot] == 0
+        fresh = EnergyState.create(1)
+        assert pop._energy_state.cumulative_energy_deficit[slot] == 0.0
+        assert pop._energy_state.disturbance_events[slot] == 0
+        assert pop._energy_state.body_mass[slot] == fresh.body_mass[0]
+        # The shared energy view must be untouched by the reset.
+        assert pop._energy_state.energy is pop.energy
+
+    def test_recycled_preferred_distance_is_deterministic(self):
+        p1 = self._pop(6)
+        p2 = self._pop(6)
+        for p in (p1, p2):
+            p.x[3] = 0.0
+            p.y[3] = 0.0
+        init_pref = p1._psm_instances[3].preferred_distance
+
+        p1._reset_recycled_slots(np.array([3], dtype=np.intp))
+        p2._reset_recycled_slots(np.array([3], dtype=np.intp))
+
+        # Same seed -> identical redraw (reproducible), and actually redrawn.
+        assert p1._psm_instances[3].preferred_distance == p2._psm_instances[3].preferred_distance
+        assert p1._psm_instances[3].preferred_distance != init_pref

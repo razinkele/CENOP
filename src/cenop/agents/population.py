@@ -113,6 +113,7 @@ class PorpoisePopulation:
         
         # Identity
         self.ids = np.arange(count, dtype=np.int32)
+        self._next_id = count  # next unique id assigned to a recycled (weaned-calf) slot
         self.active_mask = np.ones(count, dtype=bool) # True if alive/active slot
         self._active_idx = np.arange(count, dtype=np.intp)  # cached np.where(active_mask)[0]
 
@@ -2247,6 +2248,49 @@ class PorpoisePopulation:
         # Previous positions anchored to the calf's (already-set) location
         self._prev_x[slots] = self.x[slots]
         self._prev_y[slots] = self.y[slots]
+
+        # Per-agent PSM Python object: redraw preferred_distance (newborn, NOT the
+        # dead occupant's) and clear stale memory cells. Batch-draw from the seeded
+        # rng so it stays reproducible. The memory GRID (psm_buffer) is zeroed above.
+        k = int(len(slots))
+        new_pref = np.maximum(
+            1.0, self.rng.normal(self.params.psm_dist_mean, self.params.psm_dist_sd, k)
+        )
+        for i, s in enumerate(slots):
+            psm = self._psm_instances[int(s)]
+            psm._mem_cells.clear()
+            psm.preferred_distance = float(new_pref[i])
+
+        # Fresh unique identity so a recycled calf is not conflated with the dead
+        # occupant in output / dashboard trails.
+        self.ids[slots] = np.arange(self._next_id, self._next_id + k, dtype=np.int32)
+        self._next_id += k
+
+        # Nested behavior-FSM rows (present only when a behavior_fsm is attached).
+        if self._behavior_state is not None:
+            from cenop.behavior.states import BehaviorState
+
+            foraging = BehaviorState.FORAGING.value
+            self._behavior_state.state[slots] = foraging
+            self._behavior_state.previous_state[slots] = foraging
+            self._behavior_state.state_duration[slots] = 0
+
+        # Nested energy-state persistent rows (present only when an energy module is
+        # attached). NOTE: _energy_state.energy is a shared view of self.energy and is
+        # already set by the caller — reset only the other persistent fields.
+        if self._energy_state is not None:
+            from cenop.physiology.energy_budget import EnergyState
+
+            fresh = EnergyState.create(k)
+            es = self._energy_state
+            es.body_mass[slots] = fresh.body_mass
+            es.body_condition[slots] = fresh.body_condition
+            es.fat_reserve[slots] = fresh.fat_reserve
+            es.activity_level[slots] = fresh.activity_level
+            es.distance_traveled[slots] = fresh.distance_traveled
+            es.disturbance_energy_cost[slots] = fresh.disturbance_energy_cost
+            es.disturbance_events[slots] = fresh.disturbance_events
+            es.cumulative_energy_deficit[slots] = fresh.cumulative_energy_deficit
 
     def _step_jax(
         self,

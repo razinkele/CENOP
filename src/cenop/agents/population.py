@@ -186,6 +186,16 @@ class PorpoisePopulation:
         self.death_days: list = []       # Simulation day when each death occurred
         self.death_causes: list = []     # Cause string per death
 
+        # Finding #11: true per-tick birth/death counters, reset each step().
+        # Simulation reads these instead of inferring births/deaths from the net
+        # population delta (which hides co-occurring births + deaths and never
+        # attributes per-cause mortality). death_causes still drives Mortality.txt.
+        self.last_step_births = 0
+        self.last_step_deaths = 0
+        self.last_step_deaths_starvation = 0
+        self.last_step_deaths_old_age = 0
+        self.last_step_deaths_bycatch = 0
+
         # G11: Daily energy consumption tracking (DEPONS parity — energyConsumedDaily)
         self._energy_consumed_today = np.zeros(count, dtype=np.float32)
         self.energy_consumed_daily = np.zeros(count, dtype=np.float32)  # Yesterday's total
@@ -2012,6 +2022,15 @@ class PorpoisePopulation:
             )
             self.death_causes.extend(causes.tolist())
 
+            # Finding #11: expose true per-cause death counts for this tick.
+            # causes already partitions dead agents (starvation > old_age >
+            # bycatch priority), so these sum to len(dead_indices) exactly.
+            causes_arr = np.asarray(causes)
+            self.last_step_deaths += int(dead_indices.size)
+            self.last_step_deaths_starvation += int(np.count_nonzero(causes_arr == "starvation"))
+            self.last_step_deaths_old_age += int(np.count_nonzero(causes_arr == "old_age"))
+            self.last_step_deaths_bycatch += int(np.count_nonzero(causes_arr == "bycatch"))
+
             self.active_mask[all_deaths] = False
             if self._debug_instrumentation or death_count > 0:
                 active_after = int(np.sum(self.active_mask))
@@ -2142,6 +2161,7 @@ class PorpoisePopulation:
                 inactive_slots = np.where(~self.active_mask)[0]
                 slots_to_use = min(n_calves, len(inactive_slots))
                 if slots_to_use > 0:
+                    self.last_step_births += int(slots_to_use)
                     new_slots = inactive_slots[:slots_to_use]
                     mother_indices = np.where(creates_calf)[0][:slots_to_use]
 
@@ -2511,6 +2531,13 @@ class PorpoisePopulation:
         # Write energy results back (shared view with _energy_state)
         np.copyto(self.energy, np.asarray(new_energy))
         np.copyto(self.active_mask, np.asarray(new_active_mask))
+        # Finding #11: JAX mortality happens inside jax_tick_energy with no
+        # per-cause split (JAX also never populated death_causes). Count total
+        # deaths from the active-mask delta (no births have occurred yet this
+        # tick) so totals aren't lost; per-cause attribution is unavailable here.
+        _jax_deaths = active_before - int(np.sum(self.active_mask))
+        if _jax_deaths > 0:
+            self.last_step_deaths += _jax_deaths
         np.copyto(self.with_calf, np.asarray(new_with_calf))
         np.copyto(self._energy_ticks_today, np.asarray(new_energy_ticks_today))
         np.copyto(self._energy_history, np.asarray(new_energy_history))
@@ -2609,6 +2636,16 @@ class PorpoisePopulation:
             ambient_rl: Ambient received level for social communication
         """
         mask = self.active_mask
+
+        # Finding #11: reset per-tick counters. This runs before the early return
+        # and before the JAX dispatch, so it covers the NumPy, Cython and JAX
+        # paths (_step_jax is only reached from here).
+        self.last_step_births = 0
+        self.last_step_deaths = 0
+        self.last_step_deaths_starvation = 0
+        self.last_step_deaths_old_age = 0
+        self.last_step_deaths_bycatch = 0
+
         if not mask.any():
             return
 
@@ -2704,6 +2741,9 @@ class PorpoisePopulation:
                     self.death_days.extend([sim_day] * len(dead_idx))
                     # Cython only performs starvation deaths
                     self.death_causes.extend(["starvation"] * len(dead_idx))
+                    # Finding #11: Cython path performs starvation-only deaths.
+                    self.last_step_deaths += int(len(dead_idx))
+                    self.last_step_deaths_starvation += int(len(dead_idx))
 
             # Dashboard stats
             n_active = len(self._active_idx)

@@ -250,5 +250,84 @@ def test_update_psm_none_food_gained():
     pop._update_psm(pop.active_mask.copy(), None)
 
 
+class TestPerTickPopulationCounters:
+    """Finding #11: population manager exposes true per-tick birth/death counts."""
+
+    def _make_pop(self, count, food_prob=0.0):
+        from cenop.agents.population import PorpoisePopulation
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        from cenop.parameters import SimulationParameters
+
+        params = SimulationParameters(random_seed=7)
+        landscape = create_homogeneous_landscape(width=100, height=100, food_prob=food_prob)
+        return PorpoisePopulation(count=count, params=params, landscape=landscape)
+
+    def test_counters_initialized_to_zero(self):
+        pop = self._make_pop(count=20)
+        for attr in (
+            "last_step_births",
+            "last_step_deaths",
+            "last_step_deaths_starvation",
+            "last_step_deaths_old_age",
+            "last_step_deaths_bycatch",
+        ):
+            assert getattr(pop, attr) == 0, attr
+
+    def test_starvation_death_sets_per_cause_counter(self):
+        pop = self._make_pop(count=40, food_prob=0.0)
+        # No food available + zero energy => deterministic starvation this tick.
+        pop.energy[:12] = 0.0
+        zeros = (
+            np.zeros(pop.count, dtype=np.float32),
+            np.zeros(pop.count, dtype=np.float32),
+        )
+        pop.step(
+            deterrence_vectors=zeros,
+            ambient_rl=np.zeros(pop.count, dtype=np.float32),
+        )
+        assert pop.last_step_deaths >= 1
+        assert pop.last_step_deaths_starvation >= 1
+        # Tick 1 is not a day boundary => old-age/bycatch cannot fire.
+        assert pop.last_step_deaths_old_age == 0
+        assert pop.last_step_deaths_bycatch == 0
+        # Per-cause counts partition the total deaths exactly.
+        assert (
+            pop.last_step_deaths_starvation
+            + pop.last_step_deaths_old_age
+            + pop.last_step_deaths_bycatch
+        ) == pop.last_step_deaths
+
+    def test_weaning_birth_increments_birth_counter(self):
+        pop = self._make_pop(count=6, food_prob=0.0)
+        # Free one slot so the weaned calf has a slot to occupy.
+        pop.active_mask[5] = False
+        pop._active_idx = np.flatnonzero(pop.active_mask)
+        # One active female exactly at the weaning boundary; suppress every other
+        # reproduction event so calf_roll is the ONLY random draw.
+        pop.pregnancy_status[:] = 0
+        pop.days_since_mating[:] = -99
+        pop.mating_day[:] = -99  # no female is "ready" => no conceive draw
+        pop.is_female[0] = True
+        pop.with_calf[:] = False
+        pop.with_calf[0] = True
+        pop.days_since_birth[0] = pop.params.nursing_time
+        pop.pregnancy_status[0] = 2  # ready-to-mate: not pregnant, no give-birth
+
+        class _OnesRng:
+            def random(self, n):
+                return np.ones(n)  # calf_roll = 1.0 > 0.5 => calf created
+
+            def normal(self, mean, sd, n):
+                # New calf energy is drawn via self.rng.normal(...) in the
+                # weaning branch (population.py ~line 2148). Return a
+                # deterministic array so this stub covers that call too.
+                return np.full(n, mean, dtype=float)
+
+        pop.rng = _OnesRng()
+        pop._handle_reproduction(pop.active_mask)
+        assert pop.last_step_births == 1
+        assert pop.active_mask[5]  # freed slot now holds the new calf
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

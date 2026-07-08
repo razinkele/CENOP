@@ -261,6 +261,64 @@ def run_simulation_loop(
         result_queue.put({"type": "error", "message": str(e)})
 
 
+class _WorkerHandle:
+    """Owns the background simulation worker's thread plus its per-run
+    ``stop_event`` and ``result_queue``.
+
+    Every run gets a FRESH ``stop_event`` and ``result_queue``. This makes it
+    impossible to re-arm a still-alive previous worker (the old code cleared a
+    SHARED event) or to interleave two workers' output on one shared queue.
+    Callers must go through :meth:`new_run` before starting a worker.
+    """
+
+    def __init__(self):
+        self.thread: threading.Thread | None = None
+        self.stop_event = threading.Event()
+        self.result_queue: queue.Queue = queue.Queue()
+
+    def is_alive(self) -> bool:
+        return self.thread is not None and self.thread.is_alive()
+
+    def stop_and_join(self, timeout: float = 5.0) -> bool:
+        """Signal the current worker to stop and join it.
+
+        Returns True if no live worker remains afterward (none existed, or it
+        stopped within ``timeout``); False if a worker is still alive after the
+        join timed out (its reference is kept so a later call can retry).
+        """
+        if self.is_alive():
+            self.stop_event.set()
+            self.thread.join(timeout=timeout)
+            if self.thread.is_alive():
+                logger.warning(
+                    "Simulation worker did not stop within %.1fs; abandoning "
+                    "it on a stale queue",
+                    timeout,
+                )
+                return False
+        self.thread = None
+        return True
+
+    def new_run(self, timeout: float = 5.0):
+        """Stop/join any prior worker and install a FRESH stop_event + queue.
+
+        Fresh objects are installed regardless of whether the old worker
+        actually joined: a stubborn old worker keeps writing to its OLD queue
+        and observing its OLD (already-set) event, so the new run is isolated.
+        Returns the fresh ``(stop_event, result_queue)`` pair.
+        """
+        self.stop_and_join(timeout)
+        self.stop_event = threading.Event()
+        self.result_queue = queue.Queue()
+        return self.stop_event, self.result_queue
+
+    def start(self, target, args, daemon: bool = True) -> threading.Thread:
+        """Start a new worker thread and record it as the current worker."""
+        self.thread = threading.Thread(target=target, args=args, daemon=daemon)
+        self.thread.start()
+        return self.thread
+
+
 # =========================================================================
 # Helper functions for testability (defined at module level)
 # =========================================================================

@@ -436,18 +436,27 @@ class TestPSMReproducibility:
         assert 340.0 < mean < 360.0, f"expected ~350, got {mean}"
 
     def test_population_plumbs_params_psm_dist_mean(self):
-        """Production PSM construction must read params.psm_dist_mean (350),
-        not generate_preferred_distance's own default (was 300)."""
+        """Production PSM construction must FORWARD params.psm_dist_mean into the
+        PersistentSpatialMemory constructor.
+
+        Uses a NON-default psm_dist_mean=500 (the class default is 350) so the
+        test distinguishes real forwarding from the class default happening to
+        equal 350: if population.py silently drops the
+        ``pref_dist_mean=self.params.psm_dist_mean`` kwarg, the PSM falls back to
+        the 350 class default and this assertion FAILS."""
         from cenop.agents.population import PorpoisePopulation
         from cenop.parameters.simulation_params import SimulationParameters
 
-        params = SimulationParameters(random_seed=99, world_width=60, world_height=60)
-        assert params.psm_dist_mean == 350.0  # guard the default
+        params = SimulationParameters(
+            random_seed=99, world_width=60, world_height=60, psm_dist_mean=500.0
+        )
+        assert params.psm_dist_mean == 500.0  # non-default -> exercises forwarding
+        assert params.psm_dist_sd == 100.0  # sd unchanged from default
         pop = PorpoisePopulation(count=1000, params=params)
         dists = np.array([pop._psm_instances[i].preferred_distance for i in range(1000)])
         mean = float(dists.mean())
-        # Pre-fix PSM ignores params and centres on 300 -> mean far below 335.
-        assert 335.0 < mean < 365.0, f"expected ~350 (params.psm_dist_mean), got {mean}"
+        # Band excludes the 350 class default: only a real forward of 500 lands here.
+        assert 470.0 < mean < 530.0, f"expected ~500 (params.psm_dist_mean), got {mean}"
 
 
 class TestPSMDistDefaults:

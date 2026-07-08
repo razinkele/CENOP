@@ -329,5 +329,49 @@ class TestPerTickPopulationCounters:
         assert pop.active_mask[5]  # freed slot now holds the new calf
 
 
+class TestPerTickSimulationStatistics:
+    """Finding #11: Simulation accumulates true per-tick births/deaths."""
+
+    def test_cooccurring_birth_and_death_not_netted_to_zero(self):
+        from cenop.core.simulation import Simulation, SimulationState
+        from cenop.parameters import SimulationParameters
+
+        params = SimulationParameters(porpoise_count=20, landscape="Homogeneous")
+        sim = Simulation(params)  # auto-initializes for Homogeneous
+        sim.state = SimulationState()
+        sim.state.population = 100
+
+        class _PM:
+            # net delta 0: exactly one birth cancels one death this tick
+            population_size = 100
+            last_step_births = 1
+            last_step_deaths = 1
+            last_step_deaths_starvation = 1
+            last_step_deaths_old_age = 0
+            last_step_deaths_bycatch = 0
+
+        sim.population_manager = _PM()
+        sim._update_population_statistics()
+        assert sim.state.births == 1  # NOT hidden by the net delta
+        assert sim.state.deaths == 1
+        assert sim.state.deaths_starvation == 1
+        assert sim.state.population == 100
+
+    def test_step_records_starvation_into_state(self):
+        from cenop.core.simulation import Simulation
+        from cenop.parameters import SimulationParameters
+
+        params = SimulationParameters(porpoise_count=30, landscape="Homogeneous", random_seed=11)
+        sim = Simulation(params)
+        pm = sim.population_manager
+        # Starve a cohort deterministically: zero food everywhere + zero energy.
+        pm.landscape._food_value[:] = 0.0
+        pm.energy[:12] = 0.0
+        before = sim.state.deaths_starvation
+        sim.step()
+        assert sim.state.deaths_starvation > before  # per-cause is now populated
+        assert sim.state.deaths >= sim.state.deaths_starvation
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

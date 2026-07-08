@@ -538,15 +538,11 @@ class Simulation:
             turbine_deterrence_vectors=(turb_dx, turb_dy),
         )
 
-        # 6. Update Statistics
-        current_pop = self.population_manager.population_size
-        if current_pop != self.state.population:
-            diff = current_pop - self.state.population
-            if diff < 0:
-                self.state.deaths += abs(diff)
-            else:
-                self.state.births += diff
-            self.state.population = current_pop
+        # 6. Update Statistics — read true per-tick counts from the population
+        # manager. The old net-delta inference (current - prev) hid co-occurring
+        # births and deaths and left deaths_starvation/old_age/bycatch at 0 even
+        # though they are written to DEPONS-format output. See Finding #11.
+        self._update_population_statistics()
 
         # 7. Advance time FIRST (so boundary checks work correctly)
         self.time_manager.advance()
@@ -577,7 +573,23 @@ class Simulation:
         # 12. Record history (daily)
         if self.time_manager.is_day_boundary():
             self._record_history()
-            
+
+    def _update_population_statistics(self) -> None:
+        """Accumulate true per-tick births/deaths from the population manager.
+
+        In vectorized mode the scalar per-agent counters never fire (the legacy
+        ``_porpoises`` list is empty), so births/deaths and per-cause mortality
+        must come from the vectorized population manager's per-tick counters
+        rather than from the net population delta. See Finding #11.
+        """
+        pm = self.population_manager
+        self.state.births += int(getattr(pm, "last_step_births", 0))
+        self.state.deaths += int(getattr(pm, "last_step_deaths", 0))
+        self.state.deaths_starvation += int(getattr(pm, "last_step_deaths_starvation", 0))
+        self.state.deaths_old_age += int(getattr(pm, "last_step_deaths_old_age", 0))
+        self.state.deaths_bycatch += int(getattr(pm, "last_step_deaths_bycatch", 0))
+        self.state.population = int(pm.population_size)
+
     def _daily_tasks(self) -> None:
         """Execute daily tasks for all porpoises."""
         for porpoise in self._porpoises:

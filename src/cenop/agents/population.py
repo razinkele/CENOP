@@ -16,6 +16,7 @@ from cenop.landscape.cell_data import CellData
 from cenop.parameters.demography import AGE_DISTRIBUTION_FREQUENCY
 from cenop.behavior.psm import PersistentSpatialMemory
 from cenop.behavior.sound import calculate_received_level, response_probability_from_rl
+from cenop.movement.crw_core import generate_crw_angle_step, compose_movement
 
 import logging
 import os
@@ -931,91 +932,12 @@ class PorpoisePopulation:
                 self.params.m,
             )
         else:
-            # --- Turning Angle (NumPy fallback) ---
-            # DEPONS formula: angleTmp = b0 * prevAngle + N(0,4)
-            #                 presAngle = angleTmp * (b1*depth + b2*salinity + b3)
-            np.copyto(self._rand_angle, self.rng.normal(self.params.r2_mean, self.params.r2_sd, self.count))
-
-            # angleTmp = b0 * prevAngle + R2
-            np.multiply(self.params.corr_angle_base, self.prev_angle, out=self._pres_angle)
-            self._pres_angle += self._rand_angle
-
-            # Environmental modulation: (b1*depth + b2*salinity + b3)
-            np.multiply(self.params.corr_angle_bathy, self._depths, out=self._env_mod_angle)
-            self._env_mod_angle += self.params.corr_angle_salinity * self._salinity_vals
-            self._env_mod_angle += self.params.corr_angle_base_sd
-
-            # presAngle = angleTmp * env_modulation
-            self._pres_angle *= self._env_mod_angle
-
-            # Rejection sampling for turning angle (Java Porpoise.java:332-360)
-            violations = np.abs(self._pres_angle) > 180
-            retry = 0
-            while (violations & mask).any() and retry < 200:
-                idx = np.where(violations & mask)[0]
-                new_rand = self.rng.normal(self.params.r2_mean, self.params.r2_sd, len(idx))
-                angle_tmp = self.params.corr_angle_base * self.prev_angle[idx] + new_rand
-                self._pres_angle[idx] = angle_tmp * (
-                    self.params.corr_angle_bathy * self._depths[idx]
-                    + self.params.corr_angle_salinity * self._salinity_vals[idx]
-                    + self.params.corr_angle_base_sd
-                )
-                violations = np.abs(self._pres_angle) > 180
-                retry += 1
-            # Emergency fallback: clamp to +/-90 (Java Porpoise.java:354)
-            if (violations & mask).any():
-                self._pres_angle[violations & mask] = np.sign(self._pres_angle[violations & mask]) * 90
-
-            # Second angle loop: distance-dependent modulation (Java Porpoise.java:367-397)
-            prev_mov = np.power(10.0, self.prev_log_mov)
-            needs_modulation = mask & (prev_mov <= self.params.m)
-            if needs_modulation.any():
-                mod_idx = np.where(needs_modulation)[0]
-                # Java line 365-367: extract sign once, work with abs values
-                signs = np.sign(self._pres_angle[mod_idx])
-                self._pres_angle[mod_idx] = np.abs(self._pres_angle[mod_idx])
-                retry = 0
-                violations2 = self._pres_angle[mod_idx] >= 180.0
-                while violations2.any() and retry < 200:
-                    v_idx = mod_idx[violations2]
-                    rnd = self.rng.normal(0, 1, len(v_idx))  # N(0,1), not uniform
-                    self._pres_angle[v_idx] += rnd - rnd * prev_mov[v_idx] / self.params.m
-                    violations2 = self._pres_angle[mod_idx] >= 180.0
-                    retry += 1
-                # Fallback: random(0,20) + 90 (Java Porpoise.java:386)
-                still_bad = self._pres_angle[mod_idx] >= 180.0
-                if still_bad.any():
-                    fb_idx = mod_idx[still_bad]
-                    self._pres_angle[fb_idx] = self.rng.uniform(0, 20, len(fb_idx)) + 90
-                # Java line 397: restore sign
-                self._pres_angle[mod_idx] *= signs
-
-            # --- Step Length (NumPy fallback) ---
-            # DEPONS formula: log10_mov = a0 * prev_log_mov + a1*depth + a2*salinity + R1
-            np.copyto(self._rand_len, self.rng.normal(self.params.r1_mean, self.params.r1_sd, self.count))
-            np.multiply(self.params.corr_logmov_length, self.prev_log_mov, out=self._log_mov)
-            self._log_mov += self.params.corr_logmov_bathy * self._depths
-            self._log_mov += self.params.corr_logmov_salinity * self._salinity_vals
-            self._log_mov += self._rand_len
-
-            # Rejection sampling for step length (Java Porpoise.java:367-391)
-            violations = self._log_mov > self.params.max_mov
-            retry = 0
-            while (violations & mask).any() and retry < 200:
-                idx = np.where(violations & mask)[0]
-                new_rand = self.rng.normal(self.params.r1_mean, self.params.r1_sd, len(idx))
-                self._log_mov[idx] = (
-                    self.params.corr_logmov_length * self.prev_log_mov[idx]
-                    + self.params.corr_logmov_bathy * self._depths[idx]
-                    + self.params.corr_logmov_salinity * self._salinity_vals[idx]
-                    + new_rand
-                )
-                violations = self._log_mov > self.params.max_mov
-                retry += 1
-            # Emergency fallback: clamp to maxMov (Java Porpoise.java:387)
-            if (violations & mask).any():
-                self._log_mov[violations & mask] = self.params.max_mov
-
+            generate_crw_angle_step(
+                self.rng, self.prev_angle, self.prev_log_mov,
+                self._depths, self._salinity_vals, mask, self.params,
+                self._pres_angle, self._log_mov, self._env_mod_angle,
+                self._rand_angle, self._rand_len,
+            )
             self.prev_log_mov[mask] = self._log_mov[mask]
 
         # Capture pre-movement heading for prev_angle computation (Task 6)
@@ -1061,46 +983,12 @@ class PorpoisePopulation:
                 self.heading, self._dx, self._dy, self._step_dist,
             )
         else:
-            # Save dispersal heading before CRW composition overwrites it
-            _disp_mask = mask & self.is_dispersing
-            _saved_disp_heading = (
-                self.heading[_disp_mask].copy() if _disp_mask.any() else None
+            compose_movement(
+                self.heading, self._pres_angle, self._log_mov,
+                self._ve_total, self._vt_x, self._vt_y, d_dx, d_dy,
+                self.is_dispersing, mask, self.params.inertia_const, disp_step,
+                self._rads, self._dx, self._dy, self._step_dist,
             )
-
-            # Compute CRW unit direction vector from heading
-            np.radians(self.heading, out=self._rads)
-            np.sin(self._rads, out=self._dx)
-            np.cos(self._rads, out=self._dy)
-
-            # Heading composition (Java Porpoise.java:556-566)
-            np.power(10.0, self._log_mov, out=self._step_dist)
-            crw_contrib = self.params.inertia_const + self._step_dist * self._ve_total
-
-            total_dx = self._dx * crw_contrib + self._vt_x + d_dx
-            total_dy = self._dy * crw_contrib + self._vt_y + d_dy
-
-            # facePoint: new heading from composite vector (Java Porpoise.java:567)
-            new_heading = np.degrees(np.arctan2(total_dx, total_dy)) % 360
-            self.heading[mask] = new_heading[mask]
-
-            # Restore dispersal heading — dispersing agents skip CRW composition
-            if _saved_disp_heading is not None:
-                self.heading[_disp_mask] = _saved_disp_heading
-
-            # Step distance: presMov / 4.0 (Java Porpoise.java:589)
-            self._step_dist /= 4.0
-
-            # Override step distance for dispersing agents
-            dispersing = mask & self.is_dispersing
-            if dispersing.any():
-                self._step_dist[dispersing] = disp_step
-
-            # Final dx/dy for actual movement from composite heading
-            np.radians(self.heading, out=self._rads)
-            np.sin(self._rads, out=self._dx)
-            self._dx *= self._step_dist
-            np.cos(self._rads, out=self._dy)
-            self._dy *= self._step_dist
 
         # Update dispersal distance traveled
         dispersing = mask & self.is_dispersing

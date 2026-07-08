@@ -553,10 +553,10 @@ def server(input, output, session):
         'file': 'bathy.asc'
     })
     
-    # Internal state for background thread management
-    sim_thread: threading.Thread | None = None
-    stop_event = threading.Event()
-    result_queue = queue.Queue()
+    # Internal state for background thread management.
+    # _WorkerHandle owns the worker thread plus a FRESH stop_event + result_queue
+    # per run, so a Stop-then-Start can never re-arm or interleave an old worker.
+    worker = _WorkerHandle()
     # Shared throttle value as a mutable list [0.0-1.0] for thread-safe updates
     # 0.0 = slowest (1%), 1.0 = fastest (100%)
     throttle_value = [1.0]  # Default 100% (maximum speed)
@@ -1181,7 +1181,6 @@ def server(input, output, session):
     @reactive.event(input.run_sim)
     def start_simulation():
         """Start the simulation in a background thread."""
-        nonlocal sim_thread
         logger.info("start_simulation() TRIGGERED")
         if state.running():
             logger.info("Already running, skipping")
@@ -1204,13 +1203,9 @@ def server(input, output, session):
             ui.notification_show("Simulation failed. Check server logs for details.", type="error", duration=10)
             return
 
-        # Reset queue and event - use idiomatic pattern to avoid TOCTOU race
-        try:
-            while True:
-                result_queue.get_nowait()
-        except queue.Empty:
-            pass
-        stop_event.clear()
+        # Stop/join any prior worker and install a FRESH stop_event + result_queue.
+        # Never clear() a shared event: a still-alive old worker may observe it.
+        stop_event, result_queue = worker.new_run()
 
         state.simulation.set(sim)
         state.running.set(True)
@@ -1232,8 +1227,8 @@ def server(input, output, session):
         with ticks_lock:
             ticks_per_update_value[0] = ticks_val
 
-        # Start background thread
-        sim_thread = threading.Thread(
+        # Start background thread on the fresh queue/event
+        worker.start(
             target=run_simulation_loop,
             args=(
                 runner, result_queue, stop_event,
@@ -1242,9 +1237,7 @@ def server(input, output, session):
                 trace_enabled_value, trace_length_value, trace_lock,
                 skip_viz_value, skip_viz_lock,
             ),
-            daemon=True,
         )
-        sim_thread.start()
         logger.info("Simulation thread started")
 
         # Start polling immediately
@@ -1315,6 +1308,8 @@ def server(input, output, session):
         energy_entries_batch = []
         dispersal_entries_batch = []
         
+        # Snapshot the current run's queue so a mid-poll restart can't swap it.
+        result_queue = worker.result_queue
         # Drain queue - process all available messages
         while True:
             try:
@@ -1398,21 +1393,16 @@ def server(input, output, session):
     @reactive.event(input.stop_sim)
     def stop_simulation():
         """Stop the running simulation."""
-        stop_event.set()
+        worker.stop_event.set()
         state.running.set(False)
 
-    
+
     @reactive.effect
     @reactive.event(input.reset_sim)
     def reset_simulation():
         """Reset the simulation."""
-        stop_event.set()
-        # Clear queue to release refs - use idiomatic pattern to avoid TOCTOU race
-        try:
-            while True:
-                result_queue.get_nowait()
-        except queue.Empty:
-            pass
+        # Stop/join any live worker and install fresh objects before resetting.
+        worker.new_run()
         state.reset()
     
     # =========================================================================

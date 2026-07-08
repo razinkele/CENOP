@@ -204,3 +204,27 @@ def test_stop_then_start_no_interleaving_and_old_worker_joined():
     # Worker #1's output stayed isolated on the OLD queue.
     ids1, _ = _drain_worker_ids(q1)
     assert ids1 == {1}
+
+
+def test_server_closures_use_worker_handle_and_drop_shared_clear():
+    """Pin the Finding #7 fix in the Shiny server closures.
+
+    The closures live inside server(input, output, session) and can't be
+    invoked without a full reactive session, so guard the fix at the source
+    level: the shared-event clear() must be gone and the closures must
+    delegate to the fresh-per-run _WorkerHandle.
+    """
+    import inspect
+
+    import cenop.server.main as main_mod
+
+    src = inspect.getsource(main_mod)
+
+    # The buggy pattern (re-arming a SHARED event) must be gone entirely.
+    assert "stop_event.clear()" not in src
+    # The server must own a fresh-per-run handle and route lifecycle through it.
+    assert "worker = _WorkerHandle()" in src
+    assert "worker.new_run(" in src          # start_simulation + reset_simulation
+    assert "worker.stop_event.set()" in src  # stop_simulation
+    assert "worker.start(" in src            # start_simulation
+    assert "result_queue = worker.result_queue" in src  # poll snapshots the queue

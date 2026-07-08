@@ -2152,6 +2152,7 @@ class PorpoisePopulation:
                     self.days_since_mating[new_slots] = -99
                     self.days_since_birth[new_slots] = -99
                     self.mating_day[new_slots] = -99
+                    self._reset_recycled_slots(new_slots)
 
             self.with_calf[weaning] = False
             self.days_since_birth[weaning] = -99
@@ -2162,6 +2163,63 @@ class PorpoisePopulation:
 
         lactating = female_mask & self.with_calf
         self.days_since_birth[lactating] += 1
+
+    def _reset_recycled_slots(self, slots: np.ndarray) -> None:
+        """Reset all persistent per-agent state for recycled (reused) slots to
+        newborn defaults.
+
+        Dead slots keep the previous occupant's memory / dispersal / CRW /
+        deterrence / prev-position state (`_check_mortality` only clears
+        `active_mask`). When a weaned calf reuses such a slot it must start from
+        clean newborn state, otherwise it inherits the dead porpoise's reference
+        memory, dispersal target, CRW headings, etc. Identity / position /
+        energy are set by the caller before this runs; here we clear the state
+        the caller does NOT reset. `_prev_x`/`_prev_y` are anchored to the
+        (already-set) calf position.
+        """
+        # CRW movement state (newborn defaults, see __init__ lines 125-126, 203)
+        self.prev_log_mov[slots] = 0.8
+        self.prev_angle[slots] = 10.0
+        self._prev_step_heading[slots] = 0.0
+
+        # Reference memory circular buffers (__init__ lines 155-162)
+        self._stored_util[slots, :] = 0.0
+        self._pos_history_x[slots, :] = 0.0
+        self._pos_history_y[slots, :] = 0.0
+        self._mem_ptr[slots] = 0
+        self._mem_count[slots] = 0
+        self._ve_total[slots] = 0.0
+        self._vt_x[slots] = 0.0
+        self._vt_y[slots] = 0.0
+
+        # Persistent spatial memory grid (__init__ line 225)
+        self.psm_buffer[slots, :, :, :] = 0.0
+
+        # Energy history / daily accumulators (__init__ lines 175-176, 190-192)
+        self._energy_history[slots, :] = 0.0
+        self._energy_ticks_today[slots] = 0.0
+        self._energy_consumed_today[slots] = 0.0
+        self.energy_consumed_daily[slots] = 0.0
+        self._energy_level_sum[slots] = 0.0
+
+        # Dispersal state (__init__ lines 195-202)
+        self.is_dispersing[slots] = False
+        self.days_declining_energy[slots] = 0
+        self.dispersal_target_x[slots] = 0.0
+        self.dispersal_target_y[slots] = 0.0
+        self.dispersal_target_distance[slots] = 0.0
+        self.dispersal_distance_traveled[slots] = 0.0
+        self.dispersal_start_x[slots] = 0.0
+        self.dispersal_start_y[slots] = 0.0
+
+        # Deterrence status (__init__ lines 146, 149, 151)
+        self.deter_strength[slots] = 0.0
+        self._turbine_deter_strength[slots] = 0.0
+        self._was_deterred[slots] = False
+
+        # Previous positions anchored to the calf's (already-set) location
+        self._prev_x[slots] = self.x[slots]
+        self._prev_y[slots] = self.y[slots]
 
     def _step_jax(
         self,

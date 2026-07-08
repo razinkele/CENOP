@@ -575,7 +575,7 @@ def create_help_modal():
         <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
         <tr><td>Dispersal Type</td><td>PSM-Type2</td><td>Memory-based with heading dampening (SSLogis formula)</td></tr>
         <tr><td>tDisp</td><td>3 days</td><td>Consecutive days of declining energy to trigger dispersal</td></tr>
-        <tr><td>PSM_dist</td><td>N(300;100)</td><td>Preferred dispersal distance: mean 300km, std 100km</td></tr>
+        <tr><td>PSM_dist</td><td>N(350;100)</td><td>Preferred dispersal distance: mean 350km, std 100km</td></tr>
         <tr><td>mean_disp_dist</td><td>1.6 km</td><td>Mean distance per dispersal step (DEPONS 3.2)</td></tr>
     </table>
 

@@ -457,11 +457,16 @@ class TestPSMDistDefaults:
         import inspect
         import cenop.ui.tabs.settings as settings_mod
         import cenop.server.simulation_controller as ctrl_mod
+        import cenop.ui.layout as layout_mod
 
         settings_src = inspect.getsource(settings_mod)
         ctrl_src = inspect.getsource(ctrl_mod)
+        layout_src = inspect.getsource(layout_mod)
 
         assert 'ui.input_text("psm_dist", None, value="N(350;100)")' in settings_src
         assert 'value="N(300;100)"' not in settings_src
         assert "psm_dist_mean = 350.0" in ctrl_src
         assert "psm_dist_mean = 300.0" not in ctrl_src
+        # In-app help/docs table must not show the stale 300 default (finding #14).
+        assert "N(300;100)" not in layout_src
+        assert "N(350;100)" in layout_src

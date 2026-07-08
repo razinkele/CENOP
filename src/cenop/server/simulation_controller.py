@@ -91,9 +91,9 @@ def create_simulation_from_inputs(input) -> Simulation:
     """
     seed_value = input.random_seed()
     
-    # Parse PSM Dist string "N(300;100)"
+    # Parse PSM Dist string "N(350;100)"
     psm_dist_str = input.psm_dist()
-    psm_dist_mean = 300.0
+    psm_dist_mean = 350.0
     psm_dist_sd = 100.0
     try:
         if psm_dist_str and psm_dist_str.startswith("N(") and psm_dist_str.endswith(")"):

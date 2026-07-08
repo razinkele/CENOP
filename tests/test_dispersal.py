@@ -448,3 +448,20 @@ class TestPSMReproducibility:
         mean = float(dists.mean())
         # Pre-fix PSM ignores params and centres on 300 -> mean far below 335.
         assert 335.0 < mean < 365.0, f"expected ~350 (params.psm_dist_mean), got {mean}"
+
+
+class TestPSMDistDefaults:
+    """UI default and controller parse-fallback must be N(350;100) (finding #14)."""
+
+    def test_ui_and_controller_defaults_are_350(self):
+        import inspect
+        import cenop.ui.tabs.settings as settings_mod
+        import cenop.server.simulation_controller as ctrl_mod
+
+        settings_src = inspect.getsource(settings_mod)
+        ctrl_src = inspect.getsource(ctrl_mod)
+
+        assert 'ui.input_text("psm_dist", None, value="N(350;100)")' in settings_src
+        assert 'value="N(300;100)"' not in settings_src
+        assert "psm_dist_mean = 350.0" in ctrl_src
+        assert "psm_dist_mean = 300.0" not in ctrl_src

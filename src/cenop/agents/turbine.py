@@ -448,7 +448,9 @@ class TurbineManager:
             if not np.any(deter_mask_local):
                 continue
                 
-            # If probabilistic response enabled, compute probability and scale strength
+            # DEPONS parity: turbine deterrence is deterministic — full strength once
+            # RL > threshold (only ships draw a Bernoulli reaction). JASMINE may opt into
+            # logistic response-probability scaling via params.deter_probabilistic (default False).
             if params.deter_probabilistic:
                 # Compute response probability for masked distances
                 p = response_probability_from_rl(

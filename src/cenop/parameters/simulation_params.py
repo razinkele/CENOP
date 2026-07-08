@@ -132,9 +132,12 @@ class SimulationParameters:
     weston_flux_percell: bool = False              # Use per-cell depth/sediment/salinity for TL
     weston_flux_default_temperature: float = 12.0  # Default water temperature (°C) when no grid
 
-    # Probabilistic deterrence response
-    deter_probabilistic: bool = True  # Use sigmoid-based probability instead of binary threshold
-    deter_response_slope: float = 0.2  # Steepness (per dB) of logistic response function
+    # Probabilistic turbine deterrence response (JASMINE extension).
+    # DEPONS applies FULL turbine deterrence strength deterministically once RL exceeds
+    # the threshold (only ships draw a Bernoulli reaction), so the default is DEPONS-pure.
+    # Set True to opt into logistic response-probability scaling of turbine strength (JASMINE).
+    deter_probabilistic: bool = False
+    deter_response_slope: float = 0.2  # Steepness (per dB) of logistic turbine response
 
     # === Social communication (new feature) ===
     communication_enabled: bool = True          # Enable social calling and cohesion

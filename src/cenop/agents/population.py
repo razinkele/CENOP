@@ -1057,11 +1057,122 @@ class PorpoisePopulation:
         deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]],
         ambient_rl: Optional[np.ndarray],
     ) -> None:
+        """JASMINE movement path — parity mirror of the inline NumPy CRW path.
+
+        The injected module supplies only the DEPONS turning-angle + step-length draws
+        (via crw_core, off the population RNG); everything else (environment sampling,
+        reference-memory update, SSLogis dispersal override, deterrence/social heading
+        composition, prev_angle/prev_log_mov bookkeeping) is done here identically to
+        _update_movement, so results match movement_module=None for a fixed seed.
         """
-        JASMINE movement path: delegates to movement module.
+        from cenop.movement.base import EnvironmentContext
+        from cenop.movement.depons_crw import DEPONSCRWMovement
+
+        # Non-CRW modules (JASMINE physics, hybrid physics selection) return a fully composed
+        # displacement with no raw CRW draws (pres_angle/log_mov is None), so they cannot be
+        # driven through the crw_core parity path. Fall back to the generic module write-back,
+        # preserving their pre-existing behavior.
+        if not isinstance(self._movement_module, DEPONSCRWMovement):
+            self._update_movement_module_generic(mask, deterrence_vectors, ambient_rl)
+            return
+
+        # 1. Environment at current cells (identical to inline, incl. Kattegat override)
+        if self.landscape is not None:
+            np.copyto(self._depths, self.landscape.get_depths_vectorized(
+                None, xi=self._cell_xi, yi=self._cell_yi))
+            np.copyto(self._salinity_vals, self.landscape.get_salinities_vectorized(
+                None, xi=self._cell_xi, yi=self._cell_yi))
+            if getattr(self.landscape, 'landscape_name', '') == 'Kattegat':
+                self._salinity_vals[:] = 34.069105813295
+        else:
+            self._depths.fill(30.0)
+            self._salinity_vals.fill(30.0)
+
+        # 2. Reference memory FIRST: computes veTotal/vt from the pre-store buffer and stores
+        #    the current (not-yet-moved) position. It is RNG-free and reads neither heading
+        #    nor the generation outputs, so running it before generation gives identical
+        #    ve_total/vt/stored-position AND leaves the RNG stream order unchanged vs inline.
+        self._update_reference_memory(mask)
+
+        # 3. Drive the module off the population RNG with full-precision f64 inputs
+        self._movement_module.rng = self.rng
+        state = self._movement_state
+        state.heading = self.heading
+        state.prev_angle = self.prev_angle  # f64 reference (no f32 rounding)
+        state.prev_log_mov = self.prev_log_mov  # f64 reference
+        state.is_dispersing = self.is_dispersing
+        state.ve_total = self._ve_total
+        state.vt_x = self._vt_x
+        state.vt_y = self._vt_y
+        env = EnvironmentContext(depth=self._depths, salinity=self._salinity_vals)
+
+        # 4. Module produces the CRW draws (angle + step). Deterrence is NOT passed here —
+        #    it enters via the heading composition below (matches inline).
+        result = self._movement_module.compute_step(self.x, self.y, state, env, mask)
+        np.copyto(self._pres_angle, result.pres_angle)
+        np.copyto(self._log_mov, result.log_mov)
+        self.prev_log_mov[mask] = self._log_mov[mask]
+
+        # 5. Turn heading, then SSLogis dispersal override (identical order to inline)
+        np.copyto(self._pre_heading, self.heading)
+        self.heading[mask] += self._pres_angle[mask]
+        self.heading[mask] %= 360.0
+        self._apply_dispersal_heading(mask)
+
+        # 6. Deterrence (+ memory avoidance + social) folded into the heading composition.
+        #    NOTE: the inline reference path does NOT apply memory avoidance to movement;
+        #    _avoidance_result is None unless a memory_module is injected, so this block is
+        #    inert (and thus mirrors inline) whenever no memory module is present — which is
+        #    the case in the parity test. It is retained here to preserve the module path's
+        #    memory-avoidance feature in production runs that DO inject a memory module.
+        if deterrence_vectors is not None:
+            d_dx, d_dy = deterrence_vectors
+            self.deter_strength[mask] = np.hypot(d_dx[mask], d_dy[mask])
+            self._was_deterred |= (self.deter_strength > 0) & mask
+        else:
+            d_dx = self._zero_f64
+            d_dy = self._zero_f64
+            self.deter_strength[mask] = 0.0
+
+        if self._avoidance_result is not None:
+            av = self._avoidance_result
+            d_dx = d_dx + av.avoidance_dx * av.avoidance_strength
+            d_dy = d_dy + av.avoidance_dy * av.avoidance_strength
+
+        if self._comm_enabled:
+            soc_dx, soc_dy = self._compute_social_vectors(mask, ambient_rl)
+            d_dx = d_dx + soc_dx
+            d_dy = d_dy + soc_dy
+
+        disp_step = getattr(self.params, 'mean_disp_dist', 1.6) / 0.4
+
+        # 7. Heading composition + displacement (shared validated NumPy path)
+        compose_movement(
+            self.heading, self._pres_angle, self._log_mov,
+            self._ve_total, self._vt_x, self._vt_y, d_dx, d_dy,
+            self.is_dispersing, mask, self.params.inertia_const, disp_step,
+            self._rads, self._dx, self._dy, self._step_dist,
+        )
+
+        # 8. Dispersal distance, prev_angle (total turn), prev_log_mov (identical to inline)
+        dispersing = mask & self.is_dispersing
+        if dispersing.any():
+            self.dispersal_distance_traveled[dispersing] += self._step_dist[dispersing]
+        total_turn = (self.heading - self._pre_heading + 180) % 360 - 180
+        self.prev_angle[mask] = total_turn[mask]
+        self.prev_log_mov[mask] = self._log_mov[mask]
+
+    def _update_movement_module_generic(
+        self,
+        mask: np.ndarray,
+        deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]],
+        ambient_rl: Optional[np.ndarray],
+    ) -> None:
+        """
+        Generic movement path for non-CRW modules (JASMINE physics, hybrid).
 
         Syncs population arrays with MovementState, calls the module,
-        and writes results back to population arrays.
+        and writes the fully composed displacement back to population arrays.
         """
         from cenop.movement.base import EnvironmentContext
 

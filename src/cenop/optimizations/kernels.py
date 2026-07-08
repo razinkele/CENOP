@@ -392,14 +392,16 @@ def depons_bmr_cost_kernel(
     out_total_cost,     # 1D float32 — output
     e_use_per_30_min,   # float — BMR parameter
     e_lact,             # float — lactation multiplier
+    e_use_per_km,       # float — swimming activity coefficient (0.0 in DEPONS)
+    disturbance_coeff,  # float — disturbance energy coefficient (0.0 in DEPONS)
 ):
     """
     DEPONS BMR + activity + disturbance cost kernel.
 
     Matches DEPONSEnergyModule.compute_bmr_cost() exactly:
     - BMR: 0.001 * scaling * e_use_per_30_min (* e_lact if lactating)
-    - Activity: speed * 0.0001 * scaling
-    - Disturbance: 0.002 * deter_magnitude * scaling (if disturbed)
+    - Activity: speed * e_use_per_km * scaling
+    - Disturbance: disturbance_coeff * deter_magnitude * scaling (if disturbed)
     """
     n = speed.shape[0]
     for i in range(n):
@@ -411,11 +413,11 @@ def depons_bmr_cost_kernel(
         if is_lactating[i]:
             bmr *= e_lact
 
-        activity = speed[i] * 0.0001 * scaling[i]
+        activity = speed[i] * e_use_per_km * scaling[i]
 
         disturbance = 0.0
         if is_disturbed[i]:
-            disturbance = 0.002 * deter_magnitude[i] * scaling[i]
+            disturbance = disturbance_coeff * deter_magnitude[i] * scaling[i]
 
         out_total_cost[i] = bmr + activity + disturbance
 
@@ -870,7 +872,7 @@ def warmup_kernels():
     dmg = np.array([0.0, 0.5], dtype=np.float32)
     msk = np.array([True, True])
     cost = np.zeros(2, dtype=np.float32)
-    depons_bmr_cost_kernel(spd, scl, lac, dis, dmg, msk, cost, 4.5, 1.4)
+    depons_bmr_cost_kernel(spd, scl, lac, dis, dmg, msk, cost, 4.5, 1.4, 0.0001, 0.002)
     # Warmup social accumulate kernel
     si = np.array([0, 1], dtype=np.int64)
     sj = np.array([1, 0], dtype=np.int64)

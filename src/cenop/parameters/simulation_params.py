@@ -112,6 +112,10 @@ class SimulationParameters:
     e_use_per_30_min: float = 4.5      # Energy use per half-hour step
     e_lact: float = 1.4                # Lactation energy multiplier
     e_warm: float = 1.3                # Warm water energy multiplier
+    # Finding #10 — swimming + disturbance drains are JASMINE opt-ins.
+    # DEPONS has E_USE_PER_KM=0.0 (no swimming term) and no disturbance energy term.
+    e_use_per_km: float = 0.0          # Swimming activity coefficient (JASMINE opt-in, e.g. 0.0001)
+    jasmine_disturbance_energy: bool = False  # If True, drain disturbance energy during deterrence
     energy_init_mean: float = 10.0     # Initial energy N(mean, sd)
     energy_init_sd: float = 1.0
     

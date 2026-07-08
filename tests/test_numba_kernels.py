@@ -485,7 +485,7 @@ class TestDEPONSBmrCostKernel:
 
         depons_bmr_cost_kernel(
             speed, scaling, is_lactating, is_disturbed, deter_magnitude,
-            mask, out_cost, 4.5, 1.4,
+            mask, out_cost, 4.5, 1.4, 0.0001, 0.002,
         )
 
         assert out_cost[0] > 0
@@ -506,7 +506,7 @@ class TestDEPONSBmrCostKernel:
 
         depons_bmr_cost_kernel(
             speed, scaling, is_lactating, is_disturbed, deter_magnitude,
-            mask, out_cost, 4.5, 1.4,
+            mask, out_cost, 4.5, 1.4, 0.0001, 0.002,
         )
 
         assert out_cost[0] > 0
@@ -553,6 +553,8 @@ class TestDEPONSBmrCostKernel:
         depons_bmr_cost_kernel(
             speed, scaling, is_lact, is_dist, deter_mag,
             mask, nb_cost, module.e_use_per_30_min, module.e_lact,
+            module.e_use_per_km,
+            0.002 if module.jasmine_disturbance_energy else 0.0,
         )
 
         np.testing.assert_allclose(nb_cost[mask], py_cost[mask], atol=1e-6)
@@ -730,8 +732,12 @@ class TestParallelEquivalence:
         out1 = np.zeros(n, dtype=np.float32)
         out2 = np.zeros(n, dtype=np.float32)
 
-        depons_bmr_cost_kernel(speed, scaling, is_lact, is_dist, deter_mag, mask, out1, 4.5, 1.4)
-        depons_bmr_cost_kernel(speed, scaling, is_lact, is_dist, deter_mag, mask, out2, 4.5, 1.4)
+        depons_bmr_cost_kernel(
+            speed, scaling, is_lact, is_dist, deter_mag, mask, out1, 4.5, 1.4, 0.0001, 0.002
+        )
+        depons_bmr_cost_kernel(
+            speed, scaling, is_lact, is_dist, deter_mag, mask, out2, 4.5, 1.4, 0.0001, 0.002
+        )
 
         np.testing.assert_allclose(out1, out2, atol=1e-10)
 

@@ -101,7 +101,15 @@ class TestPorpoise:
 
 class TestRefMem:
     """Test reference memory."""
-    
+
+    def test_default_decay_rates_match_depons_32(self):
+        """decay_satiation/decay_reference must match DEPONS 3.2 (0.03), not stale 3.0 (0.04)."""
+        from cenop.behavior import RefMem
+
+        mem = RefMem()
+        assert mem.decay_satiation == pytest.approx(0.03)
+        assert mem.decay_reference == pytest.approx(0.03)
+
     def test_memory_add(self):
         """Test adding memories."""
         from cenop.behavior import RefMem

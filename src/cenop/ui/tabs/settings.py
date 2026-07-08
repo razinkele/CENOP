@@ -40,8 +40,8 @@ TOOLTIPS = {
     "psm_angle": "Maximum turning angle (degrees) during PSM dispersal. Limits heading changes per step. DEPONS default: 20°.",
     
     # Energy parameters
-    "param_rS": "Satiation memory decay rate. Higher = faster forgetting of food satisfaction. DEPONS default: 0.04",
-    "param_rR": "Reference memory decay rate. Higher = faster forgetting of remembered food locations. DEPONS default: 0.04",
+    "param_rS": "Satiation memory decay rate. Higher = faster forgetting of food satisfaction. DEPONS default: 0.03",
+    "param_rR": "Reference memory decay rate. Higher = faster forgetting of remembered food locations. DEPONS default: 0.03",
     "param_rU": "Food replenishment rate. How fast depleted food patches recover. DEPONS default: 0.1",
 
     # JASMINE Mode settings
@@ -396,7 +396,7 @@ def _energy_settings_panel():
                                   ui.tags.span("ⓘ", title=TOOLTIPS["param_rS"],
                                                style="cursor: help; color: #0d7377;"),
                                   **{"for": "param_rS"}),
-                    ui.input_numeric("param_rS", None, value=0.04, step=0.01),
+                    ui.input_numeric("param_rS", None, value=0.03, step=0.01),
                     class_="mb-2"
                 ),
                 ui.div(
@@ -404,7 +404,7 @@ def _energy_settings_panel():
                                   ui.tags.span("ⓘ", title=TOOLTIPS["param_rR"],
                                                style="cursor: help; color: #0d7377;"),
                                   **{"for": "param_rR"}),
-                    ui.input_numeric("param_rR", None, value=0.04, step=0.01),
+                    ui.input_numeric("param_rR", None, value=0.03, step=0.01),
                     class_="mb-2"
                 ),
                 ui.div(

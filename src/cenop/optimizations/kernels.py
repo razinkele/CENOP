@@ -39,7 +39,7 @@ def seed_numba_rng(seed):
     np.random.seed(seed)
 
 
-@njit(cache=True, parallel=True)
+@njit(cache=True)
 def reflect_boundaries_kernel(
     new_x: np.ndarray,
     new_y: np.ndarray,
@@ -60,7 +60,7 @@ def reflect_boundaries_kernel(
     max_y = float(world_h - 1)
     n = new_x.shape[0]
 
-    for i in prange(n):
+    for i in range(n):
         if mask[i]:
             if new_x[i] < 0.0:
                 new_x[i] = -new_x[i]
@@ -74,7 +74,7 @@ def reflect_boundaries_kernel(
         elif new_x[i] > max_x:
             new_x[i] = max_x
 
-    for i in prange(n):
+    for i in range(n):
         if mask[i]:
             if new_y[i] < 0.0:
                 new_y[i] = -new_y[i]
@@ -190,7 +190,7 @@ def crw_angle_step_kernel(
         prev_log_mov[i] = log_mov
 
 
-@njit(cache=True, parallel=True)
+@njit(cache=True)
 def turn_position_kernel(
     x, y, heading, step_dist,
     turn_delta,
@@ -210,7 +210,7 @@ def turn_position_kernel(
     max_y = float(world_h - 1)
     n = x.shape[0]
 
-    for i in prange(n):
+    for i in range(n):
         h = (heading[i] + turn_delta) % 360.0
         out_heading[i] = h
 
@@ -381,7 +381,7 @@ def eat_food_kernel_v2(
             food_grid[row, col] = min_food
 
 
-@njit(cache=True, parallel=True)
+@njit(cache=True)
 def depons_bmr_cost_kernel(
     speed,              # 1D float32 — current speed in m/s
     scaling,            # 1D float32 — seasonal scaling factor (pre-computed)
@@ -402,7 +402,7 @@ def depons_bmr_cost_kernel(
     - Disturbance: 0.002 * deter_magnitude * scaling (if disturbed)
     """
     n = speed.shape[0]
-    for i in prange(n):
+    for i in range(n):
         if not mask[i]:
             out_total_cost[i] = 0.0
             continue
@@ -474,7 +474,7 @@ def regrow_food_kernel(food, k_vals, rate, n_iter):
         food[i] = f
 
 
-@njit(cache=True, parallel=True)
+@njit(cache=True)
 def compute_ve_total_kernel(
     stored_util, mem_ptr, mem_count, work_mem_table,
     active_indices, out_ve_total,
@@ -490,7 +490,7 @@ def compute_ve_total_kernel(
         out_ve_total: (n_active,) float64 — output
     """
     mem_size = stored_util.shape[1]
-    for ai in prange(len(active_indices)):
+    for ai in range(len(active_indices)):
         agent = active_indices[ai]
         n = min(int(mem_count[agent]), mem_size) - 1  # use n-1 entries
         if n <= 0:
@@ -504,7 +504,7 @@ def compute_ve_total_kernel(
         out_ve_total[ai] = total
 
 
-@njit(cache=True, parallel=True)
+@njit(cache=True)
 def compute_attraction_kernel(
     stored_util, pos_history_x, pos_history_y,
     mem_ptr, mem_count, current_x, current_y,
@@ -524,7 +524,7 @@ def compute_attraction_kernel(
         out_vt_x, out_vt_y: (n_active,) float64 — output
     """
     mem_size = stored_util.shape[1]
-    for ai in prange(len(active_indices)):
+    for ai in range(len(active_indices)):
         agent = active_indices[ai]
         n = min(int(mem_count[agent]), mem_size)
         cx = current_x[agent]
@@ -667,7 +667,7 @@ def land_avoidance_kernel(
                 resolved[i] = True
 
 
-@njit(cache=True, parallel=True)
+@njit(cache=True)
 def heading_position_reflect_kernel(
     heading, pres_angle, log_mov, ve_total, vt_x, vt_y,
     deter_dx, deter_dy, x, y, mask, is_dispersing,
@@ -699,7 +699,7 @@ def heading_position_reflect_kernel(
     """
     DEG2RAD = 0.017453292519943295
     RAD2DEG = 57.29577951308232
-    for i in prange(len(heading)):
+    for i in range(len(heading)):
         if not mask[i]:
             continue
 

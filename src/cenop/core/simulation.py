@@ -559,17 +559,12 @@ class Simulation:
         self.state.quarter = self.time_manager.quarter
 
         # 9. Daily tasks (at day boundary)
+        # Food replenishment (DEPONS 3.2 logistic regrowth) runs inside
+        # _daily_tasks(); it is gated only on `_cell_data is not None`, so it
+        # covers BOTH the scalar and vectorized paths. Do NOT replenish again
+        # here or food regrows twice per simulated day.
         if self.time_manager.is_day_boundary():
             self._daily_tasks()
-            # Replenish food for vectorized path (_daily_tasks only does this
-            # for scalar _porpoises which is empty in vectorized mode)
-            if self._cell_data is not None and self.population_manager is not None:
-                # Daily food replenishment (DEPONS 3.2 logistic regrowth)
-                self._cell_data.replenish_food(
-                    rate=self.params.food_growth_rate,
-                    max_u=self.params.max_u,
-                    regrowth_qualifier=self.params.regrowth_food_qualifier,
-                )
 
         # 10. Monthly tasks (at month boundary)
         if self.time_manager.is_month_boundary():
@@ -617,7 +612,9 @@ class Simulation:
         if not hasattr(self, 'population_manager') or self.population_manager is None:
             self.state.population = len(self._porpoises)
         
-        # Replenish food across landscape (DEPONS 3.2 logistic regrowth)
+        # Replenish food across landscape (DEPONS 3.2 logistic regrowth).
+        # This is the single daily-regrowth call site for both the scalar
+        # and vectorized paths (step() must not call replenish_food again).
         if self._cell_data is not None:
             self._cell_data.replenish_food(
                 rate=self.params.food_growth_rate,

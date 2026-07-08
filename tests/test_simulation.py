@@ -196,6 +196,43 @@ class TestSimulation:
         assert sim.state.tick == initial_tick + 1
 
 
+class TestDailyFoodReplenishment:
+    """Regression: food regrows exactly once per simulated day (DEPONS parity)."""
+
+    def test_replenish_food_called_once_per_day_boundary(self):
+        """step() must invoke cell_data.replenish_food exactly once per day.
+
+        Guards against the double-regrowth bug where step() called
+        replenish_food both inside _daily_tasks() AND again inline at the
+        day boundary, regrowing food twice per simulated day on the
+        vectorized path.
+        """
+        from unittest.mock import patch
+        from cenop import Simulation, SimulationParameters
+        from cenop.landscape import create_homogeneous_landscape
+
+        params = SimulationParameters(
+            porpoise_count=10,
+            sim_years=1,
+            landscape="Homogeneous",
+        )
+        landscape = create_homogeneous_landscape()
+        sim = Simulation(params, landscape)
+
+        # One day == 48 ticks; is_day_boundary() is (tick > 0 and tick % 48 == 0),
+        # so exactly one day boundary occurs across 48 steps (at tick 48).
+        with patch.object(
+            sim._cell_data,
+            "replenish_food",
+            wraps=sim._cell_data.replenish_food,
+        ) as spy:
+            for _ in range(48):
+                sim.step()
+
+        assert sim.state.tick == 48
+        assert spy.call_count == 1, f"food should regrow once per day, got {spy.call_count} calls"
+
+
 def test_update_psm_none_food_gained():
     """_update_psm should handle None food_gained gracefully."""
     from cenop.agents.population import PorpoisePopulation

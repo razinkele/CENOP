@@ -47,32 +47,97 @@ class TestTurbineDeterrenceVector:
         assert dx == pytest.approx(3.0), f"dx should be 3.0, got {dx}"
         assert dy == pytest.approx(4.0), f"dy should be 4.0, got {dy}"
 
-    def test_no_normalization_vectorized_turbine(self):
-        """TurbineManager vectorized path should also use raw displacement."""
+    def test_vectorized_turbine_matches_scalar_oracle(self):
+        """Vectorized turbine deterrence vector must equal the scalar DEPONS path.
+
+        Regression for the metre-vs-grid displacement bug: the vectorized path
+        built the vector from METRE displacement (dx_m = grid_disp * cell_size),
+        making the emitted vector ~cell_size (400x) too large versus the scalar
+        calculate_deterrence_vector path, which uses GRID units
+        (Porpoise.java:1290-1292). dist_m (metres) stays correct for TL/range.
+        """
         from cenop.agents.turbine import Turbine, TurbineManager, TurbinePhase
         from cenop.parameters.simulation_params import SimulationParameters
 
         params = SimulationParameters()
-        # Override to simplify: coeff=1, threshold=0 so any RL produces strength
-        params.deter_coeff = 1.0
-        params.deter_threshold = 0.0
+        # Scalar oracle applies no probabilistic scaling -> disable for parity.
         params.deter_probabilistic = False
+        # Lower the threshold so the assorted porpoises below are actually
+        # in-range. At the default 152 dB (vs impact 200 dB) deterrence only
+        # reaches ~4 cells, so the 5-10 cell porpoises here would ALL yield
+        # zero strength -> the parity comparison would degenerate to a vacuous
+        # 0 == 0 that passes on the buggy code too. At threshold 100 dB every
+        # porpoise deters (strength ~45.9-50.9), so the assertions are live.
+        params.deter_threshold = 100.0
 
         t = Turbine(id=0, x=50.0, y=50.0, impact=200.0, phase=TurbinePhase.CONSTRUCTION)
         t._is_active = True
         mgr = TurbineManager([t])
         mgr.phase = TurbinePhase.CONSTRUCTION
 
-        # Porpoise 5 cells east of turbine
-        px = np.array([55.0])
-        py = np.array([50.0])
-        dx, dy = mgr.calculate_aggregate_deterrence_vectorized(px, py, params, cell_size=400.0)
+        # Assorted grid displacements, incl. a 3-4-5 diagonal (porpoise index 2).
+        px = np.array([55.0, 50.0, 53.0, 60.0, 45.0])
+        py = np.array([50.0, 56.0, 54.0, 50.0, 42.0])
 
-        # dx should be positive (pushed away east) and proportional to raw displacement
-        # NOT a unit vector of magnitude ~1
-        # Raw displacement in meters: (55-50)*400 = 2000m
-        # With no normalization, the vector should encode distance
-        assert dx[0] > 1.0, f"Vectorized dx should encode distance, got {dx[0]} (unit vector?)"
+        vec_dx, vec_dy = mgr.calculate_aggregate_deterrence_vectorized(
+            px, py, params, cell_size=400.0
+        )
+
+        saw_nonzero = False
+        for i in range(len(px)):
+            _, exp_dx, exp_dy = mgr.calculate_aggregate_deterrence(
+                float(px[i]), float(py[i]), params, cell_size=400.0
+            )
+            if exp_dx != 0.0 or exp_dy != 0.0:
+                saw_nonzero = True
+            assert vec_dx[i] == pytest.approx(exp_dx, rel=1e-9, abs=1e-12), (
+                f"porpoise {i}: vectorized dx {vec_dx[i]} != scalar oracle {exp_dx}"
+            )
+            assert vec_dy[i] == pytest.approx(exp_dy, rel=1e-9, abs=1e-12), (
+                f"porpoise {i}: vectorized dy {vec_dy[i]} != scalar oracle {exp_dy}"
+            )
+        assert saw_nonzero, (
+            "parity test is vacuous: no porpoise deterred (all-zero comparison) — "
+            "raise impact / lower threshold / move porpoises in-range"
+        )
+
+    def test_vectorized_turbine_vector_is_grid_units(self):
+        """The vector magnitude must be built from GRID displacement, not metres.
+
+        Porpoise 5 cells east of the turbine: dx must be strength*5*coeff
+        (grid), NOT strength*2000*coeff (metres). The buggy code emitted the
+        latter (~400x too large).
+        """
+        from cenop.agents.turbine import Turbine, TurbineManager, TurbinePhase
+        from cenop.parameters.simulation_params import SimulationParameters
+
+        params = SimulationParameters()
+        params.deter_probabilistic = False
+        params.deter_coeff = 1.0
+        params.deter_threshold = 0.0
+
+        t = Turbine(id=0, x=50.0, y=50.0, impact=200.0, phase=TurbinePhase.CONSTRUCTION)
+        t._is_active = True
+        mgr = TurbineManager([t])
+        mgr.phase = TurbinePhase.CONSTRUCTION
+
+        px = np.array([55.0])  # 5 grid cells east
+        py = np.array([50.0])
+        vec_dx, vec_dy = mgr.calculate_aggregate_deterrence_vectorized(
+            px, py, params, cell_size=400.0
+        )
+
+        # Strength = RL - threshold; RL = 200 - (beta*log10(2000) + alpha*2000)
+        dist_m = 5.0 * 400.0
+        tl = params.beta_hat * np.log10(dist_m) + params.alpha_hat * dist_m
+        strength = (200.0 - tl) - params.deter_threshold
+        expected_dx = strength * 5.0 * params.deter_coeff  # GRID units
+        assert vec_dx[0] == pytest.approx(expected_dx, rel=1e-9), (
+            f"grid-unit dx expected {expected_dx}, got {vec_dx[0]}"
+        )
+        # Guard against the metres value (which is cell_size=400x larger).
+        assert vec_dx[0] < expected_dx * 2.0, "vector still in metres (400x too large)?"
+        assert vec_dy[0] == pytest.approx(0.0, abs=1e-9)
 
     def test_ship_vectorized_uses_unit_vector_times_magnitude(self):
         """Ships use DEPONS unit-vector x magnitude (NOT raw displacement x deter_coeff)."""

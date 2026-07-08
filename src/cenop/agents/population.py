@@ -213,7 +213,14 @@ class PorpoisePopulation:
         # We can still use the class for helper methods or just store distances array
         # For full optimization, we replace list of objects with arrays
         self._psm_instances: List[PersistentSpatialMemory] = [
-             PersistentSpatialMemory(world_w, world_h) for _ in range(count)
+            PersistentSpatialMemory(
+                world_w,
+                world_h,
+                rng=self.rng,
+                pref_dist_mean=self.params.psm_dist_mean,
+                pref_dist_sd=self.params.psm_dist_sd,
+            )
+            for _ in range(count)
         ]
         
         # Vectorized PSM Storage (Optimized)

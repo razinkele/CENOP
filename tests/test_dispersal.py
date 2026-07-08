@@ -394,3 +394,57 @@ class TestDispersalBatchInit:
             assert pop.dispersal_start_x[idx] == pop.x[idx]
             assert pop.dispersal_start_y[idx] == pop.y[idx]
             assert pop.dispersal_distance_traveled[idx] == 0.0
+
+
+class TestPSMReproducibility:
+    """PSM preferred_distance must be seeded (finding #6) and centre on
+    params.psm_dist_mean=350 not the hardcoded 300 (finding #14)."""
+
+    def test_preferred_distance_reproducible_same_seed(self):
+        """Two populations built with the same random_seed must produce an
+        identical preferred_distance sequence across all agents."""
+        from cenop.agents.population import PorpoisePopulation
+        from cenop.parameters.simulation_params import SimulationParameters
+
+        # Small world keeps per-agent psm_buffer tiny (12x12 grid).
+        params_a = SimulationParameters(random_seed=12345, world_width=60, world_height=60)
+        params_b = SimulationParameters(random_seed=12345, world_width=60, world_height=60)
+        pop_a = PorpoisePopulation(count=30, params=params_a)
+        pop_b = PorpoisePopulation(count=30, params=params_b)
+
+        dists_a = [pop_a._psm_instances[i].preferred_distance for i in range(30)]
+        dists_b = [pop_b._psm_instances[i].preferred_distance for i in range(30)]
+
+        assert dists_a == dists_b, "same seed must give identical PSM distances"
+        # Sanity: it is genuinely a distribution, not a constant.
+        assert len(set(dists_a)) > 1
+
+    def test_constructor_centres_on_pref_dist_mean_350(self):
+        """PersistentSpatialMemory(pref_dist_mean=350) must sample ~N(350;100)."""
+        from cenop.behavior.psm import PersistentSpatialMemory
+
+        rng = np.random.default_rng(7)
+        dists = np.array(
+            [
+                PersistentSpatialMemory(
+                    100, 100, rng=rng, pref_dist_mean=350.0, pref_dist_sd=100.0
+                ).preferred_distance
+                for _ in range(2000)
+            ]
+        )
+        mean = float(dists.mean())
+        assert 340.0 < mean < 360.0, f"expected ~350, got {mean}"
+
+    def test_population_plumbs_params_psm_dist_mean(self):
+        """Production PSM construction must read params.psm_dist_mean (350),
+        not generate_preferred_distance's own default (was 300)."""
+        from cenop.agents.population import PorpoisePopulation
+        from cenop.parameters.simulation_params import SimulationParameters
+
+        params = SimulationParameters(random_seed=99, world_width=60, world_height=60)
+        assert params.psm_dist_mean == 350.0  # guard the default
+        pop = PorpoisePopulation(count=1000, params=params)
+        dists = np.array([pop._psm_instances[i].preferred_distance for i in range(1000)])
+        mean = float(dists.mean())
+        # Pre-fix PSM ignores params and centres on 300 -> mean far below 335.
+        assert 335.0 < mean < 365.0, f"expected ~350 (params.psm_dist_mean), got {mean}"

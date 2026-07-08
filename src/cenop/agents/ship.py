@@ -237,7 +237,16 @@ class Ship(Agent):
         if tick is not None:
             return self.tick_start <= tick < self.tick_end
         return self._is_active
-        
+
+    @property
+    def is_deterring(self) -> bool:
+        """DEPONS Ship.deterPorpoise gate (Ship.java:197-203): an active ship deters a
+        porpoise only when it has a valid current buoy (current_buoy_idx >= 0) and is not
+        paused (ticks_paused == 0). A paused ship stays _is_active with _prev == current,
+        so without this gate its 30 interpolated sub-positions collapse to a stationary
+        point and it would deter for the whole pause."""
+        return self._is_active and self.current_buoy_idx >= 0 and self.ticks_paused <= 0
+
     def update(self, current_tick: int) -> None:
         """
         Update ship position and status for current tick.
@@ -447,7 +456,14 @@ class ShipManager:
         if not self.enabled:
             return []
         return [s for s in self.ships if s._is_active]
-        
+
+    def get_deterring_ships(self) -> List[Ship]:
+        """Active ships eligible to deter this tick: excludes paused ships and ships with
+        no current buoy, mirroring DEPONS Ship.deterPorpoise (Ship.java:197-203)."""
+        if not self.enabled:
+            return []
+        return [s for s in self.ships if s.is_deterring]
+
     def calculate_aggregate_deterrence(
         self,
         porpoise_x: float,
@@ -489,7 +505,7 @@ class ShipManager:
         tships = getattr(params, "deter_ships_min_db", 80.0)
         weston = (params.weston_flux_percell and cell_data is not None
                   and getattr(cell_data, "_sediment", None) is not None)
-        for ship in self.get_active_ships():
+        for ship in self.get_deterring_ships():
             gdx = porpoise_x - ship.x
             gdy = porpoise_y - ship.y
             dist_m = max(float(np.hypot(gdx * cell_size, gdy * cell_size)), 1.0)
@@ -548,7 +564,7 @@ class ShipManager:
         total_dy = np.zeros(n, dtype=np.float64)
         if not self.enabled:
             return (total_dx, total_dy)
-        active_ships = self.get_active_ships()
+        active_ships = self.get_deterring_ships()
         if not active_ships:
             return (total_dx, total_dy)
 

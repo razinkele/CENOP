@@ -1170,3 +1170,68 @@ class TestSubTickOutOfRangeSlots:
         assert exp_y > 0.0
         assert dx[0] == pytest.approx(exp_x)
         assert dy[0] == pytest.approx(exp_y)
+
+
+class TestPausedShipsExcluded:
+    """DEPONS Ship.deterPorpoise (Ship.java:197-203) returns early when
+    currentBuoyIdx < 0 or ticksStillPaused > 0. A paused ship in CENOP stays
+    _is_active with _prev == current, so all 30 interpolated sub-positions collapse
+    to a stationary point and it would deter for the whole pause unless excluded."""
+
+    def _params(self):
+        from cenop.parameters.simulation_params import SimulationParameters
+        return SimulationParameters()
+
+    def _ship(self, ticks_paused=0, current_buoy_idx=0):
+        from cenop.agents.ship import Ship, ShipManager, VesselClass
+        s = Ship(id=1, x=50.0, y=50.0, vessel_type=VesselClass.CARGO)
+        s._is_active = True
+        s.noise.base_source_level = 200.0
+        s.ticks_paused = ticks_paused
+        s.current_buoy_idx = current_buoy_idx
+        mgr = ShipManager([s]); mgr.enabled = True
+        return mgr
+
+    def test_paused_ship_contributes_zero_moving_ship_nonzero(self):
+        p = self._params()
+        # porpoise 2 cells (800 m) north of the ship: in range (>100 m floor, <10 km cap);
+        # SL 200 -> RL 157 dB > Tships 80. _force_u=0.0 forces a reaction, so the result
+        # is DETERMINISTIC and the only causal difference is the pause flag.
+        px = np.array([50.0]); py = np.array([52.0])
+
+        mgr_moving = self._ship(ticks_paused=0)   # not paused -> deters
+        mgr_paused = self._ship(ticks_paused=3)   # paused    -> excluded
+
+        _, dy_moving = mgr_moving.calculate_aggregate_deterrence_vectorized(
+            px, py, p, _force_u=0.0)
+        _, dy_paused = mgr_paused.calculate_aggregate_deterrence_vectorized(
+            px, py, p, _force_u=0.0)
+
+        assert dy_moving[0] != 0.0   # precondition: identical unpaused ship DOES deter
+        assert dy_paused[0] == 0.0   # paused ship must be excluded (DEPONS parity)
+
+    def test_no_current_buoy_ship_contributes_zero(self):
+        p = self._params()
+        px = np.array([50.0]); py = np.array([52.0])
+        mgr = self._ship(ticks_paused=0, current_buoy_idx=-1)   # no active buoy
+        _, dy = mgr.calculate_aggregate_deterrence_vectorized(px, py, p, _force_u=0.0)
+        assert dy[0] == 0.0
+
+    def test_scalar_oracle_also_excludes_paused(self):
+        # The scalar oracle path draws np.random.random() ONCE per processed ship
+        # (ship.py:508); it has no _force_u hook. The ship-response probability at this
+        # geometry is only ~0.12, so the draw MUST be seeded for a deterministic result.
+        # np.random.seed(9) -> first draw 0.0104 < prob, so the ship deterministically
+        # reacts. On today's unfixed code the PAUSED ship would react too (it is in
+        # get_active_ships()), so the final assert fails pre-fix; after the fix the paused
+        # ship is excluded from the loop entirely -> (0, 0, 0) regardless of the RNG.
+        p = self._params()
+        np.random.seed(9)
+        m_move, _, dy_move = self._ship(ticks_paused=0).calculate_aggregate_deterrence(
+            50.0, 52.0, p)
+        assert m_move > 0.0   # precondition: identical unpaused ship DOES deter
+
+        np.random.seed(9)
+        m_pause, _, dy_pause = self._ship(ticks_paused=3).calculate_aggregate_deterrence(
+            50.0, 52.0, p)
+        assert m_pause == 0.0 and dy_pause == 0.0   # paused excluded in oracle too

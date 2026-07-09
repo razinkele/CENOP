@@ -48,12 +48,14 @@ class TestCythonFullPostCRW:
             food = np.full((200, 200), 50.0, dtype=np.float32)
             out_food = np.zeros(n, dtype=np.float32)
             disp_dist = np.zeros(n, dtype=np.float32)
+            depth = np.full((200, 200), 20.0, dtype=np.float64)
+            rand_mort = np.random.random(n)
 
             deaths = cython_depons_post_crw(
                 x, y, heading, prev_angle, prev_log_mov, energy,
                 active, is_disp, with_calf,
                 pres_angle, log_mov, ve_total, vt_x, vt_y,
-                food, out_food, disp_dist,
+                food, depth, out_food, disp_dist, rand_mort,
                 0.001, 4.0, 4.5, 1.4, 1.0, 0.4, 1.0, 200, 200,
             )
             return (
@@ -76,6 +78,8 @@ class TestCythonFullPostCRW:
         food = np.full((200, 200), 50.0, dtype=np.float32)
         out_food = np.zeros(n, dtype=np.float32)
         disp_dist = np.zeros(n, dtype=np.float32)
+        depth = np.full((200, 200), 20.0, dtype=np.float64)
+        rand_mort = np.zeros(n, dtype=np.float64)
 
         cython_depons_post_crw(
             np.random.uniform(5, 195, n).astype(np.float32),
@@ -91,7 +95,7 @@ class TestCythonFullPostCRW:
             np.zeros(n, dtype=np.float32),
             np.zeros(n, dtype=np.float32),
             np.zeros(n, dtype=np.float32),
-            food, out_food, disp_dist,
+            food, depth, out_food, disp_dist, rand_mort,
             0.001, 4.0, 4.5, 1.4, 1.0, 0.4, 1.0, 200, 200,
         )
         assert out_food.sum() > 0, "Agents should have eaten food"
@@ -106,6 +110,8 @@ class TestCythonFullPostCRW:
         food = np.full((200, 200), 0.01, dtype=np.float32)
         out_food = np.zeros(n, dtype=np.float32)
         disp_dist = np.zeros(n, dtype=np.float32)
+        depth = np.full((200, 200), 20.0, dtype=np.float64)
+        rand_mort = np.full(n, 0.5, dtype=np.float64)  # all > 0 -> every starving agent dies
 
         # m_mort_prob_const=100 makes yearly_surv negative -> step_surv=0 -> certain death
         deaths = cython_depons_post_crw(
@@ -122,7 +128,7 @@ class TestCythonFullPostCRW:
             np.zeros(n, dtype=np.float32),
             np.zeros(n, dtype=np.float32),
             np.zeros(n, dtype=np.float32),
-            food, out_food, disp_dist,
+            food, depth, out_food, disp_dist, rand_mort,
             0.001, 4.0, 4.5, 1.4, 100.0, 0.4, 1.0, 200, 200,
         )
         assert deaths == n, "All agents should die with extreme mortality"

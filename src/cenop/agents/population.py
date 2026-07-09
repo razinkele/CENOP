@@ -2755,6 +2755,17 @@ class PorpoisePopulation:
                 _food_src = None
                 food_grid = np.full((world_h, world_w), 50.0, dtype=np.float32)
 
+            # depth_grid drives the post-move land rollback (reference
+            # _apply_positions: destination on land -> restore pre-move cell).
+            if self.landscape is not None and getattr(self.landscape, '_depth', None) is not None:
+                depth_grid = np.ascontiguousarray(self.landscape._depth, dtype=np.float64)
+            else:
+                depth_grid = np.full((world_h, world_w), 20.0, dtype=np.float64)
+
+            # Mortality draws from the seeded generator (matches reference
+            # _check_mortality: self.rng.random(count)) for reproducibility.
+            rand_mort = self.rng.random(self.x.shape[0])
+
             self._cython_food_gained.fill(0.0)
             _cython_post_crw(
                 self.x,
@@ -2772,8 +2783,10 @@ class PorpoisePopulation:
                 self._vt_x,
                 self._vt_y,
                 food_grid,
+                depth_grid,
                 self._cython_food_gained,
                 self.dispersal_distance_traveled,
+                rand_mort,
                 self.params.inertia_const,
                 disp_step,
                 self.params.e_use_per_30_min,

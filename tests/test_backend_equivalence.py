@@ -107,18 +107,8 @@ def test_cython_food_grid_dtype_no_crash():
 
 
 @pytest.mark.skipif(not getattr(pop_mod, "_HAS_CYTHON", False), reason="Cython not built")
-@pytest.mark.xfail(strict=True, raises=(AssertionError, ValueError, TypeError), reason=(
-    "Cython post-CRW path is broken (Track B backend-fate work): (a) float64 food_grid "
-    "dtype crash, (b) ~3.6-cell move-math divergence vs reference at one tick with "
-    "identical CRW, (c) non-seeded global-np.random mortality. Flips to a hard failure "
-    "(remove this xfail) once Cython is repaired."))
 def test_cython_postcrw_matches_reference(monkeypatch):
-    """SINGLE-TICK Cython post-CRW == Numba/NumPy reference, given identical Numba CRW.
-
-    Currently xfails — documents the known Cython divergence (Finding #4). Do NOT 'fix'
-    by loosening tolerance or deleting it; it is the guard that flips green when the
-    Cython backend is repaired.
-    """
+    """SINGLE-TICK Cython post-CRW == Numba/NumPy reference, given identical Numba CRW."""
     # Reference: Cython disabled -> Numba/NumPy post-CRW.
     monkeypatch.setattr(pop_mod, "_HAS_CYTHON", False)
     ref = _build_cy(11)
@@ -135,3 +125,19 @@ def test_cython_postcrw_matches_reference(monkeypatch):
     np.testing.assert_allclose(cy.y, ref_y, rtol=1e-4, atol=1e-3)
     np.testing.assert_allclose(cy.energy, ref_e, rtol=1e-4, atol=1e-3)
     np.testing.assert_array_equal(cy.active_mask, ref_m)
+
+
+@pytest.mark.skipif(not getattr(pop_mod, "_HAS_CYTHON", False), reason="Cython not built")
+def test_cython_mortality_uses_seeded_rng():
+    """Cython post-CRW mortality must draw from self.rng, not global np.random
+    (Finding #21). The Numba CRW path uses njit-isolated RNG, so the only global
+    np.random consumer in this step is the mortality draw: after the fix the
+    global CPython MT19937 stream is untouched by a Cython tick."""
+    assert pop_mod._HAS_KERNELS, "needs njit CRW so global np.random is untouched by CRW"
+    p = _build_cy(11)
+    np.random.seed(1234)
+    s0 = np.random.get_state()
+    p.step()
+    s1 = np.random.get_state()
+    assert s1[2] == s0[2] and np.array_equal(s1[1], s0[1]), \
+        "Cython tick consumed global np.random; mortality must use self.rng"

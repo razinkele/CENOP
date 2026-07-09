@@ -285,14 +285,12 @@ def build_turbine_pole_layer(turbine_data: list) -> dict:
     )
 
 
-def build_turbine_blade_layer(turbine_data: list, rotation: float = 0,
-                               client_animated: bool = False) -> dict:
+def build_turbine_blade_layer(turbine_data: list, rotation: float = 0) -> dict:
     """Build turbine blade icon layer with rotation angle.
 
     Args:
         turbine_data: List of turbine position dicts.
-        rotation: Server-side rotation angle (used when client_animated=False).
-        client_animated: If True, use JS-side animation variable for angle.
+        rotation: Server-side rotation angle applied to operational turbines.
     """
     if not turbine_data:
         return icon_layer("turbine-blades", [], visible=False)
@@ -321,46 +319,6 @@ def build_turbine_blade_layer(turbine_data: list, rotation: float = 0,
         pickable=False,
         opacity=0.95,
     )
-
-
-BLADE_ANIMATION_JS = """
-<script>
-(function() {
-    // Stop any existing animation loop before starting a new one
-    window._cenopBladeAnimRunning = false;
-    window._cenopBladeRotation = window._cenopBladeRotation || 0;
-    // Allow previous loop to exit on next frame, then start fresh
-    setTimeout(function() {
-        window._cenopBladeAnimRunning = true;
-
-        function animateBlades() {
-            if (!window._cenopBladeAnimRunning) return;
-        window._cenopBladeRotation = (window._cenopBladeRotation + 1.5) % 360;
-        var widget = document.querySelector('[data-widget-id="sim_map"]');
-        if (widget && widget.__deckgl_instance) {
-            var inst = widget.__deckgl_instance;
-            if (inst.lastLayers) {
-                var bladeIdx = inst.lastLayers.findIndex(function(l) {
-                    return l.id === 'turbine-blades';
-                });
-                if (bladeIdx >= 0) {
-                    inst.overlay.setProps({layers: inst.overlay.props.layers});
-                }
-            }
-        }
-        requestAnimationFrame(animateBlades);
-    }
-    requestAnimationFrame(animateBlades);
-    }, 20);
-})();
-</script>
-"""
-
-BLADE_ANIMATION_STOP_JS = """
-<script>
-window._cenopBladeAnimRunning = false;
-</script>
-"""
 
 
 def compute_grid_bounds(metadata, source_crs: str) -> list[float]:

@@ -10,12 +10,15 @@ sim, so it is coherent) and publishes it over the result queue.  The renderers
 consume that snapshot dict and never touch the live Simulation.
 """
 
+import logging
 from typing import Any, Dict
 
 import numpy as np
 import pandas as pd
 
 from .chart_helpers import create_histogram_chart, no_data_placeholder
+
+logger = logging.getLogger(__name__)
 
 
 def build_population_stats_snapshot(sim: Any) -> Dict[str, Any]:
@@ -48,7 +51,8 @@ def build_population_stats_snapshot(sim: Any) -> Dict[str, Any]:
 
     try:
         stats = dict(sim.get_statistics())
-    except (AttributeError, TypeError, ValueError, KeyError):
+    except (AttributeError, TypeError, ValueError, KeyError) as e:
+        logger.warning("build_population_stats_snapshot: get_statistics() failed: %s", e)
         stats = {}
 
     if active is not None and np.any(active):
@@ -98,7 +102,7 @@ def build_vital_stats_df(snapshot: Dict[str, Any]) -> pd.DataFrame:
     """Build the vital-stats DataFrame from a stats snapshot dict."""
     stats = (snapshot or {}).get("stats") or {}
     if not stats:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=["Statistic", "Value"])
     return pd.DataFrame(
         [
             {

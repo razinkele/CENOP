@@ -5,6 +5,7 @@ thread and let the histogram/vital-stats renderers read that snapshot instead of
 reaching into the live, concurrently-mutated Simulation (Finding #22 data-race).
 """
 
+import logging
 from types import SimpleNamespace
 
 import numpy as np
@@ -91,6 +92,31 @@ class TestBuildSnapshot:
         assert snap["energies"] == []
         assert "avg_age" not in snap["stats"]
 
+    def test_snapshot_logs_and_recovers_when_get_statistics_raises(self, caplog):
+        # FIX B: a failing get_statistics() must not be swallowed silently — it
+        # is logged at WARNING and the snapshot still returns (stats == {} merged
+        # with any pm-derived aggregates).
+        def _boom():
+            raise ValueError("boom")
+
+        sim, pm = _fake_sim_with_pm()
+        sim.get_statistics = _boom
+        with caplog.at_level(logging.WARNING):
+            snap = build_population_stats_snapshot(sim)
+        # pm is present with active agents, so aggregates are still merged in even
+        # though get_statistics() failed (proving the fallback path ran).
+        assert snap["stats"] == {
+            "avg_age": 4.0,
+            "avg_energy": 10.0,
+            "females": 2,
+            "with_calf": 1,
+        }
+        assert snap["ages"] == [2.0, 4.0, 6.0]
+        assert any(
+            "get_statistics() failed" in r.getMessage() and r.levelno == logging.WARNING
+            for r in caplog.records
+        )
+
 
 class TestRenderHelpers:
     def test_age_histogram_from_snapshot_returns_html(self):
@@ -122,6 +148,7 @@ class TestRenderHelpers:
     def test_vital_stats_df_empty_stats(self):
         df = build_vital_stats_df({"ages": [], "energies": [], "stats": {}})
         assert df.empty
+        assert list(df.columns) == ["Statistic", "Value"]
 
     def test_helpers_never_touch_a_live_sim(self):
         # Passing a plain dict (no Simulation) must fully work — proves the

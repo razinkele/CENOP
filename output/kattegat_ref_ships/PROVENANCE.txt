@@ -1,37 +1,43 @@
 Kattegat ship-scenario reference baseline — PROVENANCE
 =======================================================
 
-Date generated:   2026-06-08
-Producing code:   branch ship-deterrence-subtick, commit eca6f96
-                  (Ship-Deterrence Sub-Tick Interpolation; see
-                   docs/superpowers/plans/2026-06-08-ship-deterrence-subtick.md
-                   and docs/superpowers/specs/2026-06-08-ship-deterrence-subtick-design.md)
+Date generated:   2026-07-09
+Producing code:   branch review-fixes-2026-07-06, commit 8fce1ac
+                  (2026-07-06 deep-review fixes, Phases 1-3 + recycled-slot
+                   follow-up; see docs/superpowers/plans/2026-07-06-review-fixes.md
+                   and docs/superpowers/specs/2026-07-06-deep-codebase-review.md)
 Command:          python3 scripts/run_kattegat_reference.py --count 2000 --years 2 \
                     --seed 42 --ships --out output/kattegat_ref_ships
 Landscape:        data/Kattegat (600x1000 cells), 637 real ship routes from data/Kattegat/ships.json
 Seed:             42 (deterministic; DEPONS parameters.xml randomSeed is __NULL__)
 
-SUPERSEDES the prior baseline (commit 8e198c1, Ship-Deterrence Parity Round 2),
-which evaluated ship deterrence at a SINGLE end-of-tick ship position.
+SUPERSEDES the prior baseline (commit eca6f96, ship-deterrence sub-tick
+interpolation). This regeneration folds in the 2026-07-06 deep-review DEPONS-parity
+fixes that change default-path model behaviour and/or the seeded RNG stream:
 
-This baseline reflects the sub-tick interpolation change (DEPONS Ship.java
-interpolateStep parity): ship deterrence is now evaluated at 30 interpolated ship
-positions along each ship's within-tick swept path (start-of-tick -> end-of-tick).
-Per porpoise, per sub-step slot, the maximum-received-level ship wins
-(ShipDeterrence.recordStep); the 30 slots are summed into the per-tick deterrence
-vector (deterrenceVtX/Y). Because each sub-step draws its own reaction Bernoulli,
-deterrence is integrated over the ship's passage, so per-tick magnitudes and the
-number of nonzero deterrence events are substantially higher than the prior
-single-position baseline. The scalar test-only aggregator's transmission loss was
-also made consistent with the production path via a shared received-level helper.
+  - Paused / no-buoy ships are now excluded from the deterrence candidate set
+    (DEPONS Ship.deterPorpoise gate: current_buoy_idx >= 0 and ticks_paused <= 0).
+    A paused ship previously kept deterring (its 30 interpolated sub-positions
+    collapse to a stationary point) for the whole pause — the direct cause of the
+    small reduction in deterrence events below.
+  - Food regrows once per day (was twice) on the vectorized path.
+  - PersistentSpatialMemory uses the population's seeded RNG and centres
+    preferred_distance on params.psm_dist_mean (350, DEPONS 3.2) — this inserts
+    per-agent normal draws into the stream and shifts ALL downstream seeded
+    outputs (positions, headings, mating days, dispersal targets).
+  - Weaned calves that recycle a dead agent's slot are fully reset to newborn
+    state (SoA fields + PSM preferred_distance/memory + behaviour/energy rows + id),
+    no longer inheriting the dead occupant's state.
+  - Per-tick birth/death and per-cause mortality (deaths_starvation/old_age/bycatch)
+    are now true counts written to Population.txt (previously the per-cause columns
+    were always 0); they reset monthly in step with births/deaths.
 
 Run summary:
-  - 2 yr (34,560 ticks), N=2000, population stable (2000 -> 1998; min 1987, max 2000)
-  - 188,072 nonzero deter_strength records, max 0.3168
-    (compare: prior single-position baseline had 10,123 nonzero, max 0.0409
-     -> ~18.6x more events, ~7.7x larger peak, as expected from swept-path integration)
-  - Population stability confirms the increased deterrence is not pathological
-    over-deterrence.
+  - 2 yr (34,560 ticks), N=2000, population stable (2000 -> 1998; min 1991, max 2000)
+  - 183,039 nonzero deter_strength records, max 0.3163
+    (compare: prior sub-tick baseline had 188,072 nonzero, max 0.3168 -> ~2.7% fewer
+     events from excluding paused ships during their pause; peak essentially unchanged)
+  - Population stability confirms the changes are not pathological over/under-deterrence.
 
 Committed files are the compact DEPONS-format outputs (Population.txt, Energy.txt,
 Mortality.txt) plus this PROVENANCE.txt. The heavy per-individual / per-event files

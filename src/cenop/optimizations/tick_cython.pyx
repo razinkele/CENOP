@@ -76,7 +76,7 @@ def cython_depons_post_crw(
     cdef double fract, food_available, eaten, scaling, bmr
     cdef double yearly_surv, step_surv
     cdef int xi_c, yi_c, deaths = 0
-    cdef int post_xi, post_yi
+    cdef int post_xi, post_yi, reflected
     cdef double pre_x, pre_y
 
     for i in range(n):
@@ -104,22 +104,40 @@ def cython_depons_post_crw(
         nx = pre_x + ddx
         ny = pre_y + ddy
 
+        reflected = 0
         if nx < 0:
             nx = -nx
+            ddx = -ddx
+            reflected = 1
         elif nx > max_x:
             nx = 2.0 * max_x - nx
+            ddx = -ddx
+            reflected = 1
         if nx < 0:
             nx = 0.0
         elif nx > max_x:
             nx = max_x
         if ny < 0:
             ny = -ny
+            ddy = -ddy
+            reflected = 1
         elif ny > max_y:
             ny = 2.0 * max_y - ny
+            ddy = -ddy
+            reflected = 1
         if ny < 0:
             ny = 0.0
         elif ny > max_y:
             ny = max_y
+
+        # DEPONS forward(): after a boundary bounce recompute heading from the
+        # sign-flipped displacement (reflect_boundaries flips dx/dy; heading =
+        # degrees(arctan2(dx, dy)) % 360). Non-reflected agents keep their heading.
+        if reflected:
+            new_h = fmod(atan2(ddx, ddy) * RAD2DEG, 360.0)
+            if new_h < 0.0:
+                new_h += 360.0
+            heading[i] = <f32>new_h
 
         # Pre-move cell index — DEPONS eats at the cell just left
         # (Porpoise.updEnergeticStatus → posList.get(1)), so derive the eat

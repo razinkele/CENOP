@@ -2,18 +2,22 @@ Kattegat ship-scenario reference baseline — PROVENANCE
 =======================================================
 
 Date generated:   2026-07-09
-Producing code:   branch review-fixes-2026-07-06, commit 8fce1ac
-                  (2026-07-06 deep-review fixes, Phases 1-3 + recycled-slot
-                   follow-up; see docs/superpowers/plans/2026-07-06-review-fixes.md
+Producing code:   branch review-fixes-2026-07-06, commit 5e11846
+                  (2026-07-06 deep-review fixes, ALL 29 tasks / Phases 1-6 complete;
+                   see docs/superpowers/plans/2026-07-06-review-fixes.md
                    and docs/superpowers/specs/2026-07-06-deep-codebase-review.md)
 Command:          python3 scripts/run_kattegat_reference.py --count 2000 --years 2 \
                     --seed 42 --ships --out output/kattegat_ref_ships
 Landscape:        data/Kattegat (600x1000 cells), 637 real ship routes from data/Kattegat/ships.json
 Seed:             42 (deterministic; DEPONS parameters.xml randomSeed is __NULL__)
 
-SUPERSEDES the prior baseline (commit eca6f96, ship-deterrence sub-tick
-interpolation). This regeneration folds in the 2026-07-06 deep-review DEPONS-parity
-fixes that change default-path model behaviour and/or the seeded RNG stream:
+SUPERSEDES the prior baseline (commit 8fce1ac, Phases 1-3 + recycled-slot follow-up).
+The only production-NumPy-path behaviour change since 8fce1ac is Task 20 (Phase 4):
+AGE_DISTRIBUTION_FREQUENCY gains the dropped age-1 weight (311/54 -> 312/55 ones,
+now bit-identical to DEPONS PorpoiseSimBuilder.java), which shifts initial ages and
+therefore the entire seeded RNG stream. Phases 5-6 (JAX + Cython backend parity)
+do NOT touch the production NumPy/Numba ship path used for this baseline. The
+Phase 1-3 DEPONS-parity changes below remain in force from the 8fce1ac regeneration:
 
   - Paused / no-buoy ships are now excluded from the deterrence candidate set
     (DEPONS Ship.deterPorpoise gate: current_buoy_idx >= 0 and ticks_paused <= 0).
@@ -33,10 +37,10 @@ fixes that change default-path model behaviour and/or the seeded RNG stream:
     were always 0); they reset monthly in step with births/deaths.
 
 Run summary:
-  - 2 yr (34,560 ticks), N=2000, population stable (2000 -> 1998; min 1991, max 2000)
-  - 183,039 nonzero deter_strength records, max 0.3163
-    (compare: prior sub-tick baseline had 188,072 nonzero, max 0.3168 -> ~2.7% fewer
-     events from excluding paused ships during their pause; peak essentially unchanged)
+  - 2 yr (34,560 ticks), N=2000, population stable (2000 -> 1998; final tick pop 1998)
+  - 183,932 nonzero deter_strength records, max 0.3163
+    (compare: prior 8fce1ac baseline had 183,039 nonzero, max 0.3163 -> +0.5% events
+     from the Task 20 age-init RNG shift moving porpoise positions; peak unchanged)
   - Population stability confirms the changes are not pathological over/under-deterrence.
 
 Committed files are the compact DEPONS-format outputs (Population.txt, Energy.txt,

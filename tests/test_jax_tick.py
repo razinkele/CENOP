@@ -558,11 +558,67 @@ def _make_heading_inputs(n=100, seed=42):
         y=jnp.array(rng.uniform(10, 490, n), dtype=jnp.float32),
         inertia_const=0.001,
         mean_disp_dist=2.0,
+        dispersal_start_x=jnp.zeros(n, dtype=jnp.float64),
+        dispersal_start_y=jnp.zeros(n, dtype=jnp.float64),
+        psm_angle=20.0,
+        psm_log=0.6,
+        disp_key=jax.random.PRNGKey(seed),
     )
 
 
 class TestJaxHeadingAndPosition:
     """Tests for heading composition, boundary reflection, and position update."""
+
+    def test_dispersal_heading_matches_reference(self):
+        """JAX dispersal heading matches NumPy _apply_dispersal_heading formula.
+
+        Reference (population.py _apply_dispersal_heading / DispersalPSMType2.java):
+            distPct  = dist_travelled_from_start / dispersal_target_distance
+            distLogX = 3*distPct - 1.5
+            logistic = 1 / (1 + exp((0 - distLogX)/psm_log))   # SSLogis phi3 = psm_log
+            delta    = U(-psm_angle, +psm_angle) * logistic
+            heading  = prev_step_heading + delta               (mod 360)
+        The old kernel used max_angle=120, distance-to-TARGET, phi3=1.0 and a
+        deterministic sign-toward-target turn — all wrong.
+        """
+        from cenop.optimizations.jax_kernels import jax_heading_composition
+
+        n = 4000
+        psm_angle, psm_log, prev = 20.0, 0.6, 100.0
+        inputs = _make_heading_inputs(n=n, seed=21)
+        inputs["is_dispersing"] = jnp.ones(n, dtype=bool)
+        inputs["mask"] = jnp.ones(n, dtype=bool)
+        inputs["prev_step_heading"] = jnp.full(n, prev, dtype=jnp.float64)
+        inputs["psm_angle"] = psm_angle
+        inputs["psm_log"] = psm_log
+        inputs["disp_key"] = jax.random.PRNGKey(7)
+        # Travelled 100 of a 100-cell dispersal from start (0,0) -> distPct = 1.0.
+        inputs["dispersal_start_x"] = jnp.zeros(n, dtype=jnp.float64)
+        inputs["dispersal_start_y"] = jnp.zeros(n, dtype=jnp.float64)
+        inputs["x"] = jnp.full(n, 100.0, dtype=jnp.float32)
+        inputs["y"] = jnp.zeros(n, dtype=jnp.float32)
+        inputs["dispersal_target_distance"] = jnp.full(n, 100.0, dtype=jnp.float64)
+        # Target far away: old (distance-to-target) code would steer ~120 deg here.
+        inputs["dispersal_target_x"] = jnp.full(n, 5000.0, dtype=jnp.float64)
+        inputs["dispersal_target_y"] = jnp.full(n, 5000.0, dtype=jnp.float64)
+
+        new_heading = np.asarray(jax_heading_composition(**inputs)[0])
+
+        dist_log_x = 3.0 * 1.0 - 1.5
+        logistic = 1.0 / (1.0 + np.exp((0.0 - dist_log_x) / psm_log))  # ~0.9242
+        max_dev = psm_angle * logistic                                # ~18.48
+        dev = (new_heading - prev + 180.0) % 360.0 - 180.0
+
+        assert np.max(np.abs(dev)) <= max_dev + 1e-4, (
+            f"max|dev|={np.max(np.abs(dev)):.3f} > psm_angle*logistic={max_dev:.3f} "
+            "(max_angle should be psm_angle, not 120)"
+        )
+        assert np.min(dev) < -0.5 * max_dev, f"no negative deltas (not random): {np.min(dev):.3f}"
+        assert np.max(dev) > 0.5 * max_dev, f"no positive deltas (not random): {np.max(dev):.3f}"
+        # Exact scale pins distance-TRAVELLED (18.48) vs distance-to-target (~20) and phi3=0.6.
+        np.testing.assert_allclose(np.max(dev), max_dev, atol=0.2)
+        np.testing.assert_allclose(np.min(dev), -max_dev, atol=0.2)
+        assert abs(np.mean(dev)) < 0.5, f"mean dev {np.mean(dev):.3f} not ~0 (asymmetric turn)"
 
     def test_heading_composition_basic(self):
         """Heading should change after composition with non-zero inputs."""
@@ -1352,6 +1408,8 @@ class TestJaxTickComposition:
             jnp.zeros(n, dtype=jnp.float32),
             jnp.zeros(n, dtype=jnp.float32),
             jnp.zeros(n, dtype=jnp.float32),
+            jnp.zeros(n, dtype=jnp.float32),
+            jnp.zeros(n, dtype=jnp.float32),
             jnp.array(rng.uniform(5.0, 50.0, n), dtype=jnp.float64),
             jnp.array(rng.uniform(10.0, 35.0, n), dtype=jnp.float64),
             depth_grid,
@@ -1359,7 +1417,7 @@ class TestJaxTickComposition:
             0.35, 0.0005, -0.02, 1.73,
             0.0, 4.0, 0.0, 0.15,
             0.00001,
-            0.001, 2.0, 1.0,
+            0.001, 2.0, 20.0, 0.6, 1.0,
             world_w, world_h,
             jax.random.PRNGKey(99),
         )
@@ -1369,6 +1427,69 @@ class TestJaxTickComposition:
         assert np.all(new_x >= 0) and np.all(new_x < world_w)
         assert np.all(new_y >= 0) and np.all(new_y < world_h)
         assert np.all(np.isfinite(new_x)) and np.all(np.isfinite(new_y))
+
+    def test_tick_movement_threads_dispersal_params(self):
+        """Composed jax_tick_movement threads dispersal_start/psm params into the
+        heading kernel: dispersing agents' heading stays within psm_angle*logistic."""
+        from cenop.optimizations.tick_jax import jax_tick_movement
+
+        n = 200
+        world_w = world_h = 300
+        mem = 20
+        psm_angle, psm_log = 20.0, 0.6
+        work_table = jnp.array([np.exp(-i * 0.01) for i in range(mem)], dtype=jnp.float64)
+        depth_grid = jnp.full((world_h, world_w), 30.0, dtype=jnp.float32)
+
+        try:
+            result = jax_tick_movement(
+                jnp.full(n, 150.0, dtype=jnp.float32),          # x
+                jnp.full(n, 150.0, dtype=jnp.float32),          # y
+                jnp.zeros(n, dtype=jnp.float32),                # heading
+                jnp.zeros(n, dtype=jnp.float64),                # prev_angle
+                jnp.full(n, 1.0, dtype=jnp.float64),            # prev_log_mov
+                jnp.ones(n, dtype=bool),                        # active_mask
+                jnp.zeros((n, mem), dtype=jnp.float32),         # stored_util
+                jnp.zeros((n, mem), dtype=jnp.float32),         # pos_hist_x
+                jnp.zeros((n, mem), dtype=jnp.float32),         # pos_hist_y
+                jnp.zeros(n, dtype=jnp.int32),                  # mem_ptr
+                jnp.zeros(n, dtype=jnp.int32),                  # mem_count
+                work_table,                                     # work_mem_table
+                jnp.zeros(n, dtype=jnp.float64),                # deter_dx
+                jnp.zeros(n, dtype=jnp.float64),                # deter_dy
+                jnp.zeros(n, dtype=jnp.float32),                # social_dx
+                jnp.zeros(n, dtype=jnp.float32),                # social_dy
+                jnp.ones(n, dtype=bool),                        # is_dispersing
+                jnp.full(n, 5000.0, dtype=jnp.float32),         # dispersal_target_x
+                jnp.full(n, 5000.0, dtype=jnp.float32),         # dispersal_target_y
+                jnp.full(n, 100.0, dtype=jnp.float32),          # dispersal_target_distance
+                jnp.zeros(n, dtype=jnp.float32),                # dispersal_distance_traveled
+                jnp.zeros(n, dtype=jnp.float32),                # prev_step_heading
+                jnp.full(n, 150.0, dtype=jnp.float32),          # dispersal_start_x (== pos -> travelled 0)
+                jnp.full(n, 150.0, dtype=jnp.float32),          # dispersal_start_y
+                jnp.full(n, 30.0, dtype=jnp.float64),           # depths
+                jnp.full(n, 30.0, dtype=jnp.float64),           # salinity
+                depth_grid,
+                -0.024, -0.008, 0.93, -14.0,
+                0.35, 0.0005, -0.02, 1.73,
+                0.0, 4.0, 0.0, 0.15,
+                0.00001,
+                0.001, 2.0,                                     # inertia_const, mean_disp_dist
+                psm_angle, psm_log,
+                1.0, world_w, world_h,                          # min_depth, world dims
+                jax.random.PRNGKey(0),
+            )
+        except Exception as e:  # noqa: BLE001 - classify GPU OOM as environmental
+            if any(k in str(e) for k in ("RESOURCE_EXHAUSTED", "OUT_OF_MEMORY")):
+                pytest.skip(f"JAX GPU OOM (environmental): {e}")
+            raise
+
+        disp_heading = np.asarray(result[8])  # new_prev_step_heading = dispersal heading
+        dist_log_x = 3.0 * 0.0 - 1.5          # travelled 0 -> distPct 0
+        logistic = 1.0 / (1.0 + np.exp((0.0 - dist_log_x) / psm_log))  # ~0.0759
+        max_dev = psm_angle * logistic                                # ~1.52
+        dev = (disp_heading - 0.0 + 180.0) % 360.0 - 180.0
+        assert np.max(np.abs(dev)) <= max_dev + 1e-3, f"max|dev|={np.max(np.abs(dev)):.4f} > {max_dev:.4f}"
+        assert dev.min() < 0.0 < dev.max(), "dispersal turn is not random (one-sided)"
 
     def test_tick_energy_conserves_food(self):
         """Energy tick should not create food out of nothing."""

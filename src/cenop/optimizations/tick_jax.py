@@ -72,6 +72,8 @@ def jax_tick_movement(
     dispersal_target_distance,
     dispersal_distance_traveled,
     prev_step_heading,
+    dispersal_start_x,
+    dispersal_start_y,
     # Environment (per-agent)
     depths,
     salinity,
@@ -93,6 +95,8 @@ def jax_tick_movement(
     m_param,
     inertia_const,
     mean_disp_dist,
+    psm_angle,
+    psm_log,
     min_depth,
     world_w,
     world_h,
@@ -152,6 +156,9 @@ def jax_tick_movement(
     vt_x = jnp.where(has_history, vt_x, 0.0)
     vt_y = jnp.where(has_history, vt_y, 0.0)
 
+    # Dispersal random-turn key (PSM-Type2)
+    key, disp_key = jax.random.split(key)
+
     # --- Phase 3: Heading composition + position update ---
     (
         new_heading,
@@ -183,6 +190,11 @@ def jax_tick_movement(
         y.astype(jnp.float64),
         inertia_const,
         mean_disp_dist,
+        dispersal_start_x.astype(jnp.float64),
+        dispersal_start_y.astype(jnp.float64),
+        psm_angle,
+        psm_log,
+        disp_key,
     )
 
     # Position update with boundary reflection

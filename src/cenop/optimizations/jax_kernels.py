@@ -281,11 +281,18 @@ def jax_heading_composition(
     y,
     inertia_const,
     mean_disp_dist,
+    dispersal_start_x,
+    dispersal_start_y,
+    psm_angle,
+    psm_log,
+    disp_key,
 ):
     """Heading composition: CRW + ref_mem + deterrence + social -> final heading/dx/dy.
 
     Combines all movement influences into a final heading and displacement vector.
-    Dispersing agents get a SSLogis-based heading override toward their target.
+    Dispersing agents get a PSM-Type2 heading override: a logistic-scaled
+    uniform-random turn from previousStepHeading (NOT steered toward the target),
+    matching the NumPy reference _apply_dispersal_heading / DispersalPSMType2.java.
 
     Parameters
     ----------
@@ -304,6 +311,11 @@ def jax_heading_composition(
     x, y : float32[n] — current positions (for dispersal distance calc)
     inertia_const : float scalar — CRW inertia constant
     mean_disp_dist : float scalar — mean dispersal distance per step
+    dispersal_start_x, dispersal_start_y : float64[n] — dispersal start positions
+        (distance TRAVELLED from here drives the logistic scaling)
+    psm_angle : float scalar — half-range of the uniform random turn (degrees)
+    psm_log : float scalar — SSLogis phi3 (logistic scale) for the turn magnitude
+    disp_key : jax PRNGKey — RNG key for the uniform random dispersal turn
 
     Returns
     -------
@@ -317,36 +329,35 @@ def jax_heading_composition(
     # 1. Apply CRW turning angle to heading
     new_heading = (heading + pres_angle) % 360.0
 
-    # 2. Dispersal heading override (SSLogis formula)
-    # Compute for ALL agents (branchless), then select with jnp.where
-    dx_to_target = dispersal_target_x - x
-    dy_to_target = dispersal_target_y - y
-    dist_to_target = jnp.sqrt(dx_to_target**2 + dy_to_target**2)
+    # 2. Dispersal heading override (PSM-Type2 random walk)
+    # Matches NumPy reference _apply_dispersal_heading (DispersalPSMType2.java):
+    #   distPercent = distance TRAVELLED from dispersal_start / dispersal_target_distance
+    #   distLogX    = 3 * distPercent - 1.5
+    #   logistic    = SSLogis(distLogX, phi1=1, phi2=0, phi3=psm_log)
+    #   angleDelta  = U(-psm_angle, +psm_angle) * logistic
+    #   newHeading  = previousStepHeading + angleDelta
+    dx_disp = x - dispersal_start_x
+    dy_disp = y - dispersal_start_y
+    dist_traveled = jnp.sqrt(dx_disp**2 + dy_disp**2)
 
-    # Distance percentage of total dispersal distance
     dist_percent = jnp.where(
         dispersal_target_distance > 0,
-        dist_to_target / dispersal_target_distance,
+        dist_traveled / dispersal_target_distance,
         0.0,
     )
     dist_percent = jnp.clip(dist_percent, 0.0, 10.0)
 
-    dist_log_x = jnp.clip(3.0 * dist_percent - 1.5, -500.0, 500.0)
+    dist_log_x = jnp.clip(3.0 * dist_percent - 1.5, -100.0, 100.0)
+    logistic = 1.0 / (1.0 + jnp.exp((0.0 - dist_log_x) / psm_log))
 
-    # SSLogis: max_angle / (1 + exp(-dist_log_x))
-    max_angle = 120.0
-    angle_delta = max_angle / (1.0 + jnp.exp(-1.0 * dist_log_x))
-
-    # Target heading from current position to dispersal target
-    target_heading = jnp.degrees(jnp.arctan2(dx_to_target, dy_to_target)) % 360.0
-
-    # Sign of turn: shortest direction from prev_step_heading to target
-    diff = (target_heading - prev_step_heading + 180.0) % 360.0 - 180.0
-    sign_of_turn = jnp.sign(diff)
-    # If exactly aligned (diff=0), default to +1
-    sign_of_turn = jnp.where(sign_of_turn == 0.0, 1.0, sign_of_turn)
-
-    dispersal_heading = (prev_step_heading + angle_delta * sign_of_turn) % 360.0
+    rand_delta = jax.random.uniform(
+        disp_key,
+        shape=prev_step_heading.shape,
+        dtype=prev_step_heading.dtype,
+        minval=-psm_angle,
+        maxval=psm_angle,
+    )
+    dispersal_heading = (prev_step_heading + rand_delta * logistic) % 360.0
 
     # Apply dispersal override for dispersing agents
     disp_mask = mask & is_dispersing

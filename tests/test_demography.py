@@ -1,0 +1,44 @@
+"""Parity tests for demographic init parameters vs DEPONS-3.2 source.
+
+Guards AGE_DISTRIBUTION_FREQUENCY (src/cenop/parameters/demography.py) against the
+authoritative DEPONS ageDistribution[] table in
+DEPONS-3.2/src/dk/au/bios/porpoise/PorpoiseSimBuilder.java (lines 249-258).
+"""
+
+from collections import Counter
+
+from cenop.parameters.demography import AGE_DISTRIBUTION_FREQUENCY
+
+# Transcribed verbatim from DEPONS-3.2 PorpoiseSimBuilder.java:249-258 (int[] ageDistribution).
+DEPONS_AGE_DISTRIBUTION = [
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+    2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+    3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+    5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9,
+    9, 9, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 11, 11, 11, 11, 11, 12, 12, 12, 12, 12, 12, 12, 13, 13,
+    13, 13, 14, 14, 14, 14, 15, 15, 15, 15, 18, 18, 19, 19, 21, 22,
+]
+
+
+def test_age_distribution_length_matches_depons():
+    """DEPONS ageDistribution[] has 312 entries; the port must match."""
+    assert len(AGE_DISTRIBUTION_FREQUENCY) == 312
+
+
+def test_age_distribution_age1_weight_count():
+    """55 entries equal 1 in DEPONS; one was dropped in the port (was 54)."""
+    assert AGE_DISTRIBUTION_FREQUENCY.count(1) == 55
+
+
+def test_age_distribution_bit_identical_to_depons():
+    """Full parity: every index must equal the DEPONS reference table."""
+    assert AGE_DISTRIBUTION_FREQUENCY == DEPONS_AGE_DISTRIBUTION
+
+
+def test_age_distribution_value_histogram_matches_depons():
+    """Per-value frequency histogram must match DEPONS exactly."""
+    assert Counter(AGE_DISTRIBUTION_FREQUENCY) == Counter(DEPONS_AGE_DISTRIBUTION)

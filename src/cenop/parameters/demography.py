@@ -10,6 +10,7 @@ from typing import List
 # Age distribution from PorpoiseSimBuilder.java
 # Represents the frequency of individuals at each age index.
 # This discrete distribution is converted to a probability mass function at runtime.
+# fmt: off
 AGE_DISTRIBUTION_FREQUENCY: List[int] = [
     # Juveniles
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -19,7 +20,7 @@ AGE_DISTRIBUTION_FREQUENCY: List[int] = [
     # Young Adults
     0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2,
     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
     # Adults
     2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
@@ -32,3 +33,4 @@ AGE_DISTRIBUTION_FREQUENCY: List[int] = [
     13, 13, 13, 14, 14, 14, 14, 15, 15, 15, 15, 18, 18, 19, 19,
     21, 22
 ]
+# fmt: on

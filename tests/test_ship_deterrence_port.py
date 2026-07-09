@@ -1,6 +1,13 @@
+from pathlib import Path
+
 import numpy as np
 import pytest
 from cenop.behavior.sound import ShipDeterrenceModel
+
+# Resolve data files relative to the repo root (tests/ is directly under it), NOT the
+# process CWD — otherwise these loader tests fail whenever pytest runs from any other
+# directory (load_from_json warns "file not found" and returns empty ships).
+_KATTEGAT_SHIPS_JSON = str(Path(__file__).resolve().parent.parent / "data" / "Kattegat" / "ships.json")
 
 
 class TestModelExpAndArrays:
@@ -506,7 +513,7 @@ class TestShipJsonLoader:
         """Loader maps real type/length and does NOT force a 170 dB override when impact absent."""
         from cenop.agents.ship import ShipManager
         mgr = ShipManager()
-        mgr.load_from_json("data/Kattegat/ships.json",
+        mgr.load_from_json(_KATTEGAT_SHIPS_JSON,
                            utm_origin_x=529473.0, utm_origin_y=5972242.0, cell_size=400.0)
         assert mgr.count > 0
         assert all(s.noise.base_source_level is None for s in mgr.ships)
@@ -517,7 +524,7 @@ class TestShipJsonLoader:
         """Route buoys keep the JSON per-waypoint speeds (not a hardcoded 10.0)."""
         from cenop.agents.ship import ShipManager
         mgr = ShipManager()
-        mgr.load_from_json("data/Kattegat/ships.json",
+        mgr.load_from_json(_KATTEGAT_SHIPS_JSON,
                            utm_origin_x=529473.0, utm_origin_y=5972242.0, cell_size=400.0)
         speeds = {round(b.speed, 3) for s in mgr.ships for b in s.route.buoys}
         assert speeds != {10.0}

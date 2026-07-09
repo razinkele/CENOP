@@ -69,6 +69,12 @@ _DHI = {
 # Reference length: 300 ft in meters
 L_REF = 300.0 / 3.28084
 
+# Minimum vessel length (m). A non-positive length from a malformed ship file / ships.json
+# is clamped to this floor so the math.log10(length / L_REF) term below cannot raise a
+# "math domain error" and crash the per-tick source-level call (defense-in-depth; load-time
+# validation in ShipManager.load_from_json is the primary guard).
+_MIN_LENGTH_M = 1.0
+
 
 def jomopans_spl(
     vessel_class: VesselClass,
@@ -90,6 +96,10 @@ def jomopans_spl(
     if speed_knots == 0:
         return 0.0
 
+    # Defense-in-depth: clamp a non-positive length to a positive floor before the
+    # log10(length_eff / L_REF) term so a bad ship file cannot crash the simulation.
+    length_eff = length_m if length_m > 0.0 else _MIN_LENGTH_M
+
     frequency = 10.0 ** (band / 10.0) * 1000.0
     d_vc = _VC_SPEED.get(vessel_class, 7.4)
     is_cargo = _IS_CARGO.get(vessel_class, False)
@@ -108,7 +118,7 @@ def jomopans_spl(
               (1 - (frequency / l_val) ** (0.5 * (j_val + 2))) ** 2 + k_val ** 2
           )
           + 60.0 * math.log10(speed_knots / d_vc)
-          + 20.0 * math.log10(length_m / L_REF))
+          + 20.0 * math.log10(length_eff / L_REF))
 
     # Convert spectral density to decidecade band level
     return sp + 10.0 * math.log10(0.231 * frequency)

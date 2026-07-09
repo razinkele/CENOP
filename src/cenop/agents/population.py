@@ -2312,6 +2312,10 @@ class PorpoisePopulation:
         active_before = int(np.sum(mask))
         self._global_tick += 1
 
+        # Refresh cached active indices each tick so dead slots are excluded from
+        # reference-memory updates (mirrors the Numba path in step()).
+        self._active_idx = np.flatnonzero(self.active_mask)
+
         if self._global_tick == 1:
             self._recompute_cell_indices()
 

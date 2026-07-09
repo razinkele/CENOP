@@ -971,6 +971,20 @@ class ShipManager:
             start_tick = ship_data.get("start", 0)
             route_name = ship_data.get("route", "")
             length_m = ship_data.get("length", 100.0)
+            try:
+                length_m = float(length_m)
+            except (TypeError, ValueError):
+                logger.warning(
+                    "Ship '%s': non-numeric length %r — using default 100 m.",
+                    name, length_m,
+                )
+                length_m = 100.0
+            if length_m <= 0.0:
+                logger.warning(
+                    "Ship '%s': non-positive length %s m — using default 100 m.",
+                    name, length_m,
+                )
+                length_m = 100.0
 
             route = routes_dict.get(route_name, Route())
 

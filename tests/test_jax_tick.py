@@ -1630,3 +1630,39 @@ class TestCRWK4Bounds:
         angles = np.asarray(out_angle)[active]
         assert abs(np.mean(angles)) < 20.0
         assert np.std(angles) > 10.0
+
+
+class TestJaxStepFoodFloor:
+    """_step_jax must floor grazed cells at 0.01 (DEPONS ADD_ARTIFICIAL_FOOD),
+    not params.u_min (0.001)."""
+
+    def test_grazed_cell_floors_at_0_01(self):
+        from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        from cenop.agents.population import PorpoisePopulation
+
+        params = SimulationParameters(porpoise_count=40)
+        params.random_seed = 7
+        params.use_jax = True
+        assert params.u_min == 0.001, "guard: u_min must differ from the 0.01 floor"
+        land = create_homogeneous_landscape(width=60, height=60, depth=20.0, food_prob=0.5)
+        pop = PorpoisePopulation(count=40, params=params, landscape=land)
+        assert pop._use_jax, "JAX backend not active; NumPy path floors at 0.01 and the test would pass vacuously"
+
+        # Uniform food just above the floor; starving agents (frac=0.99) deplete
+        # every grazed cell below 0.01 in one tick, so the floor binds.
+        pop.landscape._food_value[:] = 0.02
+        pop.energy[:] = 0.0
+
+        try:
+            pop.step()
+        except Exception as e:  # noqa: BLE001 - classify GPU OOM as environmental
+            if any(k in str(e) for k in ("RESOURCE_EXHAUSTED", "OUT_OF_MEMORY")):
+                pytest.skip(f"JAX GPU OOM (environmental): {e}")
+            raise
+
+        food = np.asarray(pop.landscape._food_value)
+        # Grazed cells -> 0.01 (floor), ungrazed cells stay 0.02, so the grid min is 0.01.
+        assert np.isclose(food.min(), 0.01, atol=1e-6), (
+            f"food floor = {food.min()} (expected 0.01 ADD_ARTIFICIAL_FOOD, not u_min=0.001)"
+        )

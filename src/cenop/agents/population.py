@@ -2567,7 +2567,7 @@ class PorpoisePopulation:
             jnp.float32(scaling),
             float(self.params.e_use_per_30_min),
             float(self.params.e_lact),
-            float(getattr(self.params, 'u_min', 0.001)),
+            0.01,  # DEPONS ADD_ARTIFICIAL_FOOD floor (matches NumPy/Numba/kernels)
             float(self._m_mort_prob_const),
             float(self._x_survival_const),
             float(getattr(self.params, 'bycatch_prob', 0.0)),

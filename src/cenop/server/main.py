@@ -30,6 +30,12 @@ from .renderers.chart_helpers import (
     create_svg_chart,
     no_data_placeholder
 )
+from .renderers.population_stats import (
+    build_population_stats_snapshot,
+    render_age_histogram,
+    render_energy_histogram,
+    build_vital_stats_df,
+)
 
 from shiny_deckgl import zoom_widget, compass_widget, scale_widget, fullscreen_widget, bitmap_layer, scatterplot_layer
 from cenop.ui.tabs.dashboard import sim_map
@@ -224,6 +230,18 @@ def run_simulation_loop(
                 elif not traces_on:
                     trail_history.clear()
 
+            # Publish an immutable population-stats snapshot on the same cadence
+            # as porpoise_positions (map updates), built on THIS worker thread so
+            # it is coherent — the renderers read this instead of the live sim
+            # (Finding #22 data-race).
+            population_snapshot = None
+            if runner.should_update_map and not viz_skipped:
+                try:
+                    population_snapshot = build_population_stats_snapshot(runner.sim)
+                except (ValueError, TypeError, AttributeError, KeyError) as e:
+                    logger.warning("Population stats snapshot failed: %s", e)
+                    population_snapshot = None
+
             update = {
                 "type": "update",
                 "progress": runner.progress_percent,
@@ -234,6 +252,7 @@ def run_simulation_loop(
                 "porpoise_positions": porpoise_positions,
                 "porpoise_trails": trail_data,
                 "trail_time": trail_time_counter,
+                "population_snapshot": population_snapshot,
             }
             result_queue.put(update)
 
@@ -1377,6 +1396,15 @@ def server(input, output, session):
                             state.trail_time.set(msg.get("trail_time", 0))
                         except (AttributeError, TypeError) as e:
                             logger.warning("Could not update porpoise_trails: %s", e)
+                    if msg.get("population_snapshot") is not None:
+                        try:
+                            state.population_snapshot.set(
+                                msg.get("population_snapshot")
+                            )
+                        except (AttributeError, TypeError) as e:
+                            logger.warning(
+                                "Could not update population_snapshot: %s", e
+                            )
 
         # Flush batched entries to reactive state so dashboard updates
         if entries_batch:
@@ -1916,76 +1944,24 @@ def server(input, output, session):
     
     @render.ui
     def age_histogram():
-        """Age distribution histogram."""
+        """Age distribution histogram (reads the immutable worker snapshot)."""
         try:
-            _ = state.population_history()
-            sim = state.simulation()
-            if sim is None:
+            snapshot = state.population_snapshot()
+            if snapshot is None:
                 return no_data_placeholder("Run simulation to see age distribution.")
-
-            ages = []
-            if hasattr(sim, 'population_manager') and sim.population_manager is not None:
-                pm = sim.population_manager
-                if hasattr(pm, 'age') and hasattr(pm, 'active_mask'):
-                    active = pm.active_mask
-                    if np.any(active):
-                        ages = pm.age[active].tolist()
-            elif hasattr(sim, 'agents_df'):
-                df = sim.agents_df
-                if not df.empty and 'age' in df.columns:
-                    ages = df['age'].tolist()
-
-            if not ages:
-                return no_data_placeholder("No age data available.")
-
-            return create_histogram_chart(
-                data=ages,
-                title='Porpoise Age Distribution',
-                x_title='Age (years)',
-                y_title='Count',
-                x_range=(0, 30),
-                nbins=30,
-                color='red',
-                height=300
-            )
+            return render_age_histogram(snapshot)
         except (ValueError, TypeError, IndexError, KeyError) as e:
             logger.error("age_histogram error: %s", e, exc_info=True)
             return no_data_placeholder("Error rendering age histogram.")
-    
+
     @render.ui
     def energy_histogram():
-        """Energy level histogram."""
+        """Energy level histogram (reads the immutable worker snapshot)."""
         try:
-            _ = state.population_history()
-            sim = state.simulation()
-            if sim is None:
+            snapshot = state.population_snapshot()
+            if snapshot is None:
                 return no_data_placeholder("Run simulation to see energy distribution.")
-
-            energies = []
-            if hasattr(sim, 'population_manager') and sim.population_manager is not None:
-                pm = sim.population_manager
-                if hasattr(pm, 'energy') and hasattr(pm, 'active_mask'):
-                    active = pm.active_mask
-                    if np.any(active):
-                        energies = pm.energy[active].tolist()
-            elif hasattr(sim, 'agents_df'):
-                df = sim.agents_df
-                if not df.empty and 'energy' in df.columns:
-                    energies = df['energy'].tolist()
-
-            if not energies:
-                return no_data_placeholder("No energy data available.")
-
-            return create_histogram_chart(
-                data=energies,
-                title='Energy Level Distribution',
-                x_title='Energy',
-                y_title='Porpoise Count',
-                x_range=(0, 20),
-                nbins=20,
-                color='red',
-                height=300
-            )
+            return render_energy_histogram(snapshot)
         except (ValueError, TypeError, IndexError, KeyError) as e:
             logger.error("energy_histogram error: %s", e, exc_info=True)
             return no_data_placeholder("Error rendering energy histogram.")
@@ -2046,30 +2022,13 @@ def server(input, output, session):
     
     @render.data_frame
     def vital_stats_table():
-        # React to population history to update during simulation
-        _ = state.population_history()
-        
-        sim = state.simulation()
-        if sim is None:
+        # Read the immutable population snapshot published by the worker instead
+        # of reaching into the live, concurrently-mutated sim (Finding #22).
+        snapshot = state.population_snapshot()
+        if snapshot is None:
             return pd.DataFrame()
-        
         try:
-            stats = sim.get_statistics()
-            # Add more stats from population_manager if available
-            if hasattr(sim, 'population_manager'):
-                pm = sim.population_manager
-                active = pm.active_mask
-                if np.any(active):
-                    stats['avg_age'] = float(np.mean(pm.age[active]))
-                    stats['avg_energy'] = float(np.mean(pm.energy[active]))
-                    stats['females'] = int(np.sum(pm.is_female[active]))
-                    stats['with_calf'] = int(np.sum(pm.with_calf[active]))
-            
-            df = pd.DataFrame([
-                {"Statistic": k, "Value": f"{v:.2f}" if isinstance(v, float) else str(v)}
-                for k, v in stats.items()
-            ])
-            return df
+            return build_vital_stats_df(snapshot)
         except (ValueError, TypeError, KeyError) as e:
             logger.warning("Vital stats table rendering failed: %s", e)
             return pd.DataFrame()

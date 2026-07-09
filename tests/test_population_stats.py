@@ -157,3 +157,100 @@ class TestRenderHelpers:
         assert type(render_age_histogram(snap)).__name__ == "HTML"
         assert type(render_energy_histogram(snap)).__name__ == "HTML"
         assert not build_vital_stats_df(snap).empty
+
+
+import queue
+import threading
+
+
+class TestReactiveStateSnapshot:
+    def test_state_has_population_snapshot_default_none(self):
+        from shiny import reactive
+        from cenop.server.reactive_state import create_state
+
+        s = create_state()
+        with reactive.isolate():
+            assert s.population_snapshot() is None
+
+    def test_reset_clears_population_snapshot(self):
+        from shiny import reactive
+        from cenop.server.reactive_state import create_state
+
+        s = create_state()
+        s.population_snapshot.set({"ages": [1.0], "energies": [], "stats": {}})
+        s.reset()
+        with reactive.isolate():
+            assert s.population_snapshot() is None
+
+
+class _FakeRunner:
+    """Minimal runner: steps exactly once then signals stop."""
+
+    def __init__(self, sim, stop_event):
+        self.sim = sim
+        self._stop = stop_event
+        self.is_complete = False
+        self.max_ticks = 48
+        self.tick = 48
+        self.progress_percent = 10.0
+        self.total_births = 0
+        self.total_deaths = 0
+
+    def set_ticks_per_update(self, n):
+        pass
+
+    def step_ticks(self):
+        self._stop.set()  # stop the loop after this single iteration
+        return {"year": 0, "day": 0, "population": 3}
+
+    @property
+    def should_update_map(self):
+        return True
+
+
+class TestWorkerPublishesSnapshot:
+    def test_worker_update_includes_population_snapshot(self):
+        from cenop.server.main import run_simulation_loop
+
+        pm = SimpleNamespace(
+            active_mask=np.array([True, True, False, True]),
+            age=np.array([2.0, 4.0, 99.0, 6.0], dtype=np.float32),
+            energy=np.array([10.0, 12.0, 0.0, 8.0], dtype=np.float32),
+            is_female=np.array([True, False, True, True]),
+            with_calf=np.array([True, False, False, False]),
+        )
+        sim = SimpleNamespace(
+            population_manager=pm,
+            get_statistics=lambda: {"population": 3},
+            get_porpoise_positions=lambda: np.empty((0, 7)),
+            _cell_data=None,
+            params=SimpleNamespace(landscape="Homogeneous"),
+            state=SimpleNamespace(year=0),
+        )
+        stop_event = threading.Event()
+        runner = _FakeRunner(sim, stop_event)
+        result_queue = queue.Queue()
+
+        run_simulation_loop(
+            runner, result_queue, stop_event,
+            [1.0], threading.Lock(),        # throttle
+            [48], threading.Lock(),         # ticks_per_update
+            [False], [7], threading.Lock(), # trace enabled / length / lock
+            [False], threading.Lock(),      # skip_viz
+        )
+
+        updates = []
+        while True:
+            try:
+                msg = result_queue.get_nowait()
+            except queue.Empty:
+                break
+            if msg.get("type") == "update":
+                updates.append(msg)
+
+        assert len(updates) == 1
+        snap = updates[0]["population_snapshot"]
+        assert snap is not None
+        assert snap["ages"] == [2.0, 4.0, 6.0]
+        assert snap["energies"] == [10.0, 12.0, 8.0]
+        assert snap["stats"]["population"] == 3

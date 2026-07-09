@@ -46,7 +46,11 @@ class SimulationState:
     porpoise_positions: reactive.Value = field(default_factory=lambda: reactive.Value([]))
     porpoise_trails: reactive.Value = field(default_factory=lambda: reactive.Value([]))
     trail_time: reactive.Value = field(default_factory=lambda: reactive.Value(0))
-    
+
+    # Latest immutable population-stats snapshot (ages/energies/stats) for the
+    # Population-tab renderers — decoupled from the live, worker-mutated sim.
+    population_snapshot: reactive.Value = field(default_factory=lambda: reactive.Value(None))
+
     # Landscape loading trigger
     landscape_load_counter: reactive.Value = field(default_factory=lambda: reactive.Value(0))
     landscape_loaded_name: reactive.Value = field(default_factory=lambda: reactive.Value(""))
@@ -79,6 +83,7 @@ class SimulationState:
         self.map_update_counter.set(0)
         self.porpoise_positions.set([])
         self.porpoise_trails.set([])
+        self.population_snapshot.set(None)
         self.last_refreshed.set(None)
         self.selected_preview_file.set(None)
         self.gis_stats.set(None)

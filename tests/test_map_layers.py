@@ -389,3 +389,29 @@ class TestComputeGridBounds:
         # For EPSG:3035 grids, the extent in degrees should be reasonable
         assert (east - west) > 0.1, "Grid should span some longitude"
         assert (north - south) > 0.1, "Grid should span some latitude"
+
+
+class TestBladeRafLoopRemoved:
+    """The effect-free requestAnimationFrame blade loop and its plumbing are gone."""
+
+    @staticmethod
+    def _read_src(relpath):
+        import pathlib
+        import cenop
+        return (pathlib.Path(cenop.__file__).parent / relpath).read_text()
+
+    def test_layout_has_no_blade_raf_loop(self):
+        src = self._read_src("ui/layout.py")
+        assert "cenop_blade_animation" not in src
+        assert "_cenopBladeRotation" not in src
+        assert "animateBlades" not in src
+
+    def test_main_does_not_send_or_wire_blade_animation(self):
+        src = self._read_src("server/main.py")
+        assert "cenop_blade_animation" not in src
+        assert "client_animated" not in src
+        assert "blade_animation" not in src
+
+    def test_dashboard_has_no_blade_switch(self):
+        src = self._read_src("ui/tabs/dashboard.py")
+        assert "blade_animation" not in src

@@ -1723,10 +1723,7 @@ def server(input, output, session):
             _layer_cache["_turbine_data_raw"] = turbine_data
             _layer_cache["turbine-poles"] = build_turbine_pole_layer(turbine_data)
             _loaded_data_layers.add("turbine-poles")
-            animate = _safe_input(input, "blade_animation", True)
-            _layer_cache["turbine-blades"] = build_turbine_blade_layer(
-                turbine_data, client_animated=animate
-            )
+            _layer_cache["turbine-blades"] = build_turbine_blade_layer(turbine_data)
             await _push_all_layers()
             await _sync_legend()
             logger.info(f"Turbine layers: {len(turbine_data)} turbines loaded")
@@ -1758,10 +1755,7 @@ def server(input, output, session):
 
             _layer_cache["_turbine_data_raw"] = updated
             _layer_cache["turbine-poles"] = build_turbine_pole_layer(updated)
-            animate = _safe_input(input, "blade_animation", True)
-            _layer_cache["turbine-blades"] = build_turbine_blade_layer(
-                updated, client_animated=animate
-            )
+            _layer_cache["turbine-blades"] = build_turbine_blade_layer(updated)
             await _push_dynamic_layers("turbine-poles", "turbine-blades")
         except Exception as e:
             logger.error(f"Error updating turbine phases: {e}", exc_info=True)
@@ -1919,25 +1913,6 @@ def server(input, output, session):
         except Exception as e:
             logger.error(f"Error updating porpoise layer: {e}", exc_info=True)
 
-    @reactive.effect
-    @reactive.event(input.blade_animation, state.turbine_load_counter)
-    async def _manage_blade_animation():
-        """Start or stop client-side blade animation based on toggle."""
-        animate = input.blade_animation()
-        raw = _layer_cache.get("_turbine_data_raw", [])
-        has_operational = any(t.get("phase") == "operational" for t in raw)
-
-        if animate and has_operational:
-            _layer_cache["turbine-blades"] = build_turbine_blade_layer(
-                raw, client_animated=True
-            )
-            await _push_dynamic_layers("turbine-blades")
-            await session.send_custom_message("cenop_blade_animation", {"action": "start"})
-        else:
-            _layer_cache["turbine-blades"] = build_turbine_blade_layer(raw, rotation=0)
-            await _push_dynamic_layers("turbine-blades")
-            await session.send_custom_message("cenop_blade_animation", {"action": "stop"})
-    
     # =========================================================================
     # Population Tab Renderers
     # =========================================================================

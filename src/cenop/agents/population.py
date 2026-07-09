@@ -2742,11 +2742,18 @@ class PorpoisePopulation:
             world_w = self.landscape.width if self.landscape else self.params.world_width
             world_h = self.landscape.height if self.landscape else self.params.world_height
 
-            food_grid = (
-                self.landscape._food_value
-                if self.landscape
-                else np.full((world_h, world_w), 50.0, dtype=np.float32)
-            )
+            # food_grid must be float32 (kernel buffer dtype); homogeneous/ASC
+            # landscapes store float64. Cast to float32 and write the in-place
+            # depletion back afterwards so cross-tick food consumption is kept.
+            if self.landscape is not None:
+                _food_src = self.landscape._food_value
+                food_grid = (
+                    _food_src if _food_src.dtype == np.float32
+                    else np.ascontiguousarray(_food_src, dtype=np.float32)
+                )
+            else:
+                _food_src = None
+                food_grid = np.full((world_h, world_w), 50.0, dtype=np.float32)
 
             self._cython_food_gained.fill(0.0)
             _cython_post_crw(
@@ -2777,6 +2784,10 @@ class PorpoisePopulation:
                 world_w,
                 world_h,
             )
+
+            # Write float32 food depletion back into the landscape store (if copied).
+            if _food_src is not None and food_grid is not _food_src:
+                _food_src[:] = food_grid
 
             # Post-Cython housekeeping
             self._recompute_cell_indices()

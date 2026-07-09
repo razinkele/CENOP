@@ -98,6 +98,15 @@ def test_cython_gate_is_engaged():
 
 
 @pytest.mark.skipif(not getattr(pop_mod, "_HAS_CYTHON", False), reason="Cython not built")
+def test_cython_food_grid_dtype_no_crash():
+    """Cython post-CRW must accept a float64 landscape food grid (homogeneous/ASC
+    landscapes store float64) without a buffer-dtype ValueError (Finding #18)."""
+    p = _build_cy(11)
+    p.step()  # must NOT raise ValueError: Buffer dtype mismatch
+    assert int(p.active_mask.sum()) > 0
+
+
+@pytest.mark.skipif(not getattr(pop_mod, "_HAS_CYTHON", False), reason="Cython not built")
 @pytest.mark.xfail(strict=True, raises=(AssertionError, ValueError, TypeError), reason=(
     "Cython post-CRW path is broken (Track B backend-fate work): (a) float64 food_grid "
     "dtype crash, (b) ~3.6-cell move-math divergence vs reference at one tick with "

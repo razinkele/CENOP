@@ -16,8 +16,6 @@ from cenop.server.map_layers import (  # noqa: E402
     build_noise_operational_layer,
     build_turbine_pole_layer,
     build_turbine_blade_layer,
-    BLADE_ANIMATION_JS,
-    BLADE_ANIMATION_STOP_JS,
     GIS_COLOR_SCHEMES,
 )
 
@@ -115,30 +113,22 @@ class TestBuildPorpoiseTrailsLayer:
 class TestBladeAnimation:
     def test_server_side_rotation(self):
         data = [{"position": [21.0, 55.5], "radius": 300, "phase": "operational"}]
-        layer = build_turbine_blade_layer(data, rotation=90.0, client_animated=False)
+        layer = build_turbine_blade_layer(data, rotation=90.0)
         assert "90.0" in str(layer)
         assert "window._cenopBladeRotation" not in str(layer)
 
-    def test_client_side_animation(self):
-        """client_animated=True still returns a valid layer dict.
+    def test_no_dead_animation_constants(self):
+        """Dead client-side animation constants must not exist on the module."""
+        import cenop.server.map_layers as ml
+        assert not hasattr(ml, "BLADE_ANIMATION_JS")
+        assert not hasattr(ml, "BLADE_ANIMATION_STOP_JS")
 
-        The actual JS animation is injected separately via BLADE_ANIMATION_JS
-        in main.py, not embedded in the layer dict itself.
-        """
-        data = [{"position": [21.0, 55.5], "radius": 300, "phase": "operational"}]
-        layer = build_turbine_blade_layer(data, client_animated=True)
-        assert layer["id"] == "turbine-blades"
-        assert len(layer["data"]) == 1
-
-    def test_client_animated_empty_data(self):
-        layer = build_turbine_blade_layer([], client_animated=True)
-        assert layer["id"] == "turbine-blades"
-        assert layer["visible"] is False
-
-    def test_animation_js_constants_exist(self):
-        assert "window._cenopBladeAnimRunning" in BLADE_ANIMATION_JS
-        assert "requestAnimationFrame" in BLADE_ANIMATION_JS
-        assert "window._cenopBladeAnimRunning = false" in BLADE_ANIMATION_STOP_JS
+    def test_client_animated_param_removed(self):
+        """The ineffective client_animated parameter must be gone."""
+        import inspect
+        from cenop.server.map_layers import build_turbine_blade_layer
+        params = inspect.signature(build_turbine_blade_layer).parameters
+        assert "client_animated" not in params
 
 
 class TestGisColorSchemes:
@@ -389,3 +379,29 @@ class TestComputeGridBounds:
         # For EPSG:3035 grids, the extent in degrees should be reasonable
         assert (east - west) > 0.1, "Grid should span some longitude"
         assert (north - south) > 0.1, "Grid should span some latitude"
+
+
+class TestBladeRafLoopRemoved:
+    """The effect-free requestAnimationFrame blade loop and its plumbing are gone."""
+
+    @staticmethod
+    def _read_src(relpath):
+        import pathlib
+        import cenop
+        return (pathlib.Path(cenop.__file__).parent / relpath).read_text()
+
+    def test_layout_has_no_blade_raf_loop(self):
+        src = self._read_src("ui/layout.py")
+        assert "cenop_blade_animation" not in src
+        assert "_cenopBladeRotation" not in src
+        assert "animateBlades" not in src
+
+    def test_main_does_not_send_or_wire_blade_animation(self):
+        src = self._read_src("server/main.py")
+        assert "cenop_blade_animation" not in src
+        assert "client_animated" not in src
+        assert "blade_animation" not in src
+
+    def test_dashboard_has_no_blade_switch(self):
+        src = self._read_src("ui/tabs/dashboard.py")
+        assert "blade_animation" not in src

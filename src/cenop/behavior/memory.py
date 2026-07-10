@@ -34,8 +34,8 @@ class RefMem:
     def __init__(
         self,
         max_entries: int = 120,
-        decay_satiation: float = 0.04,
-        decay_reference: float = 0.04
+        decay_satiation: float = 0.03,
+        decay_reference: float = 0.03
     ):
         """
         Initialize reference memory.

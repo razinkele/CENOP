@@ -149,19 +149,24 @@ class TestDEPONSEnergyModule:
 
         assert np.all(surv_prob == 0.0)
 
-    def test_disturbance_increases_cost(self, module, state, context, mask):
-        """Disturbance should increase energy cost."""
-        # Without disturbance
-        result1 = module.compute_energy_update(state, context, mask)
-
-        # With disturbance
+    def test_disturbance_increases_cost(self, params, state, context, mask):
+        """DEPONS has no disturbance energy term by default (Finding #10);
+        the JASMINE opt-in flag re-enables it."""
         context.is_disturbed[:] = True
         context.deterrence_magnitude[:] = 5.0
 
-        result2 = module.compute_energy_update(state, context, mask)
+        # DEPONS default: disturbance adds nothing.
+        depons_module = DEPONSEnergyModule(params)
+        result_default = depons_module.compute_energy_update(state, context, mask)
+        assert np.all(result_default.energy_disturbance == 0.0)
 
-        # Disturbance should add cost
-        assert np.all(result2.energy_disturbance > result1.energy_disturbance)
+        # JASMINE opt-in flag: disturbance now drains energy.
+        jasmine_params = SimulationParameters(
+            porpoise_count=20, jasmine_disturbance_energy=True
+        )
+        flagged_module = DEPONSEnergyModule(jasmine_params)
+        result_flagged = flagged_module.compute_energy_update(state, context, mask)
+        assert np.all(result_flagged.energy_disturbance > 0.0)
 
     def test_lactation_increases_cost(self, module, state, context, mask):
         """Lactation should increase energy cost."""
@@ -474,6 +479,92 @@ class TestEnergyModuleSplit:
         post_food_energy = np.clip(post_food_energy, 0, 20)
 
         assert post_food_energy[0] == pytest.approx(5.1, abs=0.01)
+
+
+class TestBMRCostDEPONSPurity:
+    """Finding #10: DEPONS compute_bmr_cost must be BMR-only by default.
+
+    Authoritative DEPONS has E_USE_PER_KM=0.0 (no swimming term) and no
+    disturbance energy term. The headless inline reference
+    (population._apply_bmr_cost, energy_module is None) is BMR-only:
+        total_cost = 0.001 * scaling * e_use_per_30_min
+    The module path must match it under DEPONS defaults; the swimming +
+    disturbance drains are JASMINE opt-ins gated behind params.
+    """
+
+    def _ctx(self, count=8, month=1):
+        ctx = EnergyContext.create_default(count, month=month)
+        # Non-lactating so BMR carries no e_lact multiplier (matches inline ref).
+        ctx.is_lactating[:] = False
+        # Nonzero speed + active deterrence: the (pre-fix) activity + disturbance
+        # terms would fire here if they were still added unconditionally.
+        ctx.current_speed[:] = 2.0
+        ctx.is_disturbed[:] = True
+        ctx.deterrence_magnitude[:] = 0.5
+        return ctx
+
+    def test_depons_default_params_exist(self):
+        params = SimulationParameters(porpoise_count=8)
+        assert params.e_use_per_km == 0.0
+        assert params.jasmine_disturbance_energy is False
+
+    def test_depons_default_is_bmr_only(self):
+        params = SimulationParameters(porpoise_count=8)
+        module = DEPONSEnergyModule(params)
+        state = EnergyState.create(8, initial_energy=10.0)
+        ctx = self._ctx(8, month=1)  # winter -> scaling 1.0
+        mask = np.ones(8, dtype=bool)
+
+        cost = module.compute_bmr_cost(state, ctx, mask)
+
+        expected_bmr = 0.001 * 1.0 * params.e_use_per_30_min
+        np.testing.assert_allclose(cost, expected_bmr, rtol=1e-6)
+
+    def test_matches_inline_headless_reference(self):
+        # Inline path (agents/population.py:1921): 0.001 * scaling * e_use_per_30_min
+        params = SimulationParameters(porpoise_count=8)
+        module = DEPONSEnergyModule(params)
+        state = EnergyState.create(8, initial_energy=10.0)
+        ctx = self._ctx(8, month=6)  # warm -> scaling e_warm (1.3)
+        mask = np.ones(8, dtype=bool)
+
+        cost = module.compute_bmr_cost(state, ctx, mask)
+
+        inline_reference = 0.001 * params.e_warm * params.e_use_per_30_min
+        np.testing.assert_allclose(cost, inline_reference, rtol=1e-6)
+
+    def test_jasmine_flags_enable_extra_terms(self):
+        params = SimulationParameters(
+            porpoise_count=8, e_use_per_km=0.0001, jasmine_disturbance_energy=True
+        )
+        module = DEPONSEnergyModule(params)
+        state = EnergyState.create(8, initial_energy=10.0)
+        ctx = self._ctx(8, month=1)
+        mask = np.ones(8, dtype=bool)
+
+        cost = module.compute_bmr_cost(state, ctx, mask)
+
+        scaling = 1.0
+        bmr = 0.001 * scaling * params.e_use_per_30_min
+        activity = 2.0 * 0.0001 * scaling
+        disturbance = 0.002 * 0.5 * scaling
+        expected = bmr + activity + disturbance
+        np.testing.assert_allclose(cost, expected, rtol=1e-5)
+        assert float(cost[0]) > bmr + 1e-9
+
+    def test_combined_path_activity_disturbance_zero_by_default(self):
+        # Legacy combined path (compute_energy_update) must be gated too, so the
+        # two DEPONS paths never diverge.
+        params = SimulationParameters(porpoise_count=8)
+        module = DEPONSEnergyModule(params)
+        state = EnergyState.create(8, initial_energy=10.0)
+        ctx = self._ctx(8, month=1)
+        mask = np.ones(8, dtype=bool)
+
+        result = module.compute_energy_update(state, ctx, mask)
+
+        assert np.all(result.energy_activity == 0.0)
+        assert np.all(result.energy_disturbance == 0.0)
 
 
 if __name__ == "__main__":

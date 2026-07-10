@@ -101,7 +101,15 @@ class TestPorpoise:
 
 class TestRefMem:
     """Test reference memory."""
-    
+
+    def test_default_decay_rates_match_depons_32(self):
+        """decay_satiation/decay_reference must match DEPONS 3.2 (0.03), not stale 3.0 (0.04)."""
+        from cenop.behavior import RefMem
+
+        mem = RefMem()
+        assert mem.decay_satiation == pytest.approx(0.03)
+        assert mem.decay_reference == pytest.approx(0.03)
+
     def test_memory_add(self):
         """Test adding memories."""
         from cenop.behavior import RefMem
@@ -196,6 +204,43 @@ class TestSimulation:
         assert sim.state.tick == initial_tick + 1
 
 
+class TestDailyFoodReplenishment:
+    """Regression: food regrows exactly once per simulated day (DEPONS parity)."""
+
+    def test_replenish_food_called_once_per_day_boundary(self):
+        """step() must invoke cell_data.replenish_food exactly once per day.
+
+        Guards against the double-regrowth bug where step() called
+        replenish_food both inside _daily_tasks() AND again inline at the
+        day boundary, regrowing food twice per simulated day on the
+        vectorized path.
+        """
+        from unittest.mock import patch
+        from cenop import Simulation, SimulationParameters
+        from cenop.landscape import create_homogeneous_landscape
+
+        params = SimulationParameters(
+            porpoise_count=10,
+            sim_years=1,
+            landscape="Homogeneous",
+        )
+        landscape = create_homogeneous_landscape()
+        sim = Simulation(params, landscape)
+
+        # One day == 48 ticks; is_day_boundary() is (tick > 0 and tick % 48 == 0),
+        # so exactly one day boundary occurs across 48 steps (at tick 48).
+        with patch.object(
+            sim._cell_data,
+            "replenish_food",
+            wraps=sim._cell_data.replenish_food,
+        ) as spy:
+            for _ in range(48):
+                sim.step()
+
+        assert sim.state.tick == 48
+        assert spy.call_count == 1, f"food should regrow once per day, got {spy.call_count} calls"
+
+
 def test_update_psm_none_food_gained():
     """_update_psm should handle None food_gained gracefully."""
     from cenop.agents.population import PorpoisePopulation
@@ -203,6 +248,159 @@ def test_update_psm_none_food_gained():
     params = SimulationParameters(porpoise_count=10, sim_years=1, landscape="Homogeneous")
     pop = PorpoisePopulation(count=10, params=params)
     pop._update_psm(pop.active_mask.copy(), None)
+
+
+class TestPerTickPopulationCounters:
+    """Finding #11: population manager exposes true per-tick birth/death counts."""
+
+    def _make_pop(self, count, food_prob=0.0):
+        from cenop.agents.population import PorpoisePopulation
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        from cenop.parameters import SimulationParameters
+
+        params = SimulationParameters(random_seed=7)
+        landscape = create_homogeneous_landscape(width=100, height=100, food_prob=food_prob)
+        return PorpoisePopulation(count=count, params=params, landscape=landscape)
+
+    def test_counters_initialized_to_zero(self):
+        pop = self._make_pop(count=20)
+        for attr in (
+            "last_step_births",
+            "last_step_deaths",
+            "last_step_deaths_starvation",
+            "last_step_deaths_old_age",
+            "last_step_deaths_bycatch",
+        ):
+            assert getattr(pop, attr) == 0, attr
+
+    def test_starvation_death_sets_per_cause_counter(self):
+        pop = self._make_pop(count=40, food_prob=0.0)
+        # No food available + zero energy => deterministic starvation this tick.
+        pop.energy[:12] = 0.0
+        zeros = (
+            np.zeros(pop.count, dtype=np.float32),
+            np.zeros(pop.count, dtype=np.float32),
+        )
+        pop.step(
+            deterrence_vectors=zeros,
+            ambient_rl=np.zeros(pop.count, dtype=np.float32),
+        )
+        assert pop.last_step_deaths >= 1
+        assert pop.last_step_deaths_starvation >= 1
+        # Tick 1 is not a day boundary => old-age/bycatch cannot fire.
+        assert pop.last_step_deaths_old_age == 0
+        assert pop.last_step_deaths_bycatch == 0
+        # Per-cause counts partition the total deaths exactly.
+        assert (
+            pop.last_step_deaths_starvation
+            + pop.last_step_deaths_old_age
+            + pop.last_step_deaths_bycatch
+        ) == pop.last_step_deaths
+
+    def test_weaning_birth_increments_birth_counter(self):
+        pop = self._make_pop(count=6, food_prob=0.0)
+        # Free one slot so the weaned calf has a slot to occupy.
+        pop.active_mask[5] = False
+        pop._active_idx = np.flatnonzero(pop.active_mask)
+        # One active female exactly at the weaning boundary; suppress every other
+        # reproduction event so calf_roll is the ONLY random draw.
+        pop.pregnancy_status[:] = 0
+        pop.days_since_mating[:] = -99
+        pop.mating_day[:] = -99  # no female is "ready" => no conceive draw
+        pop.is_female[0] = True
+        pop.with_calf[:] = False
+        pop.with_calf[0] = True
+        pop.days_since_birth[0] = pop.params.nursing_time
+        pop.pregnancy_status[0] = 2  # ready-to-mate: not pregnant, no give-birth
+
+        class _OnesRng:
+            def random(self, n):
+                return np.ones(n)  # calf_roll = 1.0 > 0.5 => calf created
+
+            def normal(self, mean, sd, n):
+                # New calf energy is drawn via self.rng.normal(...) in the
+                # weaning branch (population.py ~line 2148). Return a
+                # deterministic array so this stub covers that call too.
+                return np.full(n, mean, dtype=float)
+
+        pop.rng = _OnesRng()
+        pop._handle_reproduction(pop.active_mask)
+        assert pop.last_step_births == 1
+        assert pop.active_mask[5]  # freed slot now holds the new calf
+
+
+class TestPerTickSimulationStatistics:
+    """Finding #11: Simulation accumulates true per-tick births/deaths."""
+
+    def test_cooccurring_birth_and_death_not_netted_to_zero(self):
+        from cenop.core.simulation import Simulation, SimulationState
+        from cenop.parameters import SimulationParameters
+
+        params = SimulationParameters(porpoise_count=20, landscape="Homogeneous")
+        sim = Simulation(params)  # auto-initializes for Homogeneous
+        sim.state = SimulationState()
+        sim.state.population = 100
+
+        class _PM:
+            # net delta 0: exactly one birth cancels one death this tick
+            population_size = 100
+            last_step_births = 1
+            last_step_deaths = 1
+            last_step_deaths_starvation = 1
+            last_step_deaths_old_age = 0
+            last_step_deaths_bycatch = 0
+
+        sim.population_manager = _PM()
+        sim._update_population_statistics()
+        assert sim.state.births == 1  # NOT hidden by the net delta
+        assert sim.state.deaths == 1
+        assert sim.state.deaths_starvation == 1
+        assert sim.state.population == 100
+
+    def test_step_records_starvation_into_state(self):
+        from cenop.core.simulation import Simulation
+        from cenop.parameters import SimulationParameters
+
+        params = SimulationParameters(porpoise_count=30, landscape="Homogeneous", random_seed=11)
+        sim = Simulation(params)
+        pm = sim.population_manager
+        # Starve a cohort deterministically: zero food everywhere + zero energy.
+        pm.landscape._food_value[:] = 0.0
+        pm.energy[:12] = 0.0
+        before = sim.state.deaths_starvation
+        sim.step()
+        assert sim.state.deaths_starvation > before  # per-cause is now populated
+        assert sim.state.deaths >= sim.state.deaths_starvation
+
+
+class TestMonthlyStatsResetPerCause:
+    """Task 16b: monthly reset must cover per-cause death counters too.
+
+    ``_write_population`` emits ``deaths`` and the three per-cause fields in
+    the same per-tick row, so they must share monthly scope. Before this fix
+    only ``births``/``deaths`` were reset each month, leaving the per-cause
+    counters to accumulate as lifetime totals.
+    """
+
+    def test_monthly_tasks_resets_per_cause_death_counters(self):
+        from cenop.core.simulation import Simulation
+        from cenop.parameters import SimulationParameters
+
+        params = SimulationParameters(porpoise_count=20, landscape="Homogeneous", random_seed=7)
+        sim = Simulation(params)
+        sim.state.deaths = 5
+        sim.state.births = 3
+        sim.state.deaths_starvation = 4
+        sim.state.deaths_old_age = 1
+        sim.state.deaths_bycatch = 0
+
+        sim._monthly_tasks()
+
+        assert sim.state.births == 0
+        assert sim.state.deaths == 0
+        assert sim.state.deaths_starvation == 0
+        assert sim.state.deaths_old_age == 0
+        assert sim.state.deaths_bycatch == 0
 
 
 if __name__ == "__main__":

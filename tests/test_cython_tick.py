@@ -48,12 +48,14 @@ class TestCythonFullPostCRW:
             food = np.full((200, 200), 50.0, dtype=np.float32)
             out_food = np.zeros(n, dtype=np.float32)
             disp_dist = np.zeros(n, dtype=np.float32)
+            depth = np.full((200, 200), 20.0, dtype=np.float64)
+            rand_mort = np.random.random(n)
 
             deaths = cython_depons_post_crw(
                 x, y, heading, prev_angle, prev_log_mov, energy,
                 active, is_disp, with_calf,
                 pres_angle, log_mov, ve_total, vt_x, vt_y,
-                food, out_food, disp_dist,
+                food, depth, out_food, disp_dist, rand_mort,
                 0.001, 4.0, 4.5, 1.4, 1.0, 0.4, 1.0, 200, 200,
             )
             return (
@@ -76,6 +78,8 @@ class TestCythonFullPostCRW:
         food = np.full((200, 200), 50.0, dtype=np.float32)
         out_food = np.zeros(n, dtype=np.float32)
         disp_dist = np.zeros(n, dtype=np.float32)
+        depth = np.full((200, 200), 20.0, dtype=np.float64)
+        rand_mort = np.zeros(n, dtype=np.float64)
 
         cython_depons_post_crw(
             np.random.uniform(5, 195, n).astype(np.float32),
@@ -91,7 +95,7 @@ class TestCythonFullPostCRW:
             np.zeros(n, dtype=np.float32),
             np.zeros(n, dtype=np.float32),
             np.zeros(n, dtype=np.float32),
-            food, out_food, disp_dist,
+            food, depth, out_food, disp_dist, rand_mort,
             0.001, 4.0, 4.5, 1.4, 1.0, 0.4, 1.0, 200, 200,
         )
         assert out_food.sum() > 0, "Agents should have eaten food"
@@ -106,6 +110,8 @@ class TestCythonFullPostCRW:
         food = np.full((200, 200), 0.01, dtype=np.float32)
         out_food = np.zeros(n, dtype=np.float32)
         disp_dist = np.zeros(n, dtype=np.float32)
+        depth = np.full((200, 200), 20.0, dtype=np.float64)
+        rand_mort = np.full(n, 0.5, dtype=np.float64)  # all > 0 -> every starving agent dies
 
         # m_mort_prob_const=100 makes yearly_surv negative -> step_surv=0 -> certain death
         deaths = cython_depons_post_crw(
@@ -122,8 +128,48 @@ class TestCythonFullPostCRW:
             np.zeros(n, dtype=np.float32),
             np.zeros(n, dtype=np.float32),
             np.zeros(n, dtype=np.float32),
-            food, out_food, disp_dist,
+            food, depth, out_food, disp_dist, rand_mort,
             0.001, 4.0, 4.5, 1.4, 100.0, 0.4, 1.0, 200, 200,
         )
         assert deaths == n, "All agents should die with extreme mortality"
         assert np.sum(active) == 0
+
+
+@pytest.mark.skipif(not CYTHON_OK, reason="Cython module not built")
+def test_cython_reflection_recomputes_heading():
+    """After a world-boundary bounce the kernel must recompute heading from the
+    sign-flipped displacement (DEPONS forward()), not keep the outward heading."""
+    from cenop.optimizations.tick_cython import cython_depons_post_crw
+
+    W = H = 100
+    x = np.array([1.0], dtype=np.float32)
+    y = np.array([50.0], dtype=np.float32)
+    heading = np.array([270.0], dtype=np.float32)          # points toward -x
+    prev_angle = np.zeros(1, dtype=np.float64)
+    prev_log_mov = np.zeros(1, dtype=np.float64)
+    energy = np.array([10.0], dtype=np.float32)
+    active = np.ones(1, dtype=np.uint8)
+    is_disp = np.ones(1, dtype=np.uint8)                   # step = disp_step
+    with_calf = np.zeros(1, dtype=np.uint8)
+    pres_angle = np.zeros(1, dtype=np.float64)
+    log_mov = np.zeros(1, dtype=np.float64)
+    ve_total = np.zeros(1, dtype=np.float32)
+    vt_x = np.zeros(1, dtype=np.float32)
+    vt_y = np.zeros(1, dtype=np.float32)
+    food = np.zeros((H, W), dtype=np.float32)
+    depth = np.full((H, W), 20.0, dtype=np.float64)        # all water -> no rollback
+    out_food = np.zeros(1, dtype=np.float32)
+    disp_dist = np.zeros(1, dtype=np.float32)
+    rand_mort = np.zeros(1, dtype=np.float64)              # rand=0 -> no death
+
+    cython_depons_post_crw(
+        x, y, heading, prev_angle, prev_log_mov, energy,
+        active, is_disp, with_calf,
+        pres_angle, log_mov, ve_total, vt_x, vt_y,
+        food, depth, out_food, disp_dist, rand_mort,
+        0.0, 3.0, 0.0, 1.0, 1.0, 0.4, 1.0, W, H,   # disp_step=3.0 -> step=3
+    )
+    # ddx = sin(270deg)*3 = -3 -> nx = 1-3 = -2 -> reflect -> nx = 2, ddx -> +3
+    assert abs(float(x[0]) - 2.0) < 1e-4
+    # heading recomputed from flipped displacement: atan2(+3, 0) -> 90 deg
+    assert abs(float(heading[0]) - 90.0) < 1e-4

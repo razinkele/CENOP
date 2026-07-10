@@ -52,7 +52,7 @@ class DEPONSCRWMovement(MovementModule):
     to produce realistic movement patterns.
     """
 
-    def __init__(self, params: 'SimulationParameters', rng: Optional[np.random.Generator] = None):
+    def __init__(self, params: "SimulationParameters", rng: Optional[np.random.Generator] = None):
         """
         Initialize DEPONS CRW movement module.
 
@@ -128,107 +128,107 @@ class DEPONSCRWMovement(MovementModule):
         deterrence_dx: Optional[np.ndarray] = None,
         deterrence_dy: Optional[np.ndarray] = None,
     ) -> MovementResult:
+        """DEPONS CRW step via the shared validated core.
+
+        Generates the turning angle (reject-and-redraw + distance second loop) and step
+        length, then composes the heading with reference-memory attraction and deterrence
+        (deterrence enters the heading vector, NOT the raw displacement). Dispersal heading
+        override is the caller's responsibility. Exposes raw pres_angle/log_mov for parity.
         """
-        Compute DEPONS CRW movement step.
+        from cenop.movement.crw_core import generate_crw_angle_step, compose_movement
 
-        Implements the full DEPONS movement algorithm:
-        1. Calculate turning angle with AR(1) and environmental modulation
-        2. Calculate step length with log-normal and environmental effects
-        3. Apply dispersal modifications if applicable
-        4. Convert to Cartesian displacements
-        5. Add deterrence vectors if present
-
-        Args:
-            x: Current X positions
-            y: Current Y positions
-            state: Movement state (heading, prev values)
-            environment: Environmental context (depth, salinity)
-            mask: Boolean mask of active agents
-            deterrence_dx: Optional X deterrence component
-            deterrence_dy: Optional Y deterrence component
-
-        Returns:
-            MovementResult with displacements and updated values
-        """
         count = len(x)
-        self._ensure_work_arrays(count)
+        depths = np.asarray(environment.depth, dtype=np.float64)
+        salinity = np.asarray(environment.salinity, dtype=np.float64)
+        prev_angle = np.asarray(state.prev_angle, dtype=np.float64)
+        prev_log_mov = np.asarray(state.prev_log_mov, dtype=np.float64)
 
-        # === Step 1: Calculate Turning Angle ===
-        # DEPONS formula:
-        #   angleTmp = b0 * prevAngle + R2
-        #   presAngle = angleTmp * (b1*depth + b2*salinity + b3)
+        pres_angle = np.zeros(count, dtype=np.float64)
+        log_mov = np.zeros(count, dtype=np.float64)
+        env_mod = np.zeros(count, dtype=np.float32)
+        rand_angle = np.zeros(count, dtype=np.float64)
+        rand_len = np.zeros(count, dtype=np.float64)
 
-        # Random component R2 ~ N(r2_mean, r2_sd)
-        np.copyto(self._rand_angle, self.rng.normal(self.r2_mean, self.r2_sd, count))
+        generate_crw_angle_step(
+            self.rng,
+            prev_angle,
+            prev_log_mov,
+            depths,
+            salinity,
+            mask,
+            self.params,
+            pres_angle,
+            log_mov,
+            env_mod,
+            rand_angle,
+            rand_len,
+        )
 
-        # angleTmp = b0 * prevAngle + R2
-        np.multiply(self.b0, state.prev_angle, out=self._angle_tmp)
-        self._angle_tmp += self._rand_angle
+        # Turn heading (dispersal override handled by the caller)
+        heading = np.asarray(state.heading, dtype=np.float32).copy()
+        heading[mask] = (heading[mask] + pres_angle[mask]) % 360.0
 
-        # Environmental modulation: (b1*depth + b2*salinity + b3)
-        np.multiply(self.b1, environment.depth, out=self._env_mod)
-        self._env_mod += self.b2 * environment.salinity
-        self._env_mod += self.b3
+        ve_total = (
+            state.ve_total if state.ve_total is not None else np.zeros(count, dtype=np.float32)
+        )
+        vt_x = state.vt_x if state.vt_x is not None else np.zeros(count, dtype=np.float32)
+        vt_y = state.vt_y if state.vt_y is not None else np.zeros(count, dtype=np.float32)
 
-        # presAngle = angleTmp * env_modulation
-        turning_angle = self._angle_tmp * self._env_mod
+        d_dx = (
+            np.asarray(deterrence_dx, dtype=np.float64)
+            if deterrence_dx is not None
+            else np.zeros(count, dtype=np.float64)
+        )
+        d_dy = (
+            np.asarray(deterrence_dy, dtype=np.float64)
+            if deterrence_dy is not None
+            else np.zeros(count, dtype=np.float64)
+        )
 
-        # Clip to [-180, 180]
-        np.clip(turning_angle, -180, 180, out=turning_angle)
+        rads = np.zeros(count, dtype=np.float32)
+        dx = np.zeros(count, dtype=np.float32)
+        dy = np.zeros(count, dtype=np.float32)
+        step_dist = np.zeros(count, dtype=np.float32)
 
-        # === Step 2: Apply dispersal modulation ===
-        turning_angle = self.apply_dispersal_modulation(state, turning_angle, mask)
+        disp_step = getattr(self.params, "mean_disp_dist", 1.6) / 0.4
+        compose_movement(
+            heading,
+            pres_angle,
+            log_mov,
+            ve_total,
+            vt_x,
+            vt_y,
+            d_dx,
+            d_dy,
+            state.is_dispersing,
+            mask,
+            self.params.inertia_const,
+            disp_step,
+            rads,
+            dx,
+            dy,
+            step_dist,
+        )
 
-        # === Step 3: Update heading ===
-        new_heading = state.heading.copy()
-        new_heading[mask] += turning_angle[mask]
-        new_heading[mask] %= 360.0
-
-        # === Step 4: Calculate Step Length ===
-        # DEPONS formula:
-        #   log10(mov) = a0 * prev_log_mov + a1*depth + a2*salinity + R1
-
-        # Random component R1 ~ N(r1_mean, r1_sd)
-        np.copyto(self._rand_len, self.rng.normal(self.r1_mean, self.r1_sd, count))
-
-        # log_mov = a0 * prev + a1*depth + a2*salinity + R1
-        np.multiply(self.a0, state.prev_log_mov, out=self._log_mov)
-        self._log_mov += self.a1 * environment.depth
-        self._log_mov += self.a2 * environment.salinity
-        self._log_mov += self._rand_len
-
-        # Clip to max speed
-        np.minimum(self._log_mov, self.max_mov, out=self._log_mov)
-
-        # Convert to distance: 10^log_mov / 4.0 (400m cell adjustment)
-        np.power(10.0, self._log_mov, out=self._step_dist)
-        self._step_dist /= 4.0
-
-        # === Step 5: Convert to Cartesian displacements ===
-        np.radians(new_heading, out=self._rads)
-        np.sin(self._rads, out=self._dx)
-        self._dx *= self._step_dist
-        np.cos(self._rads, out=self._dy)
-        self._dy *= self._step_dist
-
-        # === Step 6: Apply deterrence vectors ===
-        if deterrence_dx is not None and deterrence_dy is not None:
-            self._dx[mask] += deterrence_dx[mask]
-            self._dy[mask] += deterrence_dy[mask]
-
-        # === Step 7: Zero out inactive agents ===
         inactive = ~mask
-        self._dx[inactive] = 0.0
-        self._dy[inactive] = 0.0
-        self._step_dist[inactive] = 0.0
-        turning_angle[inactive] = 0.0
+        dx[inactive] = 0.0
+        dy[inactive] = 0.0
+        step_dist[inactive] = 0.0
+
+        turning_angle = np.zeros(count, dtype=np.float32)
+        turning_angle[mask] = pres_angle[mask].astype(np.float32)
+
+        new_heading = np.asarray(state.heading, dtype=np.float32).copy()
+        new_heading[mask] = heading[mask]
 
         return MovementResult(
-            dx=self._dx.copy(),
-            dy=self._dy.copy(),
+            dx=dx,
+            dy=dy,
             new_heading=new_heading,
-            step_distance=self._step_dist.copy(),
+            step_distance=step_dist,
             turning_angle=turning_angle,
+            pres_angle=pres_angle,
+            log_mov=log_mov,
         )
 
     def apply_dispersal_modulation(
@@ -289,96 +289,3 @@ class DEPONSCRWMovementVectorized(DEPONSCRWMovement):
     This version optimizes memory access patterns and reduces
     Python overhead for large populations.
     """
-
-    def compute_step(
-        self,
-        x: np.ndarray,
-        y: np.ndarray,
-        state: MovementState,
-        environment: EnvironmentContext,
-        mask: np.ndarray,
-        deterrence_dx: Optional[np.ndarray] = None,
-        deterrence_dy: Optional[np.ndarray] = None,
-    ) -> MovementResult:
-        """
-        Optimized vectorized CRW computation.
-
-        Uses fused operations where possible to reduce memory traffic.
-        """
-        count = len(x)
-        active_idx = np.where(mask)[0]
-
-        if len(active_idx) == 0:
-            return MovementResult(
-                dx=np.zeros(count, dtype=np.float32),
-                dy=np.zeros(count, dtype=np.float32),
-                new_heading=state.heading.copy(),
-                step_distance=np.zeros(count, dtype=np.float32),
-                turning_angle=np.zeros(count, dtype=np.float32),
-            )
-
-        # Work only on active agents
-        n_active = len(active_idx)
-
-        # Random components
-        rand_angle = self.rng.normal(self.r2_mean, self.r2_sd, n_active).astype(np.float32)
-        rand_len = self.rng.normal(self.r1_mean, self.r1_sd, n_active).astype(np.float32)
-
-        # Extract active values
-        prev_angle_active = state.prev_angle[active_idx]
-        prev_log_mov_active = state.prev_log_mov[active_idx]
-        heading_active = state.heading[active_idx]
-        depth_active = environment.depth[active_idx]
-        salinity_active = environment.salinity[active_idx]
-
-        # Turning angle calculation (fused)
-        angle_tmp = self.b0 * prev_angle_active + rand_angle
-        env_mod = self.b1 * depth_active + self.b2 * salinity_active + self.b3
-        turning_angle_active = np.clip(angle_tmp * env_mod, -180, 180)
-
-        # Apply dispersal modulation for active dispersing
-        if np.any(state.is_dispersing[active_idx]):
-            disp_mask = state.is_dispersing[active_idx]
-            turning_angle_active[disp_mask] *= 0.3
-
-        # Update heading
-        new_heading_active = (heading_active + turning_angle_active) % 360.0
-
-        # Step length calculation (fused)
-        log_mov = (self.a0 * prev_log_mov_active +
-                   self.a1 * depth_active +
-                   self.a2 * salinity_active +
-                   rand_len)
-        log_mov = np.minimum(log_mov, self.max_mov)
-        step_dist_active = np.power(10.0, log_mov) / 4.0
-
-        # Convert to displacements
-        rads = np.radians(new_heading_active)
-        dx_active = np.sin(rads) * step_dist_active
-        dy_active = np.cos(rads) * step_dist_active
-
-        # Apply deterrence
-        if deterrence_dx is not None and deterrence_dy is not None:
-            dx_active += deterrence_dx[active_idx]
-            dy_active += deterrence_dy[active_idx]
-
-        # Build full result arrays
-        dx = np.zeros(count, dtype=np.float32)
-        dy = np.zeros(count, dtype=np.float32)
-        new_heading = state.heading.copy()
-        step_distance = np.zeros(count, dtype=np.float32)
-        turning_angle = np.zeros(count, dtype=np.float32)
-
-        dx[active_idx] = dx_active
-        dy[active_idx] = dy_active
-        new_heading[active_idx] = new_heading_active
-        step_distance[active_idx] = step_dist_active
-        turning_angle[active_idx] = turning_angle_active
-
-        return MovementResult(
-            dx=dx,
-            dy=dy,
-            new_heading=new_heading,
-            step_distance=step_distance,
-            turning_angle=turning_angle,
-        )

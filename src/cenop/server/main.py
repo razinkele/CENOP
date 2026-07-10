@@ -30,6 +30,12 @@ from .renderers.chart_helpers import (
     create_svg_chart,
     no_data_placeholder
 )
+from .renderers.population_stats import (
+    build_population_stats_snapshot,
+    render_age_histogram,
+    render_energy_histogram,
+    build_vital_stats_df,
+)
 
 from shiny_deckgl import zoom_widget, compass_widget, scale_widget, fullscreen_widget, bitmap_layer, scatterplot_layer
 from cenop.ui.tabs.dashboard import sim_map
@@ -224,6 +230,18 @@ def run_simulation_loop(
                 elif not traces_on:
                     trail_history.clear()
 
+            # Publish an immutable population-stats snapshot on the same cadence
+            # as porpoise_positions (map updates), built on THIS worker thread so
+            # it is coherent — the renderers read this instead of the live sim
+            # (Finding #22 data-race).
+            population_snapshot = None
+            if runner.should_update_map and not viz_skipped:
+                try:
+                    population_snapshot = build_population_stats_snapshot(runner.sim)
+                except (ValueError, TypeError, AttributeError, KeyError) as e:
+                    logger.warning("Population stats snapshot failed: %s", e)
+                    population_snapshot = None
+
             update = {
                 "type": "update",
                 "progress": runner.progress_percent,
@@ -234,6 +252,7 @@ def run_simulation_loop(
                 "porpoise_positions": porpoise_positions,
                 "porpoise_trails": trail_data,
                 "trail_time": trail_time_counter,
+                "population_snapshot": population_snapshot,
             }
             result_queue.put(update)
 
@@ -259,6 +278,64 @@ def run_simulation_loop(
     except Exception as e:
         logger.error("Simulation error: %s", e, exc_info=True)
         result_queue.put({"type": "error", "message": str(e)})
+
+
+class _WorkerHandle:
+    """Owns the background simulation worker's thread plus its per-run
+    ``stop_event`` and ``result_queue``.
+
+    Every run gets a FRESH ``stop_event`` and ``result_queue``. This makes it
+    impossible to re-arm a still-alive previous worker (the old code cleared a
+    SHARED event) or to interleave two workers' output on one shared queue.
+    Callers must go through :meth:`new_run` before starting a worker.
+    """
+
+    def __init__(self):
+        self.thread: threading.Thread | None = None
+        self.stop_event = threading.Event()
+        self.result_queue: queue.Queue = queue.Queue()
+
+    def is_alive(self) -> bool:
+        return self.thread is not None and self.thread.is_alive()
+
+    def stop_and_join(self, timeout: float = 5.0) -> bool:
+        """Signal the current worker to stop and join it.
+
+        Returns True if no live worker remains afterward (none existed, or it
+        stopped within ``timeout``); False if a worker is still alive after the
+        join timed out (its reference is kept so a later call can retry).
+        """
+        if self.is_alive():
+            self.stop_event.set()
+            self.thread.join(timeout=timeout)
+            if self.thread.is_alive():
+                logger.warning(
+                    "Simulation worker did not stop within %.1fs; abandoning "
+                    "it on a stale queue",
+                    timeout,
+                )
+                return False
+        self.thread = None
+        return True
+
+    def new_run(self, timeout: float = 5.0):
+        """Stop/join any prior worker and install a FRESH stop_event + queue.
+
+        Fresh objects are installed regardless of whether the old worker
+        actually joined: a stubborn old worker keeps writing to its OLD queue
+        and observing its OLD (already-set) event, so the new run is isolated.
+        Returns the fresh ``(stop_event, result_queue)`` pair.
+        """
+        self.stop_and_join(timeout)
+        self.stop_event = threading.Event()
+        self.result_queue = queue.Queue()
+        return self.stop_event, self.result_queue
+
+    def start(self, target, args, daemon: bool = True) -> threading.Thread:
+        """Start a new worker thread and record it as the current worker."""
+        self.thread = threading.Thread(target=target, args=args, daemon=daemon)
+        self.thread.start()
+        return self.thread
 
 
 # =========================================================================
@@ -495,10 +572,10 @@ def server(input, output, session):
         'file': 'bathy.asc'
     })
     
-    # Internal state for background thread management
-    sim_thread: threading.Thread | None = None
-    stop_event = threading.Event()
-    result_queue = queue.Queue()
+    # Internal state for background thread management.
+    # _WorkerHandle owns the worker thread plus a FRESH stop_event + result_queue
+    # per run, so a Stop-then-Start can never re-arm or interleave an old worker.
+    worker = _WorkerHandle()
     # Shared throttle value as a mutable list [0.0-1.0] for thread-safe updates
     # 0.0 = slowest (1%), 1.0 = fastest (100%)
     throttle_value = [1.0]  # Default 100% (maximum speed)
@@ -1123,7 +1200,6 @@ def server(input, output, session):
     @reactive.event(input.run_sim)
     def start_simulation():
         """Start the simulation in a background thread."""
-        nonlocal sim_thread
         logger.info("start_simulation() TRIGGERED")
         if state.running():
             logger.info("Already running, skipping")
@@ -1146,13 +1222,9 @@ def server(input, output, session):
             ui.notification_show("Simulation failed. Check server logs for details.", type="error", duration=10)
             return
 
-        # Reset queue and event - use idiomatic pattern to avoid TOCTOU race
-        try:
-            while True:
-                result_queue.get_nowait()
-        except queue.Empty:
-            pass
-        stop_event.clear()
+        # Stop/join any prior worker and install a FRESH stop_event + result_queue.
+        # Never clear() a shared event: a still-alive old worker may observe it.
+        stop_event, result_queue = worker.new_run()
 
         state.simulation.set(sim)
         state.running.set(True)
@@ -1174,8 +1246,8 @@ def server(input, output, session):
         with ticks_lock:
             ticks_per_update_value[0] = ticks_val
 
-        # Start background thread
-        sim_thread = threading.Thread(
+        # Start background thread on the fresh queue/event
+        worker.start(
             target=run_simulation_loop,
             args=(
                 runner, result_queue, stop_event,
@@ -1184,9 +1256,7 @@ def server(input, output, session):
                 trace_enabled_value, trace_length_value, trace_lock,
                 skip_viz_value, skip_viz_lock,
             ),
-            daemon=True,
         )
-        sim_thread.start()
         logger.info("Simulation thread started")
 
         # Start polling immediately
@@ -1257,6 +1327,8 @@ def server(input, output, session):
         energy_entries_batch = []
         dispersal_entries_batch = []
         
+        # Snapshot the current run's queue so a mid-poll restart can't swap it.
+        result_queue = worker.result_queue
         # Drain queue - process all available messages
         while True:
             try:
@@ -1324,6 +1396,15 @@ def server(input, output, session):
                             state.trail_time.set(msg.get("trail_time", 0))
                         except (AttributeError, TypeError) as e:
                             logger.warning("Could not update porpoise_trails: %s", e)
+                    if msg.get("population_snapshot") is not None:
+                        try:
+                            state.population_snapshot.set(
+                                msg.get("population_snapshot")
+                            )
+                        except (AttributeError, TypeError) as e:
+                            logger.warning(
+                                "Could not update population_snapshot: %s", e
+                            )
 
         # Flush batched entries to reactive state so dashboard updates
         if entries_batch:
@@ -1340,21 +1421,16 @@ def server(input, output, session):
     @reactive.event(input.stop_sim)
     def stop_simulation():
         """Stop the running simulation."""
-        stop_event.set()
+        worker.stop_event.set()
         state.running.set(False)
 
-    
+
     @reactive.effect
     @reactive.event(input.reset_sim)
     def reset_simulation():
         """Reset the simulation."""
-        stop_event.set()
-        # Clear queue to release refs - use idiomatic pattern to avoid TOCTOU race
-        try:
-            while True:
-                result_queue.get_nowait()
-        except queue.Empty:
-            pass
+        # Stop/join any live worker and install fresh objects before resetting.
+        worker.new_run()
         state.reset()
     
     # =========================================================================
@@ -1647,10 +1723,7 @@ def server(input, output, session):
             _layer_cache["_turbine_data_raw"] = turbine_data
             _layer_cache["turbine-poles"] = build_turbine_pole_layer(turbine_data)
             _loaded_data_layers.add("turbine-poles")
-            animate = _safe_input(input, "blade_animation", True)
-            _layer_cache["turbine-blades"] = build_turbine_blade_layer(
-                turbine_data, client_animated=animate
-            )
+            _layer_cache["turbine-blades"] = build_turbine_blade_layer(turbine_data)
             await _push_all_layers()
             await _sync_legend()
             logger.info(f"Turbine layers: {len(turbine_data)} turbines loaded")
@@ -1682,10 +1755,7 @@ def server(input, output, session):
 
             _layer_cache["_turbine_data_raw"] = updated
             _layer_cache["turbine-poles"] = build_turbine_pole_layer(updated)
-            animate = _safe_input(input, "blade_animation", True)
-            _layer_cache["turbine-blades"] = build_turbine_blade_layer(
-                updated, client_animated=animate
-            )
+            _layer_cache["turbine-blades"] = build_turbine_blade_layer(updated)
             await _push_dynamic_layers("turbine-poles", "turbine-blades")
         except Exception as e:
             logger.error(f"Error updating turbine phases: {e}", exc_info=True)
@@ -1843,101 +1913,30 @@ def server(input, output, session):
         except Exception as e:
             logger.error(f"Error updating porpoise layer: {e}", exc_info=True)
 
-    @reactive.effect
-    @reactive.event(input.blade_animation, state.turbine_load_counter)
-    async def _manage_blade_animation():
-        """Start or stop client-side blade animation based on toggle."""
-        animate = input.blade_animation()
-        raw = _layer_cache.get("_turbine_data_raw", [])
-        has_operational = any(t.get("phase") == "operational" for t in raw)
-
-        if animate and has_operational:
-            _layer_cache["turbine-blades"] = build_turbine_blade_layer(
-                raw, client_animated=True
-            )
-            await _push_dynamic_layers("turbine-blades")
-            await session.send_custom_message("cenop_blade_animation", {"action": "start"})
-        else:
-            _layer_cache["turbine-blades"] = build_turbine_blade_layer(raw, rotation=0)
-            await _push_dynamic_layers("turbine-blades")
-            await session.send_custom_message("cenop_blade_animation", {"action": "stop"})
-    
     # =========================================================================
     # Population Tab Renderers
     # =========================================================================
     
     @render.ui
     def age_histogram():
-        """Age distribution histogram."""
+        """Age distribution histogram (reads the immutable worker snapshot)."""
         try:
-            _ = state.population_history()
-            sim = state.simulation()
-            if sim is None:
+            snapshot = state.population_snapshot()
+            if snapshot is None:
                 return no_data_placeholder("Run simulation to see age distribution.")
-
-            ages = []
-            if hasattr(sim, 'population_manager') and sim.population_manager is not None:
-                pm = sim.population_manager
-                if hasattr(pm, 'age') and hasattr(pm, 'active_mask'):
-                    active = pm.active_mask
-                    if np.any(active):
-                        ages = pm.age[active].tolist()
-            elif hasattr(sim, 'agents_df'):
-                df = sim.agents_df
-                if not df.empty and 'age' in df.columns:
-                    ages = df['age'].tolist()
-
-            if not ages:
-                return no_data_placeholder("No age data available.")
-
-            return create_histogram_chart(
-                data=ages,
-                title='Porpoise Age Distribution',
-                x_title='Age (years)',
-                y_title='Count',
-                x_range=(0, 30),
-                nbins=30,
-                color='red',
-                height=300
-            )
+            return render_age_histogram(snapshot)
         except (ValueError, TypeError, IndexError, KeyError) as e:
             logger.error("age_histogram error: %s", e, exc_info=True)
             return no_data_placeholder("Error rendering age histogram.")
-    
+
     @render.ui
     def energy_histogram():
-        """Energy level histogram."""
+        """Energy level histogram (reads the immutable worker snapshot)."""
         try:
-            _ = state.population_history()
-            sim = state.simulation()
-            if sim is None:
+            snapshot = state.population_snapshot()
+            if snapshot is None:
                 return no_data_placeholder("Run simulation to see energy distribution.")
-
-            energies = []
-            if hasattr(sim, 'population_manager') and sim.population_manager is not None:
-                pm = sim.population_manager
-                if hasattr(pm, 'energy') and hasattr(pm, 'active_mask'):
-                    active = pm.active_mask
-                    if np.any(active):
-                        energies = pm.energy[active].tolist()
-            elif hasattr(sim, 'agents_df'):
-                df = sim.agents_df
-                if not df.empty and 'energy' in df.columns:
-                    energies = df['energy'].tolist()
-
-            if not energies:
-                return no_data_placeholder("No energy data available.")
-
-            return create_histogram_chart(
-                data=energies,
-                title='Energy Level Distribution',
-                x_title='Energy',
-                y_title='Porpoise Count',
-                x_range=(0, 20),
-                nbins=20,
-                color='red',
-                height=300
-            )
+            return render_energy_histogram(snapshot)
         except (ValueError, TypeError, IndexError, KeyError) as e:
             logger.error("energy_histogram error: %s", e, exc_info=True)
             return no_data_placeholder("Error rendering energy histogram.")
@@ -1998,30 +1997,13 @@ def server(input, output, session):
     
     @render.data_frame
     def vital_stats_table():
-        # React to population history to update during simulation
-        _ = state.population_history()
-        
-        sim = state.simulation()
-        if sim is None:
+        # Read the immutable population snapshot published by the worker instead
+        # of reaching into the live, concurrently-mutated sim (Finding #22).
+        snapshot = state.population_snapshot()
+        if snapshot is None:
             return pd.DataFrame()
-        
         try:
-            stats = sim.get_statistics()
-            # Add more stats from population_manager if available
-            if hasattr(sim, 'population_manager'):
-                pm = sim.population_manager
-                active = pm.active_mask
-                if np.any(active):
-                    stats['avg_age'] = float(np.mean(pm.age[active]))
-                    stats['avg_energy'] = float(np.mean(pm.energy[active]))
-                    stats['females'] = int(np.sum(pm.is_female[active]))
-                    stats['with_calf'] = int(np.sum(pm.with_calf[active]))
-            
-            df = pd.DataFrame([
-                {"Statistic": k, "Value": f"{v:.2f}" if isinstance(v, float) else str(v)}
-                for k, v in stats.items()
-            ])
-            return df
+            return build_vital_stats_df(snapshot)
         except (ValueError, TypeError, KeyError) as e:
             logger.warning("Vital stats table rendering failed: %s", e)
             return pd.DataFrame()

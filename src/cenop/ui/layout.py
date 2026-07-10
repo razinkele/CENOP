@@ -575,7 +575,7 @@ def create_help_modal():
         <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
         <tr><td>Dispersal Type</td><td>PSM-Type2</td><td>Memory-based with heading dampening (SSLogis formula)</td></tr>
         <tr><td>tDisp</td><td>3 days</td><td>Consecutive days of declining energy to trigger dispersal</td></tr>
-        <tr><td>PSM_dist</td><td>N(300;100)</td><td>Preferred dispersal distance: mean 300km, std 100km</td></tr>
+        <tr><td>PSM_dist</td><td>N(350;100)</td><td>Preferred dispersal distance: mean 350km, std 100km</td></tr>
         <tr><td>mean_disp_dist</td><td>1.6 km</td><td>Mean distance per dispersal step (DEPONS 3.2)</td></tr>
     </table>
 
@@ -964,40 +964,6 @@ def create_app_ui():
                 mapEl.appendChild(container);
             }
             renderLegend(container, entries);
-        });
-
-        /* Blade animation handler — replaces generic eval_js */
-        Shiny.addCustomMessageHandler('cenop_blade_animation', function(payload) {
-            var action = (typeof payload === 'object') ? payload.action : payload;
-            if (action === 'start') {
-                window._cenopBladeAnimRunning = false;
-                window._cenopBladeRotation = window._cenopBladeRotation || 0;
-                setTimeout(function() {
-                    window._cenopBladeAnimRunning = true;
-                    function animateBlades() {
-                        if (!window._cenopBladeAnimRunning) return;
-                        window._cenopBladeRotation =
-                            (window._cenopBladeRotation + 1.5) % 360;
-                        var inst = (window.__deckgl_instances || {})['sim_map'];
-                        if (inst) {
-                            if (inst.lastLayers) {
-                                var idx = inst.lastLayers.findIndex(function(l) {
-                                    return l.id === 'turbine-blades';
-                                });
-                                if (idx >= 0) {
-                                    inst.overlay.setProps(
-                                        {layers: inst.overlay.props.layers}
-                                    );
-                                }
-                            }
-                        }
-                        requestAnimationFrame(animateBlades);
-                    }
-                    requestAnimationFrame(animateBlades);
-                }, 20);
-            } else {
-                window._cenopBladeAnimRunning = false;
-            }
         });
     })();
     """

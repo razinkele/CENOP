@@ -394,3 +394,88 @@ class TestDispersalBatchInit:
             assert pop.dispersal_start_x[idx] == pop.x[idx]
             assert pop.dispersal_start_y[idx] == pop.y[idx]
             assert pop.dispersal_distance_traveled[idx] == 0.0
+
+
+class TestPSMReproducibility:
+    """PSM preferred_distance must be seeded (finding #6) and centre on
+    params.psm_dist_mean=350 not the hardcoded 300 (finding #14)."""
+
+    def test_preferred_distance_reproducible_same_seed(self):
+        """Two populations built with the same random_seed must produce an
+        identical preferred_distance sequence across all agents."""
+        from cenop.agents.population import PorpoisePopulation
+        from cenop.parameters.simulation_params import SimulationParameters
+
+        # Small world keeps per-agent psm_buffer tiny (12x12 grid).
+        params_a = SimulationParameters(random_seed=12345, world_width=60, world_height=60)
+        params_b = SimulationParameters(random_seed=12345, world_width=60, world_height=60)
+        pop_a = PorpoisePopulation(count=30, params=params_a)
+        pop_b = PorpoisePopulation(count=30, params=params_b)
+
+        dists_a = [pop_a._psm_instances[i].preferred_distance for i in range(30)]
+        dists_b = [pop_b._psm_instances[i].preferred_distance for i in range(30)]
+
+        assert dists_a == dists_b, "same seed must give identical PSM distances"
+        # Sanity: it is genuinely a distribution, not a constant.
+        assert len(set(dists_a)) > 1
+
+    def test_constructor_centres_on_pref_dist_mean_350(self):
+        """PersistentSpatialMemory(pref_dist_mean=350) must sample ~N(350;100)."""
+        from cenop.behavior.psm import PersistentSpatialMemory
+
+        rng = np.random.default_rng(7)
+        dists = np.array(
+            [
+                PersistentSpatialMemory(
+                    100, 100, rng=rng, pref_dist_mean=350.0, pref_dist_sd=100.0
+                ).preferred_distance
+                for _ in range(2000)
+            ]
+        )
+        mean = float(dists.mean())
+        assert 340.0 < mean < 360.0, f"expected ~350, got {mean}"
+
+    def test_population_plumbs_params_psm_dist_mean(self):
+        """Production PSM construction must FORWARD params.psm_dist_mean into the
+        PersistentSpatialMemory constructor.
+
+        Uses a NON-default psm_dist_mean=500 (the class default is 350) so the
+        test distinguishes real forwarding from the class default happening to
+        equal 350: if population.py silently drops the
+        ``pref_dist_mean=self.params.psm_dist_mean`` kwarg, the PSM falls back to
+        the 350 class default and this assertion FAILS."""
+        from cenop.agents.population import PorpoisePopulation
+        from cenop.parameters.simulation_params import SimulationParameters
+
+        params = SimulationParameters(
+            random_seed=99, world_width=60, world_height=60, psm_dist_mean=500.0
+        )
+        assert params.psm_dist_mean == 500.0  # non-default -> exercises forwarding
+        assert params.psm_dist_sd == 100.0  # sd unchanged from default
+        pop = PorpoisePopulation(count=1000, params=params)
+        dists = np.array([pop._psm_instances[i].preferred_distance for i in range(1000)])
+        mean = float(dists.mean())
+        # Band excludes the 350 class default: only a real forward of 500 lands here.
+        assert 470.0 < mean < 530.0, f"expected ~500 (params.psm_dist_mean), got {mean}"
+
+
+class TestPSMDistDefaults:
+    """UI default and controller parse-fallback must be N(350;100) (finding #14)."""
+
+    def test_ui_and_controller_defaults_are_350(self):
+        import inspect
+        import cenop.ui.tabs.settings as settings_mod
+        import cenop.server.simulation_controller as ctrl_mod
+        import cenop.ui.layout as layout_mod
+
+        settings_src = inspect.getsource(settings_mod)
+        ctrl_src = inspect.getsource(ctrl_mod)
+        layout_src = inspect.getsource(layout_mod)
+
+        assert 'ui.input_text("psm_dist", None, value="N(350;100)")' in settings_src
+        assert 'value="N(300;100)"' not in settings_src
+        assert "psm_dist_mean = 350.0" in ctrl_src
+        assert "psm_dist_mean = 300.0" not in ctrl_src
+        # In-app help/docs table must not show the stale 300 default (finding #14).
+        assert "N(300;100)" not in layout_src
+        assert "N(350;100)" in layout_src

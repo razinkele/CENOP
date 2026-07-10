@@ -16,6 +16,7 @@ from cenop.landscape.cell_data import CellData
 from cenop.parameters.demography import AGE_DISTRIBUTION_FREQUENCY
 from cenop.behavior.psm import PersistentSpatialMemory
 from cenop.behavior.sound import calculate_received_level, response_probability_from_rl
+from cenop.movement.crw_core import generate_crw_angle_step, compose_movement
 
 import logging
 import os
@@ -112,6 +113,7 @@ class PorpoisePopulation:
         
         # Identity
         self.ids = np.arange(count, dtype=np.int32)
+        self._next_id = count  # next unique id assigned to a recycled (weaned-calf) slot
         self.active_mask = np.ones(count, dtype=bool) # True if alive/active slot
         self._active_idx = np.arange(count, dtype=np.intp)  # cached np.where(active_mask)[0]
 
@@ -185,6 +187,16 @@ class PorpoisePopulation:
         self.death_days: list = []       # Simulation day when each death occurred
         self.death_causes: list = []     # Cause string per death
 
+        # Finding #11: true per-tick birth/death counters, reset each step().
+        # Simulation reads these instead of inferring births/deaths from the net
+        # population delta (which hides co-occurring births + deaths and never
+        # attributes per-cause mortality). death_causes still drives Mortality.txt.
+        self.last_step_births = 0
+        self.last_step_deaths = 0
+        self.last_step_deaths_starvation = 0
+        self.last_step_deaths_old_age = 0
+        self.last_step_deaths_bycatch = 0
+
         # G11: Daily energy consumption tracking (DEPONS parity — energyConsumedDaily)
         self._energy_consumed_today = np.zeros(count, dtype=np.float32)
         self.energy_consumed_daily = np.zeros(count, dtype=np.float32)  # Yesterday's total
@@ -212,7 +224,14 @@ class PorpoisePopulation:
         # We can still use the class for helper methods or just store distances array
         # For full optimization, we replace list of objects with arrays
         self._psm_instances: List[PersistentSpatialMemory] = [
-             PersistentSpatialMemory(world_w, world_h) for _ in range(count)
+            PersistentSpatialMemory(
+                world_w,
+                world_h,
+                rng=self.rng,
+                pref_dist_mean=self.params.psm_dist_mean,
+                pref_dist_sd=self.params.psm_dist_sd,
+            )
+            for _ in range(count)
         ]
         
         # Vectorized PSM Storage (Optimized)
@@ -931,91 +950,12 @@ class PorpoisePopulation:
                 self.params.m,
             )
         else:
-            # --- Turning Angle (NumPy fallback) ---
-            # DEPONS formula: angleTmp = b0 * prevAngle + N(0,4)
-            #                 presAngle = angleTmp * (b1*depth + b2*salinity + b3)
-            np.copyto(self._rand_angle, self.rng.normal(self.params.r2_mean, self.params.r2_sd, self.count))
-
-            # angleTmp = b0 * prevAngle + R2
-            np.multiply(self.params.corr_angle_base, self.prev_angle, out=self._pres_angle)
-            self._pres_angle += self._rand_angle
-
-            # Environmental modulation: (b1*depth + b2*salinity + b3)
-            np.multiply(self.params.corr_angle_bathy, self._depths, out=self._env_mod_angle)
-            self._env_mod_angle += self.params.corr_angle_salinity * self._salinity_vals
-            self._env_mod_angle += self.params.corr_angle_base_sd
-
-            # presAngle = angleTmp * env_modulation
-            self._pres_angle *= self._env_mod_angle
-
-            # Rejection sampling for turning angle (Java Porpoise.java:332-360)
-            violations = np.abs(self._pres_angle) > 180
-            retry = 0
-            while (violations & mask).any() and retry < 200:
-                idx = np.where(violations & mask)[0]
-                new_rand = self.rng.normal(self.params.r2_mean, self.params.r2_sd, len(idx))
-                angle_tmp = self.params.corr_angle_base * self.prev_angle[idx] + new_rand
-                self._pres_angle[idx] = angle_tmp * (
-                    self.params.corr_angle_bathy * self._depths[idx]
-                    + self.params.corr_angle_salinity * self._salinity_vals[idx]
-                    + self.params.corr_angle_base_sd
-                )
-                violations = np.abs(self._pres_angle) > 180
-                retry += 1
-            # Emergency fallback: clamp to +/-90 (Java Porpoise.java:354)
-            if (violations & mask).any():
-                self._pres_angle[violations & mask] = np.sign(self._pres_angle[violations & mask]) * 90
-
-            # Second angle loop: distance-dependent modulation (Java Porpoise.java:367-397)
-            prev_mov = np.power(10.0, self.prev_log_mov)
-            needs_modulation = mask & (prev_mov <= self.params.m)
-            if needs_modulation.any():
-                mod_idx = np.where(needs_modulation)[0]
-                # Java line 365-367: extract sign once, work with abs values
-                signs = np.sign(self._pres_angle[mod_idx])
-                self._pres_angle[mod_idx] = np.abs(self._pres_angle[mod_idx])
-                retry = 0
-                violations2 = self._pres_angle[mod_idx] >= 180.0
-                while violations2.any() and retry < 200:
-                    v_idx = mod_idx[violations2]
-                    rnd = self.rng.normal(0, 1, len(v_idx))  # N(0,1), not uniform
-                    self._pres_angle[v_idx] += rnd - rnd * prev_mov[v_idx] / self.params.m
-                    violations2 = self._pres_angle[mod_idx] >= 180.0
-                    retry += 1
-                # Fallback: random(0,20) + 90 (Java Porpoise.java:386)
-                still_bad = self._pres_angle[mod_idx] >= 180.0
-                if still_bad.any():
-                    fb_idx = mod_idx[still_bad]
-                    self._pres_angle[fb_idx] = self.rng.uniform(0, 20, len(fb_idx)) + 90
-                # Java line 397: restore sign
-                self._pres_angle[mod_idx] *= signs
-
-            # --- Step Length (NumPy fallback) ---
-            # DEPONS formula: log10_mov = a0 * prev_log_mov + a1*depth + a2*salinity + R1
-            np.copyto(self._rand_len, self.rng.normal(self.params.r1_mean, self.params.r1_sd, self.count))
-            np.multiply(self.params.corr_logmov_length, self.prev_log_mov, out=self._log_mov)
-            self._log_mov += self.params.corr_logmov_bathy * self._depths
-            self._log_mov += self.params.corr_logmov_salinity * self._salinity_vals
-            self._log_mov += self._rand_len
-
-            # Rejection sampling for step length (Java Porpoise.java:367-391)
-            violations = self._log_mov > self.params.max_mov
-            retry = 0
-            while (violations & mask).any() and retry < 200:
-                idx = np.where(violations & mask)[0]
-                new_rand = self.rng.normal(self.params.r1_mean, self.params.r1_sd, len(idx))
-                self._log_mov[idx] = (
-                    self.params.corr_logmov_length * self.prev_log_mov[idx]
-                    + self.params.corr_logmov_bathy * self._depths[idx]
-                    + self.params.corr_logmov_salinity * self._salinity_vals[idx]
-                    + new_rand
-                )
-                violations = self._log_mov > self.params.max_mov
-                retry += 1
-            # Emergency fallback: clamp to maxMov (Java Porpoise.java:387)
-            if (violations & mask).any():
-                self._log_mov[violations & mask] = self.params.max_mov
-
+            generate_crw_angle_step(
+                self.rng, self.prev_angle, self.prev_log_mov,
+                self._depths, self._salinity_vals, mask, self.params,
+                self._pres_angle, self._log_mov, self._env_mod_angle,
+                self._rand_angle, self._rand_len,
+            )
             self.prev_log_mov[mask] = self._log_mov[mask]
 
         # Capture pre-movement heading for prev_angle computation (Task 6)
@@ -1061,46 +1001,12 @@ class PorpoisePopulation:
                 self.heading, self._dx, self._dy, self._step_dist,
             )
         else:
-            # Save dispersal heading before CRW composition overwrites it
-            _disp_mask = mask & self.is_dispersing
-            _saved_disp_heading = (
-                self.heading[_disp_mask].copy() if _disp_mask.any() else None
+            compose_movement(
+                self.heading, self._pres_angle, self._log_mov,
+                self._ve_total, self._vt_x, self._vt_y, d_dx, d_dy,
+                self.is_dispersing, mask, self.params.inertia_const, disp_step,
+                self._rads, self._dx, self._dy, self._step_dist,
             )
-
-            # Compute CRW unit direction vector from heading
-            np.radians(self.heading, out=self._rads)
-            np.sin(self._rads, out=self._dx)
-            np.cos(self._rads, out=self._dy)
-
-            # Heading composition (Java Porpoise.java:556-566)
-            np.power(10.0, self._log_mov, out=self._step_dist)
-            crw_contrib = self.params.inertia_const + self._step_dist * self._ve_total
-
-            total_dx = self._dx * crw_contrib + self._vt_x + d_dx
-            total_dy = self._dy * crw_contrib + self._vt_y + d_dy
-
-            # facePoint: new heading from composite vector (Java Porpoise.java:567)
-            new_heading = np.degrees(np.arctan2(total_dx, total_dy)) % 360
-            self.heading[mask] = new_heading[mask]
-
-            # Restore dispersal heading — dispersing agents skip CRW composition
-            if _saved_disp_heading is not None:
-                self.heading[_disp_mask] = _saved_disp_heading
-
-            # Step distance: presMov / 4.0 (Java Porpoise.java:589)
-            self._step_dist /= 4.0
-
-            # Override step distance for dispersing agents
-            dispersing = mask & self.is_dispersing
-            if dispersing.any():
-                self._step_dist[dispersing] = disp_step
-
-            # Final dx/dy for actual movement from composite heading
-            np.radians(self.heading, out=self._rads)
-            np.sin(self._rads, out=self._dx)
-            self._dx *= self._step_dist
-            np.cos(self._rads, out=self._dy)
-            self._dy *= self._step_dist
 
         # Update dispersal distance traveled
         dispersing = mask & self.is_dispersing
@@ -1169,11 +1075,122 @@ class PorpoisePopulation:
         deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]],
         ambient_rl: Optional[np.ndarray],
     ) -> None:
+        """JASMINE movement path — parity mirror of the inline NumPy CRW path.
+
+        The injected module supplies only the DEPONS turning-angle + step-length draws
+        (via crw_core, off the population RNG); everything else (environment sampling,
+        reference-memory update, SSLogis dispersal override, deterrence/social heading
+        composition, prev_angle/prev_log_mov bookkeeping) is done here identically to
+        _update_movement, so results match movement_module=None for a fixed seed.
         """
-        JASMINE movement path: delegates to movement module.
+        from cenop.movement.base import EnvironmentContext
+        from cenop.movement.depons_crw import DEPONSCRWMovement
+
+        # Non-CRW modules (JASMINE physics, hybrid physics selection) return a fully composed
+        # displacement with no raw CRW draws (pres_angle/log_mov is None), so they cannot be
+        # driven through the crw_core parity path. Fall back to the generic module write-back,
+        # preserving their pre-existing behavior.
+        if not isinstance(self._movement_module, DEPONSCRWMovement):
+            self._update_movement_module_generic(mask, deterrence_vectors, ambient_rl)
+            return
+
+        # 1. Environment at current cells (identical to inline, incl. Kattegat override)
+        if self.landscape is not None:
+            np.copyto(self._depths, self.landscape.get_depths_vectorized(
+                None, xi=self._cell_xi, yi=self._cell_yi))
+            np.copyto(self._salinity_vals, self.landscape.get_salinities_vectorized(
+                None, xi=self._cell_xi, yi=self._cell_yi))
+            if getattr(self.landscape, 'landscape_name', '') == 'Kattegat':
+                self._salinity_vals[:] = 34.069105813295
+        else:
+            self._depths.fill(30.0)
+            self._salinity_vals.fill(30.0)
+
+        # 2. Reference memory FIRST: computes veTotal/vt from the pre-store buffer and stores
+        #    the current (not-yet-moved) position. It is RNG-free and reads neither heading
+        #    nor the generation outputs, so running it before generation gives identical
+        #    ve_total/vt/stored-position AND leaves the RNG stream order unchanged vs inline.
+        self._update_reference_memory(mask)
+
+        # 3. Drive the module off the population RNG with full-precision f64 inputs
+        self._movement_module.rng = self.rng
+        state = self._movement_state
+        state.heading = self.heading
+        state.prev_angle = self.prev_angle  # f64 reference (no f32 rounding)
+        state.prev_log_mov = self.prev_log_mov  # f64 reference
+        state.is_dispersing = self.is_dispersing
+        state.ve_total = self._ve_total
+        state.vt_x = self._vt_x
+        state.vt_y = self._vt_y
+        env = EnvironmentContext(depth=self._depths, salinity=self._salinity_vals)
+
+        # 4. Module produces the CRW draws (angle + step). Deterrence is NOT passed here —
+        #    it enters via the heading composition below (matches inline).
+        result = self._movement_module.compute_step(self.x, self.y, state, env, mask)
+        np.copyto(self._pres_angle, result.pres_angle)
+        np.copyto(self._log_mov, result.log_mov)
+        self.prev_log_mov[mask] = self._log_mov[mask]
+
+        # 5. Turn heading, then SSLogis dispersal override (identical order to inline)
+        np.copyto(self._pre_heading, self.heading)
+        self.heading[mask] += self._pres_angle[mask]
+        self.heading[mask] %= 360.0
+        self._apply_dispersal_heading(mask)
+
+        # 6. Deterrence (+ memory avoidance + social) folded into the heading composition.
+        #    NOTE: the inline reference path does NOT apply memory avoidance to movement;
+        #    _avoidance_result is None unless a memory_module is injected, so this block is
+        #    inert (and thus mirrors inline) whenever no memory module is present — which is
+        #    the case in the parity test. It is retained here to preserve the module path's
+        #    memory-avoidance feature in production runs that DO inject a memory module.
+        if deterrence_vectors is not None:
+            d_dx, d_dy = deterrence_vectors
+            self.deter_strength[mask] = np.hypot(d_dx[mask], d_dy[mask])
+            self._was_deterred |= (self.deter_strength > 0) & mask
+        else:
+            d_dx = self._zero_f64
+            d_dy = self._zero_f64
+            self.deter_strength[mask] = 0.0
+
+        if self._avoidance_result is not None:
+            av = self._avoidance_result
+            d_dx = d_dx + av.avoidance_dx * av.avoidance_strength
+            d_dy = d_dy + av.avoidance_dy * av.avoidance_strength
+
+        if self._comm_enabled:
+            soc_dx, soc_dy = self._compute_social_vectors(mask, ambient_rl)
+            d_dx = d_dx + soc_dx
+            d_dy = d_dy + soc_dy
+
+        disp_step = getattr(self.params, 'mean_disp_dist', 1.6) / 0.4
+
+        # 7. Heading composition + displacement (shared validated NumPy path)
+        compose_movement(
+            self.heading, self._pres_angle, self._log_mov,
+            self._ve_total, self._vt_x, self._vt_y, d_dx, d_dy,
+            self.is_dispersing, mask, self.params.inertia_const, disp_step,
+            self._rads, self._dx, self._dy, self._step_dist,
+        )
+
+        # 8. Dispersal distance, prev_angle (total turn), prev_log_mov (identical to inline)
+        dispersing = mask & self.is_dispersing
+        if dispersing.any():
+            self.dispersal_distance_traveled[dispersing] += self._step_dist[dispersing]
+        total_turn = (self.heading - self._pre_heading + 180) % 360 - 180
+        self.prev_angle[mask] = total_turn[mask]
+        self.prev_log_mov[mask] = self._log_mov[mask]
+
+    def _update_movement_module_generic(
+        self,
+        mask: np.ndarray,
+        deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]],
+        ambient_rl: Optional[np.ndarray],
+    ) -> None:
+        """
+        Generic movement path for non-CRW modules (JASMINE physics, hybrid).
 
         Syncs population arrays with MovementState, calls the module,
-        and writes results back to population arrays.
+        and writes the fully composed displacement back to population arrays.
         """
         from cenop.movement.base import EnvironmentContext
 
@@ -2006,6 +2023,15 @@ class PorpoisePopulation:
             )
             self.death_causes.extend(causes.tolist())
 
+            # Finding #11: expose true per-cause death counts for this tick.
+            # causes already partitions dead agents (starvation > old_age >
+            # bycatch priority), so these sum to len(dead_indices) exactly.
+            causes_arr = np.asarray(causes)
+            self.last_step_deaths += int(dead_indices.size)
+            self.last_step_deaths_starvation += int(np.count_nonzero(causes_arr == "starvation"))
+            self.last_step_deaths_old_age += int(np.count_nonzero(causes_arr == "old_age"))
+            self.last_step_deaths_bycatch += int(np.count_nonzero(causes_arr == "bycatch"))
+
             self.active_mask[all_deaths] = False
             if self._debug_instrumentation or death_count > 0:
                 active_after = int(np.sum(self.active_mask))
@@ -2136,6 +2162,7 @@ class PorpoisePopulation:
                 inactive_slots = np.where(~self.active_mask)[0]
                 slots_to_use = min(n_calves, len(inactive_slots))
                 if slots_to_use > 0:
+                    self.last_step_births += int(slots_to_use)
                     new_slots = inactive_slots[:slots_to_use]
                     mother_indices = np.where(creates_calf)[0][:slots_to_use]
 
@@ -2153,6 +2180,7 @@ class PorpoisePopulation:
                     self.days_since_mating[new_slots] = -99
                     self.days_since_birth[new_slots] = -99
                     self.mating_day[new_slots] = -99
+                    self._reset_recycled_slots(new_slots)
 
             self.with_calf[weaning] = False
             self.days_since_birth[weaning] = -99
@@ -2163,6 +2191,106 @@ class PorpoisePopulation:
 
         lactating = female_mask & self.with_calf
         self.days_since_birth[lactating] += 1
+
+    def _reset_recycled_slots(self, slots: np.ndarray) -> None:
+        """Reset all persistent per-agent state for recycled (reused) slots to
+        newborn defaults.
+
+        Dead slots keep the previous occupant's memory / dispersal / CRW /
+        deterrence / prev-position state (`_check_mortality` only clears
+        `active_mask`). When a weaned calf reuses such a slot it must start from
+        clean newborn state, otherwise it inherits the dead porpoise's reference
+        memory, dispersal target, CRW headings, etc. Identity / position /
+        energy are set by the caller before this runs; here we clear the state
+        the caller does NOT reset. `_prev_x`/`_prev_y` are anchored to the
+        (already-set) calf position.
+        """
+        # CRW movement state (newborn defaults, see __init__ lines 125-126, 203)
+        self.prev_log_mov[slots] = 0.8
+        self.prev_angle[slots] = 10.0
+        self._prev_step_heading[slots] = 0.0
+
+        # Reference memory circular buffers (__init__ lines 155-162)
+        self._stored_util[slots, :] = 0.0
+        self._pos_history_x[slots, :] = 0.0
+        self._pos_history_y[slots, :] = 0.0
+        self._mem_ptr[slots] = 0
+        self._mem_count[slots] = 0
+        self._ve_total[slots] = 0.0
+        self._vt_x[slots] = 0.0
+        self._vt_y[slots] = 0.0
+
+        # Persistent spatial memory grid (__init__ line 225)
+        self.psm_buffer[slots, :, :, :] = 0.0
+
+        # Energy history / daily accumulators (__init__ lines 175-176, 190-192)
+        self._energy_history[slots, :] = 0.0
+        self._energy_ticks_today[slots] = 0.0
+        self._energy_consumed_today[slots] = 0.0
+        self.energy_consumed_daily[slots] = 0.0
+        self._energy_level_sum[slots] = 0.0
+
+        # Dispersal state (__init__ lines 195-202)
+        self.is_dispersing[slots] = False
+        self.days_declining_energy[slots] = 0
+        self.dispersal_target_x[slots] = 0.0
+        self.dispersal_target_y[slots] = 0.0
+        self.dispersal_target_distance[slots] = 0.0
+        self.dispersal_distance_traveled[slots] = 0.0
+        self.dispersal_start_x[slots] = 0.0
+        self.dispersal_start_y[slots] = 0.0
+
+        # Deterrence status (__init__ lines 146, 149, 151)
+        self.deter_strength[slots] = 0.0
+        self._turbine_deter_strength[slots] = 0.0
+        self._was_deterred[slots] = False
+
+        # Previous positions anchored to the calf's (already-set) location
+        self._prev_x[slots] = self.x[slots]
+        self._prev_y[slots] = self.y[slots]
+
+        # Per-agent PSM Python object: redraw preferred_distance (newborn, NOT the
+        # dead occupant's) and clear stale memory cells. Batch-draw from the seeded
+        # rng so it stays reproducible. The memory GRID (psm_buffer) is zeroed above.
+        k = int(len(slots))
+        new_pref = np.maximum(
+            1.0, self.rng.normal(self.params.psm_dist_mean, self.params.psm_dist_sd, k)
+        )
+        for i, s in enumerate(slots):
+            psm = self._psm_instances[int(s)]
+            psm._mem_cells.clear()
+            psm.preferred_distance = float(new_pref[i])
+
+        # Fresh unique identity so a recycled calf is not conflated with the dead
+        # occupant in output / dashboard trails.
+        self.ids[slots] = np.arange(self._next_id, self._next_id + k, dtype=np.int32)
+        self._next_id += k
+
+        # Nested behavior-FSM rows (present only when a behavior_fsm is attached).
+        if self._behavior_state is not None:
+            from cenop.behavior.states import BehaviorState
+
+            foraging = BehaviorState.FORAGING.value
+            self._behavior_state.state[slots] = foraging
+            self._behavior_state.previous_state[slots] = foraging
+            self._behavior_state.state_duration[slots] = 0
+
+        # Nested energy-state persistent rows (present only when an energy module is
+        # attached). NOTE: _energy_state.energy is a shared view of self.energy and is
+        # already set by the caller — reset only the other persistent fields.
+        if self._energy_state is not None:
+            from cenop.physiology.energy_budget import EnergyState
+
+            fresh = EnergyState.create(k)
+            es = self._energy_state
+            es.body_mass[slots] = fresh.body_mass
+            es.body_condition[slots] = fresh.body_condition
+            es.fat_reserve[slots] = fresh.fat_reserve
+            es.activity_level[slots] = fresh.activity_level
+            es.distance_traveled[slots] = fresh.distance_traveled
+            es.disturbance_energy_cost[slots] = fresh.disturbance_energy_cost
+            es.disturbance_events[slots] = fresh.disturbance_events
+            es.cumulative_energy_deficit[slots] = fresh.cumulative_energy_deficit
 
     def _step_jax(
         self,
@@ -2183,6 +2311,10 @@ class PorpoisePopulation:
         mask = self.active_mask
         active_before = int(np.sum(mask))
         self._global_tick += 1
+
+        # Refresh cached active indices each tick so dead slots are excluded from
+        # reference-memory updates (mirrors the Numba path in step()).
+        self._active_idx = np.flatnonzero(self.active_mask)
 
         if self._global_tick == 1:
             self._recompute_cell_indices()
@@ -2306,6 +2438,8 @@ class PorpoisePopulation:
             jnp.asarray(self.dispersal_target_distance),
             jnp.asarray(self.dispersal_distance_traveled),
             jnp.asarray(self._prev_step_heading),
+            jnp.asarray(self.dispersal_start_x),
+            jnp.asarray(self.dispersal_start_y),
             jnp.asarray(self._depths),
             jnp.asarray(self._salinity_vals),
             self._jax_depth_grid,
@@ -2324,6 +2458,8 @@ class PorpoisePopulation:
             float(self.params.m),
             float(self.params.inertia_const),
             float(self.params.mean_disp_dist),
+            float(getattr(self.params, 'psm_type2_random_angle', 20.0)),
+            float(getattr(self.params, 'psm_log', 0.6)),
             float(min_depth),
             int(world_w),
             int(world_h),
@@ -2435,7 +2571,7 @@ class PorpoisePopulation:
             jnp.float32(scaling),
             float(self.params.e_use_per_30_min),
             float(self.params.e_lact),
-            float(getattr(self.params, 'u_min', 0.001)),
+            0.01,  # DEPONS ADD_ARTIFICIAL_FOOD floor (matches NumPy/Numba/kernels)
             float(self._m_mort_prob_const),
             float(self._x_survival_const),
             float(getattr(self.params, 'bycatch_prob', 0.0)),
@@ -2447,6 +2583,13 @@ class PorpoisePopulation:
         # Write energy results back (shared view with _energy_state)
         np.copyto(self.energy, np.asarray(new_energy))
         np.copyto(self.active_mask, np.asarray(new_active_mask))
+        # Finding #11: JAX mortality happens inside jax_tick_energy with no
+        # per-cause split (JAX also never populated death_causes). Count total
+        # deaths from the active-mask delta (no births have occurred yet this
+        # tick) so totals aren't lost; per-cause attribution is unavailable here.
+        _jax_deaths = active_before - int(np.sum(self.active_mask))
+        if _jax_deaths > 0:
+            self.last_step_deaths += _jax_deaths
         np.copyto(self.with_calf, np.asarray(new_with_calf))
         np.copyto(self._energy_ticks_today, np.asarray(new_energy_ticks_today))
         np.copyto(self._energy_history, np.asarray(new_energy_history))
@@ -2545,6 +2688,16 @@ class PorpoisePopulation:
             ambient_rl: Ambient received level for social communication
         """
         mask = self.active_mask
+
+        # Finding #11: reset per-tick counters. This runs before the early return
+        # and before the JAX dispatch, so it covers the NumPy, Cython and JAX
+        # paths (_step_jax is only reached from here).
+        self.last_step_births = 0
+        self.last_step_deaths = 0
+        self.last_step_deaths_starvation = 0
+        self.last_step_deaths_old_age = 0
+        self.last_step_deaths_bycatch = 0
+
         if not mask.any():
             return
 
@@ -2589,11 +2742,29 @@ class PorpoisePopulation:
             world_w = self.landscape.width if self.landscape else self.params.world_width
             world_h = self.landscape.height if self.landscape else self.params.world_height
 
-            food_grid = (
-                self.landscape._food_value
-                if self.landscape
-                else np.full((world_h, world_w), 50.0, dtype=np.float32)
-            )
+            # food_grid must be float32 (kernel buffer dtype); homogeneous/ASC
+            # landscapes store float64. Cast to float32 and write the in-place
+            # depletion back afterwards so cross-tick food consumption is kept.
+            if self.landscape is not None:
+                _food_src = self.landscape._food_value
+                food_grid = (
+                    _food_src if _food_src.dtype == np.float32
+                    else np.ascontiguousarray(_food_src, dtype=np.float32)
+                )
+            else:
+                _food_src = None
+                food_grid = np.full((world_h, world_w), 50.0, dtype=np.float32)
+
+            # depth_grid drives the post-move land rollback (reference
+            # _apply_positions: destination on land -> restore pre-move cell).
+            if self.landscape is not None and getattr(self.landscape, '_depth', None) is not None:
+                depth_grid = np.ascontiguousarray(self.landscape._depth, dtype=np.float64)
+            else:
+                depth_grid = np.full((world_h, world_w), 20.0, dtype=np.float64)
+
+            # Mortality draws from the seeded generator (matches reference
+            # _check_mortality: self.rng.random(count)) for reproducibility.
+            rand_mort = self.rng.random(self.x.shape[0])
 
             self._cython_food_gained.fill(0.0)
             _cython_post_crw(
@@ -2612,8 +2783,10 @@ class PorpoisePopulation:
                 self._vt_x,
                 self._vt_y,
                 food_grid,
+                depth_grid,
                 self._cython_food_gained,
                 self.dispersal_distance_traveled,
+                rand_mort,
                 self.params.inertia_const,
                 disp_step,
                 self.params.e_use_per_30_min,
@@ -2624,6 +2797,10 @@ class PorpoisePopulation:
                 world_w,
                 world_h,
             )
+
+            # Write float32 food depletion back into the landscape store (if copied).
+            if _food_src is not None and food_grid is not _food_src:
+                _food_src[:] = food_grid
 
             # Post-Cython housekeeping
             self._recompute_cell_indices()
@@ -2640,6 +2817,9 @@ class PorpoisePopulation:
                     self.death_days.extend([sim_day] * len(dead_idx))
                     # Cython only performs starvation deaths
                     self.death_causes.extend(["starvation"] * len(dead_idx))
+                    # Finding #11: Cython path performs starvation-only deaths.
+                    self.last_step_deaths += int(len(dead_idx))
+                    self.last_step_deaths_starvation += int(len(dead_idx))
 
             # Dashboard stats
             n_active = len(self._active_idx)

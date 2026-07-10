@@ -63,38 +63,46 @@ class PersistentSpatialMemory:
         preferred_distance: Optional[float] = None,
         mem_cell_size: int = MEM_CELL_SIZE,
         rng: Optional[np.random.Generator] = None,
+        pref_dist_mean: float = 350.0,
+        pref_dist_sd: float = 100.0,
     ):
         """
         Initialize PSM.
-        
+
         Args:
             world_width: World width in grid cells
             world_height: World height in grid cells
             preferred_distance: Preferred dispersal distance in km
             mem_cell_size: Size of memory cells in grid units
             rng: NumPy random Generator for reproducibility
+            pref_dist_mean: Mean of the preferred-distance distribution (km)
+            pref_dist_sd: Std dev of the preferred-distance distribution (km)
         """
         self.world_width = world_width
         self.world_height = world_height
         self.mem_cell_size = mem_cell_size
         self.rng = rng if rng is not None else np.random.default_rng()
-        
+        self.pref_dist_mean = pref_dist_mean
+        self.pref_dist_sd = pref_dist_sd
+
         # Calculate memory grid dimensions
         self.cells_per_row = world_width // mem_cell_size
         self.cells_per_col = world_height // mem_cell_size
-        
+
         # Memory data stored as dict for efficiency (only visited cells)
         self._mem_cells: Dict[int, MemCellData] = {}
-        
+
         # Preferred dispersal distance (generated from distribution)
         if preferred_distance is None:
-            self.preferred_distance = self.generate_preferred_distance(rng=self.rng)
+            self.preferred_distance = self.generate_preferred_distance(
+                mean=self.pref_dist_mean, sd=self.pref_dist_sd, rng=self.rng
+            )
         else:
             self.preferred_distance = preferred_distance
-            
+
     @staticmethod
     def generate_preferred_distance(
-        mean: float = 300.0,
+        mean: float = 350.0,
         sd: float = 100.0,
         rng: Optional[np.random.Generator] = None,
     ) -> float:
@@ -309,9 +317,13 @@ class PersistentSpatialMemory:
         new_psm = PersistentSpatialMemory(
             world_width=self.world_width,
             world_height=self.world_height,
-            preferred_distance=self.generate_preferred_distance(rng=self.rng),
+            preferred_distance=self.generate_preferred_distance(
+                mean=self.pref_dist_mean, sd=self.pref_dist_sd, rng=self.rng
+            ),
             mem_cell_size=self.mem_cell_size,
             rng=self.rng,
+            pref_dist_mean=self.pref_dist_mean,
+            pref_dist_sd=self.pref_dist_sd,
         )
         
         # Copy memory cells

@@ -1,0 +1,36 @@
+name: Slow validation tier
+
+# The multi-year validation/physiology tests (@pytest.mark.slow, ~5 min). This repo has no
+# other CI gate for them, so run nightly and on demand — the pre-release validation tier.
+on:
+  schedule:
+    - cron: "0 3 * * *" # 03:00 UTC nightly
+  workflow_dispatch:
+
+jobs:
+  slow:
+    name: Slow tests (multi-year, Python 3.13)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0} # login shell so the micromamba env is activated
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up micromamba environment
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-file: environment.yml
+          cache-environment: true
+
+      - name: Install cenop (editable, no deps)
+        run: pip install -e . --no-deps
+
+      - name: Build Cython tick extension
+        working-directory: src/cenop/optimizations
+        run: python setup_cython.py build_ext --inplace
+
+      - name: Run slow validation tier
+        env:
+          JAX_PLATFORMS: cpu
+        run: pytest tests/ -m slow -q

@@ -35,13 +35,13 @@ TOOLTIPS = {
     
     # PSM parameters
     "psm_log": "Logistic increase rate for PSM memory cells. Controls how fast food memories strengthen. DEPONS default: 0.6",
-    "psm_dist": "Preferred dispersal distance distribution. Format: N(mean;std) in km. DEPONS default: N(300;100) = mean 300km, std 100km.",
+    "psm_dist": "Preferred dispersal distance distribution. Format: N(mean;std) in km. DEPONS default: N(350;100) = mean 350km, std 100km.",
     "psm_tol": "Tolerance distance (km) for reaching dispersal target. Dispersal ends when within this distance. DEPONS default: 5km.",
     "psm_angle": "Maximum turning angle (degrees) during PSM dispersal. Limits heading changes per step. DEPONS default: 20°.",
     
     # Energy parameters
-    "param_rS": "Satiation memory decay rate. Higher = faster forgetting of food satisfaction. DEPONS default: 0.04",
-    "param_rR": "Reference memory decay rate. Higher = faster forgetting of remembered food locations. DEPONS default: 0.04",
+    "param_rS": "Satiation memory decay rate. Higher = faster forgetting of food satisfaction. DEPONS default: 0.03",
+    "param_rR": "Reference memory decay rate. Higher = faster forgetting of remembered food locations. DEPONS default: 0.03",
     "param_rU": "Food replenishment rate. How fast depleted food patches recover. DEPONS default: 0.1",
 
     # JASMINE Mode settings
@@ -357,7 +357,7 @@ def _dispersal_settings_panel():
                                   ui.tags.span("ⓘ", title=TOOLTIPS["psm_dist"], 
                                                style="cursor: help; color: #0d7377;"),
                                   **{"for": "psm_dist"}),
-                    ui.input_text("psm_dist", None, value="N(300;100)"),
+                    ui.input_text("psm_dist", None, value="N(350;100)"),
                     class_="mb-3"
                 ),
                 ui.div(
@@ -396,7 +396,7 @@ def _energy_settings_panel():
                                   ui.tags.span("ⓘ", title=TOOLTIPS["param_rS"],
                                                style="cursor: help; color: #0d7377;"),
                                   **{"for": "param_rS"}),
-                    ui.input_numeric("param_rS", None, value=0.04, step=0.01),
+                    ui.input_numeric("param_rS", None, value=0.03, step=0.01),
                     class_="mb-2"
                 ),
                 ui.div(
@@ -404,7 +404,7 @@ def _energy_settings_panel():
                                   ui.tags.span("ⓘ", title=TOOLTIPS["param_rR"],
                                                style="cursor: help; color: #0d7377;"),
                                   **{"for": "param_rR"}),
-                    ui.input_numeric("param_rR", None, value=0.04, step=0.01),
+                    ui.input_numeric("param_rR", None, value=0.03, step=0.01),
                     class_="mb-2"
                 ),
                 ui.div(

@@ -448,7 +448,9 @@ class TurbineManager:
             if not np.any(deter_mask_local):
                 continue
                 
-            # If probabilistic response enabled, compute probability and scale strength
+            # DEPONS parity: turbine deterrence is deterministic — full strength once
+            # RL > threshold (only ships draw a Bernoulli reaction). JASMINE may opt into
+            # logistic response-probability scaling via params.deter_probabilistic (default False).
             if params.deter_probabilistic:
                 # Compute response probability for masked distances
                 p = response_probability_from_rl(
@@ -479,9 +481,14 @@ class TurbineManager:
                 s_final = s_final * p_full
             
             s = s_final[full_mask]
-            # DEPONS 3.2: raw displacement, NOT unit vector (Porpoise.java:1290-1292)
-            vec_x = dx_m[full_mask] * s * deter_coeff
-            vec_y = dy_m[full_mask] * s * deter_coeff
+            # DEPONS 3.2 (Porpoise.java:1290-1292): raw GRID displacement (cell
+            # units), NOT metres. dx_m/dy_m are metres (needed above for TL/range),
+            # so divide by cell_size to recover grid displacement — matching the
+            # scalar calculate_deterrence_vector path (grid units, no *cell_size).
+            grid_dx = dx_m[full_mask] / cell_size
+            grid_dy = dy_m[full_mask] / cell_size
+            vec_x = grid_dx * s * deter_coeff
+            vec_y = grid_dy * s * deter_coeff
             
             total_dx[full_mask] += vec_x
             total_dy[full_mask] += vec_y

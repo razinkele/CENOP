@@ -293,6 +293,9 @@ class DEPONSEnergyModule(EnergyModule):
         self.e_use_per_30_min = params.e_use_per_30_min
         self.e_lact = params.e_lact
         self.e_warm = params.e_warm
+        # Finding #10: activity (swimming) + disturbance drain are JASMINE-only.
+        self.e_use_per_km = params.e_use_per_km
+        self.jasmine_disturbance_energy = params.jasmine_disturbance_energy
 
         # Mortality parameters
         self.m_mort_prob_const = params.m_mort_prob_const
@@ -332,13 +335,14 @@ class DEPONSEnergyModule(EnergyModule):
 
             energy_bmr[mask] = bmr
 
-            # Activity cost (swimming) - currently minimal in DEPONS
-            energy_activity[mask] = context.current_speed[mask] * 0.0001 * scaling
+            # Activity cost (swimming) — JASMINE opt-in; DEPONS E_USE_PER_KM=0.0
+            energy_activity[mask] = context.current_speed[mask] * self.e_use_per_km * scaling
 
-            # Disturbance cost (increased activity during deterrence)
+            # Disturbance cost — JASMINE opt-in; DEPONS has no disturbance energy term
+            disturbance_coeff = 0.002 if self.jasmine_disturbance_energy else 0.0
             energy_disturbance[mask] = np.where(
                 context.is_disturbed[mask],
-                0.002 * context.deterrence_magnitude[mask] * scaling,
+                disturbance_coeff * context.deterrence_magnitude[mask] * scaling,
                 0.0
             ).astype(np.float32)
 
@@ -435,6 +439,8 @@ class DEPONSEnergyModule(EnergyModule):
         if np.any(mask):
             scaling = self._get_seasonal_scaling(context.current_month, int(np.sum(mask)))
 
+            disturbance_coeff = 0.002 if self.jasmine_disturbance_energy else 0.0
+
             try:
                 from cenop.optimizations.kernels import depons_bmr_cost_kernel
                 full_scaling = np.ones(count, dtype=np.float32)
@@ -445,6 +451,7 @@ class DEPONSEnergyModule(EnergyModule):
                     context.deterrence_magnitude,
                     mask, total_cost,
                     self.e_use_per_30_min, self.e_lact,
+                    self.e_use_per_km, disturbance_coeff,
                 )
                 return total_cost
             except ImportError:
@@ -453,11 +460,11 @@ class DEPONSEnergyModule(EnergyModule):
             bmr = 0.001 * scaling * self.e_use_per_30_min
             bmr = np.where(context.is_lactating[mask], bmr * self.e_lact, bmr)
 
-            activity = context.current_speed[mask] * 0.0001 * scaling
+            activity = context.current_speed[mask] * self.e_use_per_km * scaling
 
             disturbance = np.where(
                 context.is_disturbed[mask],
-                0.002 * context.deterrence_magnitude[mask] * scaling,
+                disturbance_coeff * context.deterrence_magnitude[mask] * scaling,
                 0.0
             ).astype(np.float32)
 

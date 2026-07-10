@@ -485,7 +485,7 @@ class TestDEPONSBmrCostKernel:
 
         depons_bmr_cost_kernel(
             speed, scaling, is_lactating, is_disturbed, deter_magnitude,
-            mask, out_cost, 4.5, 1.4,
+            mask, out_cost, 4.5, 1.4, 0.0001, 0.002,
         )
 
         assert out_cost[0] > 0
@@ -506,7 +506,7 @@ class TestDEPONSBmrCostKernel:
 
         depons_bmr_cost_kernel(
             speed, scaling, is_lactating, is_disturbed, deter_magnitude,
-            mask, out_cost, 4.5, 1.4,
+            mask, out_cost, 4.5, 1.4, 0.0001, 0.002,
         )
 
         assert out_cost[0] > 0
@@ -553,6 +553,8 @@ class TestDEPONSBmrCostKernel:
         depons_bmr_cost_kernel(
             speed, scaling, is_lact, is_dist, deter_mag,
             mask, nb_cost, module.e_use_per_30_min, module.e_lact,
+            module.e_use_per_km,
+            0.002 if module.jasmine_disturbance_energy else 0.0,
         )
 
         np.testing.assert_allclose(nb_cost[mask], py_cost[mask], atol=1e-6)
@@ -730,8 +732,12 @@ class TestParallelEquivalence:
         out1 = np.zeros(n, dtype=np.float32)
         out2 = np.zeros(n, dtype=np.float32)
 
-        depons_bmr_cost_kernel(speed, scaling, is_lact, is_dist, deter_mag, mask, out1, 4.5, 1.4)
-        depons_bmr_cost_kernel(speed, scaling, is_lact, is_dist, deter_mag, mask, out2, 4.5, 1.4)
+        depons_bmr_cost_kernel(
+            speed, scaling, is_lact, is_dist, deter_mag, mask, out1, 4.5, 1.4, 0.0001, 0.002
+        )
+        depons_bmr_cost_kernel(
+            speed, scaling, is_lact, is_dist, deter_mag, mask, out2, 4.5, 1.4, 0.0001, 0.002
+        )
 
         np.testing.assert_allclose(out1, out2, atol=1e-10)
 
@@ -924,3 +930,93 @@ class TestEatFoodKernelV2:
             dg,
         )
         assert eaten[0] == pytest.approx(100.0 * 0.99, rel=1e-5)
+
+
+class TestKernelParallelFlags:
+    """Small-N kernels must NOT be parallel=True.
+
+    Forking the full thread pool over a few hundred agents measured 6.7-8.5x
+    slower whole-tick than serial. Only regrow_food_kernel (~1e5 cells) keeps
+    parallel=True. See Finding #8.
+    """
+
+    SERIAL_KERNELS = [
+        "reflect_boundaries_kernel",
+        "turn_position_kernel",
+        "depons_bmr_cost_kernel",
+        "compute_ve_total_kernel",
+        "compute_attraction_kernel",
+        "heading_position_reflect_kernel",
+    ]
+
+    def test_small_n_kernels_not_parallel(self):
+        from cenop.optimizations import kernels as k
+        if not k.NUMBA_AVAILABLE:
+            pytest.skip("numba not installed — njit is a no-op passthrough")
+        offenders = []
+        for name in self.SERIAL_KERNELS:
+            opts = getattr(getattr(k, name), "targetoptions", {})
+            if opts.get("parallel") is True:
+                offenders.append(name)
+        assert not offenders, (
+            f"still parallel=True (strip it — over-forks the pool): {offenders}"
+        )
+
+    def test_regrow_food_kernel_stays_parallel(self):
+        from cenop.optimizations import kernels as k
+        if not k.NUMBA_AVAILABLE:
+            pytest.skip("numba not installed — njit is a no-op passthrough")
+        opts = getattr(k.regrow_food_kernel, "targetoptions", {})
+        assert opts.get("parallel") is True, (
+            "regrow_food_kernel (~1e5 cells) should keep parallel=True"
+        )
+
+
+class TestTurnPositionEquivalence:
+    """Guard: turn_position_kernel output must match a pure-NumPy reference so
+    the parallel->serial refactor provably changes no numbers. Passes before
+    AND after the fix (behavioral-equivalence guard)."""
+
+    @staticmethod
+    def _numpy_reference(x, y, heading, step_dist, turn_delta, world_w, world_h):
+        max_x = float(world_w - 1)
+        max_y = float(world_h - 1)
+        h = (heading + turn_delta) % 360.0
+        rads = h * np.pi / 180.0
+        nx = x + np.sin(rads) * step_dist
+        ny = y + np.cos(rads) * step_dist
+        # mirror the kernel's if/elif reflect (below wins over above), then clamp
+        nx = np.where(nx < 0.0, -nx,
+                      np.where(nx > max_x, 2.0 * max_x - nx, nx))
+        nx = np.clip(nx, 0.0, max_x)
+        ny = np.where(ny < 0.0, -ny,
+                      np.where(ny > max_y, 2.0 * max_y - ny, ny))
+        ny = np.clip(ny, 0.0, max_y)
+        xi = np.clip(nx.astype(np.int32), 0, world_w - 1)
+        yi = np.clip(ny.astype(np.int32), 0, world_h - 1)
+        return h, nx, ny, xi, yi
+
+    def test_turn_position_matches_numpy(self):
+        from cenop.optimizations.kernels import turn_position_kernel
+        rng = np.random.default_rng(2024)
+        n = 300
+        world_w = world_h = 200
+        x = rng.uniform(0, 199, n).astype(np.float64)
+        y = rng.uniform(0, 199, n).astype(np.float64)
+        heading = rng.uniform(0, 360, n).astype(np.float64)
+        step = rng.uniform(0, 30, n).astype(np.float64)  # << max_x so no double-reflect
+        turn_delta = 15.0
+        out_x = np.empty(n, dtype=np.float64)
+        out_y = np.empty(n, dtype=np.float64)
+        out_h = np.empty(n, dtype=np.float64)
+        out_xi = np.empty(n, dtype=np.int32)
+        out_yi = np.empty(n, dtype=np.int32)
+        turn_position_kernel(x, y, heading, step, turn_delta, world_w, world_h,
+                             out_x, out_y, out_h, out_xi, out_yi)
+        ref_h, ref_x, ref_y, ref_xi, ref_yi = self._numpy_reference(
+            x, y, heading, step, turn_delta, world_w, world_h)
+        np.testing.assert_allclose(out_x, ref_x, atol=1e-9)
+        np.testing.assert_allclose(out_y, ref_y, atol=1e-9)
+        np.testing.assert_allclose(out_h, ref_h, atol=1e-9)
+        np.testing.assert_array_equal(out_xi, ref_xi)
+        np.testing.assert_array_equal(out_yi, ref_yi)

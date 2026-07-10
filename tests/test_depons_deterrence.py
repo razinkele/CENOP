@@ -394,5 +394,73 @@ class TestProbabilisticDeterrence:
         assert probs[2] > 0.85, "High RL should give high probability"
 
 
+class TestTurbineDeterministicDeterrence:
+    """DEPONS parity: turbine deterrence applies FULL strength deterministically.
+
+    DEPONS (Porpoise.java deterPorpoise) applies the full turbine deterrence
+    strength (RL - threshold) whenever RL exceeds the threshold; only SHIPS draw a
+    Bernoulli reaction. CENOP previously scaled turbine strength by a logistic
+    response probability whenever params.deter_probabilistic was True (the old default),
+    diverging from DEPONS. The default is now DEPONS-pure (deterministic); JASMINE can
+    opt back into probabilistic scaling via SimulationParameters(deter_probabilistic=True).
+    """
+
+    def _make_manager(self):
+        from cenop.agents.turbine import Turbine, TurbineManager, TurbinePhase
+
+        t = Turbine(id=0, x=50.0, y=50.0, impact=200.0, phase=TurbinePhase.CONSTRUCTION)
+        t._is_active = True
+        mgr = TurbineManager([t])
+        mgr.phase = TurbinePhase.CONSTRUCTION
+        return mgr, t
+
+    def _expected_deterministic(self, t, px, py, params, cell_size=400.0):
+        # DEPONS deterministic turbine vector: raw GRID displacement * (RL - threshold) * coeff
+        # (Porpoise.java:1290-1292; matches TurbineManager's grid-unit vector — see
+        # turbine.py calculate_aggregate_deterrence_vectorized, commit 2b41903).
+        dx_m = (px - t.x) * cell_size
+        dy_m = (py - t.y) * cell_size
+        dist_m = np.maximum(np.hypot(dx_m, dy_m), 1.0)
+        tl = params.beta_hat * np.log10(dist_m) + params.alpha_hat * dist_m
+        rl = t.get_source_level() - tl
+        strength = np.where(rl - params.deter_threshold > 0, rl - params.deter_threshold, 0.0)
+        grid_dx = dx_m / cell_size
+        grid_dy = dy_m / cell_size
+        return grid_dx * strength * params.deter_coeff, grid_dy * strength * params.deter_coeff
+
+    def test_default_turbine_deterrence_is_deterministic(self):
+        """With DEPONS defaults an in-range turbine yields FULL, un-scaled strength."""
+        params = SimulationParameters()  # default must be DEPONS parity (deterministic)
+        mgr, t = self._make_manager()
+
+        # Porpoise 3 cells (1200 m) east of the turbine: in range, strength > 0.
+        # RL ~= 154.35 dB, strength ~= 2.350, deterministic dx ~= 0.0846 (grid units);
+        # probabilistic scaling (p ~= 0.615) would instead give dx ~= 0.0521.
+        px = np.array([53.0])
+        py = np.array([50.0])
+        dx, dy = mgr.calculate_aggregate_deterrence_vectorized(px, py, params, cell_size=400.0)
+
+        exp_dx, exp_dy = self._expected_deterministic(t, px, py, params)
+        assert exp_dx[0] > 0.0, "sanity: porpoise must be in range with positive strength"
+        np.testing.assert_allclose(dx, exp_dx, rtol=1e-6)
+        np.testing.assert_allclose(dy, exp_dy, rtol=1e-6)
+
+    def test_jasmine_can_opt_into_probabilistic_turbine_scaling(self):
+        """JASMINE opt-in: deter_probabilistic=True attenuates strength by response prob (p<1)."""
+        mgr, t = self._make_manager()
+        px = np.array([53.0])
+        py = np.array([50.0])
+
+        det = SimulationParameters()                          # deterministic (DEPONS)
+        prob = SimulationParameters(deter_probabilistic=True)  # JASMINE opt-in
+
+        dx_det, _ = mgr.calculate_aggregate_deterrence_vectorized(px, py, det, cell_size=400.0)
+        dx_prob, _ = mgr.calculate_aggregate_deterrence_vectorized(px, py, prob, cell_size=400.0)
+
+        # Same push direction (east, away from turbine) but probabilistic path is smaller.
+        assert dx_det[0] > 0.0 and dx_prob[0] > 0.0
+        assert dx_prob[0] < dx_det[0], "probabilistic scaling (p<1) must reduce magnitude"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

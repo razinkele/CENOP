@@ -421,3 +421,194 @@ def test_pregnancy_init_nonpregnant_mature_stay_ready():
     assert np.all(pop.pregnancy_status[not_pregnant] == 2), (
         f"Found {np.sum(pop.pregnancy_status[not_pregnant] == 0)} mature females incorrectly at status 0"
     )
+
+
+class TestWeanedCalfSlotReset:
+    """Finding #4: a calf recycled into a dead agent's slot must NOT inherit the
+    dead occupant's memory / dispersal / CRW / deterrence / prev-position state.
+    """
+
+    class _DetRNG:
+        """Deterministic RNG stub: forces calf creation (random > 0.5) and a
+        fixed energy draw, so the weaning path is fully reproducible."""
+
+        def random(self, n):
+            return np.ones(n, dtype=np.float64)
+
+        def normal(self, mean, sd, n):
+            return np.full(n, 10.0, dtype=np.float64)
+
+    def test_weaned_calf_does_not_inherit_dead_slot_state(self):
+        params = SimulationParameters()
+        pop = PorpoisePopulation(count=2, params=params)
+
+        # Slot 0 = mother ready to wean a calf this day.
+        pop.is_female[0] = True
+        pop.active_mask[0] = True
+        pop.with_calf[0] = True
+        pop.pregnancy_status[0] = 2
+        pop.days_since_birth[0] = params.nursing_time
+        pop.mating_day[0] = -99  # not on a mating day -> skip conceive branch
+        pop.age[0] = 6.0
+        pop.x[0] = 40.0
+        pop.y[0] = 55.0
+        pop.heading[0] = 90.0
+
+        # Slot 1 = a DEAD agent carrying distinctive persistent state.
+        pop.active_mask[1] = False
+        pop.is_dispersing[1] = True
+        pop.dispersal_target_x[1] = 999.0
+        pop.dispersal_target_y[1] = 888.0
+        pop.dispersal_target_distance[1] = 123.0
+        pop.dispersal_distance_traveled[1] = 45.0
+        pop.dispersal_start_x[1] = 12.0
+        pop.dispersal_start_y[1] = 34.0
+        pop.days_declining_energy[1] = 7
+        pop.prev_log_mov[1] = 5.5
+        pop.prev_angle[1] = 123.0
+        pop._prev_step_heading[1] = 77.0
+        pop._stored_util[1, :] = 7.0
+        pop._pos_history_x[1, :] = 3.0
+        pop._pos_history_y[1, :] = 4.0
+        pop._mem_count[1] = 50
+        pop._mem_ptr[1] = 33
+        pop._ve_total[1] = 9.0
+        pop._vt_x[1] = 1.0
+        pop._vt_y[1] = 2.0
+        pop.psm_buffer[1, :, :, :] = 6.0
+        pop._energy_history[1, :] = 8.0
+        pop._energy_ticks_today[1] = 3.0
+        pop._energy_consumed_today[1] = 5.0
+        pop.energy_consumed_daily[1] = 6.0
+        pop._energy_level_sum[1] = 7.0
+        pop.deter_strength[1] = 0.9
+        pop._turbine_deter_strength[1] = 0.8
+        pop._was_deterred[1] = True
+        pop._prev_x[1] = -1.0
+        pop._prev_y[1] = -2.0
+
+        # Deterministic weaning: force calf creation + fixed energy draw.
+        pop.rng = self._DetRNG()
+        pop._day_of_year = 0  # current_day = 0, != mating_day(-99): no conceive
+
+        pop._update_pregnancy_status(pop.active_mask.copy())
+
+        # The calf was recycled into slot 1.
+        assert pop.active_mask[1], "calf should have been created into the dead slot"
+
+        # Dispersal state must be newborn defaults, not inherited.
+        assert pop.is_dispersing[1] == False
+        assert pop.days_declining_energy[1] == 0
+        assert pop.dispersal_target_x[1] == 0.0
+        assert pop.dispersal_target_y[1] == 0.0
+        assert pop.dispersal_target_distance[1] == 0.0
+        assert pop.dispersal_distance_traveled[1] == 0.0
+        assert pop.dispersal_start_x[1] == 0.0
+        assert pop.dispersal_start_y[1] == 0.0
+
+        # CRW movement state = newborn defaults.
+        assert pop.prev_log_mov[1] == 0.8
+        assert pop.prev_angle[1] == 10.0
+        assert pop._prev_step_heading[1] == 0.0
+
+        # Reference memory cleared.
+        assert pop._mem_count[1] == 0
+        assert pop._mem_ptr[1] == 0
+        assert np.all(pop._stored_util[1] == 0.0)
+        assert np.all(pop._pos_history_x[1] == 0.0)
+        assert np.all(pop._pos_history_y[1] == 0.0)
+        assert pop._ve_total[1] == 0.0
+        assert pop._vt_x[1] == 0.0
+        assert pop._vt_y[1] == 0.0
+
+        # PSM grid + energy history cleared.
+        assert np.all(pop.psm_buffer[1] == 0.0)
+        assert np.all(pop._energy_history[1] == 0.0)
+        assert pop._energy_ticks_today[1] == 0.0
+        assert pop._energy_consumed_today[1] == 0.0
+        assert pop.energy_consumed_daily[1] == 0.0
+        assert pop._energy_level_sum[1] == 0.0
+
+        # Deterrence status cleared.
+        assert pop.deter_strength[1] == 0.0
+        assert pop._turbine_deter_strength[1] == 0.0
+        assert pop._was_deterred[1] == False
+
+        # Prev-position anchored to the calf's (mother-copied) location.
+        assert pop._prev_x[1] == pop.x[1]
+        assert pop._prev_y[1] == pop.y[1]
+        assert pop.x[1] == 40.0 and pop.y[1] == 55.0
+
+
+class TestRecycledSlotNestedStateReset:
+    """Follow-up to Finding #4: _reset_recycled_slots must ALSO clear the dead
+    occupant's per-agent PYTHON-OBJECT / nested-module / identity state that the
+    SoA-only reset leaves behind — PSM preferred_distance + memory, the export id,
+    and (when attached) the behavior-FSM + energy-state rows.
+    """
+
+    def _pop(self, count=6):
+        return PorpoisePopulation(count=count, params=SimulationParameters(random_seed=13))
+
+    def test_reset_redraws_psm_and_assigns_fresh_id(self):
+        from cenop.behavior.psm import MemCellData
+
+        pop = self._pop(6)
+        slot = 3
+        pop.x[slot] = 10.0
+        pop.y[slot] = 20.0
+        pop._psm_instances[slot].preferred_distance = 999.0  # dead-occupant sentinel
+        pop._psm_instances[slot]._mem_cells[0] = MemCellData(ticks_spent=5, food_obtained=2.0)
+        old_id = int(pop.ids[slot])
+
+        pop._reset_recycled_slots(np.array([slot], dtype=np.intp))
+
+        assert pop._psm_instances[slot].preferred_distance != 999.0  # redrawn
+        assert len(pop._psm_instances[slot]._mem_cells) == 0          # memory cleared
+        assert int(pop.ids[slot]) == 6                                # first recycled id == count
+        assert int(pop.ids[slot]) != old_id
+
+    def test_reset_clears_behavior_and_energy_rows_when_attached(self):
+        from cenop.behavior.states import BehaviorState, BehaviorStateVector
+        from cenop.physiology.energy_budget import EnergyState
+
+        pop = self._pop(6)
+        pop._behavior_state = BehaviorStateVector.create(pop.count)
+        pop._energy_state = EnergyState.create(pop.count)
+        pop._energy_state.energy = pop.energy  # preserve the shared-view invariant
+        slot = 2
+        pop.x[slot] = 5.0
+        pop.y[slot] = 5.0
+        pop._behavior_state.state[slot] = BehaviorState.DISPERSING.value
+        pop._behavior_state.state_duration[slot] = 42
+        pop._behavior_state.previous_state[slot] = BehaviorState.DISPERSING.value
+        pop._energy_state.cumulative_energy_deficit[slot] = 7.0
+        pop._energy_state.disturbance_events[slot] = 9
+        pop._energy_state.body_mass[slot] = 12345.0
+
+        pop._reset_recycled_slots(np.array([slot], dtype=np.intp))
+
+        assert pop._behavior_state.state[slot] == BehaviorState.FORAGING.value
+        assert pop._behavior_state.previous_state[slot] == BehaviorState.FORAGING.value
+        assert pop._behavior_state.state_duration[slot] == 0
+        fresh = EnergyState.create(1)
+        assert pop._energy_state.cumulative_energy_deficit[slot] == 0.0
+        assert pop._energy_state.disturbance_events[slot] == 0
+        assert pop._energy_state.body_mass[slot] == fresh.body_mass[0]
+        # The shared energy view must be untouched by the reset.
+        assert pop._energy_state.energy is pop.energy
+
+    def test_recycled_preferred_distance_is_deterministic(self):
+        p1 = self._pop(6)
+        p2 = self._pop(6)
+        for p in (p1, p2):
+            p.x[3] = 0.0
+            p.y[3] = 0.0
+        init_pref = p1._psm_instances[3].preferred_distance
+
+        p1._reset_recycled_slots(np.array([3], dtype=np.intp))
+        p2._reset_recycled_slots(np.array([3], dtype=np.intp))
+
+        # Same seed -> identical redraw (reproducible), and actually redrawn.
+        assert p1._psm_instances[3].preferred_distance == p2._psm_instances[3].preferred_distance
+        assert p1._psm_instances[3].preferred_distance != init_pref

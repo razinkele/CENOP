@@ -13,7 +13,7 @@ The movement module architecture supports:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import TYPE_CHECKING, Optional, Tuple
 
@@ -26,9 +26,10 @@ if TYPE_CHECKING:
 
 class MovementMode(Enum):
     """Movement model modes."""
-    DEPONS_CRW = auto()      # DEPONS Correlated Random Walk
+
+    DEPONS_CRW = auto()  # DEPONS Correlated Random Walk
     JASMINE_PHYSICS = auto()  # JASMINE physics-based movement
-    HYBRID = auto()           # Context-dependent switching
+    HYBRID = auto()  # Context-dependent switching
 
 
 @dataclass
@@ -39,23 +40,29 @@ class MovementState:
     These are updated each step and carry information between steps
     for correlated movement models.
     """
+
     # Previous step values (for correlation)
-    prev_heading: np.ndarray      # Previous heading (degrees)
-    prev_log_mov: np.ndarray      # Previous log10(movement distance)
-    prev_angle: np.ndarray        # Previous turning angle
+    prev_heading: np.ndarray  # Previous heading (degrees)
+    prev_log_mov: np.ndarray  # Previous log10(movement distance)
+    prev_angle: np.ndarray  # Previous turning angle
 
     # Current step values
-    heading: np.ndarray           # Current heading (degrees)
-    step_distance: np.ndarray     # Distance to move this step
-    dx: np.ndarray                # X displacement
-    dy: np.ndarray                # Y displacement
+    heading: np.ndarray  # Current heading (degrees)
+    step_distance: np.ndarray  # Distance to move this step
+    dx: np.ndarray  # X displacement
+    dy: np.ndarray  # Y displacement
 
     # Behavioral state
-    is_dispersing: np.ndarray     # Whether agent is in dispersal mode
+    is_dispersing: np.ndarray  # Whether agent is in dispersal mode
     dispersal_heading: np.ndarray  # Target heading for dispersal
 
+    # Reference-memory attraction inputs (populated by the population glue; None -> zeros)
+    ve_total: Optional[np.ndarray] = field(default=None, kw_only=True)
+    vt_x: Optional[np.ndarray] = field(default=None, kw_only=True)
+    vt_y: Optional[np.ndarray] = field(default=None, kw_only=True)
+
     @classmethod
-    def create(cls, count: int, rng: Optional[np.random.Generator] = None) -> 'MovementState':
+    def create(cls, count: int, rng: Optional[np.random.Generator] = None) -> "MovementState":
         """Create a new MovementState for count agents."""
         _rng = rng if rng is not None else np.random.default_rng()
         return cls(
@@ -78,21 +85,18 @@ class EnvironmentContext:
 
     Contains all environmental variables that can influence movement.
     """
-    depth: np.ndarray              # Water depth at current position
-    salinity: np.ndarray           # Salinity at current position
+
+    depth: np.ndarray  # Water depth at current position
+    salinity: np.ndarray  # Salinity at current position
     temperature: Optional[np.ndarray] = None  # Temperature (JASMINE)
-    current_u: Optional[np.ndarray] = None    # Current velocity U component (JASMINE)
-    current_v: Optional[np.ndarray] = None    # Current velocity V component (JASMINE)
+    current_u: Optional[np.ndarray] = None  # Current velocity U component (JASMINE)
+    current_v: Optional[np.ndarray] = None  # Current velocity V component (JASMINE)
     prey_density: Optional[np.ndarray] = None  # Prey density (JASMINE)
 
     @classmethod
     def from_landscape(
-        cls,
-        landscape: 'CellData',
-        x: np.ndarray,
-        y: np.ndarray,
-        month: int = 1
-    ) -> 'EnvironmentContext':
+        cls, landscape: "CellData", x: np.ndarray, y: np.ndarray, month: int = 1
+    ) -> "EnvironmentContext":
         """Create environment context from landscape data."""
         positions = np.column_stack((x, y))
 
@@ -105,7 +109,9 @@ class EnvironmentContext:
         )
 
     @classmethod
-    def create_homogeneous(cls, count: int, depth: float = 30.0, salinity: float = 30.0) -> 'EnvironmentContext':
+    def create_homogeneous(
+        cls, count: int, depth: float = 30.0, salinity: float = 30.0
+    ) -> "EnvironmentContext":
         """Create homogeneous environment context."""
         return cls(
             depth=np.full(count, depth, dtype=np.float32),
@@ -120,11 +126,16 @@ class MovementResult:
 
     Contains the computed displacements and updated state.
     """
-    dx: np.ndarray                 # X displacement
-    dy: np.ndarray                 # Y displacement
-    new_heading: np.ndarray        # Updated heading
-    step_distance: np.ndarray      # Distance moved
-    turning_angle: np.ndarray      # Turning angle applied
+
+    dx: np.ndarray  # X displacement
+    dy: np.ndarray  # Y displacement
+    new_heading: np.ndarray  # Updated heading
+    step_distance: np.ndarray  # Distance moved
+    turning_angle: np.ndarray  # Turning angle applied
+
+    # Raw DEPONS draws (before ref-mem/deterrence composition) for parity with inline path
+    pres_angle: Optional[np.ndarray] = None
+    log_mov: Optional[np.ndarray] = None
 
 
 class MovementModule(ABC):
@@ -138,7 +149,7 @@ class MovementModule(ABC):
     current positions, state, and environment to produce displacements.
     """
 
-    def __init__(self, params: 'SimulationParameters'):
+    def __init__(self, params: "SimulationParameters"):
         """
         Initialize movement module.
 

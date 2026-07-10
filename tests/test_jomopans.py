@@ -1,5 +1,7 @@
 """Tests for JOMOPANS ship source level model."""
 
+import math
+
 import pytest
 from cenop.agents.ship import VesselClass
 from cenop.behavior.jomopans_spl import jomopans_spl
@@ -40,3 +42,19 @@ class TestJomopansSPL:
         spl_small = jomopans_spl(VesselClass.TANKER, speed_knots=10.0, length_m=50.0)
         spl_large = jomopans_spl(VesselClass.TANKER, speed_knots=10.0, length_m=300.0)
         assert spl_large > spl_small
+
+    def test_non_positive_length_does_not_raise(self):
+        """A non-positive length (malformed ship file / ships.json) must NOT crash
+        the per-tick source-level call — it is clamped to a positive floor."""
+        for bad_len in (0.0, -5.0, -100.0):
+            spl = jomopans_spl(VesselClass.CARGO, speed_knots=10.0, length_m=bad_len)
+            assert math.isfinite(spl), f"length_m={bad_len} produced non-finite SPL {spl}"
+
+    def test_non_positive_length_clamps_to_minimum(self):
+        """A non-positive length is clamped to the 1.0 m floor, so its SPL equals
+        the SPL computed at length_m=1.0 (and positive lengths are untouched)."""
+        clamped = jomopans_spl(VesselClass.CARGO, speed_knots=10.0, length_m=-5.0)
+        floor = jomopans_spl(VesselClass.CARGO, speed_knots=10.0, length_m=1.0)
+        assert clamped == floor
+        # A valid positive length is NOT altered by the clamp.
+        assert jomopans_spl(VesselClass.CARGO, 10.0, 150.0) != floor

@@ -201,6 +201,42 @@ class TestDEPONSCRWMovementVectorized:
         distances = np.sqrt(result.dx**2 + result.dy**2)
         assert np.mean(distances) > 0.1
 
+    def test_result_exposes_raw_pres_angle_and_log_mov(self):
+        """Vectorized module must expose raw pres_angle/log_mov so the population can
+        reproduce the inline heading composition; step_distance = 10**log_mov / 4."""
+        params = SimulationParameters(porpoise_count=16)
+        mod = DEPONSCRWMovementVectorized(params, rng=np.random.default_rng(7))
+        state = MovementState.create(16, rng=np.random.default_rng(7))
+        env = EnvironmentContext.create_homogeneous(16)
+        x = np.full(16, 150.0, np.float32)
+        y = np.full(16, 150.0, np.float32)
+        mask = np.ones(16, dtype=bool)
+
+        res = mod.compute_step(x, y, state, env, mask)
+
+        assert res.pres_angle is not None
+        assert res.log_mov is not None
+        np.testing.assert_allclose(
+            res.step_distance[mask], (np.power(10.0, res.log_mov) / 4.0)[mask], rtol=1e-4
+        )
+
+    def test_uses_reject_redraw_not_clip(self):
+        """Large env_mod would make the raw angle exceed 180; the OLD code clipped to
+        exactly +/-180. Reject-and-redraw must keep |angle| strictly below 180."""
+        params = SimulationParameters(porpoise_count=200)
+        mod = DEPONSCRWMovementVectorized(params, rng=np.random.default_rng(3))
+        state = MovementState.create(200, rng=np.random.default_rng(3))
+        state.prev_angle[:] = 150.0
+        env = EnvironmentContext.create_homogeneous(200, depth=30.0, salinity=200.0)
+        x = np.full(200, 150.0, np.float32)
+        y = np.full(200, 150.0, np.float32)
+        mask = np.ones(200, dtype=bool)
+
+        res = mod.compute_step(x, y, state, env, mask)
+
+        assert not np.any(np.abs(res.turning_angle) == 180.0)
+        assert np.all(np.abs(res.turning_angle) <= 180.0)
+
 
 class TestJASMINEPhysicsMovement:
     """Test JASMINE physics-based movement."""
@@ -252,9 +288,7 @@ class TestHybridMovementSelector:
 
     def test_depons_only_strategy(self, params):
         """DEPONS_ONLY should always use DEPONS."""
-        selector = HybridMovementSelector(
-            params, TimeMode.DEPONS, HybridStrategy.DEPONS_ONLY
-        )
+        selector = HybridMovementSelector(params, TimeMode.DEPONS, HybridStrategy.DEPONS_ONLY)
 
         state = MovementState.create(10)
         env = EnvironmentContext.create_homogeneous(10)
@@ -265,14 +299,12 @@ class TestHybridMovementSelector:
         selector.compute_step(x, y, state, env, mask)
 
         stats = selector.get_statistics()
-        assert stats['depons_steps'] > 0
-        assert stats['jasmine_steps'] == 0
+        assert stats["depons_steps"] > 0
+        assert stats["jasmine_steps"] == 0
 
     def test_jasmine_only_strategy(self, params):
         """JASMINE_ONLY should always use JASMINE."""
-        selector = HybridMovementSelector(
-            params, TimeMode.JASMINE, HybridStrategy.JASMINE_ONLY
-        )
+        selector = HybridMovementSelector(params, TimeMode.JASMINE, HybridStrategy.JASMINE_ONLY)
 
         state = MovementState.create(10)
         env = EnvironmentContext.create_homogeneous(10)
@@ -283,8 +315,8 @@ class TestHybridMovementSelector:
         selector.compute_step(x, y, state, env, mask)
 
         stats = selector.get_statistics()
-        assert stats['jasmine_steps'] > 0
-        assert stats['depons_steps'] == 0
+        assert stats["jasmine_steps"] > 0
+        assert stats["depons_steps"] == 0
 
     def test_disturbance_aware_uses_depons_under_disturbance(self, params):
         """DISTURBANCE_AWARE should use DEPONS when disturbed."""
@@ -305,7 +337,7 @@ class TestHybridMovementSelector:
         selector.compute_step(x, y, state, env, mask, deter_dx, deter_dy)
 
         stats = selector.get_statistics()
-        assert stats['depons_steps'] > 0
+        assert stats["depons_steps"] > 0
 
     def test_from_time_mode_factory(self, params):
         """from_time_mode should create appropriate selector."""
@@ -345,9 +377,7 @@ class TestCreateMovementModule:
         params = SimulationParameters(porpoise_count=10)
 
         # Request JASMINE physics even in DEPONS time mode
-        movement = create_movement_module(
-            params, TimeMode.DEPONS, MovementMode.JASMINE_PHYSICS
-        )
+        movement = create_movement_module(params, TimeMode.DEPONS, MovementMode.JASMINE_PHYSICS)
 
         assert isinstance(movement, JASMINEPhysicsMovement)
 
@@ -415,11 +445,7 @@ class TestSimulationIntegration:
         """Simulation should use provided movement module."""
         from cenop.core.simulation import Simulation
 
-        params = SimulationParameters(
-            porpoise_count=10,
-            landscape="Homogeneous",
-            sim_years=1
-        )
+        params = SimulationParameters(porpoise_count=10, landscape="Homogeneous", sim_years=1)
 
         # Create movement module
         movement = DEPONSCRWMovementVectorized(params)
@@ -438,11 +464,7 @@ class TestSimulationIntegration:
         """Simulation should work without movement module (backward compat)."""
         from cenop.core.simulation import Simulation
 
-        params = SimulationParameters(
-            porpoise_count=10,
-            landscape="Homogeneous",
-            sim_years=1
-        )
+        params = SimulationParameters(porpoise_count=10, landscape="Homogeneous", sim_years=1)
 
         # Create simulation without movement module
         sim = Simulation(params)
@@ -458,11 +480,7 @@ class TestSimulationIntegration:
         """Modular movement should produce agent movement."""
         from cenop.core.simulation import Simulation
 
-        params = SimulationParameters(
-            porpoise_count=20,
-            landscape="Homogeneous",
-            sim_years=1
-        )
+        params = SimulationParameters(porpoise_count=20, landscape="Homogeneous", sim_years=1)
 
         # Create with JASMINE physics movement
         movement = JASMINEPhysicsMovement(params)
@@ -482,7 +500,7 @@ class TestSimulationIntegration:
         mask = sim.population_manager.active_mask
 
         # Calculate distances moved
-        distances = np.sqrt((final_x - initial_x)**2 + (final_y - initial_y)**2)
+        distances = np.sqrt((final_x - initial_x) ** 2 + (final_y - initial_y) ** 2)
         mean_distance = np.mean(distances[mask])
 
         assert mean_distance > 0.1, "Agents should have moved"

@@ -1,0 +1,42 @@
+name: CI
+
+# Fast gate: build the Cython extension and run the fast test suite (the slow tier is
+# deselected by `addopts = -m "not slow"` in pyproject.toml and runs nightly in slow.yml).
+on:
+  push:
+    branches: [CENOP-JASMINE]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Fast test suite (Python 3.13)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0} # login shell so the micromamba env is activated
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up micromamba environment
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-file: environment.yml
+          cache-environment: true
+
+      - name: Install cenop (editable, no deps)
+        run: pip install -e . --no-deps
+
+      - name: Build Cython tick extension
+        # The .so is gitignored, so build it in-place; otherwise the Cython + backend
+        # equivalence tests (incl. test_cython_postcrw_matches_reference) silently skip.
+        working-directory: src/cenop/optimizations
+        run: python setup_cython.py build_ext --inplace
+
+      - name: Run fast test suite
+        env:
+          JAX_PLATFORMS: cpu # force JAX onto CPU so its tests run instead of GPU-OOM-skipping
+        run: pytest tests/ -q

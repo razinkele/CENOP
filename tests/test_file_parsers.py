@@ -4,6 +4,8 @@ import pytest
 import numpy as np
 import tempfile
 import os
+import json
+import logging
 
 from cenop.landscape.cell_data import load_bathymetry_from_asc
 from cenop.agents.turbine import Turbine
@@ -189,5 +191,60 @@ class TestShipParser:
             route = routes.get("test_route")
             assert route is not None
             assert len(route.buoys) == 1  # Bad row skipped
+        finally:
+            os.unlink(path)
+
+
+class TestShipJsonLengthValidation:
+    """Ship JSON loader must reject non-positive vessel length (Finding #26)."""
+
+    def _write_json(self, obj) -> str:
+        fd, path = tempfile.mkstemp(suffix='.json')
+        with os.fdopen(fd, 'w') as f:
+            json.dump(obj, f)
+        return path
+
+    def _ship_json(self, length_val):
+        return {
+            "routes": [{"name": "r1", "route": [
+                {"x": 3976618.0, "y": 3363923.0, "speed": 10.0},
+                {"x": 3977018.0, "y": 3364323.0, "speed": 10.0},
+            ]}],
+            "ships": [{"name": "bad", "type": "Cargo",
+                       "length": length_val, "route": "r1", "start": 0}],
+        }
+
+    def test_negative_length_substitutes_default_and_warns(self, caplog):
+        path = self._write_json(self._ship_json(-5.0))
+        try:
+            manager = ShipManager()
+            with caplog.at_level(logging.WARNING, logger="CENOP"):
+                manager.load_from_json(path)
+            assert len(manager.ships) == 1
+            ship = manager.ships[0]
+            # Load-time validation replaces the bad length with the 100 m default.
+            assert ship.vessel_length == 100.0
+            assert ship.noise.length == 100.0
+            assert "length" in caplog.text.lower()
+            # And the per-tick source-level call must not raise.
+            assert ship.get_source_level() == ship.get_source_level()
+        finally:
+            os.unlink(path)
+
+    def test_zero_length_substitutes_default(self):
+        path = self._write_json(self._ship_json(0.0))
+        try:
+            manager = ShipManager()
+            manager.load_from_json(path)
+            assert manager.ships[0].vessel_length == 100.0
+        finally:
+            os.unlink(path)
+
+    def test_positive_length_preserved(self):
+        path = self._write_json(self._ship_json(180.0))
+        try:
+            manager = ShipManager()
+            manager.load_from_json(path)
+            assert manager.ships[0].vessel_length == 180.0
         finally:
             os.unlink(path)

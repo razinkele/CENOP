@@ -128,10 +128,6 @@ def dashboard_tab():
             ui.card_header(
                 ui.div(
                     "Spatial Distribution",
-                    ui.input_switch(
-                        "blade_animation", "Animate blades",
-                        value=True,
-                    ),
                     style="display: flex; justify-content: space-between; align-items: center; width: 100%;",
                 ),
             ),

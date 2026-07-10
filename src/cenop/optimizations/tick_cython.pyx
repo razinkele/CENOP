@@ -41,9 +41,11 @@ def cython_depons_post_crw(
     np.ndarray[f32, ndim=1] vt_y,
     # Landscape (read-write for food consumption)
     np.ndarray[f32, ndim=2] food_grid,
+    np.ndarray[f64, ndim=2] depth_grid,
     # OUTPUT arrays (caller pre-allocates)
     np.ndarray[f32, ndim=1] out_food_gained,
     np.ndarray[f32, ndim=1] dispersal_distance_traveled,
+    np.ndarray[f64, ndim=1] rand_mort,
     # Scalar parameters
     double inertia_const,
     double disp_step,
@@ -74,9 +76,8 @@ def cython_depons_post_crw(
     cdef double fract, food_available, eaten, scaling, bmr
     cdef double yearly_surv, step_surv
     cdef int xi_c, yi_c, deaths = 0
-
-    # Pre-generate mortality random draws (vectorized NumPy, fast)
-    cdef np.ndarray[f64, ndim=1] rand_mort = np.random.random(n)
+    cdef int post_xi, post_yi, reflected
+    cdef double pre_x, pre_y
 
     for i in range(n):
         if not active_mask[i]:
@@ -98,35 +99,68 @@ def cython_depons_post_crw(
         rad = new_h * DEG2RAD
         ddx = sin(rad) * step
         ddy = cos(rad) * step
-        nx = x[i] + ddx
-        ny = y[i] + ddy
+        pre_x = x[i]
+        pre_y = y[i]
+        nx = pre_x + ddx
+        ny = pre_y + ddy
 
+        reflected = 0
         if nx < 0:
             nx = -nx
+            ddx = -ddx
+            reflected = 1
         elif nx > max_x:
             nx = 2.0 * max_x - nx
+            ddx = -ddx
+            reflected = 1
         if nx < 0:
             nx = 0.0
         elif nx > max_x:
             nx = max_x
         if ny < 0:
             ny = -ny
+            ddy = -ddy
+            reflected = 1
         elif ny > max_y:
             ny = 2.0 * max_y - ny
+            ddy = -ddy
+            reflected = 1
         if ny < 0:
             ny = 0.0
         elif ny > max_y:
             ny = max_y
 
+        # DEPONS forward(): after a boundary bounce recompute heading from the
+        # sign-flipped displacement (reflect_boundaries flips dx/dy; heading =
+        # degrees(arctan2(dx, dy)) % 360). Non-reflected agents keep their heading.
+        if reflected:
+            new_h = fmod(atan2(ddx, ddy) * RAD2DEG, 360.0)
+            if new_h < 0.0:
+                new_h += 360.0
+            heading[i] = <f32>new_h
+
         # Pre-move cell index — DEPONS eats at the cell just left
         # (Porpoise.updEnergeticStatus → posList.get(1)), so derive the eat
         # cell from the position BEFORE write-back, not the post-move position.
-        xi_c = <int>x[i]
+        xi_c = <int>pre_x
         if xi_c < 0: xi_c = 0
         if xi_c >= world_w: xi_c = world_w - 1
-        yi_c = <int>y[i]
+        yi_c = <int>pre_y
         if yi_c < 0: yi_c = 0
         if yi_c >= world_h: yi_c = world_h - 1
+
+        # Post-move land rollback (reference _apply_positions, gated on landscape
+        # present): if the destination cell is land (depth <= 0), restore the
+        # pre-move position. Even 'Homogeneous' has land (depth -10) at the edges.
+        post_xi = <int>nx
+        if post_xi < 0: post_xi = 0
+        if post_xi >= world_w: post_xi = world_w - 1
+        post_yi = <int>ny
+        if post_yi < 0: post_yi = 0
+        if post_yi >= world_h: post_yi = world_h - 1
+        if depth_grid[post_yi, post_xi] <= 0.0:
+            nx = pre_x
+            ny = pre_y
 
         x[i] = <f32>nx
         y[i] = <f32>ny

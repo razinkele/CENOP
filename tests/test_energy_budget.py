@@ -9,20 +9,19 @@ Tests the physiology/energy system including:
 - Disturbance impact tracking
 """
 
-import pytest
 import numpy as np
+import pytest
 
+from cenop.parameters import SimulationParameters
 from cenop.physiology.energy_budget import (
-    EnergyMode,
-    EnergyState,
-    EnergyContext,
-    EnergyResult,
-    EnergyModule,
     DEPONSEnergyModule,
+    EnergyContext,
+    EnergyMode,
+    EnergyResult,
+    EnergyState,
     JASMINEEnergyModule,
     create_energy_module,
 )
-from cenop.parameters import SimulationParameters
 
 
 class TestEnergyState:
@@ -111,8 +110,8 @@ class TestDEPONSEnergyModule:
         food_available reaches this module. DEPONSEnergyModule must NOT apply
         hunger again, otherwise the fraction would be applied twice.
         """
-        context.food_available[:10] = 0.4   # Less food (e.g. hungry agents ate less)
-        context.food_available[10:] = 0.8   # More food
+        context.food_available[:10] = 0.4  # Less food (e.g. hungry agents ate less)
+        context.food_available[10:] = 0.8  # More food
 
         result = module.compute_energy_update(state, context, mask)
 
@@ -133,7 +132,7 @@ class TestDEPONSEnergyModule:
 
     def test_survival_probability_depends_on_energy(self, module, state, mask):
         """Lower energy should give lower survival probability."""
-        state.energy[:10] = 2.0   # Low energy
+        state.energy[:10] = 2.0  # Low energy
         state.energy[10:] = 15.0  # High energy
 
         surv_prob = module.compute_survival_probability(state, mask)
@@ -161,9 +160,7 @@ class TestDEPONSEnergyModule:
         assert np.all(result_default.energy_disturbance == 0.0)
 
         # JASMINE opt-in flag: disturbance now drains energy.
-        jasmine_params = SimulationParameters(
-            porpoise_count=20, jasmine_disturbance_energy=True
-        )
+        jasmine_params = SimulationParameters(porpoise_count=20, jasmine_disturbance_energy=True)
         flagged_module = DEPONSEnergyModule(jasmine_params)
         result_flagged = flagged_module.compute_energy_update(state, context, mask)
         assert np.all(result_flagged.energy_disturbance > 0.0)
@@ -214,8 +211,8 @@ class TestJASMINEEnergyModule:
 
     def test_body_mass_affects_bmr(self, module, state, context, mask):
         """Larger body mass should have higher BMR."""
-        state.body_mass[:10] = 30.0   # Smaller
-        state.body_mass[10:] = 70.0   # Larger
+        state.body_mass[:10] = 30.0  # Smaller
+        state.body_mass[10:] = 70.0  # Larger
 
         result = module.compute_energy_update(state, context, mask)
 
@@ -237,12 +234,14 @@ class TestJASMINEEnergyModule:
     def test_thermoregulation_in_cold_water(self, module, state, context, mask):
         """Cold water should increase thermoregulation cost."""
         context.water_temperature[:10] = 15.0  # Within thermoneutral
-        context.water_temperature[10:] = 2.0   # Below thermoneutral
+        context.water_temperature[10:] = 2.0  # Below thermoneutral
 
         result = module.compute_energy_update(state, context, mask)
 
         # Cold water should increase thermoregulation cost
-        assert np.mean(result.energy_thermoregulation[10:]) > np.mean(result.energy_thermoregulation[:10])
+        assert np.mean(result.energy_thermoregulation[10:]) > np.mean(
+            result.energy_thermoregulation[:10]
+        )
 
     def test_body_condition_updates(self, module, state, context, mask):
         """Body condition should update based on energy."""
@@ -270,9 +269,9 @@ class TestJASMINEEnergyModule:
         """Should return fitness metrics."""
         metrics = module.get_fitness_metrics(state, mask)
 
-        assert 'mean_body_condition' in metrics
-        assert 'total_disturbance_cost' in metrics
-        assert 'agents_in_deficit' in metrics
+        assert "mean_body_condition" in metrics
+        assert "total_disturbance_cost" in metrics
+        assert "agents_in_deficit" in metrics
 
 
 class TestFactoryFunction:
@@ -330,10 +329,10 @@ class TestEnergyStatistics:
 
         stats = module.get_statistics(state, mask)
 
-        assert 'mean_energy' in stats
-        assert 'min_energy' in stats
-        assert 'max_energy' in stats
-        assert stats['mean_energy'] == 10.0
+        assert "mean_energy" in stats
+        assert "min_energy" in stats
+        assert "max_energy" in stats
+        assert stats["mean_energy"] == 10.0
 
     def test_statistics_with_inactive_agents(self):
         """Statistics should only consider active agents."""
@@ -347,7 +346,7 @@ class TestEnergyStatistics:
 
         stats = module.get_statistics(state, mask)
 
-        assert stats['mean_energy'] == 10.0  # Only active agents
+        assert stats["mean_energy"] == 10.0  # Only active agents
 
 
 class TestDoubleHungerFix:
@@ -371,8 +370,12 @@ class TestDoubleHungerFix:
 
         result = module.compute_energy_update(state, ctx, mask)
 
-        np.testing.assert_allclose(result.energy_intake[mask], food[mask], rtol=1e-5,
-                                   err_msg="energy_intake should equal food_available (already hunger-weighted)")
+        np.testing.assert_allclose(
+            result.energy_intake[mask],
+            food[mask],
+            rtol=1e-5,
+            err_msg="energy_intake should equal food_available (already hunger-weighted)",
+        )
 
 
 class TestSeasonalScaling:
@@ -385,8 +388,9 @@ class TestSeasonalScaling:
 
         for month in [5, 6, 7, 8, 9]:
             scaling = module._get_seasonal_scaling(month, 1)
-            assert float(scaling) == pytest.approx(params.e_warm, abs=1e-5), \
-                f"Month {month} should use e_warm={params.e_warm}"
+            assert float(scaling) == pytest.approx(
+                params.e_warm, abs=1e-5
+            ), f"Month {month} should use e_warm={params.e_warm}"
 
     def test_transition_months_4_and_10(self):
         """Months 4 (Apr) and 10 (Oct) should use 1.15 transition."""
@@ -395,8 +399,9 @@ class TestSeasonalScaling:
 
         for month in [4, 10]:
             scaling = module._get_seasonal_scaling(month, 1)
-            assert float(scaling) == pytest.approx(1.15, abs=1e-5), \
-                f"Month {month} should use transition scaling 1.15"
+            assert float(scaling) == pytest.approx(
+                1.15, abs=1e-5
+            ), f"Month {month} should use transition scaling 1.15"
 
     def test_winter_months(self):
         """Months 1-3, 11-12 should use scaling=1.0."""
@@ -405,8 +410,9 @@ class TestSeasonalScaling:
 
         for month in [1, 2, 3, 11, 12]:
             scaling = module._get_seasonal_scaling(month, 1)
-            assert float(scaling) == pytest.approx(1.0, abs=1e-5), \
-                f"Month {month} should use winter scaling 1.0"
+            assert float(scaling) == pytest.approx(
+                1.0, abs=1e-5
+            ), f"Month {month} should use winter scaling 1.0"
 
     def test_warm_water_bmr_uses_correct_months(self):
         """The warm-water multiplier should use months 5-9, not 6-10."""
@@ -425,8 +431,9 @@ class TestSeasonalScaling:
         result_oct = module.compute_energy_update(state, ctx_oct, mask)
 
         # May (warm, 1.3) > October (transition, 1.15) BMR
-        assert result_may.energy_bmr[0] > result_oct.energy_bmr[0], \
-            "May (warm) should have higher BMR than October (transition)"
+        assert (
+            result_may.energy_bmr[0] > result_oct.energy_bmr[0]
+        ), "May (warm) should have higher BMR than October (transition)"
 
 
 class TestEnergyModuleSplit:

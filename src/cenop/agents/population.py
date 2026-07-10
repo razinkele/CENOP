@@ -5,27 +5,26 @@ This module implements a Structure-of-Arrays (SoA) approach to managing
 the porpoise population efficiently using NumPy.
 """
 
-import numpy as np
-import pandas as pd
-from dataclasses import dataclass
-from typing import Optional, Tuple, Dict, Any, List
-from collections import defaultdict
-
-from cenop.parameters.simulation_params import SimulationParameters
-from cenop.landscape.cell_data import CellData
-from cenop.parameters.demography import AGE_DISTRIBUTION_FREQUENCY
-from cenop.behavior.psm import PersistentSpatialMemory
-from cenop.behavior.sound import calculate_received_level, response_probability_from_rl
-from cenop.movement.crw_core import generate_crw_angle_step, compose_movement
-
 import logging
 import os
+from typing import Any
 
-logger = logging.getLogger('cenop.agents.population')
+import numpy as np
+import pandas as pd
+
+from cenop.behavior.psm import PersistentSpatialMemory
+from cenop.behavior.sound import calculate_received_level, response_probability_from_rl
+from cenop.landscape.cell_data import CellData
+from cenop.movement.crw_core import compose_movement, generate_crw_angle_step
+from cenop.parameters.demography import AGE_DISTRIBUTION_FREQUENCY
+from cenop.parameters.simulation_params import SimulationParameters
+
+logger = logging.getLogger("cenop.agents.population")
 
 # Import scipy.spatial at module level for performance
 try:
     from scipy.spatial import cKDTree as _cKDTree
+
     _HAS_SCIPY = True
 except ImportError as _e:
     _cKDTree = None
@@ -34,8 +33,11 @@ except ImportError as _e:
 
 # Import numba helpers at module level
 try:
-    from cenop.optimizations.numba_helpers import accumulate_social_totals as _accumulate_social_totals
+    from cenop.optimizations.numba_helpers import (
+        accumulate_social_totals as _accumulate_social_totals,
+    )
     from cenop.optimizations.numba_helpers import weighted_direction_sum as _weighted_direction_sum
+
     _HAS_NUMBA_HELPERS = True
 except ImportError as _e:
     _accumulate_social_totals = None
@@ -44,13 +46,13 @@ except ImportError as _e:
     logger.warning("Numba helpers unavailable (NumPy fallback): %s", _e)
 
 try:
-    from cenop.optimizations.kernels import reflect_boundaries_kernel as _reflect_kernel
     from cenop.optimizations.kernels import crw_angle_step_kernel as _crw_kernel
-    from cenop.optimizations.kernels import seed_numba_rng as _seed_numba_rng
-    from cenop.optimizations.kernels import turn_position_kernel as _turn_kernel
-    from cenop.optimizations.kernels import social_accumulate_kernel as _social_kernel
-    from cenop.optimizations.kernels import social_sound_kernel as _social_sound_kernel
     from cenop.optimizations.kernels import heading_position_reflect_kernel as _heading_kernel
+    from cenop.optimizations.kernels import reflect_boundaries_kernel as _reflect_kernel
+    from cenop.optimizations.kernels import seed_numba_rng as _seed_numba_rng
+    from cenop.optimizations.kernels import social_sound_kernel as _social_sound_kernel
+    from cenop.optimizations.kernels import turn_position_kernel as _turn_kernel
+
     _HAS_KERNELS = True
 except ImportError as _e:
     _HAS_KERNELS = False
@@ -58,6 +60,7 @@ except ImportError as _e:
 
 try:
     from cenop.optimizations.kernels import land_avoidance_kernel as _land_avoidance_kernel
+
     _HAS_LAND_KERNEL = True
 except ImportError as _e:
     _land_avoidance_kernel = None
@@ -66,18 +69,20 @@ except ImportError as _e:
 
 try:
     from cenop.optimizations.tick_jax import (
-        jax_tick_movement,
-        jax_tick_energy,
         is_jax_available,
+        jax_tick_energy,
+        jax_tick_movement,
     )
+
     _HAS_JAX = is_jax_available()
 except ImportError as _e:
     _HAS_JAX = False
     logger.warning("JAX tick unavailable (Numba/NumPy fallback): %s", _e)
 
 try:
-    from cenop.optimizations.tick_cython import cython_depons_post_crw as _cython_post_crw
     from cenop.optimizations.tick_cython import cython_available
+    from cenop.optimizations.tick_cython import cython_depons_post_crw as _cython_post_crw
+
     _HAS_CYTHON = cython_available()
 except ImportError as _e:
     _HAS_CYTHON = False
@@ -90,15 +95,23 @@ class PorpoisePopulation:
     Manages the entire population of porpoises using vectorized numpy arrays.
     Replaces the list of individual Porpoise objects for performance.
     """
-    
-    def __init__(self, count: int, params: SimulationParameters, landscape: Optional[CellData] = None,
-                 movement_module=None, behavior_fsm=None, energy_module=None, memory_module=None):
+
+    def __init__(
+        self,
+        count: int,
+        params: SimulationParameters,
+        landscape: CellData | None = None,
+        movement_module=None,
+        behavior_fsm=None,
+        energy_module=None,
+        memory_module=None,
+    ):
         self.params = params
         self.landscape = landscape
-        self.count = count # Initial count capacity
+        self.count = count  # Initial count capacity
 
         # Random generator for reproducibility (per-instance)
-        seed = getattr(self.params, 'random_seed', None)
+        seed = getattr(self.params, "random_seed", None)
         self.rng = np.random.default_rng(seed)
 
         # JASMINE integration modules (Phase 2-5)
@@ -107,34 +120,36 @@ class PorpoisePopulation:
         self._energy_module = energy_module
         self._memory_module = memory_module
         self._behavior_state = None
-        
+
         # === Arrays (Structure of Arrays) ===
         # Use a dictionary of arrays or direct attributes? Direct attributes are faster.
-        
+
         # Identity
         self.ids = np.arange(count, dtype=np.int32)
         self._next_id = count  # next unique id assigned to a recycled (weaned-calf) slot
-        self.active_mask = np.ones(count, dtype=bool) # True if alive/active slot
+        self.active_mask = np.ones(count, dtype=bool)  # True if alive/active slot
         self._active_idx = np.arange(count, dtype=np.intp)  # cached np.where(active_mask)[0]
 
         # Position
         self.x = np.zeros(count, dtype=np.float32)
         self.y = np.zeros(count, dtype=np.float32)
         self.heading = np.zeros(count, dtype=np.float32)
-        
+
         # Movement State
         self.prev_log_mov = np.full(count, 0.8, dtype=np.float64)
         self.prev_angle = np.full(count, 10.0, dtype=np.float64)
-        
+
         # Demography
         self.is_female = np.zeros(count, dtype=bool)
         self.age = np.zeros(count, dtype=np.float32)
-        
+
         # Energy
-        self.energy = self.rng.normal(
-            params.energy_init_mean, params.energy_init_sd, count
-        ).clip(0, 20).astype(np.float32)
-        
+        self.energy = (
+            self.rng.normal(params.energy_init_mean, params.energy_init_sd, count)
+            .clip(0, 20)
+            .astype(np.float32)
+        )
+
         # Reproduction
         self.mating_day = np.full(count, -99, dtype=np.int16)
         self.days_since_mating = np.full(count, -99, dtype=np.int16)
@@ -142,7 +157,7 @@ class PorpoisePopulation:
         self.with_calf = np.zeros(count, dtype=bool)
         # Pregnancy FSM (DEPONS 3.2: 0=immature, 1=pregnant, 2=ready-to-mate)
         self.pregnancy_status = np.zeros(count, dtype=np.int8)
-        
+
         # Deterrence status
         self.deter_strength = np.zeros(count, dtype=np.float32)
         # Turbine-only deterrence strength — DEPONS deactivates dispersal for turbine/
@@ -152,40 +167,43 @@ class PorpoisePopulation:
         self._was_deterred = np.zeros(count, dtype=bool)
 
         # Reference memory circular buffers (DEPONS 3.2 — 120 entries per agent)
-        _REF_MEM_SIZE = params.ref_mem_size if hasattr(params, 'ref_mem_size') else 120
+        _REF_MEM_SIZE = params.ref_mem_size if hasattr(params, "ref_mem_size") else 120
         self._stored_util = np.zeros((count, _REF_MEM_SIZE), dtype=np.float32)
         self._pos_history_x = np.zeros((count, _REF_MEM_SIZE), dtype=np.float32)
         self._pos_history_y = np.zeros((count, _REF_MEM_SIZE), dtype=np.float32)
-        self._mem_ptr = np.zeros(count, dtype=np.int32)   # Current write index
+        self._mem_ptr = np.zeros(count, dtype=np.int32)  # Current write index
         self._mem_count = np.zeros(count, dtype=np.int32)  # Entries stored
         self._ve_total = np.zeros(count, dtype=np.float32)  # Expected food value
         self._vt_x = np.zeros(count, dtype=np.float32)  # Attraction vector x
         self._vt_y = np.zeros(count, dtype=np.float32)  # Attraction vector y
 
         # Pre-compute float64 decay tables (avoid per-tick astype in RefMem kernels)
-        from cenop.behavior.ref_mem import get_work_mem_strength_table, get_ref_mem_strength_table
+        from cenop.behavior.ref_mem import get_ref_mem_strength_table, get_work_mem_strength_table
+
         self._work_mem_table_f64 = get_work_mem_strength_table(
             self.params.r_s, _REF_MEM_SIZE
         ).astype(np.float64)
-        self._ref_mem_table_f64 = get_ref_mem_strength_table(
-            self.params.r_r, _REF_MEM_SIZE
-        ).astype(np.float64)
+        self._ref_mem_table_f64 = get_ref_mem_strength_table(self.params.r_r, _REF_MEM_SIZE).astype(
+            np.float64
+        )
 
         # === PSM and Dispersal State (Phase 2) ===
         # Energy history for dispersal trigger (5 days = 5*48 ticks)
-        self._energy_history = np.zeros((count, 10), dtype=np.float32)  # Last 10 daily averages (need 8 for energy-based stop)
-        self._energy_ticks_today = np.zeros(count, dtype=np.float32)   # Energy sum for current day
+        self._energy_history = np.zeros(
+            (count, 10), dtype=np.float32
+        )  # Last 10 daily averages (need 8 for energy-based stop)
+        self._energy_ticks_today = np.zeros(count, dtype=np.float32)  # Energy sum for current day
         self._tick_counter = 0  # Track ticks for daily updates
         self._last_energy_update_tick = -1  # last global tick when energy was accumulated
 
         # Per-step energy metrics (exposed for dashboard)
-        self.avg_food_gained = 0.0   # Average food gained per active agent (last step)
-        self.avg_energy_cost = 0.0   # Average energy cost per active agent (last step)
+        self.avg_food_gained = 0.0  # Average food gained per active agent (last step)
+        self.avg_energy_cost = 0.0  # Average energy cost per active agent (last step)
 
         # G10: Death age distribution (DEPONS parity — Globals.getListOfDeadAge/Day)
-        self.death_ages: list = []       # Ages (int years) of dead agents
-        self.death_days: list = []       # Simulation day when each death occurred
-        self.death_causes: list = []     # Cause string per death
+        self.death_ages: list = []  # Ages (int years) of dead agents
+        self.death_days: list = []  # Simulation day when each death occurred
+        self.death_causes: list = []  # Cause string per death
 
         # Finding #11: true per-tick birth/death counters, reset each step().
         # Simulation reads these instead of inferring births/deaths from the net
@@ -201,7 +219,7 @@ class PorpoisePopulation:
         self._energy_consumed_today = np.zeros(count, dtype=np.float32)
         self.energy_consumed_daily = np.zeros(count, dtype=np.float32)  # Yesterday's total
         self._energy_level_sum = np.zeros(count, dtype=np.float32)  # Sum for daily average
-        
+
         # Dispersal state
         self.is_dispersing = np.zeros(count, dtype=bool)
         self.days_declining_energy = np.zeros(count, dtype=np.int16)
@@ -219,11 +237,11 @@ class PorpoisePopulation:
         if landscape is not None:
             world_w = landscape.width
             world_h = landscape.height
-        
+
         # Store basic PSM config per agent (preferred distance)
         # We can still use the class for helper methods or just store distances array
         # For full optimization, we replace list of objects with arrays
-        self._psm_instances: List[PersistentSpatialMemory] = [
+        self._psm_instances: list[PersistentSpatialMemory] = [
             PersistentSpatialMemory(
                 world_w,
                 world_h,
@@ -233,7 +251,7 @@ class PorpoisePopulation:
             )
             for _ in range(count)
         ]
-        
+
         # Vectorized PSM Storage (Optimized)
         # Shape: (count, grid_h, grid_w, 2) where last dim is [ticks, food]
         # Grid size is roughly width/5
@@ -241,7 +259,7 @@ class PorpoisePopulation:
         self.psm_cols = world_w // self.psm_cell_size
         self.psm_rows = world_h // self.psm_cell_size
         self.psm_buffer = np.zeros((count, self.psm_rows, self.psm_cols, 2), dtype=np.float32)
-        
+
         # Initialize
         self._initialize_population()
 
@@ -253,26 +271,33 @@ class PorpoisePopulation:
 
         if self._behavior_fsm is not None:
             from cenop.behavior.states import BehaviorStateVector
+
             self._behavior_state = BehaviorStateVector.create(count)
 
         if self._energy_module is not None:
             from cenop.physiology.energy_budget import EnergyState
+
             self._energy_state = EnergyState.create(count, initial_energy=10.0)
             # Share energy array: eliminates 3 full-array sync copies per tick
             self._energy_state.energy = self.energy
 
         if self._memory_module is not None:
             from cenop.behavior.disturbance_memory import DisturbanceMemoryState
+
             self._memory_state = DisturbanceMemoryState.create(count)
 
         if self._movement_module is not None:
             from cenop.movement.base import MovementState
+
             self._movement_state = MovementState.create(count)
 
         # (self.rng created early in __init__, before array initialization)
 
         # Instrumentation controls: set via params.debug_instrumentation or env var CENOP_INSTRUMENT
-        self._debug_instrumentation = bool(getattr(self.params, 'debug_instrumentation', False) or os.getenv('CENOP_INSTRUMENT', '0').lower() in ('1','true','yes'))
+        self._debug_instrumentation = bool(
+            getattr(self.params, "debug_instrumentation", False)
+            or os.getenv("CENOP_INSTRUMENT", "0").lower() in ("1", "true", "yes")
+        )
         self._instrument_events: list = []
         # Global tick counter for instrumentation logs (incremented each step)
         self._global_tick: int = 0
@@ -283,16 +308,20 @@ class PorpoisePopulation:
         # Counter (ticks) until next recompute; 0 forces recompute now
         self._neighbor_recompute_counter: int = 0
         # Current recompute interval (may adapt over time)
-        self._current_recompute_interval: int = max(1, int(getattr(self.params, 'communication_recompute_interval', 4)))
-        
+        self._current_recompute_interval: int = max(
+            1, int(getattr(self.params, "communication_recompute_interval", 4))
+        )
+
         # Cache communication parameters to avoid repeated getattr calls
-        self._comm_enabled: bool = bool(getattr(self.params, 'communication_enabled', False))
-        self._comm_range_km: float = float(getattr(self.params, 'communication_range_km', 10.0))
+        self._comm_enabled: bool = bool(getattr(self.params, "communication_enabled", False))
+        self._comm_range_km: float = float(getattr(self.params, "communication_range_km", 10.0))
         self._comm_cells: int = max(1, int(np.ceil((self._comm_range_km * 1000.0) / 400.0)))
-        self._comm_source_level: float = float(getattr(self.params, 'communication_source_level', 160.0))
-        self._comm_threshold: float = float(getattr(self.params, 'communication_threshold', 120.0))
-        self._comm_slope: float = float(getattr(self.params, 'communication_response_slope', 0.2))
-        self._social_weight: float = float(getattr(self.params, 'social_weight', 0.3))
+        self._comm_source_level: float = float(
+            getattr(self.params, "communication_source_level", 160.0)
+        )
+        self._comm_threshold: float = float(getattr(self.params, "communication_threshold", 120.0))
+        self._comm_slope: float = float(getattr(self.params, "communication_response_slope", 0.2))
+        self._social_weight: float = float(getattr(self.params, "social_weight", 0.3))
         # Previous positions for displacement calculation (in cell units)
         self._prev_x = self.x.copy()
         self._prev_y = self.y.copy()
@@ -319,8 +348,9 @@ class PorpoisePopulation:
         self._scaling_factor = np.zeros(count, dtype=np.float32)
 
         # === Pre-allocated reference memory workspace ===
-        _REF_MEM_SIZE_INIT = params.ref_mem_size if hasattr(params, 'ref_mem_size') else 120
+        _REF_MEM_SIZE_INIT = params.ref_mem_size if hasattr(params, "ref_mem_size") else 120
         from cenop.behavior.ref_mem import RefMemWorkspace
+
         self._ref_mem_workspace = RefMemWorkspace.create(count, _REF_MEM_SIZE_INIT)
 
         # Zero buffer for fused kernel (deterrence/social when absent)
@@ -377,14 +407,12 @@ class PorpoisePopulation:
         # === Pre-allocated energy/context buffers ===
         self._water_temp = np.full(count, 10.0, dtype=np.float32)
         self._food_quality = np.ones(count, dtype=np.float32)
-        self._behavioral_state_buf = np.full(
-            count, 0, dtype=np.int32
-        )  # 0 = FORAGING
+        self._behavioral_state_buf = np.full(count, 0, dtype=np.int32)  # 0 = FORAGING
         self._speed_ms = np.zeros(count, dtype=np.float32)
 
         # === Cached mortality constants (avoid per-tick getattr) ===
-        self._m_mort_prob_const = getattr(params, 'm_mort_prob_const', 1.0)
-        self._x_survival_const = getattr(params, 'x_survival_const', 0.4)
+        self._m_mort_prob_const = getattr(params, "m_mort_prob_const", 1.0)
+        self._x_survival_const = getattr(params, "x_survival_const", 0.4)
 
         # === Pre-allocated arrays for land avoidance loop ===
         self._on_land = np.zeros(count, dtype=bool)
@@ -406,22 +434,18 @@ class PorpoisePopulation:
             self._skip_land_avoidance = True
         elif getattr(self.landscape, "landscape_name", "") == "Homogeneous":
             self._skip_land_avoidance = True
-        elif (
-            hasattr(self.landscape, "_depth")
-            and self.landscape._depth is not None
-        ):
+        elif hasattr(self.landscape, "_depth") and self.landscape._depth is not None:
             depth = self.landscape._depth
             has_land = np.isnan(depth).any()
             if not has_land:
                 min_depth = self.params.min_depth if self.params else 1.0
-                self._skip_land_avoidance = bool(
-                    np.all(depth >= min_depth)
-                )
+                self._skip_land_avoidance = bool(np.all(depth >= min_depth))
 
         # === JAX acceleration ===
-        self._use_jax = _HAS_JAX and getattr(params, 'use_jax', True)
+        self._use_jax = _HAS_JAX and getattr(params, "use_jax", True)
         if self._use_jax:
             import jax
+
             _jax_seed = params.random_seed if params.random_seed else 42
             self._jax_key = jax.random.PRNGKey(_jax_seed)
 
@@ -464,13 +488,13 @@ class PorpoisePopulation:
     def population_size(self) -> int:
         """Current number of living porpoises."""
         return np.sum(self.active_mask)
-        
+
     def _initialize_population(self):
         """Vectorized initialization logic with land avoidance."""
         # Random positions - must place in water (depth > 0)
         world_w = self.params.world_width
         world_h = self.params.world_height
-        
+
         if self.landscape is None:
             # No landscape - use simple random positions
             self.x = self.rng.uniform(0, world_w, self.count).astype(np.float32)
@@ -480,18 +504,22 @@ class PorpoisePopulation:
             lw = self.landscape.width
             lh = self.landscape.height
             min_depth = self.params.min_depth if self.params else 1.0
-            
-            if hasattr(self.landscape, '_depth') and self.landscape._depth is not None:
+
+            if hasattr(self.landscape, "_depth") and self.landscape._depth is not None:
                 # Find all valid water cells (depth >= min_depth AND not NaN)
                 # NaN values indicate land (-9999 NODATA converted to NaN during loading)
                 valid_mask = (self.landscape._depth >= min_depth) & ~np.isnan(self.landscape._depth)
                 valid_y, valid_x = np.where(valid_mask)
-                
+
                 if len(valid_x) > 0:
                     # Randomly select from valid positions
                     indices = self.rng.choice(len(valid_x), self.count, replace=True)
-                    self.x = valid_x[indices].astype(np.float32) + self.rng.uniform(0, 1, self.count).astype(np.float32)
-                    self.y = valid_y[indices].astype(np.float32) + self.rng.uniform(0, 1, self.count).astype(np.float32)
+                    self.x = valid_x[indices].astype(np.float32) + self.rng.uniform(
+                        0, 1, self.count
+                    ).astype(np.float32)
+                    self.y = valid_y[indices].astype(np.float32) + self.rng.uniform(
+                        0, 1, self.count
+                    ).astype(np.float32)
                 else:
                     # Fallback - no valid water cells (shouldn't happen)
                     self.x = self.rng.uniform(0, lw, self.count).astype(np.float32)
@@ -500,20 +528,19 @@ class PorpoisePopulation:
                 # No depth data - use full area
                 self.x = self.rng.uniform(0, lw, self.count).astype(np.float32)
                 self.y = self.rng.uniform(0, lh, self.count).astype(np.float32)
-            
+
         self.heading = self.rng.uniform(0, 360, self.count).astype(np.float32)
-        
+
         # Sex ratio 50%
         self.is_female = self.rng.choice([True, False], self.count)
-        
+
         # Ages from distribution
-        self.age = self.rng.choice(
-            AGE_DISTRIBUTION_FREQUENCY, 
-            size=self.count
-        ).astype(np.float32)
+        self.age = self.rng.choice(AGE_DISTRIBUTION_FREQUENCY, size=self.count).astype(np.float32)
 
         # --- Social communication implementation (vectorized neighborhood search) ---
-        def _compute_social_vectors(self, mask: np.ndarray, ambient_rl: Optional[np.ndarray] = None) -> Tuple[np.ndarray, np.ndarray]:
+        def _compute_social_vectors(
+            self, mask: np.ndarray, ambient_rl: np.ndarray | None = None
+        ) -> tuple[np.ndarray, np.ndarray]:
             """
             Compute social attraction vectors for active agents.
 
@@ -552,7 +579,7 @@ class PorpoisePopulation:
                     rebuild = True
                 elif self._neighbor_recompute_counter <= 0:
                     rebuild = True
-                elif len(active_idx) != self._social_cache.get('active_len', -1):
+                elif len(active_idx) != self._social_cache.get("active_len", -1):
                     # If active set size changed (births/deaths), rebuild
                     rebuild = True
 
@@ -563,23 +590,23 @@ class PorpoisePopulation:
                     try:
                         # Use query_pairs with output_type='ndarray' for maximum speed
                         # Returns (N, 2) array of indices into pos_active
-                        pairs = kd_active.query_pairs(radius, output_type='ndarray')
+                        pairs = kd_active.query_pairs(radius, output_type="ndarray")
                     except (TypeError, ValueError) as e:
                         # Fallback for older scipy versions that don't support output_type
                         logger.debug("query_pairs fallback: %s", e)
                         pairs = np.array([], dtype=np.int32).reshape(0, 2)
-                        
+
                         try:
                             # Fallback to query_ball_tree only if query_pairs failed
                             neigh_lists = kd_active.query_ball_tree(kd_active, r=radius)
-                             # Build canonical pairs using pre-allocation
+                            # Build canonical pairs using pre-allocation
                             # First pass: count pairs where j > i
                             total_pairs = 0
                             for i_local, neigh in enumerate(neigh_lists):
                                 for j_local in neigh:
                                     if j_local > i_local:
                                         total_pairs += 1
-                            
+
                             if total_pairs > 0:
                                 rows_fb = np.empty(total_pairs, dtype=np.int32)
                                 cols_fb = np.empty(total_pairs, dtype=np.int32)
@@ -598,7 +625,12 @@ class PorpoisePopulation:
                     if pairs.shape[0] == 0:
                         # Reset cache counter to avoid repeated work
                         self._neighbor_recompute_counter = interval
-                        self._social_cache = {'idx_i': np.array([], dtype=np.int64), 'idx_j': np.array([], dtype=np.int64), 'ncols': 0, 'active_len': len(active_idx)}
+                        self._social_cache = {
+                            "idx_i": np.array([], dtype=np.int64),
+                            "idx_j": np.array([], dtype=np.int64),
+                            "ncols": 0,
+                            "active_len": len(active_idx),
+                        }
                         return social_dx, social_dy
 
                     # Extract rows and cols directly
@@ -612,19 +644,19 @@ class PorpoisePopulation:
                     ncols = len(idx_i)
 
                     self._social_cache = {
-                        'idx_i': idx_i,
-                        'idx_j': idx_j,
-                        'ncols': ncols,
-                        'active_len': len(active_idx)
+                        "idx_i": idx_i,
+                        "idx_j": idx_j,
+                        "ncols": ncols,
+                        "active_len": len(active_idx),
                     }
 
                     # Reset counter
                     self._neighbor_recompute_counter = interval
                 else:
                     # Reuse cached topology
-                    idx_i = self._social_cache['idx_i']
-                    idx_j = self._social_cache['idx_j']
-                    ncols = self._social_cache['ncols']
+                    idx_i = self._social_cache["idx_i"]
+                    idx_j = self._social_cache["idx_j"]
+                    ncols = self._social_cache["ncols"]
 
                 if ncols == 0:
                     # Nothing to do
@@ -633,7 +665,7 @@ class PorpoisePopulation:
 
                 # Coordinates - use float32 to save memory bandwidth (precision is sufficient for agents)
                 # Avoid copy if possible, but indexing creates copy anyway
-                xi = self.x[idx_i] # already float32
+                xi = self.x[idx_i]  # already float32
                 yi = self.y[idx_i]
                 xj = self.x[idx_j]
                 yj = self.y[idx_j]
@@ -689,27 +721,15 @@ class PorpoisePopulation:
                     )
 
                     if ambient_rl is not None:
-                        ambient_i = np.asarray(
-                            ambient_rl[idx_i], dtype=np.float32
-                        )
+                        ambient_i = np.asarray(ambient_rl[idx_i], dtype=np.float32)
                         snr_i = rl_pairs - ambient_i
-                        p_i = response_probability_from_rl(
-                            snr_i, threshold, slope
-                        )
-                        ambient_j = np.asarray(
-                            ambient_rl[idx_j], dtype=np.float32
-                        )
+                        p_i = response_probability_from_rl(snr_i, threshold, slope)
+                        ambient_j = np.asarray(ambient_rl[idx_j], dtype=np.float32)
                         snr_j = rl_pairs - ambient_j
-                        p_j = response_probability_from_rl(
-                            snr_j, threshold, slope
-                        )
+                        p_j = response_probability_from_rl(snr_j, threshold, slope)
                     else:
-                        p_i = response_probability_from_rl(
-                            rl_pairs, threshold, slope
-                        )
-                        p_j = response_probability_from_rl(
-                            rl_pairs, threshold, slope
-                        )
+                        p_i = response_probability_from_rl(rl_pairs, threshold, slope)
+                        p_j = response_probability_from_rl(rl_pairs, threshold, slope)
 
                     ux_ij = dx_ij / dist
                     uy_ij = dy_ij / dist
@@ -744,15 +764,11 @@ class PorpoisePopulation:
                 unit_y[nonzero] = uy_total[nonzero] / norm[nonzero]
 
                 # Step distances for active agents
-                step_dist = (10.0 ** self.prev_log_mov) / 4.0
+                step_dist = (10.0**self.prev_log_mov) / 4.0
 
                 # Apply social weight and step length into pre-allocated output
-                self._social_out_dx[:] = (
-                    unit_x * social_weight * step_dist
-                ).astype(np.float32)
-                self._social_out_dy[:] = (
-                    unit_y * social_weight * step_dist
-                ).astype(np.float32)
+                self._social_out_dx[:] = (unit_x * social_weight * step_dist).astype(np.float32)
+                self._social_out_dy[:] = (unit_y * social_weight * step_dist).astype(np.float32)
                 social_dx = self._social_out_dx
                 social_dy = self._social_out_dy
 
@@ -771,8 +787,8 @@ class PorpoisePopulation:
             # Fallback: previous binning approach (keeps behavior stable when SciPy not available)
             bin_size = max(1, comm_cells)
             bins = {}
-            xs = (self.x[active_idx].astype(int))
-            ys = (self.y[active_idx].astype(int))
+            xs = self.x[active_idx].astype(int)
+            ys = self.y[active_idx].astype(int)
             bx = (xs // bin_size).astype(int)
             by = (ys // bin_size).astype(int)
             for idx, bxi, byi in zip(active_idx, bx, by):
@@ -815,7 +831,9 @@ class PorpoisePopulation:
                 dist_m = dist_cells_in * 400.0
 
                 # Received levels from callers at listener
-                rl = calculate_received_level(source_level, dist_m, self.params.alpha_hat, self.params.beta_hat)
+                rl = calculate_received_level(
+                    source_level, dist_m, self.params.alpha_hat, self.params.beta_hat
+                )
 
                 # Mask by ambient noise if provided (SNR)
                 if ambient_rl is not None and idx < len(ambient_rl):
@@ -832,7 +850,9 @@ class PorpoisePopulation:
 
                 # Weighted direction (use numba helper if available)
                 if _HAS_NUMBA_HELPERS and _weighted_direction_sum is not None:
-                    ux, uy, sw = _weighted_direction_sum(dxs.astype(np.float64), dys.astype(np.float64), weights)
+                    ux, uy, sw = _weighted_direction_sum(
+                        dxs.astype(np.float64), dys.astype(np.float64), weights
+                    )
                 else:
                     # Fallback: pure numpy weighted sum
                     dist_safe = np.maximum(np.hypot(dxs, dys), 1e-6)
@@ -889,8 +909,8 @@ class PorpoisePopulation:
     def _update_movement(
         self,
         mask: np.ndarray,
-        deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]],
-        ambient_rl: Optional[np.ndarray],
+        deterrence_vectors: tuple[np.ndarray, np.ndarray] | None,
+        ambient_rl: np.ndarray | None,
     ) -> None:
         """
         Update movement calculations for active agents.
@@ -910,19 +930,15 @@ class PorpoisePopulation:
         if self.landscape is not None:
             np.copyto(
                 self._depths,
-                self.landscape.get_depths_vectorized(
-                    None, xi=self._cell_xi, yi=self._cell_yi
-                ),
+                self.landscape.get_depths_vectorized(None, xi=self._cell_xi, yi=self._cell_yi),
             )
             np.copyto(
                 self._salinity_vals,
-                self.landscape.get_salinities_vectorized(
-                    None, xi=self._cell_xi, yi=self._cell_yi
-                ),
+                self.landscape.get_salinities_vectorized(None, xi=self._cell_xi, yi=self._cell_yi),
             )
             # Kattegat salinity override (Java Porpoise.java:339-345)
-            landscape_name = getattr(self.landscape, 'landscape_name', '')
-            if landscape_name == 'Kattegat':
+            landscape_name = getattr(self.landscape, "landscape_name", "")
+            if landscape_name == "Kattegat":
                 self._salinity_vals[:] = 34.069105813295
         else:
             # Default values when no landscape (homogeneous case)
@@ -934,27 +950,51 @@ class PorpoisePopulation:
             # Numba kernel: computes pres_angle and log_mov with rejection sampling
             # Seed Numba's internal RNG from NumPy's RNG for reproducibility
             _seed_numba_rng(self.rng.integers(0, 2**31))
-            np.copyto(self._rand_angle, self.rng.normal(self.params.r2_mean, self.params.r2_sd, self.count))
-            np.copyto(self._rand_len, self.rng.normal(self.params.r1_mean, self.params.r1_sd, self.count))
+            np.copyto(
+                self._rand_angle,
+                self.rng.normal(self.params.r2_mean, self.params.r2_sd, self.count),
+            )
+            np.copyto(
+                self._rand_len, self.rng.normal(self.params.r1_mean, self.params.r1_sd, self.count)
+            )
             _crw_kernel(
-                self.prev_angle, self.prev_log_mov,
-                self._depths, self._salinity_vals,
-                self._rand_angle, self._rand_len, mask,
-                self._pres_angle, self._log_mov,
-                self.params.corr_angle_base, self.params.corr_angle_bathy,
-                self.params.corr_angle_salinity, self.params.corr_angle_base_sd,
-                self.params.corr_logmov_length, self.params.corr_logmov_bathy,
-                self.params.corr_logmov_salinity, self.params.max_mov,
-                self.params.r2_mean, self.params.r2_sd,
-                self.params.r1_mean, self.params.r1_sd,
+                self.prev_angle,
+                self.prev_log_mov,
+                self._depths,
+                self._salinity_vals,
+                self._rand_angle,
+                self._rand_len,
+                mask,
+                self._pres_angle,
+                self._log_mov,
+                self.params.corr_angle_base,
+                self.params.corr_angle_bathy,
+                self.params.corr_angle_salinity,
+                self.params.corr_angle_base_sd,
+                self.params.corr_logmov_length,
+                self.params.corr_logmov_bathy,
+                self.params.corr_logmov_salinity,
+                self.params.max_mov,
+                self.params.r2_mean,
+                self.params.r2_sd,
+                self.params.r1_mean,
+                self.params.r1_sd,
                 self.params.m,
             )
         else:
             generate_crw_angle_step(
-                self.rng, self.prev_angle, self.prev_log_mov,
-                self._depths, self._salinity_vals, mask, self.params,
-                self._pres_angle, self._log_mov, self._env_mod_angle,
-                self._rand_angle, self._rand_len,
+                self.rng,
+                self.prev_angle,
+                self.prev_log_mov,
+                self._depths,
+                self._salinity_vals,
+                mask,
+                self.params,
+                self._pres_angle,
+                self._log_mov,
+                self._env_mod_angle,
+                self._rand_angle,
+                self._rand_len,
             )
             self.prev_log_mov[mask] = self._log_mov[mask]
 
@@ -986,26 +1026,51 @@ class PorpoisePopulation:
             d_dx = d_dx + soc_dx  # new array — won't modify originals
             d_dy = d_dy + soc_dy
 
-        disp_step = getattr(self.params, 'mean_disp_dist', 1.6) / 0.4
+        disp_step = getattr(self.params, "mean_disp_dist", 1.6) / 0.4
         world_w = self.landscape.width if self.landscape else self.params.world_width
         world_h = self.landscape.height if self.landscape else self.params.world_height
 
         if _HAS_KERNELS:
             _heading_kernel(
-                self.heading, self._pres_angle, self._log_mov,
-                self._ve_total, self._vt_x, self._vt_y,
-                d_dx, d_dy, self.x, self.y,
-                mask, self.is_dispersing,
-                self.params.inertia_const, disp_step,
-                world_w, world_h,
-                self.heading, self._dx, self._dy, self._step_dist,
+                self.heading,
+                self._pres_angle,
+                self._log_mov,
+                self._ve_total,
+                self._vt_x,
+                self._vt_y,
+                d_dx,
+                d_dy,
+                self.x,
+                self.y,
+                mask,
+                self.is_dispersing,
+                self.params.inertia_const,
+                disp_step,
+                world_w,
+                world_h,
+                self.heading,
+                self._dx,
+                self._dy,
+                self._step_dist,
             )
         else:
             compose_movement(
-                self.heading, self._pres_angle, self._log_mov,
-                self._ve_total, self._vt_x, self._vt_y, d_dx, d_dy,
-                self.is_dispersing, mask, self.params.inertia_const, disp_step,
-                self._rads, self._dx, self._dy, self._step_dist,
+                self.heading,
+                self._pres_angle,
+                self._log_mov,
+                self._ve_total,
+                self._vt_x,
+                self._vt_y,
+                d_dx,
+                d_dy,
+                self.is_dispersing,
+                mask,
+                self.params.inertia_const,
+                disp_step,
+                self._rads,
+                self._dx,
+                self._dy,
+                self._step_dist,
             )
 
         # Update dispersal distance traveled
@@ -1028,15 +1093,14 @@ class PorpoisePopulation:
         - distLogX = 3 * distPercent - 1.5
         - newHeading = previousStepHeading + angleDelta
         """
-        from cenop.behavior.dispersal import sslogis
 
         dispersing = mask & self.is_dispersing
         if not dispersing.any():
             return
 
         n = int(np.sum(dispersing))
-        psm_angle = getattr(self.params, 'psm_type2_random_angle', 20.0)
-        psm_log = getattr(self.params, 'psm_log', 0.6)
+        psm_angle = getattr(self.params, "psm_type2_random_angle", 20.0)
+        psm_log = getattr(self.params, "psm_log", 0.6)
 
         # Random angle delta: U(-psm_angle, +psm_angle)
         delta = self.rng.uniform(-psm_angle, psm_angle, n)
@@ -1047,7 +1111,7 @@ class PorpoisePopulation:
         dy_disp = self.y[dispersing] - self.dispersal_start_y[dispersing]
         dist_traveled = np.sqrt(dx_disp**2 + dy_disp**2)
 
-        with np.errstate(divide='ignore', invalid='ignore'):
+        with np.errstate(divide="ignore", invalid="ignore"):
             dist_percent = np.where(target_dist > 0, dist_traveled / target_dist, 0.0)
         dist_percent = np.nan_to_num(dist_percent, nan=0.0, posinf=1.0, neginf=0.0)
         dist_percent = np.clip(dist_percent, 0.0, 10.0)
@@ -1072,8 +1136,8 @@ class PorpoisePopulation:
     def _update_movement_jasmine(
         self,
         mask: np.ndarray,
-        deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]],
-        ambient_rl: Optional[np.ndarray],
+        deterrence_vectors: tuple[np.ndarray, np.ndarray] | None,
+        ambient_rl: np.ndarray | None,
     ) -> None:
         """JASMINE movement path — parity mirror of the inline NumPy CRW path.
 
@@ -1096,11 +1160,15 @@ class PorpoisePopulation:
 
         # 1. Environment at current cells (identical to inline, incl. Kattegat override)
         if self.landscape is not None:
-            np.copyto(self._depths, self.landscape.get_depths_vectorized(
-                None, xi=self._cell_xi, yi=self._cell_yi))
-            np.copyto(self._salinity_vals, self.landscape.get_salinities_vectorized(
-                None, xi=self._cell_xi, yi=self._cell_yi))
-            if getattr(self.landscape, 'landscape_name', '') == 'Kattegat':
+            np.copyto(
+                self._depths,
+                self.landscape.get_depths_vectorized(None, xi=self._cell_xi, yi=self._cell_yi),
+            )
+            np.copyto(
+                self._salinity_vals,
+                self.landscape.get_salinities_vectorized(None, xi=self._cell_xi, yi=self._cell_yi),
+            )
+            if getattr(self.landscape, "landscape_name", "") == "Kattegat":
                 self._salinity_vals[:] = 34.069105813295
         else:
             self._depths.fill(30.0)
@@ -1162,14 +1230,26 @@ class PorpoisePopulation:
             d_dx = d_dx + soc_dx
             d_dy = d_dy + soc_dy
 
-        disp_step = getattr(self.params, 'mean_disp_dist', 1.6) / 0.4
+        disp_step = getattr(self.params, "mean_disp_dist", 1.6) / 0.4
 
         # 7. Heading composition + displacement (shared validated NumPy path)
         compose_movement(
-            self.heading, self._pres_angle, self._log_mov,
-            self._ve_total, self._vt_x, self._vt_y, d_dx, d_dy,
-            self.is_dispersing, mask, self.params.inertia_const, disp_step,
-            self._rads, self._dx, self._dy, self._step_dist,
+            self.heading,
+            self._pres_angle,
+            self._log_mov,
+            self._ve_total,
+            self._vt_x,
+            self._vt_y,
+            d_dx,
+            d_dy,
+            self.is_dispersing,
+            mask,
+            self.params.inertia_const,
+            disp_step,
+            self._rads,
+            self._dx,
+            self._dy,
+            self._step_dist,
         )
 
         # 8. Dispersal distance, prev_angle (total turn), prev_log_mov (identical to inline)
@@ -1183,8 +1263,8 @@ class PorpoisePopulation:
     def _update_movement_module_generic(
         self,
         mask: np.ndarray,
-        deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]],
-        ambient_rl: Optional[np.ndarray],
+        deterrence_vectors: tuple[np.ndarray, np.ndarray] | None,
+        ambient_rl: np.ndarray | None,
     ) -> None:
         """
         Generic movement path for non-CRW modules (JASMINE physics, hybrid).
@@ -1212,9 +1292,9 @@ class PorpoisePopulation:
         if dispersing.any():
             disp_dx = self.dispersal_target_x - self.x
             disp_dy = self.dispersal_target_y - self.y
-            state.dispersal_heading[dispersing] = np.degrees(
-                np.arctan2(disp_dx[dispersing], disp_dy[dispersing])
-            ) % 360.0
+            state.dispersal_heading[dispersing] = (
+                np.degrees(np.arctan2(disp_dx[dispersing], disp_dy[dispersing])) % 360.0
+            )
 
         # Extract deterrence components
         det_dx = None
@@ -1270,7 +1350,7 @@ class PorpoisePopulation:
 
         Checks if proposed positions are on land and tries turning
         40°, 70°, 120° in both directions to find water.
-        
+
         Boundary handling uses DEPONS-style reflection (BouncyBorders):
         when an agent would move past an edge, the overshot component
         is negated (reflected) and the heading is recalculated.
@@ -1287,16 +1367,17 @@ class PorpoisePopulation:
         np.copyto(self._orig_dx, self._dx)
         np.copyto(self._orig_dy, self._dy)
 
-        self._reflect_boundaries(self._new_x, self._new_y, self._dx, self._dy,
-                                 world_w, world_h, mask)
+        self._reflect_boundaries(
+            self._new_x, self._new_y, self._dx, self._dy, world_w, world_h, mask
+        )
 
         # Recalculate heading ONLY for agents whose displacement was reflected
         # (DEPONS Porpoise.forward(): setHeading + setPrevAngle(0) after bounce)
         reflected = mask & ((self._dx != self._orig_dx) | (self._dy != self._orig_dy))
         if reflected.any():
-            self.heading[reflected] = np.degrees(
-                np.arctan2(self._dx[reflected], self._dy[reflected])
-            ) % 360.0
+            self.heading[reflected] = (
+                np.degrees(np.arctan2(self._dx[reflected], self._dy[reflected])) % 360.0
+            )
 
         # Early exit: skip depth-check loop on all-water landscapes
         if self._skip_land_avoidance:
@@ -1311,7 +1392,7 @@ class PorpoisePopulation:
         np.clip(self._new_xi, 0, world_w - 1, out=self._new_xi)
         np.clip(self._new_yi, 0, world_h - 1, out=self._new_yi)
 
-        if hasattr(self.landscape, '_depth') and self.landscape._depth is not None:
+        if hasattr(self.landscape, "_depth") and self.landscape._depth is not None:
             np.copyto(self._depths, self.landscape._depth[self._new_yi, self._new_xi])
         else:
             self._depths.fill(20.0)  # Default to water
@@ -1347,10 +1428,18 @@ class PorpoisePopulation:
                 resolved = self._la_resolved[:n_blocked]
 
                 _land_avoidance_kernel(
-                    bx, by, bh, bs,
-                    self.landscape._depth, min_depth,
-                    base_angles, jitter,
-                    out_x, out_y, out_h, resolved,
+                    bx,
+                    by,
+                    bh,
+                    bs,
+                    self.landscape._depth,
+                    min_depth,
+                    base_angles,
+                    jitter,
+                    out_x,
+                    out_y,
+                    out_h,
+                    resolved,
                 )
 
                 # Apply results for resolved agents
@@ -1368,38 +1457,40 @@ class PorpoisePopulation:
 
                 # Compute positions for both turn directions
                 right_heading = self._compute_turn_position(
-                    turn_angle, world_w, world_h,
-                    self._right_x, self._right_y,
-                    self._right_xi, self._right_yi,
+                    turn_angle,
+                    world_w,
+                    world_h,
+                    self._right_x,
+                    self._right_y,
+                    self._right_xi,
+                    self._right_yi,
                     self._right_depths,
                     blocked_mask=self._still_blocked,
                 )
                 left_heading = self._compute_turn_position(
-                    -turn_angle, world_w, world_h,
-                    self._left_x, self._left_y,
-                    self._left_xi, self._left_yi,
+                    -turn_angle,
+                    world_w,
+                    world_h,
+                    self._left_x,
+                    self._left_y,
+                    self._left_xi,
+                    self._left_yi,
                     self._left_depths,
                     blocked_mask=self._still_blocked,
                 )
 
                 # Pick deeper direction if valid water
                 right_ok = (
-                    (self._right_depths >= min_depth)
-                    & ~np.isnan(self._right_depths)
+                    (self._right_depths >= min_depth) & ~np.isnan(self._right_depths)
                 ) & self._still_blocked
                 left_ok = (
-                    (self._left_depths >= min_depth)
-                    & ~np.isnan(self._left_depths)
+                    (self._left_depths >= min_depth) & ~np.isnan(self._left_depths)
                 ) & self._still_blocked
                 both_ok = right_ok & left_ok
 
                 # If both OK, pick deeper
-                use_right = both_ok & (
-                    self._right_depths >= self._left_depths
-                )
-                use_left = both_ok & (
-                    self._left_depths > self._right_depths
-                )
+                use_right = both_ok & (self._right_depths >= self._left_depths)
+                use_left = both_ok & (self._left_depths > self._right_depths)
 
                 # If only one OK
                 use_right = use_right | (right_ok & ~left_ok)
@@ -1419,7 +1510,11 @@ class PorpoisePopulation:
 
         # Backtrack fallback (Java Porpoise.java:505-533) — vectorized
         still_blocked = np.where(self._on_land)[0]
-        if len(still_blocked) > 0 and hasattr(self.landscape, '_depth') and self.landscape._depth is not None:
+        if (
+            len(still_blocked) > 0
+            and hasattr(self.landscape, "_depth")
+            and self.landscape._depth is not None
+        ):
             depth_grid = self.landscape._depth
             mem_size = self._stored_util.shape[1]
             max_hist = 20
@@ -1444,7 +1539,11 @@ class PorpoisePopulation:
 
         # Deepest-neighbor fallback (Java Porpoise.java:962-976) — vectorized
         still_blocked2 = np.where(self._on_land)[0]
-        if len(still_blocked2) > 0 and hasattr(self.landscape, '_depth') and self.landscape._depth is not None:
+        if (
+            len(still_blocked2) > 0
+            and hasattr(self.landscape, "_depth")
+            and self.landscape._depth is not None
+        ):
             depth_grid = self.landscape._depth
             best_depth = np.full(len(still_blocked2), -9999.0, dtype=np.float32)
             best_x = self.x[still_blocked2].copy()
@@ -1471,9 +1570,12 @@ class PorpoisePopulation:
 
     @staticmethod
     def _reflect_boundaries(
-        new_x: np.ndarray, new_y: np.ndarray,
-        dx: np.ndarray, dy: np.ndarray,
-        world_w: int, world_h: int,
+        new_x: np.ndarray,
+        new_y: np.ndarray,
+        dx: np.ndarray,
+        dy: np.ndarray,
+        world_w: int,
+        world_h: int,
         mask: np.ndarray,
     ) -> None:
         """
@@ -1495,24 +1597,24 @@ class PorpoisePopulation:
 
         # --- X reflection ---
         under_x = mask & (new_x < 0)
-        over_x  = mask & (new_x > max_x)
+        over_x = mask & (new_x > max_x)
         if under_x.any():
             new_x[under_x] = -new_x[under_x]
-            dx[under_x]    = -dx[under_x]
+            dx[under_x] = -dx[under_x]
         if over_x.any():
             new_x[over_x] = 2.0 * max_x - new_x[over_x]
-            dx[over_x]    = -dx[over_x]
+            dx[over_x] = -dx[over_x]
         np.clip(new_x, 0, max_x, out=new_x)
 
         # --- Y reflection ---
         under_y = mask & (new_y < 0)
-        over_y  = mask & (new_y > max_y)
+        over_y = mask & (new_y > max_y)
         if under_y.any():
             new_y[under_y] = -new_y[under_y]
-            dy[under_y]    = -dy[under_y]
+            dy[under_y] = -dy[under_y]
         if over_y.any():
             new_y[over_y] = 2.0 * max_y - new_y[over_y]
-            dy[over_y]    = -dy[over_y]
+            dy[over_y] = -dy[over_y]
         np.clip(new_y, 0, max_y, out=new_y)
 
     def _apply_positions(self, mask: np.ndarray) -> None:
@@ -1546,7 +1648,7 @@ class PorpoisePopulation:
 
         # Adaptive neighbor recompute based on displacement
         try:
-            if getattr(self.params, 'communication_recompute_adaptive', False):
+            if getattr(self.params, "communication_recompute_adaptive", False):
                 dx_m = (self.x - self._prev_x) * 400.0  # meters
                 dy_m = (self.y - self._prev_y) * 400.0
                 disp = np.hypot(dx_m, dy_m)
@@ -1555,7 +1657,7 @@ class PorpoisePopulation:
                 else:
                     mean_disp = 0.0
 
-                alpha = float(getattr(self.params, 'communication_recompute_ema_alpha', 0.3))
+                alpha = float(getattr(self.params, "communication_recompute_ema_alpha", 0.3))
                 self._disp_ema_m = alpha * mean_disp + (1.0 - alpha) * self._disp_ema_m
                 self._update_neighbor_recompute_interval(self._disp_ema_m)
         except (AttributeError, ValueError) as e:
@@ -1591,9 +1693,8 @@ class PorpoisePopulation:
             current_speed=self._step_dist,
             memory_cell_count=memory_cells,
             is_dispersing=self.is_dispersing,
-            dispersal_complete=(
-                self.dispersal_distance_traveled >= self.dispersal_target_distance
-            ) & self.is_dispersing,
+            dispersal_complete=(self.dispersal_distance_traveled >= self.dispersal_target_distance)
+            & self.is_dispersing,
         )
 
         self._behavior_fsm.update_states(self._behavior_state, context, mask)
@@ -1610,7 +1711,7 @@ class PorpoisePopulation:
         # Food consumption - hungry porpoises eat more
         fract_to_eat = np.clip((20.0 - self.energy) / 10.0, 0.0, 0.99)
 
-        if self.landscape is not None and hasattr(self.landscape, 'eat_food'):
+        if self.landscape is not None and hasattr(self.landscape, "eat_food"):
             food_gained = self._eat_food_vectorized(mask, fract_to_eat)
         else:
             food_gained = fract_to_eat * self.rng.uniform(0.1, 0.5, self.count)
@@ -1688,14 +1789,14 @@ class PorpoisePopulation:
           food intake → starvation check → BMR cost
         This combined method is preserved for test compatibility and is no longer called by step().
         """
-        from cenop.physiology.energy_budget import EnergyContext
         from cenop.behavior.states import BehaviorState
+        from cenop.physiology.energy_budget import EnergyContext
 
         # No sync needed — shared view, same array
 
         # Food availability
         fract_to_eat = np.clip((20.0 - self.energy) / 10.0, 0.0, 0.99)
-        if self.landscape is not None and hasattr(self.landscape, 'eat_food'):
+        if self.landscape is not None and hasattr(self.landscape, "eat_food"):
             food_available = self._eat_food_vectorized(mask, fract_to_eat)
         else:
             food_available = fract_to_eat * self.rng.uniform(0.1, 0.5, self.count)
@@ -1713,7 +1814,7 @@ class PorpoisePopulation:
         # Water temperature
         self._water_temp.fill(10.0)
         water_temp = self._water_temp
-        if self.landscape is not None and hasattr(self.landscape, 'get_temperature'):
+        if self.landscape is not None and hasattr(self.landscape, "get_temperature"):
             self._positions[:, 0] = self.x
             self._positions[:, 1] = self.y
             water_temp = self.landscape.get_temperature(self._positions)
@@ -1765,14 +1866,14 @@ class PorpoisePopulation:
 
         Returns (context, food_available) tuple.
         """
-        from cenop.physiology.energy_budget import EnergyContext
         from cenop.behavior.states import BehaviorState
+        from cenop.physiology.energy_budget import EnergyContext
 
         # No sync needed — shared view, same array
 
         # Food availability
         fract_to_eat = np.clip((20.0 - self.energy) / 10.0, 0.0, 0.99)
-        if self.landscape is not None and hasattr(self.landscape, 'eat_food'):
+        if self.landscape is not None and hasattr(self.landscape, "eat_food"):
             food_available = self._eat_food_vectorized(mask, fract_to_eat)
         else:
             food_available = fract_to_eat * self.rng.uniform(0.1, 0.5, self.count)
@@ -1790,7 +1891,7 @@ class PorpoisePopulation:
         # Water temperature
         self._water_temp.fill(10.0)
         water_temp = self._water_temp
-        if self.landscape is not None and hasattr(self.landscape, 'get_temperature'):
+        if self.landscape is not None and hasattr(self.landscape, "get_temperature"):
             self._positions[:, 0] = self.x
             self._positions[:, 1] = self.y
             water_temp = self.landscape.get_temperature(self._positions)
@@ -1851,8 +1952,8 @@ class PorpoisePopulation:
         costs, syncs energy back to population, updates PSM, energy history, dispersal.
         Must be called after _check_mortality() so that only surviving agents pay BMR.
         """
-        context = getattr(self, '_pending_energy_context', None)
-        food_available = getattr(self, '_pending_food_available', None)
+        context = getattr(self, "_pending_energy_context", None)
+        food_available = getattr(self, "_pending_food_available", None)
         if context is None or food_available is None:
             logger.error(
                 "[BUG] _apply_bmr_cost_jasmine called without pending context at tick=%d",
@@ -1870,11 +1971,9 @@ class PorpoisePopulation:
         # Clamp deferred to final clamp below
 
         # Also track disturbance costs in energy_state
-        if hasattr(self._energy_state, 'disturbance_energy_cost'):
+        if hasattr(self._energy_state, "disturbance_energy_cost"):
             disturbance_cost = np.where(
-                context.is_disturbed[mask],
-                0.002 * context.deterrence_magnitude[mask],
-                0.0
+                context.is_disturbed[mask], 0.002 * context.deterrence_magnitude[mask], 0.0
             ).astype(np.float32)
             self._energy_state.disturbance_energy_cost[mask] += disturbance_cost
 
@@ -1913,8 +2012,10 @@ class PorpoisePopulation:
             self._fract_to_eat /= np.float32(10.0)
             np.clip(self._fract_to_eat, 0.0, 0.99, out=self._fract_to_eat)
             fract_to_eat = self._fract_to_eat
-            if self.landscape is not None and hasattr(self.landscape, 'eat_food'):
-                food_gained = self._eat_food_vectorized(mask, fract_to_eat, active_idx=self._active_idx)
+            if self.landscape is not None and hasattr(self.landscape, "eat_food"):
+                food_gained = self._eat_food_vectorized(
+                    mask, fract_to_eat, active_idx=self._active_idx
+                )
             else:
                 food_gained = fract_to_eat * self.rng.uniform(0.1, 0.5, self.count)
             self.energy[mask] += food_gained[mask]
@@ -1966,15 +2067,17 @@ class PorpoisePopulation:
         yearly_surv_prob = np.where(
             self.energy > 0,
             1.0 - (m_mort_prob_const * np.exp(-self.energy * x_survival_const)),
-            0.0
+            0.0,
         )
         # Convert yearly survival to per-tick survival: P_tick = P_year^(1/(360*48))
         # Using np.power instead of exp(log(x)/n) to avoid unnecessary intermediate arrays
-        _RECIP_TICKS_PER_YEAR = 1.0 / (360 * 48)  # 360 days/year * 48 ticks/day, consistent with DEPONS
+        _RECIP_TICKS_PER_YEAR = 1.0 / (
+            360 * 48
+        )  # 360 days/year * 48 ticks/day, consistent with DEPONS
         step_surv_prob = np.where(
             self.energy > 0,
             np.power(np.maximum(yearly_surv_prob, 1e-10), _RECIP_TICKS_PER_YEAR),
-            0.0
+            0.0,
         )
 
         starvation_check = self.rng.random(self.count)
@@ -1993,14 +2096,14 @@ class PorpoisePopulation:
         bycatch = np.zeros(self.count, dtype=bool)
         old_age = np.zeros(self.count, dtype=bool)
         if self._global_tick % 48 == 0:
-            bycatch_annual = getattr(self.params, 'bycatch_prob', 0.0)
+            bycatch_annual = getattr(self.params, "bycatch_prob", 0.0)
             if bycatch_annual > 0:
                 # Java: dailySurvivalProb = exp(log(1 - bycatchProb) / 360)
                 daily_surv = np.exp(np.log(1 - bycatch_annual) / 360)
                 bycatch = (self.rng.random(self.count) > daily_surv) & mask
 
             # Max-age also daily (Java: same updMortality method)
-            max_age = getattr(self.params, 'max_age', 30.0)
+            max_age = getattr(self.params, "max_age", 30.0)
             old_age = mask & (self.age > max_age)
 
         # Apply deaths
@@ -2037,13 +2140,20 @@ class PorpoisePopulation:
                 active_after = int(np.sum(self.active_mask))
                 logger.debug(
                     "[INSTR] tick=%d deaths=%d starved=%d old_age=%d bycatch=%d active_before=%d active_after=%d",
-                    self._global_tick, death_count, starved_count, old_age_count, bycatch_count,
-                    active_before, active_after
+                    self._global_tick,
+                    death_count,
+                    starved_count,
+                    old_age_count,
+                    bycatch_count,
+                    active_before,
+                    active_after,
                 )
 
     def _update_aging(self, mask: np.ndarray) -> None:
         """Update aging for active agents (continuous small increments)."""
-        self.age[mask] += 1.0 / 360.0 / 48.0  # Age in years per tick (360 days/year, consistent with DEPONS)
+        self.age[mask] += (
+            1.0 / 360.0 / 48.0
+        )  # Age in years per tick (360 days/year, consistent with DEPONS)
 
     def _update_reference_memory(self, mask: np.ndarray) -> None:
         """Update reference memory: record food and position, compute veTotal and vt.
@@ -2052,7 +2162,8 @@ class PorpoisePopulation:
         Java ref: FastRefMemTurn.java:53-64 (store), Porpoise.java:688-705 (veTotal)
         """
         from cenop.behavior.ref_mem import (
-            compute_ve_total, compute_attraction_vector,
+            compute_attraction_vector,
+            compute_ve_total,
         )
 
         if self.landscape is None:
@@ -2070,7 +2181,11 @@ class PorpoisePopulation:
         # 1. Compute veTotal FIRST (uses existing buffer, before new entry)
         work_table = self._work_mem_table_f64
         self._ve_total = compute_ve_total(
-            self._stored_util, self._mem_ptr, self._mem_count, work_table, mask,
+            self._stored_util,
+            self._mem_ptr,
+            self._mem_count,
+            work_table,
+            mask,
             workspace=self._ref_mem_workspace,
         )
 
@@ -2079,9 +2194,17 @@ class PorpoisePopulation:
         world_w = self.landscape.width if self.landscape else 0
         world_h = self.landscape.height if self.landscape else 0
         new_vt_x, new_vt_y = compute_attraction_vector(
-            self._stored_util, self._pos_history_x, self._pos_history_y,
-            self._mem_ptr, self._mem_count,
-            self.x, self.y, ref_table, mask, world_w, world_h,
+            self._stored_util,
+            self._pos_history_x,
+            self._pos_history_y,
+            self._mem_ptr,
+            self._mem_count,
+            self.x,
+            self.y,
+            ref_table,
+            mask,
+            world_w,
+            world_h,
             workspace=self._ref_mem_workspace,
         )
         # Java: if refMemTurn returns null, keep previous vt (Porpoise.java:266-267)
@@ -2119,9 +2242,9 @@ class PorpoisePopulation:
         females = self.is_female & self.active_mask
         n_females = int(np.sum(females))
         if n_females > 0:
-            new_days = np.round(self.rng.normal(
-                self.params.mating_day_mean, self.params.mating_day_sd, n_females
-            )).astype(np.int16)
+            new_days = np.round(
+                self.rng.normal(self.params.mating_day_mean, self.params.mating_day_sd, n_females)
+            ).astype(np.int16)
             self.mating_day[females] = new_days
 
     def _update_pregnancy_status(self, mask: np.ndarray) -> None:
@@ -2129,7 +2252,9 @@ class PorpoisePopulation:
         female_mask = mask & self.is_female
 
         # 0 → 2: Immature to ready-to-mate
-        immature = female_mask & (self.pregnancy_status == 0) & (self.age >= self.params.maturity_age)
+        immature = (
+            female_mask & (self.pregnancy_status == 0) & (self.age >= self.params.maturity_age)
+        )
         self.pregnancy_status[immature] = 2
 
         # 2 → 1: Ready to pregnant on mating day
@@ -2142,8 +2267,11 @@ class PorpoisePopulation:
             self.days_since_mating[conceives] = 0
 
         # 1 → 2 + birth: Pregnant gives birth at gestation_time
-        giving_birth = female_mask & (self.pregnancy_status == 1) & \
-                       (self.days_since_mating == self.params.gestation_time)
+        giving_birth = (
+            female_mask
+            & (self.pregnancy_status == 1)
+            & (self.days_since_mating == self.params.gestation_time)
+        )
         if giving_birth.any():
             self.pregnancy_status[giving_birth] = 2
             self.with_calf[giving_birth] = True
@@ -2151,8 +2279,7 @@ class PorpoisePopulation:
             self.days_since_birth[giving_birth] = 0
 
         # Weaning: at nursing_time, create female calf, end lactation
-        weaning = female_mask & self.with_calf & \
-                  (self.days_since_birth == self.params.nursing_time)
+        weaning = female_mask & self.with_calf & (self.days_since_birth == self.params.nursing_time)
         if weaning.any():
             calf_roll = self.rng.random(self.count)
             creates_calf = weaning & (calf_roll > 0.5)
@@ -2172,9 +2299,13 @@ class PorpoisePopulation:
                     self.heading[new_slots] = self.heading[mother_indices]
                     self.age[new_slots] = 0.0
                     self.is_female[new_slots] = True
-                    self.energy[new_slots] = self.rng.normal(
-                        self.params.energy_init_mean, self.params.energy_init_sd, slots_to_use
-                    ).clip(0, 20).astype(np.float32)
+                    self.energy[new_slots] = (
+                        self.rng.normal(
+                            self.params.energy_init_mean, self.params.energy_init_sd, slots_to_use
+                        )
+                        .clip(0, 20)
+                        .astype(np.float32)
+                    )
                     self.pregnancy_status[new_slots] = 0
                     self.with_calf[new_slots] = False
                     self.days_since_mating[new_slots] = -99
@@ -2294,8 +2425,8 @@ class PorpoisePopulation:
 
     def _step_jax(
         self,
-        deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]] = None,
-        ambient_rl: Optional[np.ndarray] = None,
+        deterrence_vectors: tuple[np.ndarray, np.ndarray] | None = None,
+        ambient_rl: np.ndarray | None = None,
     ) -> None:
         """JAX JIT tick — replaces the Numba/NumPy path.
 
@@ -2353,8 +2484,8 @@ class PorpoisePopulation:
                     self._positions, xi=self._cell_xi, yi=self._cell_yi
                 ),
             )
-            landscape_name = getattr(self.landscape, 'landscape_name', '')
-            if landscape_name == 'Kattegat':
+            landscape_name = getattr(self.landscape, "landscape_name", "")
+            if landscape_name == "Kattegat":
                 self._salinity_vals[:] = 34.069105813295
         else:
             self._depths.fill(30.0)
@@ -2364,15 +2495,13 @@ class PorpoisePopulation:
         self._update_reference_memory(mask)
 
         # Landscape grids — cache JAX versions
-        if not hasattr(self, '_jax_depth_grid') or self._jax_depth_grid is None:
+        if not hasattr(self, "_jax_depth_grid") or self._jax_depth_grid is None:
             if (
                 self.landscape is not None
-                and hasattr(self.landscape, '_depth')
+                and hasattr(self.landscape, "_depth")
                 and self.landscape._depth is not None
             ):
-                self._jax_depth_grid = jnp.asarray(
-                    self.landscape._depth.astype(np.float32)
-                )
+                self._jax_depth_grid = jnp.asarray(self.landscape._depth.astype(np.float32))
             else:
                 self._jax_depth_grid = jnp.full(
                     (self.params.world_height, self.params.world_width),
@@ -2380,16 +2509,8 @@ class PorpoisePopulation:
                     dtype=jnp.float32,
                 )
 
-        world_w = (
-            self.landscape.width
-            if self.landscape
-            else self.params.world_width
-        )
-        world_h = (
-            self.landscape.height
-            if self.landscape
-            else self.params.world_height
-        )
+        world_w = self.landscape.width if self.landscape else self.params.world_width
+        world_h = self.landscape.height if self.landscape else self.params.world_height
         min_depth = self.params.min_depth if self.params else 1.0
 
         # Ref mem tables
@@ -2397,9 +2518,7 @@ class PorpoisePopulation:
         work_table = self._work_mem_table_f64
 
         # Split RNG key
-        self._jax_key, movement_key, energy_key = jax.random.split(
-            self._jax_key, 3
-        )
+        self._jax_key, movement_key, energy_key = jax.random.split(self._jax_key, 3)
 
         # ==============================
         # 1. JAX movement tick
@@ -2458,8 +2577,8 @@ class PorpoisePopulation:
             float(self.params.m),
             float(self.params.inertia_const),
             float(self.params.mean_disp_dist),
-            float(getattr(self.params, 'psm_type2_random_angle', 20.0)),
-            float(getattr(self.params, 'psm_log', 0.6)),
+            float(getattr(self.params, "psm_type2_random_angle", 20.0)),
+            float(getattr(self.params, "psm_log", 0.6)),
             float(min_depth),
             int(world_w),
             int(world_h),
@@ -2513,7 +2632,7 @@ class PorpoisePopulation:
         # ==============================
         current_month = self._get_current_month()
         scaling = self._get_seasonal_scaling(current_month)
-        is_day_boundary = (self._global_tick % 48 == 0)
+        is_day_boundary = self._global_tick % 48 == 0
 
         # Speed in m/s
         speed_ms = self._step_dist * (400.0 / 1800.0)
@@ -2521,14 +2640,12 @@ class PorpoisePopulation:
         # Food grid
         if (
             self.landscape is not None
-            and hasattr(self.landscape, '_food_value')
+            and hasattr(self.landscape, "_food_value")
             and self.landscape._food_value is not None
         ):
             jax_food = jnp.asarray(self.landscape._food_value)
         else:
-            jax_food = jnp.ones(
-                (world_h, world_w), dtype=jnp.float32
-            )
+            jax_food = jnp.ones((world_h, world_w), dtype=jnp.float32)
 
         (
             new_energy,
@@ -2574,7 +2691,7 @@ class PorpoisePopulation:
             0.01,  # DEPONS ADD_ARTIFICIAL_FOOD floor (matches NumPy/Numba/kernels)
             float(self._m_mort_prob_const),
             float(self._x_survival_const),
-            float(getattr(self.params, 'bycatch_prob', 0.0)),
+            float(getattr(self.params, "bycatch_prob", 0.0)),
             float(self.params.max_age),
             jnp.bool_(is_day_boundary),
             energy_key,
@@ -2600,31 +2717,23 @@ class PorpoisePopulation:
             self.dispersal_distance_traveled,
             np.asarray(new_dispersal_distance_traveled),
         )
-        self.days_declining_energy[:] = np.asarray(
-            new_days_declining_energy
-        ).astype(np.int16)
+        self.days_declining_energy[:] = np.asarray(new_days_declining_energy).astype(np.int16)
 
         # Write food grid back
         if (
             self.landscape is not None
-            and hasattr(self.landscape, '_food_value')
+            and hasattr(self.landscape, "_food_value")
             and self.landscape._food_value is not None
         ):
-            np.copyto(
-                self.landscape._food_value, np.asarray(new_food_grid)
-            )
+            np.copyto(self.landscape._food_value, np.asarray(new_food_grid))
 
         # Dashboard metrics
         n_active = int(np.sum(self.active_mask))
         food_eaten_np = np.asarray(food_eaten)
         total_cost_np = np.asarray(total_cost)
         if n_active > 0:
-            self.avg_food_gained = float(
-                np.mean(food_eaten_np[self.active_mask])
-            )
-            self.avg_energy_cost = float(
-                np.mean(total_cost_np[self.active_mask])
-            )
+            self.avg_food_gained = float(np.mean(food_eaten_np[self.active_mask]))
+            self.avg_energy_cost = float(np.mean(total_cost_np[self.active_mask]))
         else:
             self.avg_food_gained = 0.0
             self.avg_energy_cost = 0.0
@@ -2661,9 +2770,12 @@ class PorpoisePopulation:
             return float(self.params.e_warm)
         return 1.0
 
-    def step(self, deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]] = None,
-             ambient_rl: Optional[np.ndarray] = None,
-             turbine_deterrence_vectors: Optional[Tuple[np.ndarray, np.ndarray]] = None):
+    def step(
+        self,
+        deterrence_vectors: tuple[np.ndarray, np.ndarray] | None = None,
+        ambient_rl: np.ndarray | None = None,
+        turbine_deterrence_vectors: tuple[np.ndarray, np.ndarray] | None = None,
+    ):
         """
         Main simulation step for the entire population.
 
@@ -2738,7 +2850,7 @@ class PorpoisePopulation:
             active_before_mask = self.active_mask.copy()
             current_month = self._get_current_month()
             seasonal_scaling = self._get_seasonal_scaling(current_month)
-            disp_step = getattr(self.params, 'mean_disp_dist', 1.6) / 0.4
+            disp_step = getattr(self.params, "mean_disp_dist", 1.6) / 0.4
             world_w = self.landscape.width if self.landscape else self.params.world_width
             world_h = self.landscape.height if self.landscape else self.params.world_height
 
@@ -2748,7 +2860,8 @@ class PorpoisePopulation:
             if self.landscape is not None:
                 _food_src = self.landscape._food_value
                 food_grid = (
-                    _food_src if _food_src.dtype == np.float32
+                    _food_src
+                    if _food_src.dtype == np.float32
                     else np.ascontiguousarray(_food_src, dtype=np.float32)
                 )
             else:
@@ -2757,7 +2870,7 @@ class PorpoisePopulation:
 
             # depth_grid drives the post-move land rollback (reference
             # _apply_positions: destination on land -> restore pre-move cell).
-            if self.landscape is not None and getattr(self.landscape, '_depth', None) is not None:
+            if self.landscape is not None and getattr(self.landscape, "_depth", None) is not None:
                 depth_grid = np.ascontiguousarray(self.landscape._depth, dtype=np.float64)
             else:
                 depth_grid = np.full((world_h, world_w), 20.0, dtype=np.float64)
@@ -2791,8 +2904,8 @@ class PorpoisePopulation:
                 disp_step,
                 self.params.e_use_per_30_min,
                 self.params.e_lact,
-                getattr(self.params, 'm_mort_prob_const', 1.0),
-                getattr(self.params, 'x_survival_const', 0.4),
+                getattr(self.params, "m_mort_prob_const", 1.0),
+                getattr(self.params, "x_survival_const", 0.4),
                 seasonal_scaling,
                 world_w,
                 world_h,
@@ -2824,9 +2937,7 @@ class PorpoisePopulation:
             # Dashboard stats
             n_active = len(self._active_idx)
             if n_active > 0:
-                self.avg_food_gained = float(
-                    np.mean(self._cython_food_gained[self.active_mask])
-                )
+                self.avg_food_gained = float(np.mean(self._cython_food_gained[self.active_mask]))
                 self.avg_energy_cost = 0.001 * seasonal_scaling * self.params.e_use_per_30_min
             else:
                 self.avg_food_gained = 0.0
@@ -2873,7 +2984,7 @@ class PorpoisePopulation:
 
             # 4d. Post-BMR updates (DEPONS path — extracted from _apply_bmr_cost)
             if self._energy_module is None:
-                food_gained = getattr(self, '_pending_food_available', None)
+                food_gained = getattr(self, "_pending_food_available", None)
                 self._update_psm(self.active_mask, food_gained)
                 self._update_energy_history(self.active_mask)
                 self._update_dispersal(self.active_mask)
@@ -2909,7 +3020,7 @@ class PorpoisePopulation:
         is_disturbed = self.deter_strength > 0.01
 
         # Get depth at current position for debugging land-avoidance
-        if self.landscape is not None and hasattr(self.landscape, '_depth'):
+        if self.landscape is not None and hasattr(self.landscape, "_depth"):
             xi = self.x.astype(np.int32)
             yi = self.y.astype(np.int32)
             world_w = self.landscape.width
@@ -2920,22 +3031,24 @@ class PorpoisePopulation:
         else:
             depths = np.full(self.count, 20.0, dtype=np.float32)
 
-        return pd.DataFrame({
-            'id': self.ids[mask],
-            'x': self.x[mask],
-            'y': self.y[mask],
-            'age': self.age[mask],
-            'is_female': self.is_female[mask],
-            'energy': self.energy[mask],
-            'heading': self.heading[mask],
-            'is_disturbed': is_disturbed[mask],
-            'behavioral_state': behavioral_state[mask],
-            'depth': depths[mask],  # Debug: depth at current position
-            'alive': np.ones(n_active, dtype=bool)
-        })
+        return pd.DataFrame(
+            {
+                "id": self.ids[mask],
+                "x": self.x[mask],
+                "y": self.y[mask],
+                "age": self.age[mask],
+                "is_female": self.is_female[mask],
+                "energy": self.energy[mask],
+                "heading": self.heading[mask],
+                "is_disturbed": is_disturbed[mask],
+                "behavioral_state": behavioral_state[mask],
+                "depth": depths[mask],  # Debug: depth at current position
+                "alive": np.ones(n_active, dtype=bool),
+            }
+        )
 
     # === PSM and Dispersal Methods (Phase 2) ===
-    
+
     def _update_psm(self, mask: np.ndarray, food_gained: np.ndarray) -> None:
         """
         Update Persistent Spatial Memory (Vectorized).
@@ -2950,7 +3063,7 @@ class PorpoisePopulation:
         active_idx = np.where(mask & food_positive)[0]
         if len(active_idx) == 0:
             return
-            
+
         # Convert positions to PSM grid coordinates
         psm_x = (self.x[active_idx] // self.psm_cell_size).astype(np.int32)
         psm_y = (self.y[active_idx] // self.psm_cell_size).astype(np.int32)
@@ -2960,7 +3073,9 @@ class PorpoisePopulation:
         np.clip(psm_y, 0, self.psm_rows - 1, out=psm_y)
 
         # Use efficient accumulator (Numba-accelerated when available)
-        from cenop.optimizations import accumulate_psm_updates  # noqa: E402 — kept deferred to avoid circular import at module level
+        from cenop.optimizations import (
+            accumulate_psm_updates,
+        )  # noqa: E402 — kept deferred to avoid circular import at module level
 
         idx_arr = active_idx  # int64 from np.where; both Numba and fallback accept it
         ys_arr = psm_y  # already int32
@@ -2971,9 +3086,13 @@ class PorpoisePopulation:
             accumulate_psm_updates(self.psm_buffer, idx_arr, ys_arr, xs_arr, food_arr)
         except TypeError as e:
             # Numba type signature mismatch (e.g. NumPy version change) — fallback and warn
-            logger.warning("PSM accumulator TypeError (NumPy/Numba mismatch?), using np.add.at fallback: %s", e)
+            logger.warning(
+                "PSM accumulator TypeError (NumPy/Numba mismatch?), using np.add.at fallback: %s", e
+            )
             np.add.at(self.psm_buffer[:, :, :, 0], (active_idx, psm_y, psm_x), 1.0)
-            np.add.at(self.psm_buffer[:, :, :, 1], (active_idx, psm_y, psm_x), food_gained[active_idx])
+            np.add.at(
+                self.psm_buffer[:, :, :, 1], (active_idx, psm_y, psm_x), food_gained[active_idx]
+            )
 
         # NOTE: Per-agent PSM instances (_psm_instances) are kept only for
         # preferred_distance access. Memory data is stored in psm_buffer only.
@@ -2982,19 +3101,19 @@ class PorpoisePopulation:
         # NOTE: Energy history accumulation is handled by _update_energy_history()
         # which is called separately from step(). Do NOT duplicate here to avoid
         # double-counting energy (Critical Bug Fix - Jan 2026).
-            
+
     def _check_dispersal_trigger(self, mask: np.ndarray) -> None:
         """
         Check if dispersal should trigger based on energy decline.
-        
+
         DEPONS Pattern:
         - If energy has declined for t_disp consecutive days (default 5)
         - And porpoise has sufficient memory (50+ cells visited)
         - Then trigger dispersal to remembered high-food area
         """
-        t_disp = getattr(self.params, 't_disp', 5)  # Days before dispersal triggers
+        t_disp = getattr(self.params, "t_disp", 5)  # Days before dispersal triggers
         min_memory_cells = 50  # Minimum PSM cells for dispersal
-        
+
         # Vectorized check for declining energy
         # history shape: (count, t_disp)
         max_hist = self._energy_history.shape[1]
@@ -3008,7 +3127,7 @@ class PorpoisePopulation:
         # Check all consecutive pairs: history[:, i] < history[:, i+1]
         is_declining = np.ones(self.count, dtype=bool)
         for i in range(t_disp - 1):
-            is_declining &= (self._energy_history[:, i] < self._energy_history[:, i + 1])
+            is_declining &= self._energy_history[:, i] < self._energy_history[:, i + 1]
 
         # Add to mask
         candidates = mask & is_declining & (~self.is_dispersing)
@@ -3039,12 +3158,12 @@ class PorpoisePopulation:
         - If mean_disp_m > 1.5 * threshold -> set to min_interval
         - Otherwise leave unchanged
         """
-        if not getattr(self.params, 'communication_recompute_adaptive', False):
+        if not getattr(self.params, "communication_recompute_adaptive", False):
             return
 
-        min_i = int(getattr(self.params, 'communication_recompute_min_interval', 1))
-        max_i = int(getattr(self.params, 'communication_recompute_max_interval', 16))
-        threshold = float(getattr(self.params, 'communication_recompute_disp_threshold_m', 50.0))
+        min_i = int(getattr(self.params, "communication_recompute_min_interval", 1))
+        max_i = int(getattr(self.params, "communication_recompute_max_interval", 16))
+        threshold = float(getattr(self.params, "communication_recompute_disp_threshold_m", 50.0))
 
         # Defensive clamp
         min_i = max(1, min_i)
@@ -3065,18 +3184,18 @@ class PorpoisePopulation:
             self._current_recompute_interval = int(new)
             # Reset counter to new interval so change takes effect
             self._neighbor_recompute_counter = self._current_recompute_interval
-        
+
     def _update_energy_history(self, mask: np.ndarray) -> None:
         """
         Accumulate per-tick energy into daily totals and update 5-day history when a day completes.
         Safe to call multiple times per tick: each tick is only recorded once using _last_energy_update_tick.
         """
         # Prevent double-update within the same tick
-        if getattr(self, '_last_energy_update_tick', -1) == self._global_tick:
+        if getattr(self, "_last_energy_update_tick", -1) == self._global_tick:
             return
 
         # JAX path manages tick_counter and energy history via jax_tick_energy
-        if getattr(self, '_use_jax', False):
+        if getattr(self, "_use_jax", False):
             return
 
         # Accumulate energy for current day
@@ -3102,7 +3221,7 @@ class PorpoisePopulation:
 
         # Record this tick as updated
         self._last_energy_update_tick = self._global_tick
-                    
+
     def _start_dispersal(self, idx: int) -> None:
         """
         Start dispersal behavior for a single porpoise.
@@ -3164,7 +3283,7 @@ class PorpoisePopulation:
 
         # PSM-Type3 distance-cost: fitness = energy * exp(-dist * q1)
         # (DispersalPSMType3.findMostAttractiveMemCell in Java)
-        q1 = getattr(self.params, 'q1', 0.02)
+        q1 = getattr(self.params, "q1", 0.02)
         if q1 > 0:
             fitness = expectations * np.exp(-dists * q1)
         else:
@@ -3202,42 +3321,41 @@ class PorpoisePopulation:
 
     def _set_random_dispersal_target(self, idx: int) -> None:
         """Set a random dispersal target at preferred distance.
-        
+
         Uses reflection to keep targets inside the map instead of
         clamping (which biased targets toward edges/corners).
         """
         pref_dist_km = self._psm_instances[idx].preferred_distance
         angle_rad = self.rng.uniform(0, 2 * np.pi)
         dist_cells = pref_dist_km * 1000 / 400.0
-        
+
         tx = self.x[idx] + np.sin(angle_rad) * dist_cells
         ty = self.y[idx] + np.cos(angle_rad) * dist_cells
-        
+
         # Reflect into world (DEPONS bouncy-border style)
         w = self.landscape.width if self.landscape else self.params.world_width
         h = self.landscape.height if self.landscape else self.params.world_height
         max_x = float(w - 1)
         max_y = float(h - 1)
-        
+
         # Reflect X
         if tx < 0:
             tx = -tx
         elif tx > max_x:
             tx = 2.0 * max_x - tx
         tx = float(np.clip(tx, 0, max_x))
-        
+
         # Reflect Y
         if ty < 0:
             ty = -ty
         elif ty > max_y:
             ty = 2.0 * max_y - ty
         ty = float(np.clip(ty, 0, max_y))
-        
+
         self.dispersal_target_x[idx] = tx
         self.dispersal_target_y[idx] = ty
         self.dispersal_target_distance[idx] = dist_cells
 
-        
     def _update_dispersal(self, mask: np.ndarray) -> None:
         """Update dispersal progress for dispersing porpoises."""
         dispersing = mask & self.is_dispersing
@@ -3283,28 +3401,28 @@ class PorpoisePopulation:
             self.is_dispersing[completed] = False
             self.dispersal_distance_traveled[completed] = 0.0
             self.days_declining_energy[completed] = 0
-            
+
     def get_psm(self, idx: int) -> PersistentSpatialMemory:
         """Get PSM instance for a specific porpoise."""
         return self._psm_instances[idx]
-        
-    def get_dispersal_stats(self) -> Dict[str, Any]:
+
+    def get_dispersal_stats(self) -> dict[str, Any]:
         """Get statistics about dispersal behavior."""
         active = self.active_mask
         # Calculate avg visited cells from buffer
         # This is expensive for all agents, allow sampling or simplified metric
         avg_cells = 0.0
         if active.any():
-             # Just sample first 10 for performance in UI? Or calc all?
-             # Vectorized count:
-             counts = np.count_nonzero(self.psm_buffer[active, :, :, 0], axis=(1,2))
-             avg_cells = float(np.mean(counts))
-             
+            # Just sample first 10 for performance in UI? Or calc all?
+            # Vectorized count:
+            counts = np.count_nonzero(self.psm_buffer[active, :, :, 0], axis=(1, 2))
+            avg_cells = float(np.mean(counts))
+
         return {
-            'dispersing_count': int(np.sum(self.is_dispersing & active)),
-            'total_active': int(np.sum(active)),
-            'avg_psm_cells': avg_cells,
-            'max_declining_days': 0  # Simplified out of model array for now
+            "dispersing_count": int(np.sum(self.is_dispersing & active)),
+            "total_active": int(np.sum(active)),
+            "avg_psm_cells": avg_cells,
+            "max_declining_days": 0,  # Simplified out of model array for now
         }
 
     # === Land Avoidance Helper Methods ===
@@ -3363,22 +3481,26 @@ class PorpoisePopulation:
                 bh[:] = self.heading[idx]
                 bs[:] = self._step_dist[idx]
                 _turn_kernel(
-                    bx, by, bh, bs,
-                    float(turn_delta), world_w, world_h,
-                    box, boy, boh, boxi, boyi,
+                    bx,
+                    by,
+                    bh,
+                    bs,
+                    float(turn_delta),
+                    world_w,
+                    world_h,
+                    box,
+                    boy,
+                    boh,
+                    boxi,
+                    boyi,
                 )
                 # Scatter results back into full-size output arrays
                 out_x[idx] = box.astype(np.float32)
                 out_y[idx] = boy.astype(np.float32)
                 out_xi[idx] = boxi
                 out_yi[idx] = boyi
-                if (
-                    hasattr(self.landscape, '_depth')
-                    and self.landscape._depth is not None
-                ):
-                    out_depths[idx] = self.landscape._depth[
-                        out_yi[idx], out_xi[idx]
-                    ]
+                if hasattr(self.landscape, "_depth") and self.landscape._depth is not None:
+                    out_depths[idx] = self.landscape._depth[out_yi[idx], out_xi[idx]]
                 else:
                     out_depths[idx] = 20.0
                 # Build heading result — copy current heading, update blocked
@@ -3392,12 +3514,18 @@ class PorpoisePopulation:
                 np.copyto(self._f64_heading, self.heading)
                 np.copyto(self._f64_step, self._step_dist)
                 _turn_kernel(
-                    self._f64_x, self._f64_y,
-                    self._f64_heading, self._f64_step,
-                    float(turn_delta), world_w, world_h,
-                    self._f64_out_x, self._f64_out_y,
+                    self._f64_x,
+                    self._f64_y,
+                    self._f64_heading,
+                    self._f64_step,
+                    float(turn_delta),
+                    world_w,
+                    world_h,
+                    self._f64_out_x,
+                    self._f64_out_y,
                     self._f64_out_heading,
-                    self._int32_out_xi, self._int32_out_yi,
+                    self._int32_out_xi,
+                    self._int32_out_yi,
                 )
                 np.copyto(out_x, self._f64_out_x)
                 np.copyto(out_y, self._f64_out_y)
@@ -3405,10 +3533,7 @@ class PorpoisePopulation:
                 np.copyto(out_xi, self._int32_out_xi)
                 np.copyto(out_yi, self._int32_out_yi)
                 # Depth lookup stays in Python
-                if (
-                    hasattr(self.landscape, '_depth')
-                    and self.landscape._depth is not None
-                ):
+                if hasattr(self.landscape, "_depth") and self.landscape._depth is not None:
                     np.copyto(
                         out_depths,
                         self.landscape._depth[out_yi, out_xi],
@@ -3429,8 +3554,7 @@ class PorpoisePopulation:
         np.add(self.y, self._dy, out=out_y)
 
         # DEPONS-style reflection at boundaries (reuse pre-allocated all-true mask)
-        self._reflect_boundaries(out_x, out_y, self._dx, self._dy,
-                                 world_w, world_h, self._all_mask)
+        self._reflect_boundaries(out_x, out_y, self._dx, self._dy, world_w, world_h, self._all_mask)
 
         # Get cell indices
         np.copyto(out_xi, out_x.astype(np.int32))
@@ -3439,7 +3563,7 @@ class PorpoisePopulation:
         np.clip(out_yi, 0, world_h - 1, out=out_yi)
 
         # Get depths at new positions
-        if hasattr(self.landscape, '_depth') and self.landscape._depth is not None:
+        if hasattr(self.landscape, "_depth") and self.landscape._depth is not None:
             np.copyto(out_depths, self.landscape._depth[out_yi, out_xi])
         else:
             out_depths.fill(20.0)  # Default to water
@@ -3448,23 +3572,25 @@ class PorpoisePopulation:
 
     # === Phase 3: Enhanced Energetics Methods ===
 
-    def _eat_food_vectorized(self, mask: np.ndarray, fract_to_eat: np.ndarray, active_idx=None) -> np.ndarray:
+    def _eat_food_vectorized(
+        self, mask: np.ndarray, fract_to_eat: np.ndarray, active_idx=None
+    ) -> np.ndarray:
         """
         Eat food from landscape cells (Vectorized).
-        
+
         Uses CellData.eat_food_vectorized for high performance block update.
         """
         food_eaten = np.zeros(self.count, dtype=np.float32)
-        
+
         if self.landscape is None:
             return food_eaten
-            
+
         # Only active agents eat
         if active_idx is None:
             active_idx = np.where(mask)[0]
         if len(active_idx) == 0:
-             return food_eaten
-        
+            return food_eaten
+
         # Delegate to landscape vectorized method.
         # Eat at the PRE-move cell (the patch the porpoise just left) to match
         # DEPONS Porpoise.updEnergeticStatus → eatFood(posList.get(1)).
@@ -3476,44 +3602,43 @@ class PorpoisePopulation:
             yi=self._pre_cell_yi[active_idx],
             energy=self.energy[active_idx],
         )
-        
+
         food_eaten[active_idx] = consumed
         return food_eaten
 
-        
     def _get_current_month(self) -> int:
         """
         Get current month of simulation (1-12).
-        
+
         Based on tick counter (48 ticks/day, ~30 days/month).
         """
-        if not hasattr(self, '_day_of_year'):
+        if not hasattr(self, "_day_of_year"):
             return 1
-            
+
         day = self._day_of_year // 48
         # Approximate month (30 days each)
         month = (day // 30) % 12 + 1
         return month
-        
+
     def _get_energy_scaling(self, month: int, mask: np.ndarray) -> np.ndarray:
         """
         Calculate energy scaling factor based on season and lactation.
-        
+
         DEPONS Pattern:
         - Nov-Mar (cold): 1.0 (baseline)
         - Apr, Oct: 1.15 (transition)
         - May-Sep (warm): 1.3 (e_warm)
         - Lactating females: multiply by 1.4 (e_lact)
-        
+
         Args:
             month: Current month (1-12)
             mask: Active porpoise mask
-            
+
         Returns:
             Scaling factor array for each porpoise
         """
         scaling = np.ones(self.count, dtype=np.float32)
-        
+
         # Seasonal scaling
         if month == 4 or month == 10:
             # April and October - transition months
@@ -3522,25 +3647,25 @@ class PorpoisePopulation:
             # May through September - warm months
             scaling[:] = self.params.e_warm
         # Nov-Mar stays at 1.0 (cold months, lower metabolism)
-        
+
         # Lactation scaling (40% increase)
         lactating = self.with_calf & mask
         scaling[lactating] *= self.params.e_lact
-        
+
         return scaling
-        
-    def get_energy_stats(self) -> Dict[str, Any]:
+
+    def get_energy_stats(self) -> dict[str, Any]:
         """Get statistics about population energy levels."""
         active = self.active_mask
         if not active.any():
-            return {'mean': 0.0, 'std': 0.0, 'min': 0.0, 'max': 0.0, 'hungry': 0, 'starving': 0}
-            
+            return {"mean": 0.0, "std": 0.0, "min": 0.0, "max": 0.0, "hungry": 0, "starving": 0}
+
         active_energy = self.energy[active]
         return {
-            'mean': float(np.mean(active_energy)),
-            'std': float(np.std(active_energy)),
-            'min': float(np.min(active_energy)),
-            'max': float(np.max(active_energy)),
-            'hungry': int(np.sum(active_energy < 10)),  # Below neutral
-            'starving': int(np.sum(active_energy < 5))  # Critical
+            "mean": float(np.mean(active_energy)),
+            "std": float(np.std(active_energy)),
+            "min": float(np.min(active_energy)),
+            "max": float(np.max(active_energy)),
+            "hungry": int(np.sum(active_energy < 10)),  # Below neutral
+            "starving": int(np.sum(active_energy < 5)),  # Critical
         }

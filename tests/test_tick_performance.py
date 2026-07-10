@@ -5,11 +5,12 @@ Each test validates that an optimization does not change simulation output
 """
 
 import time
+
 import numpy as np
-import pytest
+
 from cenop.agents.population import PorpoisePopulation
-from cenop.parameters.simulation_params import SimulationParameters
 from cenop.landscape.cell_data import CellData, LandscapeMetadata
+from cenop.parameters.simulation_params import SimulationParameters
 
 
 def make_landscape(w=200, h=200):
@@ -35,7 +36,9 @@ def make_landscape(w=200, h=200):
 def make_pop(n=500, seed=42):
     """Create a population for benchmarking (homogeneous, no land avoidance)."""
     np.random.seed(seed)
-    params = SimulationParameters(porpoise_count=n, world_width=200, world_height=200, random_seed=seed)
+    params = SimulationParameters(
+        porpoise_count=n, world_width=200, world_height=200, random_seed=seed
+    )
     land = make_landscape()
     pop = PorpoisePopulation(n, params, landscape=land)
     pop._skip_land_avoidance = True
@@ -67,16 +70,18 @@ def snapshot_state(pop):
 def assert_states_match(s1, s2, atol=1e-5):
     """Assert two state snapshots are numerically identical."""
     for key in s1:
-        np.testing.assert_allclose(
-            s1[key], s2[key], atol=atol, err_msg=f"Mismatch in {key}"
-        )
+        np.testing.assert_allclose(s1[key], s2[key], atol=atol, err_msg=f"Mismatch in {key}")
 
 
 def make_pop_no_comm(n=500, seed=42):
     """Create a population with communication_enabled=False for O1 tests."""
     np.random.seed(seed)
     params = SimulationParameters(
-        porpoise_count=n, world_width=200, world_height=200, communication_enabled=False, random_seed=seed
+        porpoise_count=n,
+        world_width=200,
+        world_height=200,
+        communication_enabled=False,
+        random_seed=seed,
     )
     land = make_landscape()
     pop = PorpoisePopulation(n, params, landscape=land)

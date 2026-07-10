@@ -1,7 +1,7 @@
 """Tests for land avoidance skip optimization."""
 
 import numpy as np
-import pytest
+
 from cenop.agents.population import PorpoisePopulation
 from cenop.parameters.simulation_params import SimulationParameters
 
@@ -191,12 +191,8 @@ class TestLandAvoidanceBufferPreallocation:
         pop = PorpoisePopulation(count=10, params=params, landscape=landscape)
 
         # Place agents heading into land strip
-        pop.x[:] = np.array(
-            [20, 30, 40, 50, 60, 70, 80, 90, 15, 25], dtype=np.float32
-        )
-        pop.y[:] = np.array(
-            [48, 48, 48, 48, 48, 48, 48, 48, 48, 48], dtype=np.float32
-        )
+        pop.x[:] = np.array([20, 30, 40, 50, 60, 70, 80, 90, 15, 25], dtype=np.float32)
+        pop.y[:] = np.array([48, 48, 48, 48, 48, 48, 48, 48, 48, 48], dtype=np.float32)
         pop.heading[:] = 0.0
         pop._step_dist[:] = 3.0
         pop._dx[:] = 0.0

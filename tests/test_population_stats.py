@@ -13,9 +13,9 @@ import pandas as pd
 
 from cenop.server.renderers.population_stats import (
     build_population_stats_snapshot,
+    build_vital_stats_df,
     render_age_histogram,
     render_energy_histogram,
-    build_vital_stats_df,
 )
 
 
@@ -30,8 +30,12 @@ def _fake_sim_with_pm():
     sim = SimpleNamespace(
         population_manager=pm,
         get_statistics=lambda: {
-            "tick": 48, "day": 1, "year": 0, "population": 3,
-            "births_total": 0, "deaths_total": 0,
+            "tick": 48,
+            "day": 1,
+            "year": 0,
+            "population": 3,
+            "births_total": 0,
+            "deaths_total": 0,
         },
     )
     return sim, pm
@@ -85,8 +89,7 @@ class TestBuildSnapshot:
             is_female=np.zeros(3, dtype=bool),
             with_calf=np.zeros(3, dtype=bool),
         )
-        sim = SimpleNamespace(population_manager=pm,
-                              get_statistics=lambda: {"population": 0})
+        sim = SimpleNamespace(population_manager=pm, get_statistics=lambda: {"population": 0})
         snap = build_population_stats_snapshot(sim)
         assert snap["ages"] == []
         assert snap["energies"] == []
@@ -137,8 +140,7 @@ class TestRenderHelpers:
 
     def test_vital_stats_df_from_snapshot(self):
         df = build_vital_stats_df(
-            {"ages": [], "energies": [],
-             "stats": {"population": 3, "avg_age": 4.0}}
+            {"ages": [], "energies": [], "stats": {"population": 3, "avg_age": 4.0}}
         )
         assert list(df.columns) == ["Statistic", "Value"]
         rows = {r["Statistic"]: r["Value"] for _, r in df.iterrows()}
@@ -166,6 +168,7 @@ import threading
 class TestReactiveStateSnapshot:
     def test_state_has_population_snapshot_default_none(self):
         from shiny import reactive
+
         from cenop.server.reactive_state import create_state
 
         s = create_state()
@@ -174,6 +177,7 @@ class TestReactiveStateSnapshot:
 
     def test_reset_clears_population_snapshot(self):
         from shiny import reactive
+
         from cenop.server.reactive_state import create_state
 
         s = create_state()
@@ -232,11 +236,18 @@ class TestWorkerPublishesSnapshot:
         result_queue = queue.Queue()
 
         run_simulation_loop(
-            runner, result_queue, stop_event,
-            [1.0], threading.Lock(),        # throttle
-            [48], threading.Lock(),         # ticks_per_update
-            [False], [7], threading.Lock(), # trace enabled / length / lock
-            [False], threading.Lock(),      # skip_viz
+            runner,
+            result_queue,
+            stop_event,
+            [1.0],
+            threading.Lock(),  # throttle
+            [48],
+            threading.Lock(),  # ticks_per_update
+            [False],
+            [7],
+            threading.Lock(),  # trace enabled / length / lock
+            [False],
+            threading.Lock(),  # skip_viz
         )
 
         updates = []

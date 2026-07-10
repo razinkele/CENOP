@@ -113,9 +113,9 @@ class TestDepthsEquivalence:
         rng = np.random.default_rng(99)
         w, h = landscape.width, landscape.height
         n = 50
-        positions = np.column_stack(
-            [rng.uniform(0, w - 1, n), rng.uniform(0, h - 1, n)]
-        ).astype(np.float32)
+        positions = np.column_stack([rng.uniform(0, w - 1, n), rng.uniform(0, h - 1, n)]).astype(
+            np.float32
+        )
 
         xi = np.clip(positions[:, 0].astype(np.int32), 0, w - 1)
         yi = np.clip(positions[:, 1].astype(np.int32), 0, h - 1)
@@ -130,9 +130,9 @@ class TestSalinitiesEquivalence:
         rng = np.random.default_rng(100)
         w, h = landscape.width, landscape.height
         n = 50
-        positions = np.column_stack(
-            [rng.uniform(0, w - 1, n), rng.uniform(0, h - 1, n)]
-        ).astype(np.float32)
+        positions = np.column_stack([rng.uniform(0, w - 1, n), rng.uniform(0, h - 1, n)]).astype(
+            np.float32
+        )
 
         xi = np.clip(positions[:, 0].astype(np.int32), 0, w - 1)
         yi = np.clip(positions[:, 1].astype(np.int32), 0, h - 1)

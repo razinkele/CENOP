@@ -8,6 +8,7 @@ unpack SoA arrays, call the kernel, and write results back.
 Existing Numba functions in numba_helpers.py and __init__.py are NOT moved here;
 this module holds NEW kernels extracted from population.py hot paths.
 """
+
 from __future__ import annotations
 
 import math
@@ -16,17 +17,20 @@ import numpy as np
 
 try:
     from numba import njit, prange
+
     NUMBA_AVAILABLE = True
 except ImportError:
     NUMBA_AVAILABLE = False
     import logging as _logging
-    _logging.getLogger('cenop.optimizations.kernels').warning(
+
+    _logging.getLogger("cenop.optimizations.kernels").warning(
         "Numba not available — kernels will run as interpreted Python (~100x slower)"
     )
 
     def njit(*args, **kwargs):
         def decorator(func):
             return func
+
         return decorator
 
     def prange(*args):
@@ -91,19 +95,28 @@ def reflect_boundaries_kernel(
 
 @njit(cache=True)
 def crw_angle_step_kernel(
-    prev_angle,       # float64[n] — previous turning angle (read)
-    prev_log_mov,     # float64[n] — previous log step length (read+write)
-    depths,           # float64[n] — depth at each agent's position
-    salinity,         # float64[n] — salinity at each agent's position
-    rand_angle,       # float64[n] — pre-generated N(r2_mean, r2_sd)
-    rand_len,         # float64[n] — pre-generated N(r1_mean, r1_sd)
-    mask,             # bool[n]
-    out_pres_angle,   # float64[n] — output: turning angle
-    out_log_mov,      # float64[n] — output: log step length
+    prev_angle,  # float64[n] — previous turning angle (read)
+    prev_log_mov,  # float64[n] — previous log step length (read+write)
+    depths,  # float64[n] — depth at each agent's position
+    salinity,  # float64[n] — salinity at each agent's position
+    rand_angle,  # float64[n] — pre-generated N(r2_mean, r2_sd)
+    rand_len,  # float64[n] — pre-generated N(r1_mean, r1_sd)
+    mask,  # bool[n]
+    out_pres_angle,  # float64[n] — output: turning angle
+    out_log_mov,  # float64[n] — output: log step length
     # CRW parameters
-    corr_angle_base, corr_angle_bathy, corr_angle_salinity, corr_angle_base_sd,
-    corr_logmov_length, corr_logmov_bathy, corr_logmov_salinity, max_mov,
-    r2_mean, r2_sd, r1_mean, r1_sd,
+    corr_angle_base,
+    corr_angle_bathy,
+    corr_angle_salinity,
+    corr_angle_base_sd,
+    corr_logmov_length,
+    corr_logmov_bathy,
+    corr_logmov_salinity,
+    max_mov,
+    r2_mean,
+    r2_sd,
+    r1_mean,
+    r1_sd,
     m_param,
 ):
     """
@@ -127,9 +140,9 @@ def crw_angle_step_kernel(
             continue
 
         # === Angle calculation ===
-        env_mod = (corr_angle_bathy * depths[i]
-                   + corr_angle_salinity * salinity[i]
-                   + corr_angle_base_sd)
+        env_mod = (
+            corr_angle_bathy * depths[i] + corr_angle_salinity * salinity[i] + corr_angle_base_sd
+        )
         angle_tmp = corr_angle_base * prev_angle[i] + rand_angle[i]
         pres_angle = angle_tmp * env_mod
 
@@ -169,18 +182,22 @@ def crw_angle_step_kernel(
         out_pres_angle[i] = pres_angle
 
         # === Step length calculation ===
-        log_mov = (corr_logmov_length * prev_log_mov[i]
-                   + corr_logmov_bathy * depths[i]
-                   + corr_logmov_salinity * salinity[i]
-                   + rand_len[i])
+        log_mov = (
+            corr_logmov_length * prev_log_mov[i]
+            + corr_logmov_bathy * depths[i]
+            + corr_logmov_salinity * salinity[i]
+            + rand_len[i]
+        )
 
         retry = 0
         while log_mov > max_mov and retry < max_retries:
             new_rand = np.random.normal(r1_mean, r1_sd)
-            log_mov = (corr_logmov_length * prev_log_mov[i]
-                       + corr_logmov_bathy * depths[i]
-                       + corr_logmov_salinity * salinity[i]
-                       + new_rand)
+            log_mov = (
+                corr_logmov_length * prev_log_mov[i]
+                + corr_logmov_bathy * depths[i]
+                + corr_logmov_salinity * salinity[i]
+                + new_rand
+            )
             retry += 1
 
         if log_mov > max_mov:
@@ -192,11 +209,18 @@ def crw_angle_step_kernel(
 
 @njit(cache=True)
 def turn_position_kernel(
-    x, y, heading, step_dist,
+    x,
+    y,
+    heading,
+    step_dist,
     turn_delta,
-    world_w, world_h,
-    out_x, out_y, out_heading,
-    out_xi, out_yi,
+    world_w,
+    world_h,
+    out_x,
+    out_y,
+    out_heading,
+    out_xi,
+    out_yi,
 ):
     """
     Compute new positions after turning by turn_delta degrees.
@@ -249,13 +273,13 @@ def turn_position_kernel(
 
 @njit(cache=True)
 def eat_food_kernel(
-    food_grid,   # 2D float32 array (rows, cols) — modified in-place
-    x_indices,   # 1D int32 — column indices per agent
-    y_indices,   # 1D int32 — row indices per agent
-    fraction,    # 1D float32 — fraction to eat per agent
+    food_grid,  # 2D float32 array (rows, cols) — modified in-place
+    x_indices,  # 1D int32 — column indices per agent
+    y_indices,  # 1D int32 — row indices per agent
+    fraction,  # 1D float32 — fraction to eat per agent
     food_eaten,  # 1D float32 — output: actual food eaten per agent
-    min_food,    # float — minimum food floor (ADD_ARTIFICIAL_FOOD)
-    demand_grid, # 2D float32 array (rows, cols) — pre-allocated buffer
+    min_food,  # float — minimum food floor (ADD_ARTIFICIAL_FOOD)
+    demand_grid,  # 2D float32 array (rows, cols) — pre-allocated buffer
 ):
     """
     Eat food from grid cells — two-pass proportional-sharing kernel.
@@ -331,13 +355,13 @@ def eat_food_kernel(
 
 @njit(cache=True)
 def eat_food_kernel_v2(
-    food_grid,   # 2D float32 array (rows, cols) — modified in-place
-    x_indices,   # 1D int32 — column indices per agent
-    y_indices,   # 1D int32 — row indices per agent
-    energy,      # 1D float32 — energy level per agent
+    food_grid,  # 2D float32 array (rows, cols) — modified in-place
+    x_indices,  # 1D int32 — column indices per agent
+    y_indices,  # 1D int32 — row indices per agent
+    energy,  # 1D float32 — energy level per agent
     food_eaten,  # 1D float32 — output: actual food eaten per agent
-    min_food,    # float — minimum food floor (ADD_ARTIFICIAL_FOOD)
-    demand_grid, # 2D float32 array (rows, cols) — pre-allocated buffer
+    min_food,  # float — minimum food floor (ADD_ARTIFICIAL_FOOD)
+    demand_grid,  # 2D float32 array (rows, cols) — pre-allocated buffer
 ):
     """Two-pass proportional food with inline fraction computation.
 
@@ -383,16 +407,16 @@ def eat_food_kernel_v2(
 
 @njit(cache=True)
 def depons_bmr_cost_kernel(
-    speed,              # 1D float32 — current speed in m/s
-    scaling,            # 1D float32 — seasonal scaling factor (pre-computed)
-    is_lactating,       # 1D bool
-    is_disturbed,       # 1D bool
-    deter_magnitude,    # 1D float32
-    mask,               # 1D bool
-    out_total_cost,     # 1D float32 — output
-    e_use_per_30_min,   # float — BMR parameter
-    e_lact,             # float — lactation multiplier
-    e_use_per_km,       # float — swimming activity coefficient (0.0 in DEPONS)
+    speed,  # 1D float32 — current speed in m/s
+    scaling,  # 1D float32 — seasonal scaling factor (pre-computed)
+    is_lactating,  # 1D bool
+    is_disturbed,  # 1D bool
+    deter_magnitude,  # 1D float32
+    mask,  # 1D bool
+    out_total_cost,  # 1D float32 — output
+    e_use_per_30_min,  # float — BMR parameter
+    e_lact,  # float — lactation multiplier
+    e_use_per_km,  # float — swimming activity coefficient (0.0 in DEPONS)
     disturbance_coeff,  # float — disturbance energy coefficient (0.0 in DEPONS)
 ):
     """
@@ -424,8 +448,16 @@ def depons_bmr_cost_kernel(
 
 @njit(cache=True)
 def social_accumulate_kernel(
-    idx_i, idx_j, dx_ij, dy_ij, dist, p_i, p_j,
-    ux_total, uy_total, sw_total,
+    idx_i,
+    idx_j,
+    dx_ij,
+    dy_ij,
+    dist,
+    p_i,
+    p_j,
+    ux_total,
+    uy_total,
+    sw_total,
 ):
     """
     Fused social vector accumulation: unit-vector + weighting + accumulation.
@@ -478,8 +510,12 @@ def regrow_food_kernel(food, k_vals, rate, n_iter):
 
 @njit(cache=True)
 def compute_ve_total_kernel(
-    stored_util, mem_ptr, mem_count, work_mem_table,
-    active_indices, out_ve_total,
+    stored_util,
+    mem_ptr,
+    mem_count,
+    work_mem_table,
+    active_indices,
+    out_ve_total,
 ):
     """Fused veTotal: gather + weight + sum in one pass per agent.
 
@@ -508,10 +544,17 @@ def compute_ve_total_kernel(
 
 @njit(cache=True)
 def compute_attraction_kernel(
-    stored_util, pos_history_x, pos_history_y,
-    mem_ptr, mem_count, current_x, current_y,
-    ref_mem_table, active_indices,
-    out_vt_x, out_vt_y,
+    stored_util,
+    pos_history_x,
+    pos_history_y,
+    mem_ptr,
+    mem_count,
+    current_x,
+    current_y,
+    ref_mem_table,
+    active_indices,
+    out_vt_x,
+    out_vt_y,
 ):
     """Fused attraction vector: gather + direction + weight + sum per agent.
 
@@ -671,10 +714,26 @@ def land_avoidance_kernel(
 
 @njit(cache=True)
 def heading_position_reflect_kernel(
-    heading, pres_angle, log_mov, ve_total, vt_x, vt_y,
-    deter_dx, deter_dy, x, y, mask, is_dispersing,
-    inertia_const, disp_step, world_w, world_h,
-    out_heading, out_dx, out_dy, out_step_dist,
+    heading,
+    pres_angle,
+    log_mov,
+    ve_total,
+    vt_x,
+    vt_y,
+    deter_dx,
+    deter_dy,
+    x,
+    y,
+    mask,
+    is_dispersing,
+    inertia_const,
+    disp_step,
+    world_w,
+    world_h,
+    out_heading,
+    out_dx,
+    out_dy,
+    out_step_dist,
 ):
     """Fused: heading composition + step distance + dx/dy.
 
@@ -836,9 +895,30 @@ def warmup_kernels():
     m = np.ones(n, dtype=np.bool_)
     opa = np.zeros(n, dtype=np.float64)
     olm = np.zeros(n, dtype=np.float64)
-    crw_angle_step_kernel(pa, plm, dep, sal, ra, rl, m, opa, olm,
-                          0.0, 0.0, 0.0, 1.0, 0.5, 0.0, 0.0, 3.0,
-                          0.0, 4.0, 0.0, 1.0, 0.00001)
+    crw_angle_step_kernel(
+        pa,
+        plm,
+        dep,
+        sal,
+        ra,
+        rl,
+        m,
+        opa,
+        olm,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.5,
+        0.0,
+        0.0,
+        3.0,
+        0.0,
+        4.0,
+        0.0,
+        1.0,
+        0.00001,
+    )
     # Warmup turn_position kernel
     ox = np.zeros(3, dtype=np.float64)
     oy = np.zeros(3, dtype=np.float64)
@@ -898,9 +978,24 @@ def warmup_kernels():
     ss_ouy = np.zeros(2, dtype=np.float64)
     ss_osw = np.zeros(2, dtype=np.float64)
     social_sound_kernel(
-        ss_xi, ss_yi, ss_xj, ss_yj, ss_ii, ss_jj, ss_ai, ss_aj,
-        150.0, 0.01, 15.0, 100.0, 0.1, 400.0, 2,
-        ss_oux, ss_ouy, ss_osw,
+        ss_xi,
+        ss_yi,
+        ss_xj,
+        ss_yj,
+        ss_ii,
+        ss_jj,
+        ss_ai,
+        ss_aj,
+        150.0,
+        0.01,
+        15.0,
+        100.0,
+        0.1,
+        400.0,
+        2,
+        ss_oux,
+        ss_ouy,
+        ss_osw,
     )
     # Warmup regrow_food kernel
     rf = np.array([1.0, 2.0, 3.0], dtype=np.float64)
@@ -920,9 +1015,7 @@ def warmup_kernels():
     _phy = np.zeros((2, 4), dtype=np.float32)
     _ovx = np.zeros(2, dtype=np.float64)
     _ovy = np.zeros(2, dtype=np.float64)
-    compute_attraction_kernel(
-        _su, _phx, _phy, _mp, _mc, _cx, _cy, _wt, _ai, _ovx, _ovy
-    )
+    compute_attraction_kernel(_su, _phx, _phy, _mp, _mc, _cx, _cy, _wt, _ai, _ovx, _ovy)
     # Warmup land_avoidance kernel
     la_x = np.array([5.0], dtype=np.float64)
     la_y = np.array([5.0], dtype=np.float64)
@@ -936,8 +1029,18 @@ def warmup_kernels():
     la_oh = np.zeros(1, dtype=np.float64)
     la_r = np.zeros(1, dtype=np.bool_)
     land_avoidance_kernel(
-        la_x, la_y, la_h, la_s, la_dg, 1.0,
-        la_ba, la_j, la_ox, la_oy, la_oh, la_r,
+        la_x,
+        la_y,
+        la_h,
+        la_s,
+        la_dg,
+        1.0,
+        la_ba,
+        la_j,
+        la_ox,
+        la_oy,
+        la_oh,
+        la_r,
     )
     # Warmup heading_position_reflect kernel
     hp_n = 3
@@ -958,9 +1061,25 @@ def warmup_kernels():
     hp_ody = np.zeros(hp_n, dtype=np.float32)
     hp_osd = np.zeros(hp_n, dtype=np.float32)
     heading_position_reflect_kernel(
-        hp_h, hp_pa, hp_lm, hp_ve, hp_vtx, hp_vty,
-        hp_ddx, hp_ddy, hp_x, hp_y, hp_mask, hp_disp,
-        1.0, 4.0, 20, 20,
-        hp_oh, hp_odx, hp_ody, hp_osd,
+        hp_h,
+        hp_pa,
+        hp_lm,
+        hp_ve,
+        hp_vtx,
+        hp_vty,
+        hp_ddx,
+        hp_ddy,
+        hp_x,
+        hp_y,
+        hp_mask,
+        hp_disp,
+        1.0,
+        4.0,
+        20,
+        20,
+        hp_oh,
+        hp_odx,
+        hp_ody,
+        hp_osd,
     )
     return True

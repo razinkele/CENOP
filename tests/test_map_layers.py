@@ -5,18 +5,14 @@ layer-builder functions before importing cenop.server.map_layers.
 The mock is set up in conftest.py — no need to re-register it here.
 """
 
-import sys
-
-import pytest
-
 from cenop.server.map_layers import (  # noqa: E402
-    build_porpoise_layer,
-    build_porpoise_trails_layer,
+    GIS_COLOR_SCHEMES,
     build_noise_construction_layer,
     build_noise_operational_layer,
-    build_turbine_pole_layer,
+    build_porpoise_layer,
+    build_porpoise_trails_layer,
     build_turbine_blade_layer,
-    GIS_COLOR_SCHEMES,
+    build_turbine_pole_layer,
 )
 
 
@@ -38,7 +34,9 @@ class TestBuildPorpoiseLayer:
     def test_layer_id_is_stable(self):
         """Layer ID must be stable for partial_update matching."""
         layer1 = build_porpoise_layer([])
-        layer2 = build_porpoise_layer([{"position": [0, 0], "heading": 0, "color": [0, 0, 0], "radius": 100}])
+        layer2 = build_porpoise_layer(
+            [{"position": [0, 0], "heading": 0, "color": [0, 0, 0], "radius": 100}]
+        )
         assert layer1["id"] == layer2["id"] == "porpoises"
 
 
@@ -120,13 +118,16 @@ class TestBladeAnimation:
     def test_no_dead_animation_constants(self):
         """Dead client-side animation constants must not exist on the module."""
         import cenop.server.map_layers as ml
+
         assert not hasattr(ml, "BLADE_ANIMATION_JS")
         assert not hasattr(ml, "BLADE_ANIMATION_STOP_JS")
 
     def test_client_animated_param_removed(self):
         """The ineffective client_animated parameter must be gone."""
         import inspect
+
         from cenop.server.map_layers import build_turbine_blade_layer
+
         params = inspect.signature(build_turbine_blade_layer).parameters
         assert "client_animated" not in params
 
@@ -146,8 +147,8 @@ class TestGisColorSchemes:
 import numpy as np
 
 from cenop.server.map_layers import (
-    grid_to_rgba_image,
     CATEGORICAL_COLORS,
+    grid_to_rgba_image,
 )
 
 
@@ -235,19 +236,22 @@ class TestArrayToBase64Png:
     def test_decodable_png(self):
         """The base64 content should decode to valid PNG bytes."""
         import base64
+
         rgba = np.zeros((3, 3, 4), dtype=np.uint8)
         rgba[:, :] = [255, 0, 0, 255]
         result = array_to_base64_png(rgba)
         b64_data = result.split(",", 1)[1]
         png_bytes = base64.b64decode(b64_data)
         # PNG magic bytes
-        assert png_bytes[:4] == b'\x89PNG'
+        assert png_bytes[:4] == b"\x89PNG"
 
     def test_flips_y_axis(self):
         """Row 0 of input (north) should become bottom of image."""
-        from PIL import Image
         import base64
         import io
+
+        from PIL import Image
+
         rgba = np.zeros((2, 1, 4), dtype=np.uint8)
         rgba[0, 0] = [255, 0, 0, 255]  # row 0 = red (north)
         rgba[1, 0] = [0, 0, 255, 255]  # row 1 = blue (south)
@@ -259,20 +263,21 @@ class TestArrayToBase64Png:
         # BOTTOM because bitmap_layer bounds are [west,south,east,north] and
         # PNG pixel (0,0) is top-left = south-west corner.
         # So row 0 (north) should be flipped to the bottom row of the image.
-        assert pixels[0] == (0, 0, 255, 255)    # top pixel = south = blue
-        assert pixels[1] == (255, 0, 0, 255)    # bottom pixel = north = red
+        assert pixels[0] == (0, 0, 255, 255)  # top pixel = south = blue
+        assert pixels[1] == (255, 0, 0, 255)  # bottom pixel = north = red
 
 
-import numpy as np
-from cenop.server.map_layers import build_grid_bitmap_layer
 from cenop.landscape.cell_data import LandscapeMetadata
+from cenop.server.map_layers import build_grid_bitmap_layer
 
 
 class TestBuildGridBitmapLayer:
     def _make_metadata(self):
         return LandscapeMetadata(
-            ncols=4, nrows=4,
-            xllcorner=4321000.0, yllcorner=3210000.0,
+            ncols=4,
+            nrows=4,
+            xllcorner=4321000.0,
+            yllcorner=3210000.0,
             cellsize=400.0,
         )
 
@@ -280,8 +285,10 @@ class TestBuildGridBitmapLayer:
         """Should return [bitmap_layer, scatter_layer]."""
         data = np.array([[1.0, 2.0], [3.0, 4.0]])
         meta = LandscapeMetadata(
-            ncols=2, nrows=2,
-            xllcorner=4321000.0, yllcorner=3210000.0,
+            ncols=2,
+            nrows=2,
+            xllcorner=4321000.0,
+            yllcorner=3210000.0,
             cellsize=400.0,
         )
         layers = build_grid_bitmap_layer("test", data, meta, "EPSG:3035", "viridis")
@@ -336,15 +343,16 @@ class TestBuildGridBitmapLayer:
 
 
 from cenop.server.map_layers import compute_grid_bounds
-from cenop.landscape.cell_data import LandscapeMetadata
 
 
 class TestComputeGridBounds:
     def test_returns_bbox(self):
         """Should return [west, south, east, north] in WGS84."""
         meta = LandscapeMetadata(
-            ncols=10, nrows=10,
-            xllcorner=4321000.0, yllcorner=3210000.0,
+            ncols=10,
+            nrows=10,
+            xllcorner=4321000.0,
+            yllcorner=3210000.0,
             cellsize=400.0,
         )
         bounds = compute_grid_bounds(meta, "EPSG:3035")
@@ -356,8 +364,10 @@ class TestComputeGridBounds:
     def test_bounds_are_wgs84_range(self):
         """All coordinates should be valid WGS84."""
         meta = LandscapeMetadata(
-            ncols=100, nrows=100,
-            xllcorner=4321000.0, yllcorner=3210000.0,
+            ncols=100,
+            nrows=100,
+            xllcorner=4321000.0,
+            yllcorner=3210000.0,
             cellsize=400.0,
         )
         bounds = compute_grid_bounds(meta, "EPSG:3035")
@@ -370,8 +380,10 @@ class TestComputeGridBounds:
     def test_edge_sampling_captures_full_extent(self):
         """Bbox from edge sampling should be >= bbox from corners only."""
         meta = LandscapeMetadata(
-            ncols=500, nrows=500,
-            xllcorner=4754000.0, yllcorner=3482000.0,
+            ncols=500,
+            nrows=500,
+            xllcorner=4754000.0,
+            yllcorner=3482000.0,
             cellsize=400.0,
         )
         bounds = compute_grid_bounds(meta, "EPSG:3035")
@@ -387,7 +399,9 @@ class TestBladeRafLoopRemoved:
     @staticmethod
     def _read_src(relpath):
         import pathlib
+
         import cenop
+
         return (pathlib.Path(cenop.__file__).parent / relpath).read_text()
 
     def test_layout_has_no_blade_raf_loop(self):

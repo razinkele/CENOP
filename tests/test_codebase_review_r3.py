@@ -59,9 +59,9 @@ class TestFoodEatenAtPreMoveCell:
         pop._pre_move_y[0] = 2.5
         pop.x[0] = 7.5
         pop.y[0] = 7.5
-        pop._recompute_cell_indices()                 # _cell_xi/_yi = post-move (7, 7)
+        pop._recompute_cell_indices()  # _cell_xi/_yi = post-move (7, 7)
         pop._snapshot_pre_move_cells(pop._pre_move_x, pop._pre_move_y)  # pre = (2, 2)
-        pop.energy[0] = 10.0                           # hungry → fraction > 0
+        pop.energy[0] = 10.0  # hungry → fraction > 0
 
         pre_cell_before = float(landscape._food_value[2, 2])
         post_cell_before = float(landscape._food_value[7, 7])
@@ -71,10 +71,12 @@ class TestFoodEatenAtPreMoveCell:
         eaten = pop._eat_food_vectorized(mask, fract, active_idx=np.array([0]))
 
         assert eaten[0] > 0, "Active hungry agent should consume food"
-        assert landscape._food_value[2, 2] < pre_cell_before, \
-            "Pre-move cell (2,2) should be depleted (eats where it just left)"
-        assert landscape._food_value[7, 7] == pytest.approx(post_cell_before), \
-            "Post-move cell (7,7) should be untouched"
+        assert (
+            landscape._food_value[2, 2] < pre_cell_before
+        ), "Pre-move cell (2,2) should be depleted (eats where it just left)"
+        assert landscape._food_value[7, 7] == pytest.approx(
+            post_cell_before
+        ), "Post-move cell (7,7) should be untouched"
 
     def test_pre_move_cell_buffers_exist(self, params, landscape):
         """Pre-move cell index buffers are allocated with correct dtype/shape."""

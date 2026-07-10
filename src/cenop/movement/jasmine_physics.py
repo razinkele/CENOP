@@ -21,16 +21,16 @@ Key features:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from cenop.movement.base import (
-    MovementModule,
-    MovementMode,
-    MovementState,
     EnvironmentContext,
+    MovementMode,
+    MovementModule,
     MovementResult,
+    MovementState,
 )
 
 if TYPE_CHECKING:
@@ -44,20 +44,21 @@ class JASMINEMovementState(MovementState):
 
     Adds velocity components and 3D position for physics-based movement.
     """
+
     # Velocity components (m/s)
-    vx: np.ndarray                 # X velocity
-    vy: np.ndarray                 # Y velocity
-    vz: np.ndarray                 # Z velocity (diving)
+    vx: np.ndarray  # X velocity
+    vy: np.ndarray  # Y velocity
+    vz: np.ndarray  # Z velocity (diving)
 
     # 3D position
-    z: np.ndarray                  # Depth (meters below surface)
+    z: np.ndarray  # Depth (meters below surface)
 
     # Acceleration (for Verlet integration)
-    ax: np.ndarray                 # X acceleration
-    ay: np.ndarray                 # Y acceleration
+    ax: np.ndarray  # X acceleration
+    ay: np.ndarray  # Y acceleration
 
     @classmethod
-    def create(cls, count: int, rng: Optional[np.random.Generator] = None) -> 'JASMINEMovementState':
+    def create(cls, count: int, rng: np.random.Generator | None = None) -> JASMINEMovementState:
         """Create a new JASMINEMovementState for count agents."""
         base = MovementState.create(count, rng=rng)
         return cls(
@@ -88,17 +89,18 @@ class JASMINEEnvironmentContext(EnvironmentContext):
 
     Adds current velocities and potential field gradients.
     """
+
     # Ocean currents (m/s)
-    current_u: np.ndarray          # Eastward current velocity
-    current_v: np.ndarray          # Northward current velocity
+    current_u: np.ndarray  # Eastward current velocity
+    current_v: np.ndarray  # Northward current velocity
 
     # Potential field gradients (for decision-making)
-    prey_gradient_x: Optional[np.ndarray] = None
-    prey_gradient_y: Optional[np.ndarray] = None
-    social_gradient_x: Optional[np.ndarray] = None
-    social_gradient_y: Optional[np.ndarray] = None
-    avoidance_gradient_x: Optional[np.ndarray] = None
-    avoidance_gradient_y: Optional[np.ndarray] = None
+    prey_gradient_x: np.ndarray | None = None
+    prey_gradient_y: np.ndarray | None = None
+    social_gradient_x: np.ndarray | None = None
+    social_gradient_y: np.ndarray | None = None
+    avoidance_gradient_x: np.ndarray | None = None
+    avoidance_gradient_y: np.ndarray | None = None
 
 
 class JASMINEPhysicsMovement(MovementModule):
@@ -118,12 +120,12 @@ class JASMINEPhysicsMovement(MovementModule):
     """
 
     # Physical constants
-    DRAG_COEFFICIENT = 0.1         # Velocity-dependent drag
-    MAX_SPEED = 3.0                # Maximum self-propulsion speed (m/s)
-    ACCELERATION_SCALE = 0.5       # Thrust acceleration scaling
-    CURRENT_COUPLING = 1.0         # How strongly currents affect movement
+    DRAG_COEFFICIENT = 0.1  # Velocity-dependent drag
+    MAX_SPEED = 3.0  # Maximum self-propulsion speed (m/s)
+    ACCELERATION_SCALE = 0.5  # Thrust acceleration scaling
+    CURRENT_COUPLING = 1.0  # How strongly currents affect movement
 
-    def __init__(self, params: 'SimulationParameters', rng: Optional[np.random.Generator] = None):
+    def __init__(self, params: SimulationParameters, rng: np.random.Generator | None = None):
         """
         Initialize JASMINE physics movement module.
 
@@ -155,8 +157,8 @@ class JASMINEPhysicsMovement(MovementModule):
         state: MovementState,
         environment: EnvironmentContext,
         mask: np.ndarray,
-        deterrence_dx: Optional[np.ndarray] = None,
-        deterrence_dy: Optional[np.ndarray] = None,
+        deterrence_dx: np.ndarray | None = None,
+        deterrence_dy: np.ndarray | None = None,
     ) -> MovementResult:
         """
         Compute physics-based movement step.
@@ -198,8 +200,8 @@ class JASMINEPhysicsMovement(MovementModule):
         state: JASMINEMovementState,
         environment: EnvironmentContext,
         mask: np.ndarray,
-        deterrence_dx: Optional[np.ndarray],
-        deterrence_dy: Optional[np.ndarray],
+        deterrence_dx: np.ndarray | None,
+        deterrence_dy: np.ndarray | None,
     ) -> MovementResult:
         """
         Full physics-based movement with velocity state.
@@ -224,7 +226,7 @@ class JASMINEPhysicsMovement(MovementModule):
         drag_y = -self.drag * vy * speed
 
         # 3. Current advection (if available)
-        if hasattr(environment, 'current_u') and environment.current_u is not None:
+        if hasattr(environment, "current_u") and environment.current_u is not None:
             current_x = environment.current_u * self.current_coupling
             current_y = environment.current_v * self.current_coupling
         else:
@@ -311,8 +313,8 @@ class JASMINEPhysicsMovement(MovementModule):
         state: MovementState,
         environment: EnvironmentContext,
         mask: np.ndarray,
-        deterrence_dx: Optional[np.ndarray],
-        deterrence_dy: Optional[np.ndarray],
+        deterrence_dx: np.ndarray | None,
+        deterrence_dy: np.ndarray | None,
     ) -> MovementResult:
         """
         Simplified physics for basic MovementState (no velocity tracking).
@@ -331,7 +333,7 @@ class JASMINEPhysicsMovement(MovementModule):
         dy = np.cos(heading_rad) * base_speed
 
         # Add current advection if available
-        if hasattr(environment, 'current_u') and environment.current_u is not None:
+        if hasattr(environment, "current_u") and environment.current_u is not None:
             dx += environment.current_u * self.current_coupling * self.dt / 400.0  # Scale to cells
             dy += environment.current_v * self.current_coupling * self.dt / 400.0
 

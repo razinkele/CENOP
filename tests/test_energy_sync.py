@@ -1,10 +1,10 @@
 """Tests for energy state sync elimination and clamp consolidation."""
 
 import numpy as np
-import pytest
+
 from cenop.agents.population import PorpoisePopulation
 from cenop.parameters.simulation_params import SimulationParameters
-from cenop.physiology import create_energy_module, EnergyMode
+from cenop.physiology import EnergyMode, create_energy_module
 
 
 def _make_pop(count=10):

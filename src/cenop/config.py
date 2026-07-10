@@ -5,8 +5,8 @@ This module provides centralized access to project paths and resources,
 ensuring robustness across different execution environments.
 """
 
-from pathlib import Path
 import logging
+from pathlib import Path
 
 logger = logging.getLogger("CENOP")
 
@@ -20,6 +20,7 @@ PROJECT_ROOT = PACKAGE_ROOT.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 WIND_FARMS_DIR = DATA_DIR / "wind-farms"
 STATIC_DIR = PROJECT_ROOT / "static"
+
 
 def get_data_file(filename: str) -> Path:
     """Resolve a path to a data file, checking existence."""

@@ -8,23 +8,22 @@ Tests the modular movement system including:
 - Movement state management
 """
 
-import pytest
 import numpy as np
+import pytest
 
+from cenop.core.time_manager import TimeMode
 from cenop.movement import (
-    MovementModule,
-    MovementMode,
-    MovementState,
-    EnvironmentContext,
-    MovementResult,
     DEPONSCRWMovement,
     DEPONSCRWMovementVectorized,
-    JASMINEPhysicsMovement,
+    EnvironmentContext,
     HybridMovementSelector,
     HybridStrategy,
+    JASMINEPhysicsMovement,
+    MovementMode,
+    MovementResult,
+    MovementState,
     create_movement_module,
 )
-from cenop.core.time_manager import TimeMode
 from cenop.parameters import SimulationParameters
 
 

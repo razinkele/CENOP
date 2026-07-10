@@ -14,9 +14,10 @@ Expected DEPONS behaviors (from documentation):
 
 import numpy as np
 import pytest
-from cenop.parameters.simulation_params import SimulationParameters
+
 from cenop.agents.population import PorpoisePopulation
 from cenop.landscape.cell_data import create_homogeneous_landscape
+from cenop.parameters.simulation_params import SimulationParameters
 
 
 class TestPhysiologyParameters:
@@ -57,7 +58,9 @@ class TestPhysiologyParameters:
         # Life history
         assert params.maturity_age == 3.44, "Maturity age should be 3.44 years"
         assert params.max_age == 30.0, "Max age should be 30 years"
-        assert params.max_breeding_age == 30.0, "Max breeding age should equal max_age (effectively removed per DEPONS 3.2 spec)"
+        assert (
+            params.max_breeding_age == 30.0
+        ), "Max breeding age should equal max_age (effectively removed per DEPONS 3.2 spec)"
 
         # Breeding
         assert params.conceive_prob == 0.68, "Conception probability should be 0.68"
@@ -81,7 +84,9 @@ class TestStarvationMortality:
 
         # Calculate expected yearly survival: 1 - (1.0 * exp(-1 * 0.4)) = ~0.3297
         expected_yearly_surv = 1.0 - (1.0 * np.exp(-1.0 * 0.4))
-        assert 0.30 < expected_yearly_surv < 0.36, f"Expected yearly survival ~0.3297, got {expected_yearly_surv}"
+        assert (
+            0.30 < expected_yearly_surv < 0.36
+        ), f"Expected yearly survival ~0.3297, got {expected_yearly_surv}"
 
     def test_starvation_probability_at_high_energy(self):
         """High energy should have low mortality probability."""
@@ -89,7 +94,9 @@ class TestStarvationMortality:
 
         # Calculate expected yearly survival at energy=10: 1 - (1.0 * exp(-10 * 0.4)) = ~0.9817
         expected_yearly_surv = 1.0 - (1.0 * np.exp(-10.0 * 0.4))
-        assert 0.97 < expected_yearly_surv < 0.99, f"Expected yearly survival ~0.9817, got {expected_yearly_surv}"
+        assert (
+            0.97 < expected_yearly_surv < 0.99
+        ), f"Expected yearly survival ~0.9817, got {expected_yearly_surv}"
 
 
 class TestAgeMortality:
@@ -235,7 +242,7 @@ class TestDEPONSTrajectoryComparison:
 
             # Count deaths (population decrease minus births is tricky, just track decreases)
             if pop_after < pop_before:
-                deaths += (pop_before - pop_after)
+                deaths += pop_before - pop_after
 
         # DEPONS 3.2: no age-bracket mortality. Well-fed population has near-zero mortality.
         # Starvation mortality at energy ~15-20 is <0.3% per year (parameterized curve).
@@ -243,7 +250,9 @@ class TestDEPONSTrajectoryComparison:
         print(f"Annual mortality estimate: {mortality_rate:.1%}")
 
         # Allow up to 10% for stochastic variation; minimum near-zero (no invented floors)
-        assert mortality_rate < 0.10, f"Mortality rate {mortality_rate:.1%} unexpectedly high for well-fed population"
+        assert (
+            mortality_rate < 0.10
+        ), f"Mortality rate {mortality_rate:.1%} unexpectedly high for well-fed population"
 
     @pytest.mark.slow
     def test_energy_dynamics_over_year(self):
@@ -299,11 +308,15 @@ class TestDEPONSTrajectoryComparison:
         maturity_age = params.maturity_age
         max_breeding_age = params.max_breeding_age
         active = pop.active_mask
-        eligible_start = int(np.sum(
-            active & pop.is_female &
-            (pop.age >= maturity_age) & (pop.age <= max_breeding_age) &
-            ~pop.with_calf
-        ))
+        eligible_start = int(
+            np.sum(
+                active
+                & pop.is_female
+                & (pop.age >= maturity_age)
+                & (pop.age <= max_breeding_age)
+                & ~pop.with_calf
+            )
+        )
 
         # Run for 1 year
         ticks_per_year = 365 * 48
@@ -347,31 +360,32 @@ class TestPhysiologyValidation:
         x_const = 0.4
 
         test_cases = [
-            (0.0, 0.00),   # Zero energy: 0% yearly survival (1 - 1.0 * exp(0) = 0)
-            (1.0, 0.33),   # Energy 1: ~33% yearly survival (1 - 1.0 * exp(-0.4) = 0.3297)
-            (5.0, 0.86),   # Energy 5: ~86% yearly survival (1 - 1.0 * exp(-2.0) = 0.8647)
+            (0.0, 0.00),  # Zero energy: 0% yearly survival (1 - 1.0 * exp(0) = 0)
+            (1.0, 0.33),  # Energy 1: ~33% yearly survival (1 - 1.0 * exp(-0.4) = 0.3297)
+            (5.0, 0.86),  # Energy 5: ~86% yearly survival (1 - 1.0 * exp(-2.0) = 0.8647)
             (10.0, 0.98),  # Energy 10: ~98% yearly survival (1 - 1.0 * exp(-4.0) = 0.9817)
             (15.0, 1.00),  # Energy 15: ~99.75% yearly survival (1 - 1.0 * exp(-6.0) = 0.9975)
         ]
 
         for energy, expected_surv in test_cases:
             yearly_surv = 1.0 - (m_const * np.exp(-energy * x_const))
-            assert abs(yearly_surv - expected_surv) < 0.02, \
-                f"At energy={energy}, expected survival ~{expected_surv}, got {yearly_surv:.2f}"
+            assert (
+                abs(yearly_surv - expected_surv) < 0.02
+            ), f"At energy={energy}, expected survival ~{expected_surv}, got {yearly_surv:.2f}"
 
     def test_energy_scaling_months(self):
         """Verify seasonal energy scaling matches DEPONS."""
         expected_scaling = {
-            1: 1.0,   # January - cold
-            2: 1.0,   # February - cold
-            3: 1.0,   # March - cold
+            1: 1.0,  # January - cold
+            2: 1.0,  # February - cold
+            3: 1.0,  # March - cold
             4: 1.15,  # April - transition
-            5: 1.3,   # May - warm
-            6: 1.3,   # June - warm
-            7: 1.3,   # July - warm
-            8: 1.3,   # August - warm
-            9: 1.3,   # September - warm
-            10: 1.15, # October - transition
+            5: 1.3,  # May - warm
+            6: 1.3,  # June - warm
+            7: 1.3,  # July - warm
+            8: 1.3,  # August - warm
+            9: 1.3,  # September - warm
+            10: 1.15,  # October - transition
             11: 1.0,  # November - cold
             12: 1.0,  # December - cold
         }
@@ -387,8 +401,9 @@ class TestPhysiologyValidation:
             non_lactating = mask & ~pop.with_calf
             if np.any(non_lactating):
                 actual = scaling[non_lactating][0]
-                assert abs(actual - expected) < 0.01, \
-                    f"Month {month}: expected scaling {expected}, got {actual}"
+                assert (
+                    abs(actual - expected) < 0.01
+                ), f"Month {month}: expected scaling {expected}, got {actual}"
 
 
 class TestJasmineSurvivalConsistency:
@@ -396,9 +411,10 @@ class TestJasmineSurvivalConsistency:
 
     def test_healthy_porpoise_high_survival(self):
         """At body_condition=1.0 (energy 20), annual survival should be > 0.99."""
-        from cenop.physiology.energy_budget import JASMINEEnergyModule, EnergyState
         import numpy as np
+
         from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.physiology.energy_budget import EnergyState, JASMINEEnergyModule
 
         params = SimulationParameters()
         module = JASMINEEnergyModule(params)
@@ -410,13 +426,16 @@ class TestJasmineSurvivalConsistency:
 
         step_surv = module.compute_survival_probability(state, mask)
         yearly_surv = step_surv[0] ** (360 * 48)
-        assert yearly_surv > 0.99, f"Healthy porpoise yearly survival={yearly_surv:.4f}, expected > 0.99"
+        assert (
+            yearly_surv > 0.99
+        ), f"Healthy porpoise yearly survival={yearly_surv:.4f}, expected > 0.99"
 
     def test_moderate_energy_reasonable_survival(self):
         """At body_condition=0.75 (energy 15), annual survival should be > 0.95."""
-        from cenop.physiology.energy_budget import JASMINEEnergyModule, EnergyState
         import numpy as np
+
         from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.physiology.energy_budget import EnergyState, JASMINEEnergyModule
 
         params = SimulationParameters()
         module = JASMINEEnergyModule(params)
@@ -428,13 +447,16 @@ class TestJasmineSurvivalConsistency:
 
         step_surv = module.compute_survival_probability(state, mask)
         yearly_surv = step_surv[0] ** (360 * 48)
-        assert yearly_surv > 0.95, f"Moderate-energy yearly survival={yearly_surv:.4f}, expected > 0.95"
+        assert (
+            yearly_surv > 0.95
+        ), f"Moderate-energy yearly survival={yearly_surv:.4f}, expected > 0.95"
 
     def test_starving_porpoise_low_survival(self):
         """At body_condition=0.1 (energy ~2), annual survival should be < 0.80."""
-        from cenop.physiology.energy_budget import JASMINEEnergyModule, EnergyState
         import numpy as np
+
         from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.physiology.energy_budget import EnergyState, JASMINEEnergyModule
 
         params = SimulationParameters()
         module = JASMINEEnergyModule(params)
@@ -446,7 +468,9 @@ class TestJasmineSurvivalConsistency:
 
         step_surv = module.compute_survival_probability(state, mask)
         yearly_surv = step_surv[0] ** (360 * 48)
-        assert yearly_surv < 0.80, f"Starving porpoise yearly survival={yearly_surv:.4f}, expected < 0.80"
+        assert (
+            yearly_surv < 0.80
+        ), f"Starving porpoise yearly survival={yearly_surv:.4f}, expected < 0.80"
 
 
 class TestMortalityAlignment:
@@ -469,8 +493,7 @@ class TestMortalityAlignment:
             pop._check_mortality(mask, active_before)
             deaths_total += int(np.sum(~pop.active_mask))
 
-        assert deaths_total < 5, \
-            f"Expected near-zero deaths at max energy, got {deaths_total}"
+        assert deaths_total < 5, f"Expected near-zero deaths at max energy, got {deaths_total}"
 
     def test_lactating_mother_dies_at_zero_energy(self):
         """Lactating mother with energy=0 should die after abandoning calf.
@@ -496,10 +519,10 @@ class TestMortalityAlignment:
         params = SimulationParameters()
         pop = PorpoisePopulation(count=1000, params=params)
 
-        assert pop.energy.std() > 0.5, \
-            f"Energy should have variation (std={pop.energy.std():.3f})"
-        assert abs(pop.energy.mean() - 10.0) < 0.2, \
-            f"Mean energy should be ~10.0, got {pop.energy.mean():.2f}"
+        assert pop.energy.std() > 0.5, f"Energy should have variation (std={pop.energy.std():.3f})"
+        assert (
+            abs(pop.energy.mean() - 10.0) < 0.2
+        ), f"Mean energy should be ~10.0, got {pop.energy.mean():.2f}"
         assert np.all(pop.energy >= 0)
         assert np.all(pop.energy <= 20)
 
@@ -509,8 +532,8 @@ class TestMortalityAlignment:
         pop = PorpoisePopulation(count=10, params=params)
         pop.energy[:] = 20.0
         pop.active_mask[:] = True
-        pop.age[:5] = 31.0   # Over max age
-        pop.age[5:] = 10.0   # Normal age
+        pop.age[:5] = 31.0  # Over max age
+        pop.age[5:] = 10.0  # Normal age
         mask = pop.active_mask.copy()
 
         pop._check_mortality(mask, 10)
@@ -531,7 +554,9 @@ class TestPopulationStabilitySmoke:
 
         # Annual starvation mortality at energy 15 (typical)
         energy = 15.0
-        yearly_surv_starvation = 1.0 - (params.m_mort_prob_const * np.exp(-energy * params.x_survival_const))
+        yearly_surv_starvation = 1.0 - (
+            params.m_mort_prob_const * np.exp(-energy * params.x_survival_const)
+        )
         annual_starvation_mort = 1.0 - yearly_surv_starvation
 
         # Natural adult mortality
@@ -560,11 +585,13 @@ class TestPopulationStabilitySmoke:
         # JASMINE formula (body_condition = energy/20)
         body_condition = energy / 20.0
         effective_energy = body_condition * 20.0
-        jasmine_yearly = 1.0 - (params.m_mort_prob_const * np.exp(-effective_energy * params.x_survival_const))
-
-        assert abs(depons_yearly - jasmine_yearly) < 0.001, (
-            f"DEPONS ({depons_yearly:.4f}) and JASMINE ({jasmine_yearly:.4f}) survival diverge"
+        jasmine_yearly = 1.0 - (
+            params.m_mort_prob_const * np.exp(-effective_energy * params.x_survival_const)
         )
+
+        assert (
+            abs(depons_yearly - jasmine_yearly) < 0.001
+        ), f"DEPONS ({depons_yearly:.4f}) and JASMINE ({jasmine_yearly:.4f}) survival diverge"
 
 
 if __name__ == "__main__":

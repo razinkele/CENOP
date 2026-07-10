@@ -4,8 +4,8 @@ Dashboard Tab UI
 
 from shiny import ui
 from shiny_deckgl import (
-    MapWidget, CARTO_POSITRON,
-    zoom_widget, compass_widget, scale_widget, fullscreen_widget,
+    CARTO_POSITRON,
+    MapWidget,
     legend_control,
 )
 
@@ -15,8 +15,12 @@ LEGEND_ENTRIES = [
         "layer_id": "depth-bitmap",
         "label": "Bathymetry",
         "colors": [
-            [1, 31, 75], [3, 56, 108], [15, 94, 156],
-            [46, 134, 193], [86, 180, 233], [166, 216, 247],
+            [1, 31, 75],
+            [3, 56, 108],
+            [15, 94, 156],
+            [46, 134, 193],
+            [86, 180, 233],
+            [166, 216, 247],
         ],
         "shape": "rect",
     },
@@ -24,8 +28,12 @@ LEGEND_ENTRIES = [
         "layer_id": "foraging-bitmap",
         "label": "Foraging",
         "colors": [
-            [8, 48, 20], [20, 100, 40], [40, 160, 60],
-            [80, 200, 80], [140, 230, 100], [200, 255, 140],
+            [8, 48, 20],
+            [20, 100, 40],
+            [40, 160, 60],
+            [80, 200, 80],
+            [140, 230, 100],
+            [200, 255, 140],
         ],
         "shape": "rect",
     },
@@ -104,24 +112,24 @@ def dashboard_tab():
             ui.div(
                 ui.span("Population ", class_="stat-label"),
                 ui.span(ui.output_text("current_population", inline=True), class_="stat-val"),
-                class_="stat-chip stat-pop"
+                class_="stat-chip stat-pop",
             ),
             ui.div(
                 ui.span("Year ", class_="stat-label"),
                 ui.span(ui.output_text("current_year", inline=True), class_="stat-val"),
-                class_="stat-chip stat-year"
+                class_="stat-chip stat-year",
             ),
             ui.div(
                 ui.span("Births ", class_="stat-label"),
                 ui.span(ui.output_text("total_births", inline=True), class_="stat-val"),
-                class_="stat-chip stat-birth"
+                class_="stat-chip stat-birth",
             ),
             ui.div(
                 ui.span("Deaths ", class_="stat-label"),
                 ui.span(ui.output_text("total_deaths", inline=True), class_="stat-val"),
-                class_="stat-chip stat-death"
+                class_="stat-chip stat-death",
             ),
-            class_="stat-row"
+            class_="stat-row",
         ),
         # Full-width map card (dark zone) — now using shiny-deckgl MapWidget
         ui.card(
@@ -133,37 +141,25 @@ def dashboard_tab():
             ),
             sim_map.ui(width="100%", height="620px"),
             height="calc(100vh - 280px)",
-            class_="ocean-card"
+            class_="ocean-card",
         ),
         # Collapsible chart toggle bar
         ui.div(
             ui.HTML('<span id="chart-toggle-icon">▼</span> Charts'),
             id="chart-toggle",
             class_="chart-toggle-bar",
-            onclick="toggleChartPanel()"
+            onclick="toggleChartPanel()",
         ),
         # Collapsible chart panel: 3 charts in a row
         ui.div(
             ui.layout_columns(
-                ui.card(
-                    ui.output_ui("population_plot"),
-                    height="190px",
-                    class_="ocean-card"
-                ),
-                ui.card(
-                    ui.output_ui("life_death_plot"),
-                    height="190px",
-                    class_="ocean-card"
-                ),
-                ui.card(
-                    ui.output_ui("energy_balance_plot"),
-                    height="190px",
-                    class_="ocean-card"
-                ),
-                col_widths=[4, 4, 4]
+                ui.card(ui.output_ui("population_plot"), height="190px", class_="ocean-card"),
+                ui.card(ui.output_ui("life_death_plot"), height="190px", class_="ocean-card"),
+                ui.card(ui.output_ui("energy_balance_plot"), height="190px", class_="ocean-card"),
+                col_widths=[4, 4, 4],
             ),
             id="chart-panel",
-            class_="chart-panel"
+            class_="chart-panel",
         ),
         # Toggle script
         ui.tags.script("""

@@ -2,16 +2,18 @@
 Optional numba-accelerated helpers for hot inner loops.
 If Numba is not installed, fallback pure-Python implementations are used.
 """
+
 import logging
-from typing import Tuple
 
 try:
-    import numba
-    from numba import njit
     import math
 
+    from numba import float64, int64, njit  # noqa: F401  (used in string type annotations)
+
     @njit
-    def weighted_direction_sum(dxs: 'float64[:]', dys: 'float64[:]', weights: 'float64[:]') -> Tuple[float, float, float]:
+    def weighted_direction_sum(
+        dxs: "float64[:]", dys: "float64[:]", weights: "float64[:]"
+    ) -> tuple[float, float, float]:
         ux = 0.0
         uy = 0.0
         sw = 0.0
@@ -44,9 +46,9 @@ try:
 
     # Numba-accelerated accumulator for pairwise social contributions
     @njit
-    def accumulate_social_totals(count: 'int64', idx_i, idx_j,
-                                 ux_i, uy_i, ux_j, uy_j, p_i, p_j,
-                                 ux_total, uy_total, sw_total):
+    def accumulate_social_totals(
+        count: "int64", idx_i, idx_j, ux_i, uy_i, ux_j, uy_j, p_i, p_j, ux_total, uy_total, sw_total
+    ):
         """Accumulate contributions for canonical neighbor pairs into per-agent totals.
         All arrays are expected as NumPy arrays with appropriate dtypes.
         """
@@ -96,7 +98,9 @@ try:
         ux_total = np.zeros(count, dtype=np.float64)
         uy_total = np.zeros(count, dtype=np.float64)
         sw_total = np.zeros(count, dtype=np.float64)
-        _ = accumulate_social_totals(count, idx_i, idx_j, ux_ci, uy_ci, ux_cj, uy_cj, p_i, p_j, ux_total, uy_total, sw_total)
+        _ = accumulate_social_totals(
+            count, idx_i, idx_j, ux_ci, uy_ci, ux_cj, uy_cj, p_i, p_j, ux_total, uy_total, sw_total
+        )
         return True
 
 except ImportError:
@@ -109,6 +113,7 @@ except Exception as e:
     has_numba = False
 
 if not has_numba:
+
     def weighted_direction_sum(dxs, dys, weights):
         ux = 0.0
         uy = 0.0
@@ -119,7 +124,7 @@ if not has_numba:
                 continue
             dx = float(dxs[i])
             dy = float(dys[i])
-            dist = (dx*dx + dy*dy) ** 0.5 + 1e-6
+            dist = (dx * dx + dy * dy) ** 0.5 + 1e-6
             ux += (dx / dist) * w
             uy += (dy / dist) * w
             sw += w
@@ -134,9 +139,9 @@ if not has_numba:
             psm_buffer[i, y, x, 0] += 1.0
             psm_buffer[i, y, x, 1] += float(food_arr[k])
 
-    def accumulate_social_totals(count, idx_i, idx_j,
-                                 ux_i, uy_i, ux_j, uy_j, p_i, p_j,
-                                 ux_total, uy_total, sw_total):
+    def accumulate_social_totals(
+        count, idx_i, idx_j, ux_i, uy_i, ux_j, uy_j, p_i, p_j, ux_total, uy_total, sw_total
+    ):
         """Pure-Python fallback: accumulates pairwise contributions into totals."""
         for k in range(len(idx_i)):
             i = int(idx_i[k])

@@ -70,9 +70,7 @@ class TestJaxCRWKernel:
         out_angle, out_log_mov = kernel(**inputs, **CRW_PARAMS)
         active = inputs["mask"]
         log_movs = np.asarray(out_log_mov[active])
-        assert np.all(log_movs <= CRW_PARAMS["max_mov"] + 1e-10), (
-            f"Max log_mov: {log_movs.max()}"
-        )
+        assert np.all(log_movs <= CRW_PARAMS["max_mov"] + 1e-10), f"Max log_mov: {log_movs.max()}"
 
     def test_masked_agents_unchanged(self, kernel):
         """Inactive agents: angle=0, log_mov=prev_log_mov."""
@@ -413,14 +411,21 @@ class TestJaxLandAvoidance:
         key = jax.random.PRNGKey(0)
 
         out_x, out_y, out_heading, resolved, _ = jax_land_avoidance(
-            x, y, heading, step_dist, depth_grid, 1.0, on_land, key,
+            x,
+            y,
+            heading,
+            step_dist,
+            depth_grid,
+            1.0,
+            on_land,
+            key,
         )
 
         assert np.all(np.asarray(resolved)), "All agents should resolve on water grid"
         # Positions should have moved (not same as input)
-        assert not np.allclose(np.asarray(out_x), np.asarray(x)), (
-            "Resolved agents should have new positions"
-        )
+        assert not np.allclose(
+            np.asarray(out_x), np.asarray(x)
+        ), "Resolved agents should have new positions"
 
     def test_all_land_unresolved(self):
         """On all-land grid, agents should be unresolved and turn 180."""
@@ -438,14 +443,23 @@ class TestJaxLandAvoidance:
         key = jax.random.PRNGKey(1)
 
         out_x, out_y, out_heading, resolved, _ = jax_land_avoidance(
-            x, y, heading, step_dist, depth_grid, 1.0, on_land, key,
+            x,
+            y,
+            heading,
+            step_dist,
+            depth_grid,
+            1.0,
+            on_land,
+            key,
         )
 
         assert not np.any(np.asarray(resolved)), "No agent should resolve on land grid"
         # Heading should be (original + 180) % 360
         expected_heading = (np.asarray(heading) + 180.0) % 360.0
         np.testing.assert_allclose(
-            np.asarray(out_heading), expected_heading, atol=1e-4,
+            np.asarray(out_heading),
+            expected_heading,
+            atol=1e-4,
             err_msg="Unresolved agents should turn 180 degrees",
         )
         # Positions should stay in place
@@ -471,16 +485,23 @@ class TestJaxLandAvoidance:
         key = jax.random.PRNGKey(2)
 
         out_x, out_y, out_heading, resolved, _ = jax_land_avoidance(
-            x, y, heading, step_dist, depth_grid, 1.0, on_land, key,
+            x,
+            y,
+            heading,
+            step_dist,
+            depth_grid,
+            1.0,
+            on_land,
+            key,
         )
 
         assert np.asarray(resolved)[0], "Agent should resolve"
         # The right turn goes toward deeper water (x > 50)
         # Due to jitter the exact position varies, but the resolved position
         # should be on the deeper side when right is much deeper
-        assert np.asarray(out_x)[0] >= 50.0, (
-            f"Should pick deeper (right) side, got x={np.asarray(out_x)[0]}"
-        )
+        assert (
+            np.asarray(out_x)[0] >= 50.0
+        ), f"Should pick deeper (right) side, got x={np.asarray(out_x)[0]}"
 
     def test_jit_compiles(self):
         """Land avoidance should JIT-compile."""
@@ -519,7 +540,14 @@ class TestJaxLandAvoidance:
         key = jax.random.PRNGKey(4)
 
         out_x, out_y, out_heading, resolved, _ = jax_land_avoidance(
-            x, y, heading, step_dist, depth_grid, 1.0, on_land, key,
+            x,
+            y,
+            heading,
+            step_dist,
+            depth_grid,
+            1.0,
+            on_land,
+            key,
         )
 
         # Nothing should change
@@ -606,7 +634,7 @@ class TestJaxHeadingAndPosition:
 
         dist_log_x = 3.0 * 1.0 - 1.5
         logistic = 1.0 / (1.0 + np.exp((0.0 - dist_log_x) / psm_log))  # ~0.9242
-        max_dev = psm_angle * logistic                                # ~18.48
+        max_dev = psm_angle * logistic  # ~18.48
         dev = (new_heading - prev + 180.0) % 360.0 - 180.0
 
         assert np.max(np.abs(dev)) <= max_dev + 1e-4, (
@@ -691,7 +719,9 @@ class TestJaxHeadingAndPosition:
         # Dispersing step distance should be mean_disp_dist / 0.4 = 5.0
         expected_disp_step = 2.0 / 0.4
         np.testing.assert_allclose(
-            step_dist[:5], expected_disp_step, rtol=1e-10,
+            step_dist[:5],
+            expected_disp_step,
+            rtol=1e-10,
             err_msg="Dispersing step should be mean_disp_dist / 0.4",
         )
 
@@ -717,14 +747,18 @@ class TestJaxHeadingAndPosition:
         # Non-dispersing active: 10^log_mov / 4.0
         expected_normal = 10.0 ** log_mov[:10] / 4.0
         np.testing.assert_allclose(
-            step_dist[:10], expected_normal, rtol=1e-10,
+            step_dist[:10],
+            expected_normal,
+            rtol=1e-10,
             err_msg="Normal step should be 10^log_mov / 4",
         )
 
         # Dispersing: mean_disp_dist / 0.4
         expected_disp = 2.0 / 0.4
         np.testing.assert_allclose(
-            step_dist[10:15], expected_disp, rtol=1e-10,
+            step_dist[10:15],
+            expected_disp,
+            rtol=1e-10,
             err_msg="Dispersal step should be mean_disp_dist / 0.4",
         )
 
@@ -782,9 +816,7 @@ class TestJaxHeadingAndPosition:
         dx = jnp.array([10.0, -15.0, 15.0, 10.0, 10.0])
         dy = jnp.array([10.0, 10.0, 10.0, -13.0, 13.0])
 
-        rx, ry, rdx, rdy = jax_reflect_boundaries(
-            new_x, new_y, dx, dy, world_w, world_h
-        )
+        rx, ry, rdx, rdy = jax_reflect_boundaries(new_x, new_y, dx, dy, world_w, world_h)
 
         rx, ry = np.asarray(rx), np.asarray(ry)
         rdx, rdy = np.asarray(rdx), np.asarray(rdy)
@@ -823,9 +855,7 @@ class TestJaxHeadingAndPosition:
         dx = jnp.array([-100.0, 100.0])
         dy = jnp.array([5.0, 5.0])
 
-        rx, ry, rdx, rdy = jax_reflect_boundaries(
-            new_x, new_y, dx, dy, 500, 400
-        )
+        rx, ry, rdx, rdy = jax_reflect_boundaries(new_x, new_y, dx, dy, 500, 400)
         rx = np.asarray(rx)
 
         # Should be clamped to [0, 499]
@@ -844,9 +874,7 @@ class TestJaxHeadingAndPosition:
         heading = jnp.array([45.0, 0.0, 225.0, 90.0, 270.0], dtype=jnp.float64)
         mask = jnp.array([True, True, True, True, True])
 
-        new_x, new_y, new_heading = jax_update_positions(
-            x, y, dx, dy, heading, 500, 400, mask
-        )
+        new_x, new_y, new_heading = jax_update_positions(x, y, dx, dy, heading, 500, 400, mask)
 
         new_x, new_y = np.asarray(new_x), np.asarray(new_y)
 
@@ -875,9 +903,7 @@ class TestJaxHeadingAndPosition:
         heading = jnp.array([45.0, 45.0], dtype=jnp.float64)
         mask = jnp.array([True, False])
 
-        new_x, new_y, new_heading = jax_update_positions(
-            x, y, dx, dy, heading, 500, 400, mask
-        )
+        new_x, new_y, new_heading = jax_update_positions(x, y, dx, dy, heading, 500, 400, mask)
 
         # Active agent moved
         assert np.asarray(new_x)[0] == pytest.approx(150.0)
@@ -897,9 +923,7 @@ class TestJaxHeadingAndPosition:
         heading = jnp.array([90.0], dtype=jnp.float64)
         mask = jnp.array([True])
 
-        _, _, new_heading = jax_update_positions(
-            x, y, dx, dy, heading, 500, 400, mask
-        )
+        _, _, new_heading = jax_update_positions(x, y, dx, dy, heading, 500, 400, mask)
 
         new_h = float(np.asarray(new_heading)[0])
         # After reflection, dx flips to -5, dy stays 0
@@ -1022,10 +1046,16 @@ class TestJaxMortality:
         key = jax.random.PRNGKey(42)
 
         new_mask, new_calf, _ = jax_mortality(
-            energy, active_mask, with_calf, age, key,
-            m_mort_prob_const=0.5, x_survival_const=0.5,
+            energy,
+            active_mask,
+            with_calf,
+            age,
+            key,
+            m_mort_prob_const=0.5,
+            x_survival_const=0.5,
             is_day_boundary=jnp.bool_(False),
-            bycatch_prob=0.0, max_age=30.0,
+            bycatch_prob=0.0,
+            max_age=30.0,
         )
 
         dead_count = n - int(np.sum(np.asarray(new_mask)))
@@ -1044,10 +1074,16 @@ class TestJaxMortality:
         key = jax.random.PRNGKey(42)
 
         new_mask, new_calf, _ = jax_mortality(
-            energy, active_mask, with_calf, age, key,
-            m_mort_prob_const=0.5, x_survival_const=0.5,
+            energy,
+            active_mask,
+            with_calf,
+            age,
+            key,
+            m_mort_prob_const=0.5,
+            x_survival_const=0.5,
             is_day_boundary=jnp.bool_(False),
-            bycatch_prob=0.0, max_age=30.0,
+            bycatch_prob=0.0,
+            max_age=30.0,
         )
 
         survivors = int(np.sum(np.asarray(new_mask)))
@@ -1069,10 +1105,16 @@ class TestJaxMortality:
 
         # Use very aggressive mortality parameters so that step_surv is low
         new_mask, new_calf, _ = jax_mortality(
-            energy, active_mask, with_calf, age, key,
-            m_mort_prob_const=0.999, x_survival_const=0.01,
+            energy,
+            active_mask,
+            with_calf,
+            age,
+            key,
+            m_mort_prob_const=0.999,
+            x_survival_const=0.01,
             is_day_boundary=jnp.bool_(False),
-            bycatch_prob=0.0, max_age=30.0,
+            bycatch_prob=0.0,
+            max_age=30.0,
         )
 
         new_mask_np = np.asarray(new_mask)
@@ -1095,15 +1137,20 @@ class TestJaxMortality:
         energy = jnp.full(n, 20.0, dtype=jnp.float32)
         active_mask = jnp.ones(n, dtype=bool)
         with_calf = jnp.zeros(n, dtype=bool)
-        age = jnp.array([5.0, 10.0, 20.0, 25.0, 31.0,
-                         35.0, 5.0, 5.0, 5.0, 5.0], dtype=jnp.float32)
+        age = jnp.array([5.0, 10.0, 20.0, 25.0, 31.0, 35.0, 5.0, 5.0, 5.0, 5.0], dtype=jnp.float32)
         key = jax.random.PRNGKey(42)
 
         new_mask, _, _ = jax_mortality(
-            energy, active_mask, with_calf, age, key,
-            m_mort_prob_const=0.5, x_survival_const=0.5,
+            energy,
+            active_mask,
+            with_calf,
+            age,
+            key,
+            m_mort_prob_const=0.5,
+            x_survival_const=0.5,
             is_day_boundary=jnp.bool_(True),
-            bycatch_prob=0.0, max_age=30.0,
+            bycatch_prob=0.0,
+            max_age=30.0,
         )
 
         new_mask_np = np.asarray(new_mask)
@@ -1126,8 +1173,11 @@ class TestJaxMortality:
             jnp.zeros(n, dtype=bool),
             jnp.full(n, 5.0, dtype=jnp.float32),
             jax.random.PRNGKey(0),
-            0.5, 0.5,
-            jnp.bool_(False), 0.0, 30.0,
+            0.5,
+            0.5,
+            jnp.bool_(False),
+            0.0,
+            30.0,
         )
         r2 = jitted(
             jnp.full(n, 10.0, dtype=jnp.float32),
@@ -1135,8 +1185,11 @@ class TestJaxMortality:
             jnp.zeros(n, dtype=bool),
             jnp.full(n, 5.0, dtype=jnp.float32),
             jax.random.PRNGKey(0),
-            0.5, 0.5,
-            jnp.bool_(False), 0.0, 30.0,
+            0.5,
+            0.5,
+            jnp.bool_(False),
+            0.0,
+            30.0,
         )
         np.testing.assert_array_equal(np.asarray(r1[0]), np.asarray(r2[0]))
 
@@ -1162,8 +1215,15 @@ class TestJaxBMR:
         deter_mag = jnp.zeros(n, dtype=jnp.float32)
 
         new_energy, cost = jax_bmr_cost(
-            energy, mask, speed, is_lact, is_dist, deter_mag,
-            scaling=1.0, e_use_per_30_min=4.5, e_lact=1.4,
+            energy,
+            mask,
+            speed,
+            is_lact,
+            is_dist,
+            deter_mag,
+            scaling=1.0,
+            e_use_per_30_min=4.5,
+            e_lact=1.4,
         )
 
         new_e = np.asarray(new_energy)
@@ -1186,15 +1246,22 @@ class TestJaxBMR:
         deter_mag = jnp.zeros(n, dtype=jnp.float32)
 
         new_energy, cost = jax_bmr_cost(
-            energy, mask, speed, is_lact, is_dist, deter_mag,
-            scaling=1.0, e_use_per_30_min=4.5, e_lact=1.4,
+            energy,
+            mask,
+            speed,
+            is_lact,
+            is_dist,
+            deter_mag,
+            scaling=1.0,
+            e_use_per_30_min=4.5,
+            e_lact=1.4,
         )
 
         cost_np = np.asarray(cost)
         # Lactating agent (idx 1) should pay more than non-lactating (idx 0)
-        assert cost_np[1] > cost_np[0], (
-            f"Lactating cost {cost_np[1]} should exceed non-lactating {cost_np[0]}"
-        )
+        assert (
+            cost_np[1] > cost_np[0]
+        ), f"Lactating cost {cost_np[1]} should exceed non-lactating {cost_np[0]}"
 
     def test_disturbance_cost(self):
         """Disturbed agents pay extra cost."""
@@ -1209,8 +1276,15 @@ class TestJaxBMR:
         deter_mag = jnp.array([0.0, 5.0], dtype=jnp.float32)
 
         _, cost = jax_bmr_cost(
-            energy, mask, speed, is_lact, is_dist, deter_mag,
-            scaling=1.0, e_use_per_30_min=4.5, e_lact=1.4,
+            energy,
+            mask,
+            speed,
+            is_lact,
+            is_dist,
+            deter_mag,
+            scaling=1.0,
+            e_use_per_30_min=4.5,
+            e_lact=1.4,
         )
 
         cost_np = np.asarray(cost)
@@ -1229,8 +1303,15 @@ class TestJaxBMR:
         deter_mag = jnp.zeros(n, dtype=jnp.float32)
 
         new_energy, cost = jax_bmr_cost(
-            energy, mask, speed, is_lact, is_dist, deter_mag,
-            scaling=1.0, e_use_per_30_min=4.5, e_lact=1.4,
+            energy,
+            mask,
+            speed,
+            is_lact,
+            is_dist,
+            deter_mag,
+            scaling=1.0,
+            e_use_per_30_min=4.5,
+            e_lact=1.4,
         )
 
         np.testing.assert_array_equal(np.asarray(new_energy), 15.0)
@@ -1257,7 +1338,11 @@ class TestJaxEnergyHistory:
         tick_counter = jnp.int32(0)
 
         new_ticks, new_hist, new_tc = jax_energy_history_update(
-            energy, mask, ticks_today, history, tick_counter,
+            energy,
+            mask,
+            ticks_today,
+            history,
+            tick_counter,
             is_day_boundary=jnp.bool_(False),
         )
 
@@ -1277,7 +1362,11 @@ class TestJaxEnergyHistory:
         tick_counter = jnp.int32(47)
 
         new_ticks, new_hist, new_tc = jax_energy_history_update(
-            energy, mask, ticks_today, history, tick_counter,
+            energy,
+            mask,
+            ticks_today,
+            history,
+            tick_counter,
             is_day_boundary=jnp.bool_(True),
         )
 
@@ -1371,7 +1460,6 @@ class TestJaxTickComposition:
     def test_tick_movement_returns_valid_positions(self):
         """Movement tick should produce in-bounds positions."""
         from cenop.optimizations.tick_jax import jax_tick_movement
-        from cenop.optimizations.jax_kernels import jax_crw_kernel
 
         n = 50
         rng = np.random.default_rng(42)
@@ -1389,14 +1477,21 @@ class TestJaxTickComposition:
         pos_hist_y = jnp.zeros((n, mem_size), dtype=jnp.float32)
         mem_ptr = jnp.zeros(n, dtype=jnp.int32)
         mem_count = jnp.zeros(n, dtype=jnp.int32)
-        work_table = jnp.array(
-            [np.exp(-i * 0.01) for i in range(mem_size)], dtype=jnp.float64
-        )
+        work_table = jnp.array([np.exp(-i * 0.01) for i in range(mem_size)], dtype=jnp.float64)
         depth_grid = jnp.full((world_h, world_w), 30.0, dtype=jnp.float32)
 
         result = jax_tick_movement(
-            x, y, heading, prev_angle, prev_log_mov, mask,
-            stored_util, pos_hist_x, pos_hist_y, mem_ptr, mem_count,
+            x,
+            y,
+            heading,
+            prev_angle,
+            prev_log_mov,
+            mask,
+            stored_util,
+            pos_hist_x,
+            pos_hist_y,
+            mem_ptr,
+            mem_count,
             work_table,
             jnp.zeros(n, dtype=jnp.float64),
             jnp.zeros(n, dtype=jnp.float64),
@@ -1413,12 +1508,26 @@ class TestJaxTickComposition:
             jnp.array(rng.uniform(5.0, 50.0, n), dtype=jnp.float64),
             jnp.array(rng.uniform(10.0, 35.0, n), dtype=jnp.float64),
             depth_grid,
-            -0.024, -0.008, 0.93, -14.0,
-            0.35, 0.0005, -0.02, 1.73,
-            0.0, 4.0, 0.0, 0.15,
+            -0.024,
+            -0.008,
+            0.93,
+            -14.0,
+            0.35,
+            0.0005,
+            -0.02,
+            1.73,
+            0.0,
+            4.0,
+            0.0,
+            0.15,
             0.00001,
-            0.001, 2.0, 20.0, 0.6, 1.0,
-            world_w, world_h,
+            0.001,
+            2.0,
+            20.0,
+            0.6,
+            1.0,
+            world_w,
+            world_h,
             jax.random.PRNGKey(99),
         )
 
@@ -1442,40 +1551,53 @@ class TestJaxTickComposition:
 
         try:
             result = jax_tick_movement(
-                jnp.full(n, 150.0, dtype=jnp.float32),          # x
-                jnp.full(n, 150.0, dtype=jnp.float32),          # y
-                jnp.zeros(n, dtype=jnp.float32),                # heading
-                jnp.zeros(n, dtype=jnp.float64),                # prev_angle
-                jnp.full(n, 1.0, dtype=jnp.float64),            # prev_log_mov
-                jnp.ones(n, dtype=bool),                        # active_mask
-                jnp.zeros((n, mem), dtype=jnp.float32),         # stored_util
-                jnp.zeros((n, mem), dtype=jnp.float32),         # pos_hist_x
-                jnp.zeros((n, mem), dtype=jnp.float32),         # pos_hist_y
-                jnp.zeros(n, dtype=jnp.int32),                  # mem_ptr
-                jnp.zeros(n, dtype=jnp.int32),                  # mem_count
-                work_table,                                     # work_mem_table
-                jnp.zeros(n, dtype=jnp.float64),                # deter_dx
-                jnp.zeros(n, dtype=jnp.float64),                # deter_dy
-                jnp.zeros(n, dtype=jnp.float32),                # social_dx
-                jnp.zeros(n, dtype=jnp.float32),                # social_dy
-                jnp.ones(n, dtype=bool),                        # is_dispersing
-                jnp.full(n, 5000.0, dtype=jnp.float32),         # dispersal_target_x
-                jnp.full(n, 5000.0, dtype=jnp.float32),         # dispersal_target_y
-                jnp.full(n, 100.0, dtype=jnp.float32),          # dispersal_target_distance
-                jnp.zeros(n, dtype=jnp.float32),                # dispersal_distance_traveled
-                jnp.zeros(n, dtype=jnp.float32),                # prev_step_heading
-                jnp.full(n, 150.0, dtype=jnp.float32),          # dispersal_start_x (== pos -> travelled 0)
-                jnp.full(n, 150.0, dtype=jnp.float32),          # dispersal_start_y
-                jnp.full(n, 30.0, dtype=jnp.float64),           # depths
-                jnp.full(n, 30.0, dtype=jnp.float64),           # salinity
+                jnp.full(n, 150.0, dtype=jnp.float32),  # x
+                jnp.full(n, 150.0, dtype=jnp.float32),  # y
+                jnp.zeros(n, dtype=jnp.float32),  # heading
+                jnp.zeros(n, dtype=jnp.float64),  # prev_angle
+                jnp.full(n, 1.0, dtype=jnp.float64),  # prev_log_mov
+                jnp.ones(n, dtype=bool),  # active_mask
+                jnp.zeros((n, mem), dtype=jnp.float32),  # stored_util
+                jnp.zeros((n, mem), dtype=jnp.float32),  # pos_hist_x
+                jnp.zeros((n, mem), dtype=jnp.float32),  # pos_hist_y
+                jnp.zeros(n, dtype=jnp.int32),  # mem_ptr
+                jnp.zeros(n, dtype=jnp.int32),  # mem_count
+                work_table,  # work_mem_table
+                jnp.zeros(n, dtype=jnp.float64),  # deter_dx
+                jnp.zeros(n, dtype=jnp.float64),  # deter_dy
+                jnp.zeros(n, dtype=jnp.float32),  # social_dx
+                jnp.zeros(n, dtype=jnp.float32),  # social_dy
+                jnp.ones(n, dtype=bool),  # is_dispersing
+                jnp.full(n, 5000.0, dtype=jnp.float32),  # dispersal_target_x
+                jnp.full(n, 5000.0, dtype=jnp.float32),  # dispersal_target_y
+                jnp.full(n, 100.0, dtype=jnp.float32),  # dispersal_target_distance
+                jnp.zeros(n, dtype=jnp.float32),  # dispersal_distance_traveled
+                jnp.zeros(n, dtype=jnp.float32),  # prev_step_heading
+                jnp.full(n, 150.0, dtype=jnp.float32),  # dispersal_start_x (== pos -> travelled 0)
+                jnp.full(n, 150.0, dtype=jnp.float32),  # dispersal_start_y
+                jnp.full(n, 30.0, dtype=jnp.float64),  # depths
+                jnp.full(n, 30.0, dtype=jnp.float64),  # salinity
                 depth_grid,
-                -0.024, -0.008, 0.93, -14.0,
-                0.35, 0.0005, -0.02, 1.73,
-                0.0, 4.0, 0.0, 0.15,
+                -0.024,
+                -0.008,
+                0.93,
+                -14.0,
+                0.35,
+                0.0005,
+                -0.02,
+                1.73,
+                0.0,
+                4.0,
+                0.0,
+                0.15,
                 0.00001,
-                0.001, 2.0,                                     # inertia_const, mean_disp_dist
-                psm_angle, psm_log,
-                1.0, world_w, world_h,                          # min_depth, world dims
+                0.001,
+                2.0,  # inertia_const, mean_disp_dist
+                psm_angle,
+                psm_log,
+                1.0,
+                world_w,
+                world_h,  # min_depth, world dims
                 jax.random.PRNGKey(0),
             )
         except Exception as e:  # noqa: BLE001 - classify GPU OOM as environmental
@@ -1484,11 +1606,13 @@ class TestJaxTickComposition:
             raise
 
         disp_heading = np.asarray(result[8])  # new_prev_step_heading = dispersal heading
-        dist_log_x = 3.0 * 0.0 - 1.5          # travelled 0 -> distPct 0
+        dist_log_x = 3.0 * 0.0 - 1.5  # travelled 0 -> distPct 0
         logistic = 1.0 / (1.0 + np.exp((0.0 - dist_log_x) / psm_log))  # ~0.0759
-        max_dev = psm_angle * logistic                                # ~1.52
+        max_dev = psm_angle * logistic  # ~1.52
         dev = (disp_heading - 0.0 + 180.0) % 360.0 - 180.0
-        assert np.max(np.abs(dev)) <= max_dev + 1e-3, f"max|dev|={np.max(np.abs(dev)):.4f} > {max_dev:.4f}"
+        assert (
+            np.max(np.abs(dev)) <= max_dev + 1e-3
+        ), f"max|dev|={np.max(np.abs(dev)):.4f} > {max_dev:.4f}"
         assert dev.min() < 0.0 < dev.max(), "dispersal turn is not random (one-sided)"
 
     def test_tick_energy_conserves_food(self):
@@ -1504,7 +1628,8 @@ class TestJaxTickComposition:
         yi = jnp.array(rng.integers(0, 50, n), dtype=jnp.int32)
 
         result = jax_tick_energy(
-            energy, mask,
+            energy,
+            mask,
             jnp.array(xi, dtype=jnp.float32),
             jnp.array(yi, dtype=jnp.float32),
             jnp.ones(n, dtype=jnp.float32) * 0.5,
@@ -1513,7 +1638,9 @@ class TestJaxTickComposition:
             jnp.zeros(n, dtype=jnp.float32),
             jnp.zeros(n, dtype=bool),
             jnp.ones(n, dtype=jnp.float32) * 5.0,
-            food_grid, xi, yi,
+            food_grid,
+            xi,
+            yi,
             jnp.zeros(n, dtype=jnp.float32),
             jnp.zeros((n, 10), dtype=jnp.float32),
             jnp.int32(0),
@@ -1524,16 +1651,22 @@ class TestJaxTickComposition:
             jnp.zeros(n, dtype=jnp.float32),
             jnp.zeros(n, dtype=jnp.int32),
             jnp.zeros(n, dtype=jnp.float32),
-            1.0, 4.5, 1.4, 0.001,
-            1.0, 0.4, 0.0, 30.0,
+            1.0,
+            4.5,
+            1.4,
+            0.001,
+            1.0,
+            0.4,
+            0.0,
+            30.0,
             jnp.bool_(False),
             jax.random.PRNGKey(42),
         )
 
         new_food_grid = np.asarray(result[3])
-        assert np.all(new_food_grid <= np.asarray(food_grid) + 1e-6), (
-            "Food grid should not increase"
-        )
+        assert np.all(
+            new_food_grid <= np.asarray(food_grid) + 1e-6
+        ), "Food grid should not increase"
         assert np.all(new_food_grid >= 0.001 - 1e-6), "Food should not go below min"
 
     def test_is_jax_available(self):
@@ -1548,8 +1681,8 @@ class TestJaxFullTick:
 
     def test_population_survives_1000_ticks(self):
         """JAX path should maintain viable population."""
-        from cenop.parameters.simulation_params import SimulationParameters
         from cenop.core.simulation import Simulation
+        from cenop.parameters.simulation_params import SimulationParameters
 
         params = SimulationParameters(
             porpoise_count=50,
@@ -1570,8 +1703,8 @@ class TestJaxFullTick:
 
     def test_jax_vs_numba_statistical_equivalence(self):
         """JAX and Numba produce statistically similar results."""
-        from cenop.parameters.simulation_params import SimulationParameters
         from cenop.core.simulation import Simulation
+        from cenop.parameters.simulation_params import SimulationParameters
 
         results = {}
         for use_jax in [False, True]:
@@ -1589,16 +1722,16 @@ class TestJaxFullTick:
             pop = sim.population_manager
             active = pop.active_mask
             results[use_jax] = {
-                'pop': int(np.sum(active)),
-                'mean_energy': float(np.mean(pop.energy[active])),
+                "pop": int(np.sum(active)),
+                "mean_energy": float(np.mean(pop.energy[active])),
             }
         r_jax = results[True]
         r_numba = results[False]
-        pop_diff = abs(r_jax['pop'] - r_numba['pop']) / max(r_numba['pop'], 1)
-        energy_diff = abs(r_jax['mean_energy'] - r_numba['mean_energy'])
-        assert pop_diff < 0.15, (
-            f"Population diff {pop_diff:.2%}: JAX={r_jax['pop']}, Numba={r_numba['pop']}"
-        )
+        pop_diff = abs(r_jax["pop"] - r_numba["pop"]) / max(r_numba["pop"], 1)
+        energy_diff = abs(r_jax["mean_energy"] - r_numba["mean_energy"])
+        assert (
+            pop_diff < 0.15
+        ), f"Population diff {pop_diff:.2%}: JAX={r_jax['pop']}, Numba={r_numba['pop']}"
         assert energy_diff < 3.0, (
             f"Energy diff {energy_diff:.2f}: JAX={r_jax['mean_energy']:.2f}, "
             f"Numba={r_numba['mean_energy']:.2f}"
@@ -1614,11 +1747,11 @@ class TestCRWK4Bounds:
 
         inputs = _make_inputs(n=2000, seed=99)
         out_angle, out_log_mov = jax_crw_kernel(**inputs, **CRW_PARAMS)
-        active = np.asarray(inputs['mask'])
+        active = np.asarray(inputs["mask"])
         angles = np.asarray(out_angle)[active]
         assert np.all(np.abs(angles) <= 180.0)
         log_movs = np.asarray(out_log_mov)[active]
-        assert np.all(log_movs <= CRW_PARAMS['max_mov'] + 1e-6)
+        assert np.all(log_movs <= CRW_PARAMS["max_mov"] + 1e-6)
 
     def test_angle_distribution_reasonable_k4(self):
         """Angles should have reasonable mean and spread with K=4."""
@@ -1626,7 +1759,7 @@ class TestCRWK4Bounds:
 
         inputs = _make_inputs(n=5000, seed=123)
         out_angle, _ = jax_crw_kernel(**inputs, **CRW_PARAMS)
-        active = np.asarray(inputs['mask'])
+        active = np.asarray(inputs["mask"])
         angles = np.asarray(out_angle)[active]
         assert abs(np.mean(angles)) < 20.0
         assert np.std(angles) > 10.0
@@ -1637,9 +1770,9 @@ class TestJaxStepFoodFloor:
     not params.u_min (0.001)."""
 
     def test_grazed_cell_floors_at_0_01(self):
-        from cenop.parameters.simulation_params import SimulationParameters
-        from cenop.landscape.cell_data import create_homogeneous_landscape
         from cenop.agents.population import PorpoisePopulation
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        from cenop.parameters.simulation_params import SimulationParameters
 
         params = SimulationParameters(porpoise_count=40)
         params.random_seed = 7
@@ -1647,7 +1780,9 @@ class TestJaxStepFoodFloor:
         assert params.u_min == 0.001, "guard: u_min must differ from the 0.01 floor"
         land = create_homogeneous_landscape(width=60, height=60, depth=20.0, food_prob=0.5)
         pop = PorpoisePopulation(count=40, params=params, landscape=land)
-        assert pop._use_jax, "JAX backend not active; NumPy path floors at 0.01 and the test would pass vacuously"
+        assert (
+            pop._use_jax
+        ), "JAX backend not active; NumPy path floors at 0.01 and the test would pass vacuously"
 
         # Uniform food just above the floor; starving agents (frac=0.99) deplete
         # every grazed cell below 0.01 in one tick, so the floor binds.
@@ -1663,18 +1798,18 @@ class TestJaxStepFoodFloor:
 
         food = np.asarray(pop.landscape._food_value)
         # Grazed cells -> 0.01 (floor), ungrazed cells stay 0.02, so the grid min is 0.01.
-        assert np.isclose(food.min(), 0.01, atol=1e-6), (
-            f"food floor = {food.min()} (expected 0.01 ADD_ARTIFICIAL_FOOD, not u_min=0.001)"
-        )
+        assert np.isclose(
+            food.min(), 0.01, atol=1e-6
+        ), f"food floor = {food.min()} (expected 0.01 ADD_ARTIFICIAL_FOOD, not u_min=0.001)"
 
 
 class TestJaxStepRefMem:
     """_step_jax must exclude dead slots from reference-memory updates."""
 
     def test_dead_slot_ref_mem_not_advanced(self):
-        from cenop.parameters.simulation_params import SimulationParameters
-        from cenop.landscape.cell_data import create_homogeneous_landscape
         from cenop.agents.population import PorpoisePopulation
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        from cenop.parameters.simulation_params import SimulationParameters
 
         params = SimulationParameters(porpoise_count=30)
         params.random_seed = 7
@@ -1698,6 +1833,6 @@ class TestJaxStepRefMem:
         assert pop._mem_ptr[dead] == mem_ptr_before[dead], "dead slot ref-mem pointer advanced"
         assert pop._mem_count[dead] == mem_count_before[dead], "dead slot ref-mem count advanced"
         # Non-vacuity: a live slot DID advance this tick, proving ref-mem ran.
-        assert pop._mem_count[live] == mem_count_before[live] + 1, (
-            "live slot ref-mem did not advance -> test is vacuous"
-        )
+        assert (
+            pop._mem_count[live] == mem_count_before[live] + 1
+        ), "live slot ref-mem did not advance -> test is vacuous"

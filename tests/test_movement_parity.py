@@ -10,8 +10,8 @@ import numpy as np
 
 import cenop.agents.population as popmod
 from cenop.core.simulation import Simulation
-from cenop.parameters import SimulationParameters
 from cenop.movement import DEPONSCRWMovementVectorized
+from cenop.parameters import SimulationParameters
 
 
 def _build(seed, with_module):

@@ -3,18 +3,17 @@ Main UI Layout for CENOP Shiny App
 CENOP - CETacean Noise-Population Model
 """
 
-from shiny import ui
 import shinyswatch
+from shiny import ui
 from shiny_deckgl import head_includes
 
 from .sidebar import create_sidebar
 from .tabs.dashboard import dashboard_tab
-from .tabs.settings import settings_tab
-from .tabs.population import population_tab
 from .tabs.disturbance import disturbance_tab
-from .tabs.landscape_editor import landscape_editor_tab
 from .tabs.export import export_tab
-
+from .tabs.landscape_editor import landscape_editor_tab
+from .tabs.population import population_tab
+from .tabs.settings import settings_tab
 
 # Custom CSS for styling
 CUSTOM_CSS = """
@@ -757,12 +756,12 @@ def create_help_modal():
     <p class="text-muted small mt-4">CENOP-JASMINE Version 2.0 | Python Shiny Implementation | 2024-2026</p>
 </div>
             """),
-            style="max-height: 70vh; overflow-y: auto; padding: 20px;"
+            style="max-height: 70vh; overflow-y: auto; padding: 20px;",
         ),
         title="CENOP-JASMINE Help",
         size="xl",
         easy_close=True,
-        footer=ui.modal_button("Close", class_="btn-primary")
+        footer=ui.modal_button("Close", class_="btn-primary"),
     )
 
 
@@ -771,9 +770,9 @@ def create_app_ui():
     # Create title with logo
     title_with_logo = ui.div(
         ui.img(src="CENOP_logo.png", height="35px", style="vertical-align: middle;"),
-        style="display: inline-flex; align-items: center; margin-right: 1rem;"
+        style="display: inline-flex; align-items: center; margin-right: 1rem;",
     )
-    
+
     # Dynamic legend: server sends entries via cenop_legend_update,
     # JS renders checkboxes and toggles layer visibility client-side.
     LEGEND_CSS = """
@@ -978,9 +977,7 @@ def create_app_ui():
         export_tab(),
         # Add help button to the navbar
         ui.nav_spacer(),
-        ui.nav_control(
-            ui.input_action_link("help_btn", "❓ Help", class_="nav-link")
-        ),
+        ui.nav_control(ui.input_action_link("help_btn", "❓ Help", class_="nav-link")),
         sidebar=create_sidebar(),
         title=title_with_logo,
         theme=shinyswatch.theme.flatly,
@@ -989,7 +986,7 @@ def create_app_ui():
             ui.tags.style(LEGEND_CSS),
             ui.tags.script(LEGEND_JS),
         ),
-        fillable=True
+        fillable=True,
     )
 
 

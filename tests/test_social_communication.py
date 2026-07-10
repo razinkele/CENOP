@@ -1,7 +1,7 @@
 """Tests for social communication / social call system."""
 
-import pytest
 import numpy as np
+import pytest
 
 
 @pytest.fixture
@@ -9,8 +9,16 @@ def make_params():
     """Factory fixture for SimulationParameters with communication settings."""
     from cenop.parameters import SimulationParameters
 
-    def _make(comm_enabled=True, comm_range_km=5.0, source_level=130.0,
-              threshold=80.0, slope=0.1, social_weight=0.3, count=10, **kw):
+    def _make(
+        comm_enabled=True,
+        comm_range_km=5.0,
+        source_level=130.0,
+        threshold=80.0,
+        slope=0.1,
+        social_weight=0.3,
+        count=10,
+        **kw,
+    ):
         return SimulationParameters(
             porpoise_count=count,
             sim_years=1,
@@ -23,6 +31,7 @@ def make_params():
             social_weight=social_weight,
             **kw,
         )
+
     return _make
 
 
@@ -45,14 +54,17 @@ class TestNumbaHelpersImport:
 
     def test_numba_helpers_import(self):
         from cenop.optimizations.numba_helpers import accumulate_social_totals
+
         assert callable(accumulate_social_totals)
 
     def test_numba_helpers_weighted_direction_sum(self):
         from cenop.optimizations.numba_helpers import weighted_direction_sum
+
         assert callable(weighted_direction_sum)
 
     def test_optimizations_init_still_works(self):
         from cenop.optimizations import accumulate_psm_updates, vectorized_distance
+
         assert callable(accumulate_psm_updates)
         assert callable(vectorized_distance)
 
@@ -129,8 +141,9 @@ class TestSocialWeightScaling:
 
         results = []
         for weight in [0.1, 0.5, 0.9]:
-            params = make_params(comm_enabled=True, comm_range_km=5.0,
-                                 social_weight=weight, count=2)
+            params = make_params(
+                comm_enabled=True, comm_range_km=5.0, social_weight=weight, count=2
+            )
             pop = PorpoisePopulation(2, params)
             pop.x[:] = np.array([10.0, 15.0], dtype=np.float32)
             pop.y[:] = np.array([10.0, 10.0], dtype=np.float32)
@@ -139,12 +152,13 @@ class TestSocialWeightScaling:
 
             mask = pop.active_mask
             soc_dx, soc_dy = pop._compute_social_vectors(mask)
-            mag = np.sqrt(soc_dx[0]**2 + soc_dy[0]**2)
+            mag = np.sqrt(soc_dx[0] ** 2 + soc_dy[0] ** 2)
             results.append(mag)
 
         # Magnitude should increase with weight
-        assert results[0] < results[1] < results[2], \
-            f"Expected increasing magnitudes with weight, got {results}"
+        assert (
+            results[0] < results[1] < results[2]
+        ), f"Expected increasing magnitudes with weight, got {results}"
 
 
 class TestSingleAgent:
@@ -187,9 +201,9 @@ class TestAccumulateSocialTotals:
         uy_total = np.zeros(count, dtype=np.float64)
         sw_total = np.zeros(count, dtype=np.float64)
 
-        accumulate_social_totals(count, idx_i, idx_j,
-                                 ux_i, uy_i, ux_j, uy_j, p_i, p_j,
-                                 ux_total, uy_total, sw_total)
+        accumulate_social_totals(
+            count, idx_i, idx_j, ux_i, uy_i, ux_j, uy_j, p_i, p_j, ux_total, uy_total, sw_total
+        )
 
         # Agent 0 should have i's contribution
         assert ux_total[0] == pytest.approx(0.5)
@@ -209,12 +223,14 @@ class TestCombineRLs:
 
     def test_single_source(self):
         from cenop.behavior.sound import combine_rls
+
         rl = np.array([100.0, 90.0, 80.0])
         result = combine_rls(rl)
         np.testing.assert_array_equal(result, rl)
 
     def test_multiple_sources_takes_max(self):
         from cenop.behavior.sound import combine_rls
+
         rls = [
             np.array([100.0, 80.0, 70.0]),
             np.array([90.0, 95.0, 60.0]),

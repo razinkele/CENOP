@@ -11,16 +11,15 @@ for regulatory use cases, while JASMINE features are opt-in for research.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional, Dict, Any
 from enum import Enum, auto
+from typing import TYPE_CHECKING, Any
+
 import numpy as np
 
 from cenop.behavior.states import (
-    BehaviorState,
     BehaviorContext,
+    BehaviorState,
     BehaviorStateVector,
-    StateTransition,
-    STATE_PARAMETERS,
 )
 from cenop.core.time_manager import TimeMode
 
@@ -30,9 +29,10 @@ if TYPE_CHECKING:
 
 class FSMMode(Enum):
     """FSM operation modes."""
-    DEPONS = auto()    # Simple transitions, regulatory-compliant
-    JASMINE = auto()   # Enhanced transitions with memory/sociality
-    HYBRID = auto()    # Context-dependent (DEPONS for disturbance, JASMINE otherwise)
+
+    DEPONS = auto()  # Simple transitions, regulatory-compliant
+    JASMINE = auto()  # Enhanced transitions with memory/sociality
+    HYBRID = auto()  # Context-dependent (DEPONS for disturbance, JASMINE otherwise)
 
 
 class HybridBehaviorFSM:
@@ -68,16 +68,16 @@ class HybridBehaviorFSM:
     """
 
     # Thresholds
-    DETERRENCE_THRESHOLD = 0.01    # Minimum deterrence to trigger DISTURBED
-    SPEED_THRESHOLD = 2.0          # Speed threshold for TRAVELING
-    ENERGY_LOW_THRESHOLD = 0.3     # Low energy threshold for RESTING
-    ENERGY_HIGH_THRESHOLD = 0.7    # High energy threshold to exit RESTING
+    DETERRENCE_THRESHOLD = 0.01  # Minimum deterrence to trigger DISTURBED
+    SPEED_THRESHOLD = 2.0  # Speed threshold for TRAVELING
+    ENERGY_LOW_THRESHOLD = 0.3  # Low energy threshold for RESTING
+    ENERGY_HIGH_THRESHOLD = 0.7  # High energy threshold to exit RESTING
 
     def __init__(
         self,
-        params: 'SimulationParameters',
+        params: SimulationParameters,
         time_mode: TimeMode = TimeMode.DEPONS,
-        fsm_mode: Optional[FSMMode] = None,
+        fsm_mode: FSMMode | None = None,
     ):
         """
         Initialize hybrid behavior FSM.
@@ -103,13 +103,13 @@ class HybridBehaviorFSM:
         self.min_memory_cells = params.min_memory_cells
 
         # Statistics
-        self._stats: Dict[str, int] = {
-            'total_updates': 0,
-            'transitions_to_disturbed': 0,
-            'transitions_to_dispersing': 0,
-            'transitions_to_foraging': 0,
-            'transitions_to_traveling': 0,
-            'transitions_to_resting': 0,
+        self._stats: dict[str, int] = {
+            "total_updates": 0,
+            "transitions_to_disturbed": 0,
+            "transitions_to_dispersing": 0,
+            "transitions_to_foraging": 0,
+            "transitions_to_traveling": 0,
+            "transitions_to_resting": 0,
         }
 
     def update_states(
@@ -129,7 +129,7 @@ class HybridBehaviorFSM:
         Returns:
             Boolean array indicating which agents changed state
         """
-        self._stats['total_updates'] += 1
+        self._stats["total_updates"] += 1
         count = len(state_vector.state)
         changed = np.zeros(count, dtype=bool)
 
@@ -174,7 +174,9 @@ class HybridBehaviorFSM:
         # (prevents same-tick disturbance+recovery race condition)
         was_disturbed = mask & (old_states == BehaviorState.DISTURBED.value)
         no_deterrence = context.deterrence_magnitude <= self.DETERRENCE_THRESHOLD
-        recovered = was_disturbed & no_deterrence & (context.time_since_disturbance > self.recovery_ticks)
+        recovered = (
+            was_disturbed & no_deterrence & (context.time_since_disturbance > self.recovery_ticks)
+        )
         state_vector.state[recovered] = BehaviorState.FORAGING.value
         state_vector.state_duration[recovered] = 0
 
@@ -183,7 +185,9 @@ class HybridBehaviorFSM:
         currently_foraging = mask & (state_vector.state == BehaviorState.FORAGING.value)
         energy_declining = context.energy_declining_days >= self.t_disp
         sufficient_memory = context.memory_cell_count >= self.min_memory_cells
-        start_dispersal = currently_foraging & energy_declining & sufficient_memory & ~context.is_dispersing
+        start_dispersal = (
+            currently_foraging & energy_declining & sufficient_memory & ~context.is_dispersing
+        )
         state_vector.state[start_dispersal] = BehaviorState.DISPERSING.value
         state_vector.state_duration[start_dispersal] = 0
 
@@ -229,7 +233,9 @@ class HybridBehaviorFSM:
         # Only agents that were ALREADY disturbed before this tick can recover
         was_disturbed = mask & (old_states == BehaviorState.DISTURBED.value)
         no_deterrence = context.deterrence_magnitude <= self.DETERRENCE_THRESHOLD
-        recovered = was_disturbed & no_deterrence & (context.time_since_disturbance > self.recovery_ticks)
+        recovered = (
+            was_disturbed & no_deterrence & (context.time_since_disturbance > self.recovery_ticks)
+        )
 
         # High speed after recovery -> TRAVELING, else FORAGING
         high_speed = context.current_speed > context.speed_threshold
@@ -263,7 +269,9 @@ class HybridBehaviorFSM:
         still_foraging = mask & (state_vector.state == BehaviorState.FORAGING.value)
         energy_declining = context.energy_declining_days >= self.t_disp
         sufficient_memory = context.memory_cell_count >= self.min_memory_cells
-        start_dispersal = still_foraging & energy_declining & sufficient_memory & ~context.is_dispersing
+        start_dispersal = (
+            still_foraging & energy_declining & sufficient_memory & ~context.is_dispersing
+        )
         state_vector.state[start_dispersal] = BehaviorState.DISPERSING.value
         state_vector.state_duration[start_dispersal] = 0
 
@@ -341,7 +349,7 @@ class HybridBehaviorFSM:
             to_this = changed & (new_states == state.value)
             count = int(np.sum(to_this))
             if count > 0:
-                key = f'transitions_to_{state.name.lower()}'
+                key = f"transitions_to_{state.name.lower()}"
                 if key in self._stats:
                     self._stats[key] += count
 
@@ -356,7 +364,7 @@ class HybridBehaviorFSM:
         Returns array of movement mode indices:
         - 0: DEPONS_CRW
         - 1: JASMINE_PHYSICS
-        
+
         Optimized: single fancy-index lookup instead of per-state loops.
         """
         count = len(state_vector.state)
@@ -375,7 +383,7 @@ class HybridBehaviorFSM:
         mask: np.ndarray,
     ) -> np.ndarray:
         """Get speed multiplier for each agent based on state.
-        
+
         Optimized: single fancy-index lookup instead of per-state loops.
         """
         count = len(state_vector.state)
@@ -393,7 +401,7 @@ class HybridBehaviorFSM:
         mask: np.ndarray,
     ) -> np.ndarray:
         """Get energy cost multiplier for each agent based on state.
-        
+
         Optimized: single fancy-index lookup instead of per-state loops.
         """
         count = len(state_vector.state)
@@ -405,10 +413,10 @@ class HybridBehaviorFSM:
             multipliers[active] = _ENERGY_LUT[state_vector.state[active]]
         return multipliers
 
-    def get_statistics(self) -> Dict[str, Any]:
+    def get_statistics(self) -> dict[str, Any]:
         """Get FSM statistics."""
         return {
-            'mode': self.mode.name,
+            "mode": self.mode.name,
             **self._stats,
         }
 
@@ -419,7 +427,7 @@ class HybridBehaviorFSM:
 
 
 def create_behavior_fsm(
-    params: 'SimulationParameters',
+    params: SimulationParameters,
     time_mode: TimeMode = TimeMode.DEPONS,
 ) -> HybridBehaviorFSM:
     """

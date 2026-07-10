@@ -66,15 +66,21 @@ def weston_flux_tl(
     gamma_w = _gamma(frequency, temperature, salinity, ph, 0.0)
     rho_ratio = _rho_ratio(grain_size)
 
-    return _range_independent(distance, depth, frequency, c_s,
-                              beta_s, gamma_w, ssp_ratio, rho_ratio)
+    return _range_independent(
+        distance, depth, frequency, c_s, beta_s, gamma_w, ssp_ratio, rho_ratio
+    )
 
 
 @njit(cache=True)
 def _range_independent(
-    r: float, h: float, f: float, c_s: float,
-    beta_s: float, gamma_w: float,
-    ssp_ratio: float, rho_ratio: float,
+    r: float,
+    h: float,
+    f: float,
+    c_s: float,
+    beta_s: float,
+    gamma_w: float,
+    ssp_ratio: float,
+    rho_ratio: float,
 ) -> float:
     """Compute propagation loss using range-independent Weston flux integral."""
     # Convert water absorption from dB/m to Np/m
@@ -87,8 +93,7 @@ def _range_independent(
     # Determine eta (effective bottom loss parameter)
     if ssp_ratio > 1:
         epsilon = math.log(10) / (40.0 * math.pi) * beta_s
-        eta = (2.0 * rho_ratio * (ssp_ratio / ((ssp_ratio**2 - 1) ** 1.5))
-               * epsilon)
+        eta = 2.0 * rho_ratio * (ssp_ratio / ((ssp_ratio**2 - 1) ** 1.5)) * epsilon
     elif ssp_ratio < 1:
         eta = 2.0 * rho_ratio * ssp_ratio / math.sqrt(1 - ssp_ratio**2)
     else:
@@ -110,10 +115,12 @@ def _range_independent(
     # Clamp erf argument to avoid overflow (erf saturates near ±6)
     erf_arg = min(erf_arg, 6.0)
 
-    f_val = (r ** (-1.5)
-             * math.sqrt(math.pi / (eta * h_eff))
-             * math.erf(erf_arg)
-             * math.exp(-2.0 * alpha_w * r))
+    f_val = (
+        r ** (-1.5)
+        * math.sqrt(math.pi / (eta * h_eff))
+        * math.erf(erf_arg)
+        * math.exp(-2.0 * alpha_w * r)
+    )
 
     if f_val <= 0:
         return 300.0  # Very large loss for effectively zero propagation
@@ -176,29 +183,29 @@ def _beta(grain_size: float, ssp_ratio_high: float) -> float:
 
 
 @njit(cache=True)
-def _gamma(f: float, temp: float, salinity: float, ph: float,
-           depth_at_source: float) -> float:
+def _gamma(f: float, temp: float, salinity: float, ph: float, depth_at_source: float) -> float:
     """Water absorption coefficient (dB/m) using Francois-Garrison equation."""
     f1 = 0.91 * (salinity / 35.0) ** 0.5 * math.exp(temp / 33.0)
     f2 = 46.6 * math.exp(temp / 18.0)
 
     if temp <= 20:
-        a3 = (4.937e-4 - 2.59e-5 * temp
-              + 9.11e-7 * temp**2 - 1.5e-8 * temp**3)
+        a3 = 4.937e-4 - 2.59e-5 * temp + 9.11e-7 * temp**2 - 1.5e-8 * temp**3
     else:
-        a3 = (3.964e-4 - 1.146e-5 * temp
-              + 1.45e-7 * temp**2 - 6.5e-10 * temp**3)
+        a3 = 3.964e-4 - 1.146e-5 * temp + 1.45e-7 * temp**2 - 6.5e-10 * temp**3
 
-    p3 = (1 - 3.83e-5 * depth_at_source
-          + 4.9e-4 * (depth_at_source / 1000.0)**2)
+    p3 = 1 - 3.83e-5 * depth_at_source + 4.9e-4 * (depth_at_source / 1000.0) ** 2
 
     f_khz = f / 1000.0
 
-    y1 = (0.101 * (f1 * f_khz**2) / (f1**2 + f_khz**2)
-          * math.exp((ph - 8) / 0.57))
-    y2 = (0.56 * (1 + temp / 76.0) * (salinity / 35.0)
-          * (f2 * f_khz**2) / (f2**2 + f_khz**2)
-          * math.exp(-depth_at_source / 4900.0))
+    y1 = 0.101 * (f1 * f_khz**2) / (f1**2 + f_khz**2) * math.exp((ph - 8) / 0.57)
+    y2 = (
+        0.56
+        * (1 + temp / 76.0)
+        * (salinity / 35.0)
+        * (f2 * f_khz**2)
+        / (f2**2 + f_khz**2)
+        * math.exp(-depth_at_source / 4900.0)
+    )
     y3 = a3 * p3 * f_khz**2
 
     absorption = (y1 + y2 + y3) / 1000.0

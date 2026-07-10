@@ -9,7 +9,6 @@ parameters as scalars, and new arrays are returned. No side effects.
 """
 
 import logging
-from functools import partial
 
 import jax
 import jax.numpy as jnp
@@ -17,17 +16,17 @@ import jax.numpy as jnp
 logger = logging.getLogger(__name__)
 
 from cenop.optimizations.jax_kernels import (
-    jax_crw_kernel,
-    jax_compute_ve_total,
-    jax_compute_attraction,
-    jax_heading_composition,
-    jax_update_positions,
-    jax_land_avoidance,
-    jax_eat_food,
     jax_bmr_cost,
-    jax_mortality,
-    jax_energy_history_update,
+    jax_compute_attraction,
+    jax_compute_ve_total,
+    jax_crw_kernel,
     jax_dispersal_update,
+    jax_eat_food,
+    jax_energy_history_update,
+    jax_heading_composition,
+    jax_land_avoidance,
+    jax_mortality,
+    jax_update_positions,
 )
 
 
@@ -137,9 +136,7 @@ def jax_tick_movement(
     )
 
     # --- Phase 2: Reference memory ---
-    ve_total = jax_compute_ve_total(
-        stored_util, mem_ptr, mem_count, work_mem_table, active_mask
-    )
+    ve_total = jax_compute_ve_total(stored_util, mem_ptr, mem_count, work_mem_table, active_mask)
     vt_x, vt_y = jax_compute_attraction(
         stored_util,
         pos_hist_x,
@@ -242,9 +239,7 @@ def jax_tick_movement(
     unresolved = on_land & ~la_resolved
     new_x_f32 = jnp.where(unresolved, x, new_x_f32)
     new_y_f32 = jnp.where(unresolved, y, new_y_f32)
-    new_heading_f32 = jnp.where(
-        unresolved, (new_heading_f32 + 180.0) % 360.0, new_heading_f32
-    )
+    new_heading_f32 = jnp.where(unresolved, (new_heading_f32 + 180.0) % 360.0, new_heading_f32)
 
     # Update prev_log_mov for active agents
     new_prev_log_mov = jnp.where(active_mask, log_mov, prev_log_mov)
@@ -317,9 +312,7 @@ def jax_tick_energy(
         new_days_declining_energy, key
     """
     # --- Phase 4: Food intake ---
-    food_eaten, new_food_grid = jax_eat_food(
-        food_grid, xi, yi, energy, min_food
-    )
+    food_eaten, new_food_grid = jax_eat_food(food_grid, xi, yi, energy, min_food)
     # Only active agents eat
     food_eaten = jnp.where(active_mask, food_eaten, 0.0)
     energy_after_food = jnp.where(active_mask, energy + food_eaten, energy)
@@ -356,15 +349,13 @@ def jax_tick_energy(
     new_energy = jnp.clip(energy_after_bmr, 0.0, 20.0)
 
     # --- Phase 8: Energy history update ---
-    new_energy_ticks_today, new_energy_history, new_tick_counter = (
-        jax_energy_history_update(
-            new_energy,
-            new_active_mask,
-            energy_ticks_today,
-            energy_history,
-            tick_counter,
-            is_day_boundary,
-        )
+    new_energy_ticks_today, new_energy_history, new_tick_counter = jax_energy_history_update(
+        new_energy,
+        new_active_mask,
+        energy_ticks_today,
+        energy_history,
+        tick_counter,
+        is_day_boundary,
     )
 
     # --- Phase 9: Dispersal update ---

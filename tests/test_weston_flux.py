@@ -1,8 +1,9 @@
 """Tests for WestonFlux transmission loss model."""
 
-import pytest
-import numpy as np
 from unittest.mock import MagicMock
+
+import numpy as np
+
 from cenop.behavior.weston_flux import weston_flux_tl
 from cenop.landscape.cell_data import CellData, LandscapeMetadata
 from cenop.parameters.simulation_params import SimulationParameters
@@ -13,8 +14,9 @@ class TestWestonFlux:
 
     def test_basic_tl(self):
         """WestonFlux TL for typical North Sea conditions."""
-        tl = weston_flux_tl(distance=1000.0, depth=30.0, grain_size=2.0,
-                            temperature=10.0, salinity=35.0)
+        tl = weston_flux_tl(
+            distance=1000.0, depth=30.0, grain_size=2.0, temperature=10.0, salinity=35.0
+        )
         # TL should be in reasonable range (40-80 dB for 1km)
         assert 30 < tl < 90, f"TL={tl} outside expected range"
 
@@ -54,15 +56,20 @@ class TestGetSedimentsVectorized:
         cd = CellData.__new__(CellData)
         cd._loaded = True
         cd.metadata = LandscapeMetadata(
-            ncols=4, nrows=4,
-            xllcorner=0.0, yllcorner=0.0, cellsize=400.0,
+            ncols=4,
+            nrows=4,
+            xllcorner=0.0,
+            yllcorner=0.0,
+            cellsize=400.0,
         )
-        cd._sediment = np.array([
-            [-2.0, -2.0, -2.0, -2.0],
-            [ 2.0,  2.0,  2.0,  2.0],
-            [ 5.0,  5.0,  5.0,  5.0],
-            [ 8.0,  8.0,  8.0,  8.0],
-        ])
+        cd._sediment = np.array(
+            [
+                [-2.0, -2.0, -2.0, -2.0],
+                [2.0, 2.0, 2.0, 2.0],
+                [5.0, 5.0, 5.0, 5.0],
+                [8.0, 8.0, 8.0, 8.0],
+            ]
+        )
         cd._depth = np.full((4, 4), 30.0)
         cd._salinity = None
         cd._food_prob = None
@@ -105,8 +112,7 @@ class TestPerCellWestonFluxDeterrence:
         cd.width = 10
         cd.height = 10
         cd._sediment = np.array(
-            [[2.0] * 10, [7.0] * 10]  # row 0: sand  # row 1: silt
-            + [[2.0] * 10] * 8
+            [[2.0] * 10, [7.0] * 10] + [[2.0] * 10] * 8  # row 0: sand  # row 1: silt
         )
         cd._depth = np.full((10, 10), 30.0)
         cd._salinity = np.full((12, 10, 10), 35.0)
@@ -153,7 +159,7 @@ class TestPerCellWestonFluxDeterrence:
 
     def _make_ship_and_manager(self):
         """Create a ShipManager with one active ship at (5, 5)."""
-        from cenop.agents.ship import ShipManager, Ship
+        from cenop.agents.ship import Ship, ShipManager
 
         params = SimulationParameters(ships_enabled=True)
         mgr = ShipManager()
@@ -167,9 +173,7 @@ class TestPerCellWestonFluxDeterrence:
     def test_percell_off_uses_simple_formula(self):
         """With weston_flux_percell=False, simple formula is used."""
         mgr, _ = self._make_ship_and_manager()
-        params = SimulationParameters(
-            ships_enabled=True, weston_flux_percell=False
-        )
+        params = SimulationParameters(ships_enabled=True, weston_flux_percell=False)
         px = np.array([5.0, 5.0])
         py = np.array([0.0, 1.0])
 
@@ -191,8 +195,13 @@ class TestPerCellWestonFluxDeterrence:
         py = np.array([0.0, 1.0])
 
         dx, dy = mgr.calculate_aggregate_deterrence_vectorized(
-            px, py, params, is_day=True, cell_size=400.0,
-            cell_data=cell_data, month=6,
+            px,
+            py,
+            params,
+            is_day=True,
+            cell_size=400.0,
+            cell_data=cell_data,
+            month=6,
         )
         assert dx.shape == (2,)
 
@@ -211,8 +220,13 @@ class TestPerCellWestonFluxDeterrence:
         py = np.array([0.0])
 
         dx, dy = mgr.calculate_aggregate_deterrence_vectorized(
-            px, py, params, is_day=True, cell_size=400.0,
-            cell_data=cell_data, month=6,
+            px,
+            py,
+            params,
+            is_day=True,
+            cell_size=400.0,
+            cell_data=cell_data,
+            month=6,
         )
         assert dx.shape == (1,)
 
@@ -231,8 +245,13 @@ class TestPerCellWestonFluxDeterrence:
         py = np.array([0.0])
 
         dx, dy = mgr.calculate_aggregate_deterrence_vectorized(
-            px, py, params, is_day=True, cell_size=400.0,
-            cell_data=cell_data, month=6,
+            px,
+            py,
+            params,
+            is_day=True,
+            cell_size=400.0,
+            cell_data=cell_data,
+            month=6,
         )
         assert dx.shape == (1,)
 
@@ -252,12 +271,22 @@ class TestPerCellWestonFluxDeterrence:
         py = np.array([0.0])
 
         dx6, _ = mgr.calculate_aggregate_deterrence_vectorized(
-            px, py, params, is_day=True, cell_size=400.0,
-            cell_data=cell_data, month=6,
+            px,
+            py,
+            params,
+            is_day=True,
+            cell_size=400.0,
+            cell_data=cell_data,
+            month=6,
         )
         dx1, _ = mgr.calculate_aggregate_deterrence_vectorized(
-            px, py, params, is_day=True, cell_size=400.0,
-            cell_data=cell_data, month=1,
+            px,
+            py,
+            params,
+            is_day=True,
+            cell_size=400.0,
+            cell_data=cell_data,
+            month=1,
         )
         assert dx6.shape == (1,)
         assert dx1.shape == (1,)
@@ -277,17 +306,23 @@ class TestPerCellWestonFluxDeterrence:
         py = np.array([0.0])
 
         dx, dy = mgr.calculate_aggregate_deterrence_vectorized(
-            px, py, params, is_day=True, cell_size=400.0,
-            cell_data=cell_data, month=12,
+            px,
+            py,
+            params,
+            is_day=True,
+            cell_size=400.0,
+            cell_data=cell_data,
+            month=12,
         )
         assert dx.shape == (1,)
 
     def test_scalar_and_vectorized_consistent(self):
         """Scalar calculate_deterrence should work with per-cell mode."""
-        from cenop.agents.ship import ShipManager, Ship
+        from cenop.agents.ship import Ship, ShipManager
 
         params = SimulationParameters(
-            ships_enabled=True, weston_flux_percell=True,
+            ships_enabled=True,
+            weston_flux_percell=True,
             weston_flux_default_temperature=10.0,
         )
         mgr = ShipManager()
@@ -300,8 +335,13 @@ class TestPerCellWestonFluxDeterrence:
         cell_data = self._make_landscape()
 
         should_deter, prob, magnitude, dist = ship.calculate_deterrence(
-            5.0, 0.0, params, is_day=True, cell_size=400.0,
-            cell_data=cell_data, month=6,
+            5.0,
+            0.0,
+            params,
+            is_day=True,
+            cell_size=400.0,
+            cell_data=cell_data,
+            month=6,
         )
         assert isinstance(should_deter, bool)
         assert dist > 0

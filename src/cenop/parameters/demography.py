@@ -5,13 +5,11 @@ Contains age distribution statistics derived from empirical data (DEPONS/TRACE),
 used for initializing the population structure.
 """
 
-from typing import List
-
 # Age distribution from PorpoiseSimBuilder.java
 # Represents the frequency of individuals at each age index.
 # This discrete distribution is converted to a probability mass function at runtime.
 # fmt: off
-AGE_DISTRIBUTION_FREQUENCY: List[int] = [
+AGE_DISTRIBUTION_FREQUENCY: list[int] = [
     # Juveniles
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,

@@ -29,12 +29,12 @@ Factory Functions:
 """
 
 from cenop.physiology.energy_budget import (
-    EnergyMode,
-    EnergyState,
-    EnergyContext,
-    EnergyResult,
-    EnergyModule,
     DEPONSEnergyModule,
+    EnergyContext,
+    EnergyMode,
+    EnergyModule,
+    EnergyResult,
+    EnergyState,
     JASMINEEnergyModule,
     create_energy_module,
 )

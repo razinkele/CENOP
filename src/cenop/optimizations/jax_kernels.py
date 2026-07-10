@@ -13,15 +13,29 @@ import jax
 
 jax.config.update("jax_enable_x64", True)
 
-import jax.numpy as jnp
 import jax.lax as lax
+import jax.numpy as jnp
 
 
 def jax_crw_kernel(
-    prev_angle, prev_log_mov, depths, salinity, mask, key,
-    corr_angle_base, corr_angle_bathy, corr_angle_salinity,
-    corr_angle_base_sd, corr_logmov_length, corr_logmov_bathy,
-    corr_logmov_salinity, max_mov, r2_mean, r2_sd, r1_mean, r1_sd,
+    prev_angle,
+    prev_log_mov,
+    depths,
+    salinity,
+    mask,
+    key,
+    corr_angle_base,
+    corr_angle_bathy,
+    corr_angle_salinity,
+    corr_angle_base_sd,
+    corr_logmov_length,
+    corr_logmov_bathy,
+    corr_logmov_salinity,
+    max_mov,
+    r2_mean,
+    r2_sd,
+    r1_mean,
+    r1_sd,
     m_param,
 ):
     """CRW angle + step length — fixed-iteration batch rejection.
@@ -83,8 +97,7 @@ def jax_crw_kernel(
     # Fallback: sign * (random + 90)
     key, kfb = jax.random.split(key)
     fb_rnd = jax.random.uniform(kfb, (n,)) * 20.0
-    dist_result = jnp.where(any_valid2, dist_result,
-                            jnp.sign(pres_angle) * (fb_rnd + 90.0))
+    dist_result = jnp.where(any_valid2, dist_result, jnp.sign(pres_angle) * (fb_rnd + 90.0))
 
     # Only apply distance mod where needed AND angle was >= 180
     need_dist = needs_mod & (jnp.abs(pres_angle) >= 180.0)
@@ -93,10 +106,12 @@ def jax_crw_kernel(
     # === Loop 3: Step length — draw K candidates, pick first <= max_mov ===
     key, k3 = jax.random.split(key)
     rand_lens = jax.random.normal(k3, (K, n)) * r1_sd + r1_mean  # (K, n)
-    log_movs = (corr_logmov_length * prev_log_mov[None, :]
-                + corr_logmov_bathy * depths[None, :]
-                + corr_logmov_salinity * salinity[None, :]
-                + rand_lens)  # (K, n)
+    log_movs = (
+        corr_logmov_length * prev_log_mov[None, :]
+        + corr_logmov_bathy * depths[None, :]
+        + corr_logmov_salinity * salinity[None, :]
+        + rand_lens
+    )  # (K, n)
 
     valid3 = log_movs <= max_mov  # (K, n)
     first_valid3 = jnp.argmax(valid3, axis=0)
@@ -236,12 +251,7 @@ def jax_compute_attraction(
     # Validity mask: skip index 0 (current position), skip beyond count, skip zero util
     n_valid = jnp.minimum(mem_count, mem_size)  # (n,)
     entry_idx = jnp.arange(mem_size)[None, :]
-    valid = (
-        (entry_idx >= 1)
-        & (entry_idx < n_valid[:, None])
-        & (ordered_util != 0)
-        & (dist > 0)
-    )
+    valid = (entry_idx >= 1) & (entry_idx < n_valid[:, None]) & (ordered_util != 0) & (dist > 0)
 
     factor = factor * valid
 
@@ -576,9 +586,7 @@ def jax_update_positions(x, y, dx, dy, heading, world_w, world_h, mask):
     new_y = y + dy
 
     # Reflect at boundaries
-    ref_x, ref_y, ref_dx, ref_dy = jax_reflect_boundaries(
-        new_x, new_y, dx, dy, world_w, world_h
-    )
+    ref_x, ref_y, ref_dx, ref_dy = jax_reflect_boundaries(new_x, new_y, dx, dy, world_w, world_h)
 
     # Detect reflected agents (displacement sign changed)
     reflected = mask & ((ref_dx != dx) | (ref_dy != dy))
@@ -644,8 +652,17 @@ def jax_eat_food(food_grid, xi, yi, energy, min_food):
     return eaten, new_food
 
 
-def jax_bmr_cost(energy, active_mask, speed, is_lactating, is_disturbed,
-                 deter_magnitude, scaling, e_use_per_30_min, e_lact):
+def jax_bmr_cost(
+    energy,
+    active_mask,
+    speed,
+    is_lactating,
+    is_disturbed,
+    deter_magnitude,
+    scaling,
+    e_use_per_30_min,
+    e_lact,
+):
     """BMR + activity + disturbance cost.
 
     Matches DEPONSEnergyModule / depons_bmr_cost_kernel:
@@ -683,9 +700,18 @@ def jax_bmr_cost(energy, active_mask, speed, is_lactating, is_disturbed,
     return new_energy, total_cost
 
 
-def jax_mortality(energy, active_mask, with_calf, age, key,
-                  m_mort_prob_const, x_survival_const,
-                  is_day_boundary, bycatch_prob, max_age):
+def jax_mortality(
+    energy,
+    active_mask,
+    with_calf,
+    age,
+    key,
+    m_mort_prob_const,
+    x_survival_const,
+    is_day_boundary,
+    bycatch_prob,
+    max_age,
+):
     """Mortality check: starvation + bycatch + max-age.
 
     Starvation (every tick):
@@ -765,8 +791,9 @@ def jax_mortality(energy, active_mask, with_calf, age, key,
     return new_active_mask, new_with_calf, key
 
 
-def jax_energy_history_update(energy, active_mask, energy_ticks_today,
-                               energy_history, tick_counter, is_day_boundary):
+def jax_energy_history_update(
+    energy, active_mask, energy_ticks_today, energy_history, tick_counter, is_day_boundary
+):
     """Accumulate energy; at day boundary shift history.
 
     Every tick: energy_ticks_today[mask] += energy[mask]; tick_counter += 1
@@ -799,9 +826,7 @@ def jax_energy_history_update(energy, active_mask, energy_ticks_today,
         ett, eh, _tc = args
         daily_avg = (ett / 48.0).astype(eh.dtype)
         # Shift right: history[:, 1:] = history[:, :-1]
-        new_hist = jnp.concatenate(
-            [daily_avg[:, None], eh[:, :-1]], axis=1
-        ).astype(eh.dtype)
+        new_hist = jnp.concatenate([daily_avg[:, None], eh[:, :-1]], axis=1).astype(eh.dtype)
         new_ett = jnp.zeros_like(ett)
         new_tc = jnp.int32(0)
         return new_ett, new_hist, new_tc
@@ -820,10 +845,20 @@ def jax_energy_history_update(energy, active_mask, energy_ticks_today,
     return energy_ticks_today, energy_history, tick_counter
 
 
-def jax_dispersal_update(is_dispersing, dispersal_start_x, dispersal_start_y,
-                          dispersal_target_distance, dispersal_distance_traveled,
-                          days_declining_energy, x, y, turbine_deter_strength,
-                          energy_history, active_mask, is_day_boundary):
+def jax_dispersal_update(
+    is_dispersing,
+    dispersal_start_x,
+    dispersal_start_y,
+    dispersal_target_distance,
+    dispersal_distance_traveled,
+    days_declining_energy,
+    x,
+    y,
+    turbine_deter_strength,
+    energy_history,
+    active_mask,
+    is_day_boundary,
+):
     """Update dispersal: deterrence cancel, energy stop, distance check.
 
     Three checks in order:

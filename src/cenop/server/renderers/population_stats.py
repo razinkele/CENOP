@@ -11,7 +11,7 @@ consume that snapshot dict and never touch the live Simulation.
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -21,7 +21,7 @@ from .chart_helpers import create_histogram_chart, no_data_placeholder
 logger = logging.getLogger(__name__)
 
 
-def build_population_stats_snapshot(sim: Any) -> Dict[str, Any]:
+def build_population_stats_snapshot(sim: Any) -> dict[str, Any]:
     """Build an immutable population-stats snapshot from a live ``sim``.
 
     Must be called on the worker thread (the one that steps the sim) so the
@@ -31,7 +31,7 @@ def build_population_stats_snapshot(sim: Any) -> Dict[str, Any]:
     """
     ages: list = []
     energies: list = []
-    stats: Dict[str, Any] = {}
+    stats: dict[str, Any] = {}
 
     pm = getattr(sim, "population_manager", None)
     active = getattr(pm, "active_mask", None) if pm is not None else None
@@ -64,7 +64,7 @@ def build_population_stats_snapshot(sim: Any) -> Dict[str, Any]:
     return {"ages": ages, "energies": energies, "stats": stats}
 
 
-def render_age_histogram(snapshot: Dict[str, Any]):
+def render_age_histogram(snapshot: dict[str, Any]):
     """Render the age-distribution histogram from a stats snapshot dict."""
     ages = (snapshot or {}).get("ages") or []
     if not ages:
@@ -81,7 +81,7 @@ def render_age_histogram(snapshot: Dict[str, Any]):
     )
 
 
-def render_energy_histogram(snapshot: Dict[str, Any]):
+def render_energy_histogram(snapshot: dict[str, Any]):
     """Render the energy-level histogram from a stats snapshot dict."""
     energies = (snapshot or {}).get("energies") or []
     if not energies:
@@ -98,7 +98,7 @@ def render_energy_histogram(snapshot: Dict[str, Any]):
     )
 
 
-def build_vital_stats_df(snapshot: Dict[str, Any]) -> pd.DataFrame:
+def build_vital_stats_df(snapshot: dict[str, Any]) -> pd.DataFrame:
     """Build the vital-stats DataFrame from a stats snapshot dict."""
     stats = (snapshot or {}).get("stats") or {}
     if not stats:

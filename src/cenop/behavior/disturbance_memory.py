@@ -18,9 +18,10 @@ Reference:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum, auto
-from typing import TYPE_CHECKING, Optional, Dict, Any, Tuple, List
+from typing import TYPE_CHECKING, Any
+
 import numpy as np
 
 if TYPE_CHECKING:
@@ -29,8 +30,9 @@ if TYPE_CHECKING:
 
 class MemoryMode(Enum):
     """Memory system modes."""
-    DEPONS = auto()    # No disturbance memory (stateless)
-    JASMINE = auto()   # Full memory with decay and avoidance
+
+    DEPONS = auto()  # No disturbance memory (stateless)
+    JASMINE = auto()  # Full memory with decay and avoidance
 
 
 @dataclass
@@ -40,11 +42,12 @@ class DisturbanceEvent:
 
     Tracks when and where a disturbance occurred.
     """
-    x: float                    # X position in grid cells
-    y: float                    # Y position in grid cells
-    intensity: float            # Disturbance intensity (0-1)
-    tick: int                   # Tick when disturbance occurred
-    duration: int = 1           # Duration in ticks
+
+    x: float  # X position in grid cells
+    y: float  # Y position in grid cells
+    intensity: float  # Disturbance intensity (0-1)
+    tick: int  # Tick when disturbance occurred
+    duration: int = 1  # Duration in ticks
     source_type: str = "unknown"  # turbine, ship, etc.
 
 
@@ -55,21 +58,22 @@ class DisturbanceMemoryState:
 
     Stores per-agent disturbance memory in vectorized arrays.
     """
+
     # Memory grid per agent (flattened: agent_idx * grid_size + cell_idx)
     # For efficiency, we store as sparse dict per agent
-    memory_grids: List[Dict[int, float]]  # List of {cell_id: remembered_intensity}
+    memory_grids: list[dict[int, float]]  # List of {cell_id: remembered_intensity}
 
     # Summary statistics per agent
     total_disturbance_exposure: np.ndarray  # Cumulative disturbance exposure
-    disturbance_event_count: np.ndarray     # Number of disturbance events remembered
-    last_disturbance_tick: np.ndarray       # Tick of most recent disturbance
+    disturbance_event_count: np.ndarray  # Number of disturbance events remembered
+    last_disturbance_tick: np.ndarray  # Tick of most recent disturbance
 
     # Avoidance state
-    avoidance_heading_bias: np.ndarray      # Bias direction away from remembered disturbances
-    avoidance_strength: np.ndarray          # Current avoidance strength (0-1)
+    avoidance_heading_bias: np.ndarray  # Bias direction away from remembered disturbances
+    avoidance_strength: np.ndarray  # Current avoidance strength (0-1)
 
     @classmethod
-    def create(cls, count: int) -> 'DisturbanceMemoryState':
+    def create(cls, count: int) -> DisturbanceMemoryState:
         """Create memory state for count agents."""
         return cls(
             memory_grids=[{} for _ in range(count)],
@@ -88,21 +92,22 @@ class DisturbanceMemoryContext:
 
     Contains information about current disturbances.
     """
+
     # Current disturbance state
-    is_disturbed: np.ndarray          # Currently under disturbance
+    is_disturbed: np.ndarray  # Currently under disturbance
     disturbance_intensity: np.ndarray  # Current disturbance intensity
-    disturbance_x: np.ndarray         # X position of disturbance source
-    disturbance_y: np.ndarray         # Y position of disturbance source
+    disturbance_x: np.ndarray  # X position of disturbance source
+    disturbance_y: np.ndarray  # Y position of disturbance source
 
     # Position
-    agent_x: np.ndarray               # Agent X positions
-    agent_y: np.ndarray               # Agent Y positions
+    agent_x: np.ndarray  # Agent X positions
+    agent_y: np.ndarray  # Agent Y positions
 
     # Time
-    current_tick: int                 # Current simulation tick
+    current_tick: int  # Current simulation tick
 
     @classmethod
-    def create_default(cls, count: int, tick: int = 0) -> 'DisturbanceMemoryContext':
+    def create_default(cls, count: int, tick: int = 0) -> DisturbanceMemoryContext:
         """Create default context."""
         return cls(
             is_disturbed=np.zeros(count, dtype=bool),
@@ -122,10 +127,11 @@ class AvoidanceResult:
 
     Contains movement bias from remembered disturbances.
     """
-    avoidance_dx: np.ndarray      # X component of avoidance vector
-    avoidance_dy: np.ndarray      # Y component of avoidance vector
+
+    avoidance_dx: np.ndarray  # X component of avoidance vector
+    avoidance_dy: np.ndarray  # Y component of avoidance vector
     avoidance_strength: np.ndarray  # Strength of avoidance (0-1)
-    cells_avoided: np.ndarray     # Number of cells being avoided
+    cells_avoided: np.ndarray  # Number of cells being avoided
 
 
 class DisturbanceMemoryModule(ABC):
@@ -135,7 +141,7 @@ class DisturbanceMemoryModule(ABC):
     Defines the interface for memory tracking and avoidance behavior.
     """
 
-    def __init__(self, params: 'SimulationParameters'):
+    def __init__(self, params: SimulationParameters):
         """Initialize memory module."""
         self.params = params
 
@@ -179,17 +185,17 @@ class DisturbanceMemoryModule(ABC):
         self,
         state: DisturbanceMemoryState,
         mask: np.ndarray,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get memory statistics for reporting."""
         active = mask
         if not np.any(active):
             return {}
 
         return {
-            'mean_exposure': float(np.mean(state.total_disturbance_exposure[active])),
-            'mean_event_count': float(np.mean(state.disturbance_event_count[active])),
-            'mean_avoidance_strength': float(np.mean(state.avoidance_strength[active])),
-            'agents_with_memory': int(np.sum(state.disturbance_event_count[active] > 0)),
+            "mean_exposure": float(np.mean(state.total_disturbance_exposure[active])),
+            "mean_event_count": float(np.mean(state.disturbance_event_count[active])),
+            "mean_avoidance_strength": float(np.mean(state.avoidance_strength[active])),
+            "agents_with_memory": int(np.sum(state.disturbance_event_count[active] > 0)),
         }
 
 
@@ -254,19 +260,19 @@ class JASMINEMemoryModule(DisturbanceMemoryModule):
     MEMORY_CELL_SIZE = 5  # Grid cells per memory cell (2km for 400m cells)
 
     # Decay parameters
-    DEFAULT_DECAY_RATE = 0.001     # Per-tick decay (slow decay over ~1000 ticks)
+    DEFAULT_DECAY_RATE = 0.001  # Per-tick decay (slow decay over ~1000 ticks)
     DEFAULT_DECAY_HALF_LIFE = 720  # ~15 days (720 ticks) for 50% decay
 
     # Avoidance parameters
-    AVOIDANCE_RADIUS = 20          # Memory cells to consider for avoidance
-    AVOIDANCE_THRESHOLD = 0.1     # Minimum memory strength to trigger avoidance
+    AVOIDANCE_RADIUS = 20  # Memory cells to consider for avoidance
+    AVOIDANCE_THRESHOLD = 0.1  # Minimum memory strength to trigger avoidance
     MAX_AVOIDANCE_STRENGTH = 0.8  # Maximum avoidance influence on movement
 
     # Habituation parameters
-    HABITUATION_RATE = 0.05       # Rate of habituation per exposure
-    MIN_RESPONSE = 0.2            # Minimum response after habituation
+    HABITUATION_RATE = 0.05  # Rate of habituation per exposure
+    MIN_RESPONSE = 0.2  # Minimum response after habituation
 
-    def __init__(self, params: 'SimulationParameters'):
+    def __init__(self, params: SimulationParameters):
         super().__init__(params)
 
         # Extract parameters
@@ -286,7 +292,7 @@ class JASMINEMemoryModule(DisturbanceMemoryModule):
         mem_y = max(0, min(mem_y, self._cells_per_col - 1))
         return mem_y * self._cells_per_row + mem_x
 
-    def _cell_to_position(self, cell_id: int) -> Tuple[float, float]:
+    def _cell_to_position(self, cell_id: int) -> tuple[float, float]:
         """Convert memory cell to center position."""
         mem_x = cell_id % self._cells_per_row
         mem_y = cell_id // self._cells_per_row
@@ -350,7 +356,7 @@ class JASMINEMemoryModule(DisturbanceMemoryModule):
 
         Memory strength decreases over time, allowing agents to
         eventually return to areas where disturbances have stopped.
-        
+
         Optimized: batch-processes all agents' grids by collecting
         entries into flat arrays, applying vectorized decay, and
         writing back.
@@ -364,11 +370,11 @@ class JASMINEMemoryModule(DisturbanceMemoryModule):
         # For small agent counts, the per-dict loop is fine.
         # For large counts, we pre-allocate and vectorize the decay.
         total_entries = sum(len(state.memory_grids[idx]) for idx in active_indices)
-        
+
         if total_entries == 0:
             state.avoidance_strength[mask] *= decay_factor
             return
-        
+
         if total_entries < 500:
             # Small scale: simple loop is faster than array overhead
             for idx in active_indices:
@@ -389,7 +395,7 @@ class JASMINEMemoryModule(DisturbanceMemoryModule):
             strengths = np.empty(total_entries, dtype=np.float64)
             agent_ids = np.empty(total_entries, dtype=np.int32)
             cell_ids = np.empty(total_entries, dtype=np.int32)
-            
+
             pos = 0
             for idx in active_indices:
                 grid = state.memory_grids[idx]
@@ -398,25 +404,25 @@ class JASMINEMemoryModule(DisturbanceMemoryModule):
                     continue
                 keys = list(grid.keys())
                 vals = list(grid.values())
-                agent_ids[pos:pos+n] = idx
-                cell_ids[pos:pos+n] = keys
-                strengths[pos:pos+n] = vals
+                agent_ids[pos : pos + n] = idx
+                cell_ids[pos : pos + n] = keys
+                strengths[pos : pos + n] = vals
                 pos += n
-            
+
             # Vectorized decay
             strengths[:pos] *= decay_factor
-            
+
             # Rebuild grids, filtering below threshold
             survive = strengths[:pos] >= threshold
-            
+
             # Clear all active grids and rebuild
             for idx in active_indices:
                 state.memory_grids[idx].clear()
-            
+
             surviving_agents = agent_ids[:pos][survive]
             surviving_cells = cell_ids[:pos][survive]
             surviving_strengths = strengths[:pos][survive]
-            
+
             for i in range(len(surviving_agents)):
                 state.memory_grids[surviving_agents[i]][surviving_cells[i]] = surviving_strengths[i]
 
@@ -435,7 +441,7 @@ class JASMINEMemoryModule(DisturbanceMemoryModule):
 
         Agents are biased away from areas where they remember
         experiencing disturbances.
-        
+
         Optimized: per-agent cell processing is vectorized with numpy
         array operations on (cell_ids, strengths) instead of Python loops.
         """
@@ -528,7 +534,7 @@ class JASMINEMemoryModule(DisturbanceMemoryModule):
         self,
         state: DisturbanceMemoryState,
         agent_idx: int,
-    ) -> Dict[Tuple[float, float], float]:
+    ) -> dict[tuple[float, float], float]:
         """
         Get remembered disturbance locations for visualization.
 
@@ -545,7 +551,7 @@ class JASMINEMemoryModule(DisturbanceMemoryModule):
 
 
 def create_memory_module(
-    params: 'SimulationParameters',
+    params: SimulationParameters,
     mode: MemoryMode = MemoryMode.DEPONS,
 ) -> DisturbanceMemoryModule:
     """

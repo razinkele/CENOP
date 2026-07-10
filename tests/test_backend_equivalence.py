@@ -6,13 +6,14 @@ is NOT asserted because the Numba/JAX RNG streams are seeded independently of th
 NumPy stream (population.py:917, :406), so their trajectories diverge by design.
 See docs/backend-equivalence.md for the full comparison matrix.
 """
+
 import numpy as np
 import pytest
 
-from cenop.parameters.simulation_params import SimulationParameters
-from cenop.landscape.cell_data import create_homogeneous_landscape
-from cenop.agents.population import PorpoisePopulation
 import cenop.agents.population as pop_mod
+from cenop.agents.population import PorpoisePopulation
+from cenop.landscape.cell_data import create_homogeneous_landscape
+from cenop.parameters.simulation_params import SimulationParameters
 
 
 def _build(seed, use_jax=False):
@@ -26,8 +27,7 @@ def _build(seed, use_jax=False):
 def _run(pop, ticks=40):
     for _ in range(ticks):
         pop.step()
-    return (pop.x.copy(), pop.y.copy(), pop.energy.copy(),
-            pop.age.copy(), pop.active_mask.copy())
+    return (pop.x.copy(), pop.y.copy(), pop.energy.copy(), pop.age.copy(), pop.active_mask.copy())
 
 
 def _assert_same(a, b):
@@ -71,8 +71,10 @@ def test_jax_backend_deterministic():
         b = _run(_build(7, use_jax=True))
     except Exception as e:  # noqa: BLE001 - inspect the message to classify
         msg = str(e)
-        if any(k in msg for k in ("RESOURCE_EXHAUSTED", "OUT_OF_MEMORY")) \
-                or "Runtime" in type(e).__name__:
+        if (
+            any(k in msg for k in ("RESOURCE_EXHAUSTED", "OUT_OF_MEMORY"))
+            or "Runtime" in type(e).__name__
+        ):
             pytest.skip(f"JAX runtime/OOM (environmental, not a determinism failure): {e}")
         raise
     _assert_same(a, b)
@@ -113,8 +115,12 @@ def test_cython_postcrw_matches_reference(monkeypatch):
     monkeypatch.setattr(pop_mod, "_HAS_CYTHON", False)
     ref = _build_cy(11)
     ref.step()
-    ref_x, ref_y, ref_e, ref_m = (ref.x.copy(), ref.y.copy(),
-                                  ref.energy.copy(), ref.active_mask.copy())
+    ref_x, ref_y, ref_e, ref_m = (
+        ref.x.copy(),
+        ref.y.copy(),
+        ref.energy.copy(),
+        ref.active_mask.copy(),
+    )
 
     # Cython: enabled, same seed -> identical Numba CRW upstream at this first tick.
     monkeypatch.setattr(pop_mod, "_HAS_CYTHON", True)
@@ -139,5 +145,6 @@ def test_cython_mortality_uses_seeded_rng():
     s0 = np.random.get_state()
     p.step()
     s1 = np.random.get_state()
-    assert s1[2] == s0[2] and np.array_equal(s1[1], s0[1]), \
-        "Cython tick consumed global np.random; mortality must use self.rng"
+    assert s1[2] == s0[2] and np.array_equal(
+        s1[1], s0[1]
+    ), "Cython tick consumed global np.random; mortality must use self.rng"

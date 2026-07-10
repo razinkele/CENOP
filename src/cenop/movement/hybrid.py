@@ -19,20 +19,20 @@ use cases, while JASMINE features are opt-in for research applications.
 from __future__ import annotations
 
 from enum import Enum, auto
-from typing import TYPE_CHECKING, Optional, Dict, Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from cenop.core.time_manager import TimeMode
 from cenop.movement.base import (
-    MovementModule,
-    MovementMode,
-    MovementState,
     EnvironmentContext,
+    MovementMode,
+    MovementModule,
     MovementResult,
+    MovementState,
 )
 from cenop.movement.depons_crw import DEPONSCRWMovement, DEPONSCRWMovementVectorized
 from cenop.movement.jasmine_physics import JASMINEPhysicsMovement
-from cenop.core.time_manager import TimeMode
 
 if TYPE_CHECKING:
     from cenop.parameters.simulation_params import SimulationParameters
@@ -40,10 +40,11 @@ if TYPE_CHECKING:
 
 class HybridStrategy(Enum):
     """Strategy for hybrid movement selection."""
-    DEPONS_ONLY = auto()          # Always use DEPONS CRW
-    JASMINE_ONLY = auto()         # Always use JASMINE physics
-    DISTURBANCE_AWARE = auto()    # DEPONS during disturbance, JASMINE otherwise
-    STATE_BASED = auto()          # Select based on behavioral state
+
+    DEPONS_ONLY = auto()  # Always use DEPONS CRW
+    JASMINE_ONLY = auto()  # Always use JASMINE physics
+    DISTURBANCE_AWARE = auto()  # DEPONS during disturbance, JASMINE otherwise
+    STATE_BASED = auto()  # Select based on behavioral state
 
 
 class HybridMovementSelector(MovementModule):
@@ -73,7 +74,7 @@ class HybridMovementSelector(MovementModule):
 
     def __init__(
         self,
-        params: 'SimulationParameters',
+        params: SimulationParameters,
         time_mode: TimeMode = TimeMode.DEPONS,
         strategy: HybridStrategy = HybridStrategy.DEPONS_ONLY,
         use_vectorized: bool = True,
@@ -104,18 +105,18 @@ class HybridMovementSelector(MovementModule):
         self._active_module: MovementModule = self._depons
 
         # Statistics
-        self._stats: Dict[str, int] = {
-            'depons_steps': 0,
-            'jasmine_steps': 0,
-            'hybrid_switches': 0,
+        self._stats: dict[str, int] = {
+            "depons_steps": 0,
+            "jasmine_steps": 0,
+            "hybrid_switches": 0,
         }
 
     @classmethod
     def from_time_mode(
         cls,
-        params: 'SimulationParameters',
+        params: SimulationParameters,
         time_mode: TimeMode,
-    ) -> 'HybridMovementSelector':
+    ) -> HybridMovementSelector:
         """
         Create selector with strategy based on TimeMode.
 
@@ -141,8 +142,8 @@ class HybridMovementSelector(MovementModule):
         state: MovementState,
         environment: EnvironmentContext,
         mask: np.ndarray,
-        deterrence_dx: Optional[np.ndarray] = None,
-        deterrence_dy: Optional[np.ndarray] = None,
+        deterrence_dx: np.ndarray | None = None,
+        deterrence_dy: np.ndarray | None = None,
     ) -> MovementResult:
         """
         Compute movement step using selected strategy.
@@ -195,12 +196,12 @@ class HybridMovementSelector(MovementModule):
         state: MovementState,
         environment: EnvironmentContext,
         mask: np.ndarray,
-        deterrence_dx: Optional[np.ndarray],
-        deterrence_dy: Optional[np.ndarray],
+        deterrence_dx: np.ndarray | None,
+        deterrence_dy: np.ndarray | None,
     ) -> MovementResult:
         """Compute using DEPONS CRW."""
         self._active_module = self._depons
-        self._stats['depons_steps'] += 1
+        self._stats["depons_steps"] += 1
 
         return self._depons.compute_step(
             x, y, state, environment, mask, deterrence_dx, deterrence_dy
@@ -213,12 +214,12 @@ class HybridMovementSelector(MovementModule):
         state: MovementState,
         environment: EnvironmentContext,
         mask: np.ndarray,
-        deterrence_dx: Optional[np.ndarray],
-        deterrence_dy: Optional[np.ndarray],
+        deterrence_dx: np.ndarray | None,
+        deterrence_dy: np.ndarray | None,
     ) -> MovementResult:
         """Compute using JASMINE physics."""
         self._active_module = self._jasmine
-        self._stats['jasmine_steps'] += 1
+        self._stats["jasmine_steps"] += 1
 
         return self._jasmine.compute_step(
             x, y, state, environment, mask, deterrence_dx, deterrence_dy
@@ -231,8 +232,8 @@ class HybridMovementSelector(MovementModule):
         state: MovementState,
         environment: EnvironmentContext,
         mask: np.ndarray,
-        deterrence_dx: Optional[np.ndarray],
-        deterrence_dy: Optional[np.ndarray],
+        deterrence_dx: np.ndarray | None,
+        deterrence_dy: np.ndarray | None,
     ) -> MovementResult:
         """
         Switch between DEPONS and JASMINE based on disturbance.
@@ -266,8 +267,8 @@ class HybridMovementSelector(MovementModule):
         state: MovementState,
         environment: EnvironmentContext,
         mask: np.ndarray,
-        deterrence_dx: Optional[np.ndarray],
-        deterrence_dy: Optional[np.ndarray],
+        deterrence_dx: np.ndarray | None,
+        deterrence_dy: np.ndarray | None,
     ) -> MovementResult:
         """
         Select movement per-agent based on behavioral state.
@@ -282,8 +283,7 @@ class HybridMovementSelector(MovementModule):
 
         # Determine which agents use which model
         use_depons = mask & (
-            state.is_dispersing |
-            (deterrence_dx is not None and np.abs(deterrence_dx) > 0.01)
+            state.is_dispersing | (deterrence_dx is not None and np.abs(deterrence_dx) > 0.01)
         )
         use_jasmine = mask & ~use_depons
 
@@ -304,7 +304,7 @@ class HybridMovementSelector(MovementModule):
             new_heading[use_depons] = depons_result.new_heading[use_depons]
             step_distance[use_depons] = depons_result.step_distance[use_depons]
             turning_angle[use_depons] = depons_result.turning_angle[use_depons]
-            self._stats['depons_steps'] += np.sum(use_depons)
+            self._stats["depons_steps"] += np.sum(use_depons)
 
         # Compute JASMINE for remaining agents
         if np.any(use_jasmine):
@@ -316,9 +316,9 @@ class HybridMovementSelector(MovementModule):
             new_heading[use_jasmine] = jasmine_result.new_heading[use_jasmine]
             step_distance[use_jasmine] = jasmine_result.step_distance[use_jasmine]
             turning_angle[use_jasmine] = jasmine_result.turning_angle[use_jasmine]
-            self._stats['jasmine_steps'] += np.sum(use_jasmine)
+            self._stats["jasmine_steps"] += np.sum(use_jasmine)
 
-        self._stats['hybrid_switches'] += 1
+        self._stats["hybrid_switches"] += 1
 
         return MovementResult(
             dx=dx,
@@ -345,28 +345,28 @@ class HybridMovementSelector(MovementModule):
         """Return descriptive name."""
         return f"Hybrid({self.strategy.name})"
 
-    def get_statistics(self) -> Dict[str, Any]:
+    def get_statistics(self) -> dict[str, Any]:
         """Get movement statistics."""
         return {
-            'strategy': self.strategy.name,
-            'time_mode': self.time_mode.name,
-            'active_module': self._active_module.get_name(),
+            "strategy": self.strategy.name,
+            "time_mode": self.time_mode.name,
+            "active_module": self._active_module.get_name(),
             **self._stats,
         }
 
     def reset_statistics(self) -> None:
         """Reset movement statistics."""
         self._stats = {
-            'depons_steps': 0,
-            'jasmine_steps': 0,
-            'hybrid_switches': 0,
+            "depons_steps": 0,
+            "jasmine_steps": 0,
+            "hybrid_switches": 0,
         }
 
 
 def create_movement_module(
-    params: 'SimulationParameters',
+    params: SimulationParameters,
     time_mode: TimeMode = TimeMode.DEPONS,
-    movement_mode: Optional[MovementMode] = None,
+    movement_mode: MovementMode | None = None,
 ) -> MovementModule:
     """
     Factory function to create appropriate movement module.
@@ -397,14 +397,10 @@ def create_movement_module(
         elif movement_mode == MovementMode.JASMINE_PHYSICS:
             return JASMINEPhysicsMovement(params)
         elif movement_mode == MovementMode.HYBRID:
-            return HybridMovementSelector(
-                params, time_mode, HybridStrategy.DISTURBANCE_AWARE
-            )
+            return HybridMovementSelector(params, time_mode, HybridStrategy.DISTURBANCE_AWARE)
 
     # Default: use time mode to determine
     if time_mode == TimeMode.DEPONS:
         return DEPONSCRWMovementVectorized(params)
     else:
-        return HybridMovementSelector(
-            params, time_mode, HybridStrategy.JASMINE_ONLY
-        )
+        return HybridMovementSelector(params, time_mode, HybridStrategy.JASMINE_ONLY)

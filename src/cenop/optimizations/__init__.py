@@ -12,6 +12,7 @@ import numpy as np
 # Try to import numba for JIT compilation
 try:
     from numba import njit, prange
+
     NUMBA_AVAILABLE = True
 except ImportError:
     NUMBA_AVAILABLE = False
@@ -20,6 +21,7 @@ except ImportError:
     def njit(*args, **kwargs):
         def decorator(func):
             return func
+
         return decorator
 
     def prange(*args):
@@ -32,7 +34,7 @@ def _accumulate_psm_updates_numba(
     agent_indices: np.ndarray,
     y_coords: np.ndarray,
     x_coords: np.ndarray,
-    food_values: np.ndarray
+    food_values: np.ndarray,
 ) -> None:
     """
     Numba-accelerated PSM buffer accumulation.
@@ -67,7 +69,7 @@ def _accumulate_psm_updates_numpy(
     agent_indices: np.ndarray,
     y_coords: np.ndarray,
     x_coords: np.ndarray,
-    food_values: np.ndarray
+    food_values: np.ndarray,
 ) -> None:
     """
     Pure numpy PSM buffer accumulation (fallback).
@@ -93,7 +95,7 @@ def accumulate_psm_updates(
     agent_indices: np.ndarray,
     y_coords: np.ndarray,
     x_coords: np.ndarray,
-    food_values: np.ndarray
+    food_values: np.ndarray,
 ) -> None:
     """
     Accumulate PSM (Persistent Spatial Memory) updates for multiple agents.
@@ -124,23 +126,17 @@ def accumulate_psm_updates(
         return
 
     if NUMBA_AVAILABLE:
-        _accumulate_psm_updates_numba(
-            psm_buffer, agent_indices, y_coords, x_coords, food_values
-        )
+        _accumulate_psm_updates_numba(psm_buffer, agent_indices, y_coords, x_coords, food_values)
     else:
-        _accumulate_psm_updates_numpy(
-            psm_buffer, agent_indices, y_coords, x_coords, food_values
-        )
+        _accumulate_psm_updates_numpy(psm_buffer, agent_indices, y_coords, x_coords, food_values)
 
 
 # Additional optimized functions can be added here
 
+
 @njit(cache=True)
 def _vectorized_distance_numba(
-    x1: np.ndarray,
-    y1: np.ndarray,
-    x2: np.ndarray,
-    y2: np.ndarray
+    x1: np.ndarray, y1: np.ndarray, x2: np.ndarray, y2: np.ndarray
 ) -> np.ndarray:
     """Numba-accelerated pairwise distance calculation."""
     n = len(x1)
@@ -153,10 +149,7 @@ def _vectorized_distance_numba(
 
 
 def vectorized_distance(
-    x1: np.ndarray,
-    y1: np.ndarray,
-    x2: np.ndarray,
-    y2: np.ndarray
+    x1: np.ndarray, y1: np.ndarray, x2: np.ndarray, y2: np.ndarray
 ) -> np.ndarray:
     """
     Calculate pairwise Euclidean distances.
@@ -173,7 +166,7 @@ def vectorized_distance(
             x1.astype(np.float32),
             y1.astype(np.float32),
             x2.astype(np.float32),
-            y2.astype(np.float32)
+            y2.astype(np.float32),
         )
     else:
-        return np.sqrt((x1 - x2)**2 + (y1 - y2)**2)
+        return np.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)

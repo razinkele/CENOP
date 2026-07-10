@@ -4,9 +4,10 @@ Usage:
     cd src/cenop/optimizations
     python3 setup_cython.py build_ext --inplace
 """
-from setuptools import setup, Extension
-from Cython.Build import cythonize
+
 import numpy as np
+from Cython.Build import cythonize
+from setuptools import Extension, setup
 
 extensions = [
     Extension(

@@ -1,19 +1,24 @@
 """Tests for DEPONS 3.2 logistic food regrowth."""
+
 import numpy as np
-import pytest
-from cenop.landscape.cell_data import CellData, create_homogeneous_landscape
+
+from cenop.landscape.cell_data import create_homogeneous_landscape
 
 
 class TestLogisticFoodRegrowth:
     def test_logistic_formula_single_iteration(self):
         """F=0.4, rU=0.1, K=0.8 → F_new = 0.4 + 0.1*0.4*(1-0.4/0.8) = 0.42"""
-        F = 0.4; rU = 0.1; K = 0.8
+        F = 0.4
+        rU = 0.1
+        K = 0.8
         F_new = F + rU * F * (1.0 - F / K)
         assert abs(F_new - 0.42) < 1e-10
 
     def test_48x_compounding(self):
         """F=0.1, rU=0.1, K=0.8 → 48 iterations converges to ~0.773"""
-        F = 0.1; rU = 0.1; K = 0.8
+        F = 0.1
+        rU = 0.1
+        K = 0.8
         F_after_1 = F + rU * F * (1.0 - F / K)
         delta = abs(F_after_1 - F)
         assert delta > 0.001
@@ -25,7 +30,9 @@ class TestLogisticFoodRegrowth:
 
     def test_no_extra_compounding_when_delta_small(self):
         """F=0.799, K=0.8 → tiny delta, only 1 iteration"""
-        F = 0.799; rU = 0.1; K = 0.8
+        F = 0.799
+        rU = 0.1
+        K = 0.8
         F_after_1 = F + rU * F * (1.0 - F / K)
         delta = abs(F_after_1 - F)
         assert delta <= 0.001
@@ -107,8 +114,9 @@ class TestPhase1Integration:
         final_count = int(np.sum(pop.active_mask))
         ratio = final_count / initial_count
 
-        assert 0.7 < ratio < 1.3, \
-            f"Population ratio {ratio:.2f} ({initial_count}→{final_count}) outside ±30% stability band"
+        assert (
+            0.7 < ratio < 1.3
+        ), f"Population ratio {ratio:.2f} ({initial_count}→{final_count}) outside ±30% stability band"
 
 
 class TestFoodInitialization:

@@ -20,23 +20,24 @@ Reference:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum, auto
-from typing import TYPE_CHECKING, Optional, Dict, Any, Tuple
+from typing import TYPE_CHECKING, Any
+
 import numpy as np
 
 from cenop.parameters.constants import SimulationConstants
 
 if TYPE_CHECKING:
     from cenop.parameters.simulation_params import SimulationParameters
-    from cenop.behavior.states import BehaviorState
 
 
 class EnergyMode(Enum):
     """Energy calculation modes."""
-    DEPONS = auto()    # Simple energy tracking
-    JASMINE = auto()   # Full DEB model
-    HYBRID = auto()    # Context-dependent
+
+    DEPONS = auto()  # Simple energy tracking
+    JASMINE = auto()  # Full DEB model
+    HYBRID = auto()  # Context-dependent
 
 
 @dataclass
@@ -46,33 +47,40 @@ class EnergyState:
 
     Tracks all energy-related variables for vectorized processing.
     """
+
     # Core energy (DEPONS compatible)
-    energy: np.ndarray              # Current energy level (0-20 scale)
+    energy: np.ndarray  # Current energy level (0-20 scale)
 
     # Body condition (JASMINE extension)
-    body_mass: np.ndarray           # Body mass in kg
-    body_condition: np.ndarray      # Body condition index (0-1)
-    fat_reserve: np.ndarray         # Fat reserve in kg
+    body_mass: np.ndarray  # Body mass in kg
+    body_condition: np.ndarray  # Body condition index (0-1)
+    fat_reserve: np.ndarray  # Fat reserve in kg
 
     # Activity tracking
-    activity_level: np.ndarray      # Current activity level (0-1)
-    distance_traveled: np.ndarray   # Distance traveled this tick (m)
+    activity_level: np.ndarray  # Current activity level (0-1)
+    distance_traveled: np.ndarray  # Distance traveled this tick (m)
 
     # Disturbance impact tracking
     disturbance_energy_cost: np.ndarray  # Cumulative disturbance energy cost
-    disturbance_events: np.ndarray       # Count of disturbance events
+    disturbance_events: np.ndarray  # Count of disturbance events
 
     # Fitness tracking
     cumulative_energy_deficit: np.ndarray  # Total energy shortfall
 
     @classmethod
-    def create(cls, count: int, initial_energy: float = 10.0) -> 'EnergyState':
+    def create(cls, count: int, initial_energy: float = 10.0) -> EnergyState:
         """Create energy state for count agents."""
         return cls(
             energy=np.full(count, initial_energy, dtype=np.float32),
             body_mass=np.full(count, SimulationConstants.DEFAULT_BODY_MASS_KG, dtype=np.float32),
-            body_condition=np.full(count, SimulationConstants.DEFAULT_BODY_CONDITION, dtype=np.float32),
-            fat_reserve=np.full(count, SimulationConstants.DEFAULT_BODY_MASS_KG * SimulationConstants.DEFAULT_FAT_FRACTION, dtype=np.float32),
+            body_condition=np.full(
+                count, SimulationConstants.DEFAULT_BODY_CONDITION, dtype=np.float32
+            ),
+            fat_reserve=np.full(
+                count,
+                SimulationConstants.DEFAULT_BODY_MASS_KG * SimulationConstants.DEFAULT_FAT_FRACTION,
+                dtype=np.float32,
+            ),
             activity_level=np.full(count, 0.5, dtype=np.float32),
             distance_traveled=np.zeros(count, dtype=np.float32),
             disturbance_energy_cost=np.zeros(count, dtype=np.float32),
@@ -88,28 +96,29 @@ class EnergyContext:
 
     Contains inputs needed for energy budget updates.
     """
+
     # Food availability
-    food_available: np.ndarray      # Food available at current location
-    food_quality: np.ndarray        # Food quality factor (0-1)
+    food_available: np.ndarray  # Food available at current location
+    food_quality: np.ndarray  # Food quality factor (0-1)
 
     # Activity context
-    current_speed: np.ndarray       # Current swimming speed (m/s)
-    behavioral_state: np.ndarray    # BehaviorState enum values
+    current_speed: np.ndarray  # Current swimming speed (m/s)
+    behavioral_state: np.ndarray  # BehaviorState enum values
 
     # Environmental context
-    water_temperature: np.ndarray   # Water temperature (°C)
-    current_month: int              # Current month (1-12)
+    water_temperature: np.ndarray  # Water temperature (°C)
+    current_month: int  # Current month (1-12)
 
     # Disturbance context
-    is_disturbed: np.ndarray        # Currently under disturbance
+    is_disturbed: np.ndarray  # Currently under disturbance
     deterrence_magnitude: np.ndarray  # Strength of deterrence
 
     # Reproduction context
-    is_lactating: np.ndarray        # Currently lactating
-    is_pregnant: np.ndarray         # Currently pregnant
+    is_lactating: np.ndarray  # Currently lactating
+    is_pregnant: np.ndarray  # Currently pregnant
 
     @classmethod
-    def create_default(cls, count: int, month: int = 1) -> 'EnergyContext':
+    def create_default(cls, count: int, month: int = 1) -> EnergyContext:
         """Create default context for count agents."""
         return cls(
             food_available=np.full(count, 0.5, dtype=np.float32),
@@ -132,27 +141,32 @@ class EnergyResult:
 
     Contains energy changes and derived values.
     """
+
     # Energy flows
-    energy_intake: np.ndarray       # Energy gained from food
-    energy_bmr: np.ndarray          # Basal metabolic cost
-    energy_activity: np.ndarray     # Activity-related cost
+    energy_intake: np.ndarray  # Energy gained from food
+    energy_bmr: np.ndarray  # Basal metabolic cost
+    energy_activity: np.ndarray  # Activity-related cost
     energy_thermoregulation: np.ndarray  # Thermoregulation cost
     energy_reproduction: np.ndarray  # Reproduction cost
     energy_disturbance: np.ndarray  # Disturbance-related cost
 
     # Net change
-    net_energy_change: np.ndarray   # Total energy change
+    net_energy_change: np.ndarray  # Total energy change
 
     # Derived metrics
-    energy_balance: np.ndarray      # Positive/negative balance
+    energy_balance: np.ndarray  # Positive/negative balance
     survival_probability: np.ndarray  # Current survival probability
 
     @property
     def total_cost(self) -> np.ndarray:
         """Total energy cost this tick."""
-        return (self.energy_bmr + self.energy_activity +
-                self.energy_thermoregulation + self.energy_reproduction +
-                self.energy_disturbance)
+        return (
+            self.energy_bmr
+            + self.energy_activity
+            + self.energy_thermoregulation
+            + self.energy_reproduction
+            + self.energy_disturbance
+        )
 
 
 class EnergyModule(ABC):
@@ -163,7 +177,7 @@ class EnergyModule(ABC):
     implemented differently for DEPONS and JASMINE modes.
     """
 
-    def __init__(self, params: 'SimulationParameters'):
+    def __init__(self, params: SimulationParameters):
         """
         Initialize energy module.
 
@@ -238,7 +252,7 @@ class EnergyModule(ABC):
         self,
         state: EnergyState,
         mask: np.ndarray,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get fitness metrics for the population.
 
@@ -249,25 +263,25 @@ class EnergyModule(ABC):
             return {}
 
         return {
-            'mean_body_condition': float(np.mean(state.body_condition[active])),
-            'total_disturbance_cost': float(np.sum(state.disturbance_energy_cost[active])),
-            'agents_in_deficit': int(np.sum(state.cumulative_energy_deficit[active] > 0)),
-            'mean_energy_deficit': float(np.mean(state.cumulative_energy_deficit[active])),
+            "mean_body_condition": float(np.mean(state.body_condition[active])),
+            "total_disturbance_cost": float(np.sum(state.disturbance_energy_cost[active])),
+            "agents_in_deficit": int(np.sum(state.cumulative_energy_deficit[active] > 0)),
+            "mean_energy_deficit": float(np.mean(state.cumulative_energy_deficit[active])),
         }
 
-    def get_statistics(self, state: EnergyState, mask: np.ndarray) -> Dict[str, Any]:
+    def get_statistics(self, state: EnergyState, mask: np.ndarray) -> dict[str, Any]:
         """Get energy statistics for reporting."""
         active = mask
         if not np.any(active):
             return {}
 
         return {
-            'mean_energy': float(np.mean(state.energy[active])),
-            'min_energy': float(np.min(state.energy[active])),
-            'max_energy': float(np.max(state.energy[active])),
-            'std_energy': float(np.std(state.energy[active])),
-            'mean_body_condition': float(np.mean(state.body_condition[active])),
-            'cumulative_disturbance_cost': float(np.sum(state.disturbance_energy_cost[active])),
+            "mean_energy": float(np.mean(state.energy[active])),
+            "min_energy": float(np.min(state.energy[active])),
+            "max_energy": float(np.max(state.energy[active])),
+            "std_energy": float(np.std(state.energy[active])),
+            "mean_body_condition": float(np.mean(state.body_condition[active])),
+            "cumulative_disturbance_cost": float(np.sum(state.disturbance_energy_cost[active])),
         }
 
 
@@ -286,7 +300,7 @@ class DEPONSEnergyModule(EnergyModule):
     ENERGY_MAX = 20.0
     ENERGY_MIN = 0.0
 
-    def __init__(self, params: 'SimulationParameters'):
+    def __init__(self, params: SimulationParameters):
         super().__init__(params)
 
         # Extract parameters
@@ -343,11 +357,17 @@ class DEPONSEnergyModule(EnergyModule):
             energy_disturbance[mask] = np.where(
                 context.is_disturbed[mask],
                 disturbance_coeff * context.deterrence_magnitude[mask] * scaling,
-                0.0
+                0.0,
             ).astype(np.float32)
 
         # Net change
-        total_cost = energy_bmr + energy_activity + energy_thermoregulation + energy_reproduction + energy_disturbance
+        total_cost = (
+            energy_bmr
+            + energy_activity
+            + energy_thermoregulation
+            + energy_reproduction
+            + energy_disturbance
+        )
         net_change = energy_intake - total_cost
 
         # Energy balance
@@ -396,13 +416,11 @@ class DEPONSEnergyModule(EnergyModule):
         yearly_surv = np.where(
             state.energy > 0,
             1.0 - (self.m_mort_prob_const * np.exp(-state.energy * self.x_survival_const)),
-            0.0
+            0.0,
         )
         # Convert to per-tick probability
         step_surv = np.where(
-            state.energy > 0,
-            np.exp(np.log(np.maximum(yearly_surv, 1e-10)) / (360 * 48)),
-            0.0
+            state.energy > 0, np.exp(np.log(np.maximum(yearly_surv, 1e-10)) / (360 * 48)), 0.0
         )
         return step_surv.astype(np.float32)
 
@@ -443,15 +461,21 @@ class DEPONSEnergyModule(EnergyModule):
 
             try:
                 from cenop.optimizations.kernels import depons_bmr_cost_kernel
+
                 full_scaling = np.ones(count, dtype=np.float32)
                 full_scaling[mask] = scaling.astype(np.float32)
                 depons_bmr_cost_kernel(
-                    context.current_speed, full_scaling,
-                    context.is_lactating, context.is_disturbed,
+                    context.current_speed,
+                    full_scaling,
+                    context.is_lactating,
+                    context.is_disturbed,
                     context.deterrence_magnitude,
-                    mask, total_cost,
-                    self.e_use_per_30_min, self.e_lact,
-                    self.e_use_per_km, disturbance_coeff,
+                    mask,
+                    total_cost,
+                    self.e_use_per_30_min,
+                    self.e_lact,
+                    self.e_use_per_km,
+                    disturbance_coeff,
                 )
                 return total_cost
             except ImportError:
@@ -465,7 +489,7 @@ class DEPONSEnergyModule(EnergyModule):
             disturbance = np.where(
                 context.is_disturbed[mask],
                 disturbance_coeff * context.deterrence_magnitude[mask] * scaling,
-                0.0
+                0.0,
             ).astype(np.float32)
 
             total_cost[mask] = bmr + activity + disturbance
@@ -508,31 +532,31 @@ class JASMINEEnergyModule(EnergyModule):
     """
 
     # Bioenergetics constants (harbour porpoise)
-    BODY_MASS_ADULT = 50.0          # Adult body mass (kg)
-    BODY_MASS_CALF = 15.0           # Calf body mass (kg)
-    BMR_COEFFICIENT = 3.4           # Kleiber coefficient (W/kg^0.75)
-    BMR_EXPONENT = 0.75             # Kleiber exponent
-    COT_COEFFICIENT = 0.0001        # Cost of transport coefficient (J/m/kg), scaled for 0-20 energy units
+    BODY_MASS_ADULT = 50.0  # Adult body mass (kg)
+    BODY_MASS_CALF = 15.0  # Calf body mass (kg)
+    BMR_COEFFICIENT = 3.4  # Kleiber coefficient (W/kg^0.75)
+    BMR_EXPONENT = 0.75  # Kleiber exponent
+    COT_COEFFICIENT = 0.0001  # Cost of transport coefficient (J/m/kg), scaled for 0-20 energy units
 
     # Activity multipliers (relative to BMR)
     ACTIVITY_MULTIPLIERS = {
-        1: 1.0,   # FORAGING
-        2: 1.5,   # TRAVELING
-        3: 0.6,   # RESTING
-        4: 1.2,   # DISPERSING
-        5: 2.0,   # DISTURBED
+        1: 1.0,  # FORAGING
+        2: 1.5,  # TRAVELING
+        3: 0.6,  # RESTING
+        4: 1.2,  # DISPERSING
+        5: 2.0,  # DISTURBED
     }
 
     # Temperature constants
-    THERMONEUTRAL_LOWER = 5.0       # Lower critical temperature (°C)
-    THERMONEUTRAL_UPPER = 20.0      # Upper critical temperature (°C)
-    THERMAL_CONDUCTANCE = 0.02      # Thermal conductance (W/kg/°C)
+    THERMONEUTRAL_LOWER = 5.0  # Lower critical temperature (°C)
+    THERMONEUTRAL_UPPER = 20.0  # Upper critical temperature (°C)
+    THERMAL_CONDUCTANCE = 0.02  # Thermal conductance (W/kg/°C)
 
     # Disturbance costs
-    DISTURBANCE_BASE_COST = 0.1     # Base energy cost of disturbance response
-    DISTURBANCE_SPEED_MULT = 2.0    # Speed multiplier during disturbance
+    DISTURBANCE_BASE_COST = 0.1  # Base energy cost of disturbance response
+    DISTURBANCE_SPEED_MULT = 2.0  # Speed multiplier during disturbance
 
-    def __init__(self, params: 'SimulationParameters'):
+    def __init__(self, params: SimulationParameters):
         super().__init__(params)
 
         # JASMINE-specific parameters
@@ -570,8 +594,11 @@ class JASMINEEnergyModule(EnergyModule):
             energy_density = 5.0 * context.food_quality[mask]
 
             intake = (
-                max_intake_rate * context.food_available[mask] *
-                intake_efficiency * energy_density * dt_hours
+                max_intake_rate
+                * context.food_available[mask]
+                * intake_efficiency
+                * energy_density
+                * dt_hours
             ).astype(np.float32)
             # Scale to DEPONS energy units (0-20)
             energy_intake[mask] = intake * 0.5
@@ -618,14 +645,23 @@ class JASMINEEnergyModule(EnergyModule):
 
             # === Disturbance Cost ===
             base_disturbance = self.DISTURBANCE_BASE_COST * context.deterrence_magnitude[mask]
-            speed_penalty = self.DISTURBANCE_SPEED_MULT * context.current_speed[mask] * context.is_disturbed[mask].astype(float)
+            speed_penalty = (
+                self.DISTURBANCE_SPEED_MULT
+                * context.current_speed[mask]
+                * context.is_disturbed[mask].astype(float)
+            )
             energy_disturbance[mask] = (
                 (base_disturbance + speed_penalty * 0.01) * self.disturbance_cost_multiplier
             ).astype(np.float32)
 
         # === Net Energy Change ===
-        total_cost = (energy_bmr + energy_activity + energy_thermoregulation +
-                      energy_reproduction + energy_disturbance)
+        total_cost = (
+            energy_bmr
+            + energy_activity
+            + energy_thermoregulation
+            + energy_reproduction
+            + energy_disturbance
+        )
         net_change = energy_intake - total_cost
 
         # Energy balance indicator
@@ -712,24 +748,24 @@ class JASMINEEnergyModule(EnergyModule):
         self,
         state: EnergyState,
         mask: np.ndarray,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get JASMINE-specific fitness metrics."""
         active = mask
         if not np.any(active):
             return {}
 
         return {
-            'mean_body_condition': float(np.mean(state.body_condition[active])),
-            'mean_fat_reserve': float(np.mean(state.fat_reserve[active])),
-            'total_disturbance_cost': float(np.sum(state.disturbance_energy_cost[active])),
-            'mean_disturbance_events': float(np.mean(state.disturbance_events[active])),
-            'agents_in_deficit': int(np.sum(state.cumulative_energy_deficit[active] > 0)),
-            'mean_energy_deficit': float(np.mean(state.cumulative_energy_deficit[active])),
+            "mean_body_condition": float(np.mean(state.body_condition[active])),
+            "mean_fat_reserve": float(np.mean(state.fat_reserve[active])),
+            "total_disturbance_cost": float(np.sum(state.disturbance_energy_cost[active])),
+            "mean_disturbance_events": float(np.mean(state.disturbance_events[active])),
+            "agents_in_deficit": int(np.sum(state.cumulative_energy_deficit[active] > 0)),
+            "mean_energy_deficit": float(np.mean(state.cumulative_energy_deficit[active])),
         }
 
 
 def create_energy_module(
-    params: 'SimulationParameters',
+    params: SimulationParameters,
     mode: EnergyMode = EnergyMode.DEPONS,
 ) -> EnergyModule:
     """

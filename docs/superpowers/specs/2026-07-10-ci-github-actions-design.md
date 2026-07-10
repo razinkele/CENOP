@@ -71,12 +71,28 @@ Each job: `actions/checkout` → `mamba-org/setup-micromamba@v2` with
 `environment-file: environment.yml`, `cache-environment: true` → steps run in the
 activated env via `shell: bash -el {0}`.
 
+## Follow-ups implemented (2026-07-10)
+
+Both originally-deferred items were completed in a follow-up (branch `ci-followups-2026-07-10`):
+
+- **Lint gate.** Ran a repo-wide `black` + `ruff --fix` pass (~106 files), migrated
+  `[tool.ruff]` → `[tool.ruff.lint]`, and added a documented `ignore` for pre-existing debt
+  that is formatter-owned or risky to auto-fix (`E501`, `E402`, `E712`, `F841`) while keeping
+  the high-value rules enforced (`F821` undefined-name, `F401` unused-import, `I`, `UP`). A
+  **`lint`** job (`black --check` + `ruff check` on `src tests`) was added to `ci.yml`. The
+  `F821` audit also surfaced a real bug: `BatchRunner._run_parallel`'s sequential fallback
+  referenced an undefined `progress` (fixed).
+- **Sparse-checkout.** The `test` and `slow` jobs use non-cone sparse-checkout to skip
+  `data/NorthSea` + `data/CentralBaltic` (~2 GB of unused landscape regions), verified by
+  running the fast suite with only those two removed (810 passed). Pattern:
+  `/*` + `!/data/NorthSea` + `!/data/CentralBaltic`, `sparse-checkout-cone-mode: false`
+  (non-cone so loose `data/` files and the default "Lithuania" landscape are retained).
+
 ## Non-goals (YAGNI)
 
-- **Lint job** (deferred — pre-existing black/ruff debt; needs a repo-wide format first),
-  multi-Python matrix, coverage reporting, GPU/JAX-GPU testing, deploy/publish steps,
-  sparse-checkout of `data/`, caching the built Cython `.so` across runs, pre-commit.
-  Each can be added later without reworking this baseline.
+- Multi-Python matrix, coverage reporting, GPU/JAX-GPU testing, deploy/publish steps,
+  caching the built Cython `.so` across runs, pre-commit. Each can be added later without
+  reworking this baseline.
 
 ## Verification
 

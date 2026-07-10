@@ -70,19 +70,19 @@ class TestMemoryArrays:
         pop = PorpoisePopulation(count=50, params=params)
 
         # Circular buffer for food utility
-        assert hasattr(pop, '_stored_util')
+        assert hasattr(pop, "_stored_util")
         assert pop._stored_util.shape == (50, 120)
 
         # Position history
-        assert hasattr(pop, '_pos_history_x')
+        assert hasattr(pop, "_pos_history_x")
         assert pop._pos_history_x.shape == (50, 120)
-        assert hasattr(pop, '_pos_history_y')
+        assert hasattr(pop, "_pos_history_y")
         assert pop._pos_history_y.shape == (50, 120)
 
         # Buffer management
-        assert hasattr(pop, '_mem_ptr')
+        assert hasattr(pop, "_mem_ptr")
         assert pop._mem_ptr.shape == (50,)
-        assert hasattr(pop, '_mem_count')
+        assert hasattr(pop, "_mem_count")
         assert pop._mem_count.shape == (50,)
 
 
@@ -92,8 +92,8 @@ class TestMemoryUpdate:
     def test_stored_util_records_food(self):
         """Each tick, current cell's food level is stored in circular buffer."""
         from cenop.agents.population import PorpoisePopulation
-        from cenop.parameters.simulation_params import SimulationParameters
         from cenop.landscape.cell_data import create_homogeneous_landscape
+        from cenop.parameters.simulation_params import SimulationParameters
 
         params = SimulationParameters()
         pop = PorpoisePopulation(count=5, params=params)
@@ -110,8 +110,8 @@ class TestMemoryUpdate:
     def test_ve_total_increases_with_food_history(self):
         """veTotal should be positive when agent has food history."""
         from cenop.agents.population import PorpoisePopulation
-        from cenop.parameters.simulation_params import SimulationParameters
         from cenop.landscape.cell_data import create_homogeneous_landscape
+        from cenop.parameters.simulation_params import SimulationParameters
 
         params = SimulationParameters()
         pop = PorpoisePopulation(count=3, params=params)
@@ -128,7 +128,7 @@ class TestMemoryUpdate:
 def test_attraction_zero_distance_skips():
     """When an agent is at the exact position of a memory entry, that entry should be skipped."""
     from cenop.behavior.ref_mem import compute_attraction_vector
-    import numpy as np
+
     n_agents = 2
     mem_size = 5
     stored_util = np.zeros((n_agents, mem_size), dtype=np.float32)
@@ -144,8 +144,7 @@ def test_attraction_zero_distance_skips():
     ref_mem_table = np.ones(mem_size, dtype=np.float32)
     mask = np.array([True, True])
     vt_x, vt_y = compute_attraction_vector(
-        stored_util, pos_x, pos_y, mem_ptr, mem_count,
-        x, y, ref_mem_table, mask
+        stored_util, pos_x, pos_y, mem_ptr, mem_count, x, y, ref_mem_table, mask
     )
     assert vt_x[0] == 0.0, f"Expected 0.0, got {vt_x[0]}"
     assert vt_y[0] == 0.0, f"Expected 0.0, got {vt_y[0]}"

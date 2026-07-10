@@ -1,4 +1,5 @@
 """Tests for codebase review round 2 fixes."""
+
 import logging
 
 import numpy as np
@@ -11,18 +12,21 @@ class TestParameterDefaults:
     def test_mean_disp_dist_matches_parameters_xml(self):
         """Java parameters.xml line 117: defaultValue='2'."""
         from cenop.parameters.simulation_params import SimulationParameters
+
         params = SimulationParameters()
         assert params.mean_disp_dist == 2.0
 
     def test_psm_angle_matches_parameters_xml(self):
         """Java parameters.xml line 52: defaultValue='40'."""
         from cenop.parameters.simulation_params import SimulationParameters
+
         params = SimulationParameters()
         assert params.psm_angle == 40.0
 
     def test_psm_dist_mean_matches_parameters_xml(self):
         """Java parameters.xml line 46: defaultValue='N(350;100)' -> mean=350."""
         from cenop.parameters.simulation_params import SimulationParameters
+
         params = SimulationParameters()
         assert params.psm_dist_mean == 350.0
 
@@ -33,6 +37,7 @@ class TestLandscapeLoaderValidation:
     def test_missing_ncols_raises_value_error(self, tmp_path):
         """ASC file with missing ncols must raise, not silently default to 0."""
         from cenop.landscape.loader import LandscapeLoader
+
         asc_file = tmp_path / "bad.asc"
         asc_file.write_text(
             "nrows 10\nxllcorner 0\nyllcorner 0\ncellsize 400\n"
@@ -46,6 +51,7 @@ class TestLandscapeLoaderValidation:
     def test_missing_nrows_raises_value_error(self, tmp_path):
         """ASC file with missing nrows must raise, not silently default to 0."""
         from cenop.landscape.loader import LandscapeLoader
+
         asc_file = tmp_path / "bad.asc"
         asc_file.write_text(
             "ncols 10\nxllcorner 0\nyllcorner 0\ncellsize 400\n"
@@ -59,6 +65,7 @@ class TestLandscapeLoaderValidation:
     def test_valid_header_parses_successfully(self, tmp_path):
         """Complete ASC header should parse without error."""
         from cenop.landscape.loader import LandscapeLoader
+
         asc_file = tmp_path / "good.asc"
         asc_file.write_text(
             "ncols 3\nnrows 2\nxllcorner 100\nyllcorner 200\ncellsize 400\n"
@@ -74,6 +81,7 @@ class TestLandscapeLoaderValidation:
     def test_missing_monthly_file_logs_warning(self, tmp_path, caplog):
         """Missing monthly file should log a warning, not silently duplicate."""
         from cenop.landscape.loader import LandscapeLoader
+
         for month in [1]:
             fname = tmp_path / f"prey{month:02d}.asc"
             fname.write_text(
@@ -94,11 +102,14 @@ class TestShipLoaderWarnings:
     def test_missing_route_file_logs_warning(self, tmp_path, caplog):
         """Missing route file should log warning, not silently return empty."""
         from cenop.agents.ship import ShipManager
+
         mgr = ShipManager.__new__(ShipManager)
         with caplog.at_level(logging.WARNING):
             routes = mgr._load_routes(
                 str(tmp_path / "nonexistent_routes.txt"),
-                0.0, 0.0, 400.0,
+                0.0,
+                0.0,
+                400.0,
             )
         assert routes == {}
         assert "route" in caplog.text.lower() or "not found" in caplog.text.lower()
@@ -106,10 +117,10 @@ class TestShipLoaderWarnings:
     def test_unknown_route_name_logs_warning(self, tmp_path, caplog):
         """Ship referencing an unknown route name should log warning."""
         from cenop.agents.ship import ShipManager
+
         ship_file = tmp_path / "ships.txt"
         ship_file.write_text(
-            "name\ttype\tlength\troute\n"
-            "TestShip\tother\t10.0\tnonexistent_route\n"
+            "name\ttype\tlength\troute\n" "TestShip\tother\t10.0\tnonexistent_route\n"
         )
         mgr = ShipManager.__new__(ShipManager)
         with caplog.at_level(logging.WARNING):
@@ -120,6 +131,7 @@ class TestShipLoaderWarnings:
     def test_invalid_tick_timing_logs_warning(self, tmp_path, caplog):
         """Invalid tick timing values should log warning."""
         from cenop.agents.ship import ShipManager
+
         ship_file = tmp_path / "ships.txt"
         ship_file.write_text(
             "name\ttype\tlength\troute\ttick_start\ttick_end\n"
@@ -133,6 +145,7 @@ class TestShipLoaderWarnings:
     def test_json_parse_error_disables_manager(self, tmp_path, caplog):
         """Invalid JSON should log error and disable the ship manager."""
         from cenop.agents.ship import ShipManager
+
         json_file = tmp_path / "ships.json"
         json_file.write_text("{invalid json")
         mgr = ShipManager.__new__(ShipManager)
@@ -148,29 +161,33 @@ class TestPathTraversalPrevention:
 
     def test_get_data_file_strips_traversal(self):
         """get_data_file must resolve within DATA_DIR, not traverse out."""
-        from cenop.config import get_data_file, DATA_DIR
+        from cenop.config import DATA_DIR, get_data_file
+
         result = get_data_file("../../etc/passwd")
-        assert str(result.resolve()).startswith(str(DATA_DIR.resolve())), (
-            f"Path {result} escapes DATA_DIR {DATA_DIR}"
-        )
+        assert str(result.resolve()).startswith(
+            str(DATA_DIR.resolve())
+        ), f"Path {result} escapes DATA_DIR {DATA_DIR}"
 
     def test_get_wind_farm_file_strips_traversal(self):
         """get_wind_farm_file must resolve within WIND_FARMS_DIR."""
-        from cenop.config import get_wind_farm_file, WIND_FARMS_DIR
+        from cenop.config import WIND_FARMS_DIR, get_wind_farm_file
+
         result = get_wind_farm_file("../../../etc/passwd")
-        assert str(result.resolve()).startswith(str(WIND_FARMS_DIR.resolve())), (
-            f"Path {result} escapes WIND_FARMS_DIR {WIND_FARMS_DIR}"
-        )
+        assert str(result.resolve()).startswith(
+            str(WIND_FARMS_DIR.resolve())
+        ), f"Path {result} escapes WIND_FARMS_DIR {WIND_FARMS_DIR}"
 
     def test_get_data_file_rejects_absolute_path(self):
         """get_data_file must not allow absolute paths to escape."""
-        from cenop.config import get_data_file, DATA_DIR
+        from cenop.config import DATA_DIR, get_data_file
+
         result = get_data_file("/etc/passwd")
         assert str(result.resolve()).startswith(str(DATA_DIR.resolve()))
 
     def test_get_wind_farm_file_rejects_absolute_path(self):
         """get_wind_farm_file must not allow absolute paths."""
-        from cenop.config import get_wind_farm_file, WIND_FARMS_DIR
+        from cenop.config import WIND_FARMS_DIR, get_wind_farm_file
+
         result = get_wind_farm_file("/etc/passwd")
         assert str(result.resolve()).startswith(str(WIND_FARMS_DIR.resolve()))
 
@@ -181,12 +198,14 @@ class TestErrorSanitization:
     def test_porpoise_count_rejects_above_50000(self):
         """Server must reject porpoise count above 50000."""
         from cenop.parameters.simulation_params import SimulationParameters
+
         with pytest.raises(ValueError, match="50,000"):
             SimulationParameters(porpoise_count=50001)
 
     def test_porpoise_count_accepts_50000(self):
         """Exactly 50000 should be accepted."""
         from cenop.parameters.simulation_params import SimulationParameters
+
         params = SimulationParameters(porpoise_count=50000)
         assert params.porpoise_count == 50000
 
@@ -196,14 +215,14 @@ class TestDtypeAndFoodBugs:
 
     def test_mating_day_stays_int16(self):
         """mating_day must remain int16 after initialization, not promote to int64."""
-        from cenop.parameters.simulation_params import SimulationParameters
         from cenop.agents.population import PorpoisePopulation
+        from cenop.parameters.simulation_params import SimulationParameters
 
         params = SimulationParameters(porpoise_count=10)
         pop = PorpoisePopulation(10, params, landscape=None)
-        assert pop.mating_day.dtype == np.int16, (
-            f"mating_day dtype is {pop.mating_day.dtype}, expected int16"
-        )
+        assert (
+            pop.mating_day.dtype == np.int16
+        ), f"mating_day dtype is {pop.mating_day.dtype}, expected int16"
 
     def test_eat_food_conserved_multi_agent_cell(self, monkeypatch):
         """Food conservation: sum(eaten) + remaining = original food.
@@ -214,8 +233,8 @@ class TestDtypeAndFoodBugs:
         """
         import sys
         import types
+
         import cenop.optimizations as _opt_pkg
-        import cenop.optimizations.kernels  # ensure loaded
 
         class _BlockedKernels(types.ModuleType):
             def __getattr__(self, name):
@@ -251,9 +270,9 @@ class TestDtypeAndFoodBugs:
         )
         # Each agent should get a fair share (roughly equal)
         if len(eaten) > 1 and eaten[0] > 0:
-            assert abs(eaten[0] - eaten[1]) < 0.05, (
-                f"Unequal shares: {eaten[0]:.4f} vs {eaten[1]:.4f}"
-            )
+            assert (
+                abs(eaten[0] - eaten[1]) < 0.05
+            ), f"Unequal shares: {eaten[0]:.4f} vs {eaten[1]:.4f}"
 
     def test_eat_food_untouched_cells_unchanged(self):
         """Cells where no agent ate should retain original food value."""
@@ -283,30 +302,32 @@ class TestSocialBuffersAndTickCounter:
 
     def test_no_dead_social_f64_buffers(self):
         """Population should not have unused _social_f64_* buffers."""
-        from cenop.parameters.simulation_params import SimulationParameters
         from cenop.agents.population import PorpoisePopulation
+        from cenop.parameters.simulation_params import SimulationParameters
+
         params = SimulationParameters(porpoise_count=5)
         pop = PorpoisePopulation(5, params, landscape=None)
-        assert not hasattr(pop, '_social_f64_dx'), (
-            "_social_f64_dx still exists — dead buffer not removed"
-        )
-        assert not hasattr(pop, '_social_f64_dy'), (
-            "_social_f64_dy still exists — dead buffer not removed"
-        )
+        assert not hasattr(
+            pop, "_social_f64_dx"
+        ), "_social_f64_dx still exists — dead buffer not removed"
+        assert not hasattr(
+            pop, "_social_f64_dy"
+        ), "_social_f64_dy still exists — dead buffer not removed"
 
     def test_energy_history_skips_in_jax_mode(self):
         """_update_energy_history should be a no-op when _use_jax is True."""
-        from cenop.parameters.simulation_params import SimulationParameters
         from cenop.agents.population import PorpoisePopulation
+        from cenop.parameters.simulation_params import SimulationParameters
+
         params = SimulationParameters(porpoise_count=5)
         pop = PorpoisePopulation(5, params, landscape=None)
         pop._use_jax = True
         mask = pop.active_mask.copy()
         old_counter = pop._tick_counter
         pop._update_energy_history(mask)
-        assert pop._tick_counter == old_counter, (
-            "_tick_counter changed in JAX mode — should have been skipped"
-        )
+        assert (
+            pop._tick_counter == old_counter
+        ), "_tick_counter changed in JAX mode — should have been skipped"
 
 
 class TestSilentFailureLogging:
@@ -315,6 +336,7 @@ class TestSilentFailureLogging:
     def test_safe_float_logs_on_invalid_input(self, caplog):
         """_safe_float should log when falling back to default."""
         from cenop.server.simulation_controller import _safe_float
+
         with caplog.at_level(logging.WARNING):
             result = _safe_float(lambda: "not_a_number", 42.0)
         assert result == 42.0
@@ -323,6 +345,7 @@ class TestSilentFailureLogging:
     def test_safe_input_logs_on_invalid_input(self, caplog):
         """_safe_input should log when falling back to default."""
         from cenop.server.simulation_controller import _safe_input
+
         mock_input = type("MockInput", (), {})()
         with caplog.at_level(logging.WARNING):
             result = _safe_input(mock_input, "nonexistent_field", "default_val")
@@ -332,8 +355,9 @@ class TestSilentFailureLogging:
     def test_initial_position_fallback_logs_warning(self, caplog):
         """Fallback to center position should log a warning."""
         from cenop.core.simulation import Simulation
-        from cenop.parameters.simulation_params import SimulationParameters
         from cenop.landscape.cell_data import create_homogeneous_landscape
+        from cenop.parameters.simulation_params import SimulationParameters
+
         landscape = create_homogeneous_landscape(width=100, height=100, depth=-1.0)
         params = SimulationParameters(porpoise_count=1, min_depth=5.0)
         sim = Simulation.__new__(Simulation)
@@ -349,24 +373,36 @@ class TestSilentFailureLogging:
 class TestJaxAndCellDataWarnings:
     """Verify JAX fallback and CellData None-array access produce warnings."""
 
-    @pytest.mark.parametrize("getter,default_val,field_name", [
-        ("get_depth", 20.0, "_depth"),
-        ("get_dist_to_coast", 10000.0, "_dist_to_coast"),
-        ("get_sediment", 1.0, "_sediment"),
-        ("get_food_prob", 0.5, "_food_prob"),
-        ("get_food_level", 0.5, "_food_value"),
-    ])
+    @pytest.mark.parametrize(
+        "getter,default_val,field_name",
+        [
+            ("get_depth", 20.0, "_depth"),
+            ("get_dist_to_coast", 10000.0, "_dist_to_coast"),
+            ("get_sediment", 1.0, "_sediment"),
+            ("get_food_prob", 0.5, "_food_prob"),
+            ("get_food_level", 0.5, "_food_value"),
+        ],
+    )
     def test_celldata_none_array_logs_warning(self, caplog, getter, default_val, field_name):
         """Accessing data when array is None should log a warning (once)."""
         from cenop.landscape.cell_data import CellData, LandscapeMetadata
+
         cd = CellData.__new__(CellData)
         cd._loaded = True
         cd.metadata = LandscapeMetadata(ncols=10, nrows=10, xllcorner=0, yllcorner=0, cellsize=400)
-        for attr in ['_depth', '_dist_to_coast', '_sediment', '_food_prob', '_food_value',
-                     '_blocks', '_entropy', '_salinity']:
+        for attr in [
+            "_depth",
+            "_dist_to_coast",
+            "_sediment",
+            "_food_prob",
+            "_food_value",
+            "_blocks",
+            "_entropy",
+            "_salinity",
+        ]:
             setattr(cd, attr, None)
         for attr in dir(cd):
-            if attr.startswith('_warned_') and attr.endswith('_none'):
+            if attr.startswith("_warned_") and attr.endswith("_none"):
                 delattr(cd, attr)
         with caplog.at_level(logging.WARNING):
             val = getattr(cd, getter)(5.0, 5.0)
@@ -382,7 +418,7 @@ class TestJaxAndCellDataWarnings:
             def raise_oom(n):
                 raise RuntimeError("GPU OOM")
 
-            monkeypatch.setattr(tjax.jnp, 'ones', raise_oom)
+            monkeypatch.setattr(tjax.jnp, "ones", raise_oom)
             with caplog.at_level(logging.WARNING):
                 result = is_jax_available()
             assert result is False

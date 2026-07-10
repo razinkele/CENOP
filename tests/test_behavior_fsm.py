@@ -8,20 +8,19 @@ Tests the hybrid FSM including:
 - Movement mode selection
 """
 
-import pytest
 import numpy as np
+import pytest
 
-from cenop.behavior.states import (
-    BehaviorState,
-    BehaviorContext,
-    BehaviorStateVector,
-    StateTransition,
-    STATE_PARAMETERS,
-)
 from cenop.behavior.hybrid_fsm import (
-    HybridBehaviorFSM,
     FSMMode,
+    HybridBehaviorFSM,
     create_behavior_fsm,
+)
+from cenop.behavior.states import (
+    STATE_PARAMETERS,
+    BehaviorContext,
+    BehaviorState,
+    BehaviorStateVector,
 )
 from cenop.core.time_manager import TimeMode
 from cenop.parameters import SimulationParameters
@@ -32,7 +31,7 @@ class TestBehaviorState:
 
     def test_all_states_defined(self):
         """All expected states should be defined."""
-        expected = {'FORAGING', 'TRAVELING', 'RESTING', 'DISPERSING', 'DISTURBED'}
+        expected = {"FORAGING", "TRAVELING", "RESTING", "DISPERSING", "DISTURBED"}
         actual = {s.name for s in BehaviorState}
         assert expected == actual
 
@@ -107,9 +106,9 @@ class TestBehaviorStateVector:
 
         stats = sv.get_statistics()
 
-        assert stats['state_counts']['FORAGING'] == 5
-        assert stats['state_counts']['DISTURBED'] == 3
-        assert stats['state_counts']['TRAVELING'] == 2
+        assert stats["state_counts"]["FORAGING"] == 5
+        assert stats["state_counts"]["DISTURBED"] == 3
+        assert stats["state_counts"]["TRAVELING"] == 2
 
 
 class TestBehaviorContext:
@@ -217,7 +216,7 @@ class TestDEPONSTransitions:
     def test_foraging_to_dispersing(self, fsm, state_vector, context, mask):
         """Energy decline should trigger DISPERSING."""
         context.energy_declining_days[:] = 5  # > t_disp (3)
-        context.memory_cell_count[:] = 100    # > min_memory_cells (50)
+        context.memory_cell_count[:] = 100  # > min_memory_cells (50)
 
         fsm.update_states(state_vector, context, mask)
 
@@ -285,7 +284,7 @@ class TestJASMINETransitions:
     def test_foraging_to_resting(self, fsm, state_vector, context, mask):
         """Low energy should trigger RESTING state."""
         context.current_energy[:] = 0.2  # < energy_threshold_low (0.3)
-        context.current_speed[:] = 0.5   # Below speed threshold
+        context.current_speed[:] = 0.5  # Below speed threshold
 
         fsm.update_states(state_vector, context, mask)
 
@@ -358,8 +357,8 @@ class TestMovementModeSelection:
 
         modes = fsm.get_movement_mode(sv, mask)
 
-        assert np.all(modes[0:3] == 0)   # DEPONS
-        assert np.all(modes[3:6] == 1)   # JASMINE
+        assert np.all(modes[0:3] == 0)  # DEPONS
+        assert np.all(modes[3:6] == 1)  # JASMINE
         assert np.all(modes[6:10] == 0)  # DEPONS
 
 
@@ -413,9 +412,9 @@ class TestStateParameters:
         """All states should have movement parameters."""
         for state in BehaviorState:
             assert state in STATE_PARAMETERS
-            assert 'movement_mode' in STATE_PARAMETERS[state]
-            assert 'speed_multiplier' in STATE_PARAMETERS[state]
-            assert 'energy_cost_multiplier' in STATE_PARAMETERS[state]
+            assert "movement_mode" in STATE_PARAMETERS[state]
+            assert "speed_multiplier" in STATE_PARAMETERS[state]
+            assert "energy_cost_multiplier" in STATE_PARAMETERS[state]
 
 
 if __name__ == "__main__":

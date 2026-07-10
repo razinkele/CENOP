@@ -1,6 +1,9 @@
 """Unit tests for the shared DEPONS CRW core (generation + composition)."""
+
 import numpy as np
+
 from cenop.parameters import SimulationParameters
+
 
 def test_generate_crw_angle_step_matches_formula_no_rejection():
     """With defaults + depth/salinity=30 the angle/step never violate bounds, so the
@@ -20,11 +23,25 @@ def test_generate_crw_angle_step_matches_formula_no_rejection():
     salinity = np.full(count, 30.0)
     mask = np.ones(count, dtype=bool)
 
-    pres = np.zeros(count); logm = np.zeros(count)
+    pres = np.zeros(count)
+    logm = np.zeros(count)
     envm = np.zeros(count, dtype=np.float32)
-    ra = np.zeros(count); rl = np.zeros(count)
-    generate_crw_angle_step(np.random.default_rng(2024), prev_angle, prev_log_mov,
-                            depths, salinity, mask, params, pres, logm, envm, ra, rl)
+    ra = np.zeros(count)
+    rl = np.zeros(count)
+    generate_crw_angle_step(
+        np.random.default_rng(2024),
+        prev_angle,
+        prev_log_mov,
+        depths,
+        salinity,
+        mask,
+        params,
+        pres,
+        logm,
+        envm,
+        ra,
+        rl,
+    )
 
     rng2 = np.random.default_rng(2024)
     exp_ra = rng2.normal(params.r2_mean, params.r2_sd, count)
@@ -35,12 +52,16 @@ def test_generate_crw_angle_step_matches_formula_no_rejection():
     exp_pres = (params.corr_angle_base * prev_angle + exp_ra) * em
     assert np.all(np.abs(exp_pres) <= 180)  # regime has no rejection
     exp_rl = rng2.normal(params.r1_mean, params.r1_sd, count)
-    exp_logm = (params.corr_logmov_length * prev_log_mov
-                + params.corr_logmov_bathy * depths
-                + params.corr_logmov_salinity * salinity + exp_rl)
+    exp_logm = (
+        params.corr_logmov_length * prev_log_mov
+        + params.corr_logmov_bathy * depths
+        + params.corr_logmov_salinity * salinity
+        + exp_rl
+    )
 
     np.testing.assert_allclose(pres, exp_pres, rtol=1e-5, atol=1e-5)
     np.testing.assert_allclose(logm, exp_logm, rtol=1e-5, atol=1e-5)
+
 
 def test_compose_movement_simple_no_attraction():
     """ve_total=vt=deterrence=0 -> heading direction is preserved and the step magnitude
@@ -48,22 +69,26 @@ def test_compose_movement_simple_no_attraction():
     from cenop.movement.crw_core import compose_movement
 
     count = 5
-    heading = np.array([0., 90., 180., 270., 45.], dtype=np.float32)
+    heading = np.array([0.0, 90.0, 180.0, 270.0, 45.0], dtype=np.float32)
     pres = np.zeros(count)
     logm = np.full(count, 0.9)
-    ve = np.zeros(count, np.float32); vtx = np.zeros(count, np.float32)
+    ve = np.zeros(count, np.float32)
+    vtx = np.zeros(count, np.float32)
     vty = np.zeros(count, np.float32)
-    ddx = np.zeros(count); ddy = np.zeros(count)
-    disp = np.zeros(count, bool); mask = np.ones(count, bool)
-    rads = np.zeros(count, np.float32); dx = np.zeros(count, np.float32)
-    dy = np.zeros(count, np.float32); step = np.zeros(count, np.float32)
+    ddx = np.zeros(count)
+    ddy = np.zeros(count)
+    disp = np.zeros(count, bool)
+    mask = np.ones(count, bool)
+    rads = np.zeros(count, np.float32)
+    dx = np.zeros(count, np.float32)
+    dy = np.zeros(count, np.float32)
+    step = np.zeros(count, np.float32)
 
-    compose_movement(heading, pres, logm, ve, vtx, vty, ddx, ddy, disp, mask,
-                     0.001, 5.0, rads, dx, dy, step)
+    compose_movement(
+        heading, pres, logm, ve, vtx, vty, ddx, ddy, disp, mask, 0.001, 5.0, rads, dx, dy, step
+    )
 
-    exp_step = (10.0 ** 0.9) / 4.0
+    exp_step = (10.0**0.9) / 4.0
     np.testing.assert_allclose(step, exp_step, rtol=1e-4)
-    np.testing.assert_allclose(dx, np.sin(np.radians(heading)) * exp_step,
-                               rtol=1e-3, atol=1e-4)
-    np.testing.assert_allclose(dy, np.cos(np.radians(heading)) * exp_step,
-                               rtol=1e-3, atol=1e-4)
+    np.testing.assert_allclose(dx, np.sin(np.radians(heading)) * exp_step, rtol=1e-3, atol=1e-4)
+    np.testing.assert_allclose(dy, np.cos(np.radians(heading)) * exp_step, rtol=1e-3, atol=1e-4)

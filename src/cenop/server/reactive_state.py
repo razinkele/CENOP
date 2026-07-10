@@ -5,38 +5,38 @@ All reactive values are defined here for easier management and testing.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any
-from shiny import reactive
 from typing import TYPE_CHECKING
+
+from shiny import reactive
 
 if TYPE_CHECKING:
     # Imported for type checking only to avoid runtime circular imports
-    from cenop import Simulation
+    pass
 
 
 @dataclass
 class SimulationState:
     """
     Centralized reactive state container for the simulation.
-    
+
     All reactive values are initialized here to avoid scattered declarations
     throughout the server code.
     """
-    
+
     # Core simulation state
     simulation: reactive.Value = field(default_factory=lambda: reactive.Value(None))
     running: reactive.Value = field(default_factory=lambda: reactive.Value(False))
-    
+
     # Progress tracking
     progress: reactive.Value = field(default_factory=lambda: reactive.Value(0.0))
     progress_message: reactive.Value = field(default_factory=lambda: reactive.Value("Ready to run"))
-    
+
     # History for charts
     population_history: reactive.Value = field(default_factory=lambda: reactive.Value([]))
     energy_history: reactive.Value = field(default_factory=lambda: reactive.Value([]))
     movement_history: reactive.Value = field(default_factory=lambda: reactive.Value([]))
     dispersal_history: reactive.Value = field(default_factory=lambda: reactive.Value([]))
-    
+
     # Counters
     birth_count: reactive.Value = field(default_factory=lambda: reactive.Value(0))
     death_count: reactive.Value = field(default_factory=lambda: reactive.Value(0))
@@ -54,20 +54,28 @@ class SimulationState:
     # Landscape loading trigger
     landscape_load_counter: reactive.Value = field(default_factory=lambda: reactive.Value(0))
     landscape_loaded_name: reactive.Value = field(default_factory=lambda: reactive.Value(""))
-    landscape_info: reactive.Value = field(default_factory=lambda: reactive.Value(""))  # e.g. "400x400 grid"
-    
+    landscape_info: reactive.Value = field(
+        default_factory=lambda: reactive.Value("")
+    )  # e.g. "400x400 grid"
+
     # Turbine loading trigger
     turbine_load_counter: reactive.Value = field(default_factory=lambda: reactive.Value(0))
     turbine_loaded_name: reactive.Value = field(default_factory=lambda: reactive.Value(""))
-    turbine_count: reactive.Value = field(default_factory=lambda: reactive.Value(0))  # Number of turbines loaded
+    turbine_count: reactive.Value = field(
+        default_factory=lambda: reactive.Value(0)
+    )  # Number of turbines loaded
 
     # UI / Refresh hooks
-    last_refreshed: reactive.Value = field(default_factory=lambda: reactive.Value(None))  # ISO timestamp of last refresh
-    selected_preview_file: reactive.Value = field(default_factory=lambda: reactive.Value(None))  # Format: {"landscape": "name", "file": "filename"}
+    last_refreshed: reactive.Value = field(
+        default_factory=lambda: reactive.Value(None)
+    )  # ISO timestamp of last refresh
+    selected_preview_file: reactive.Value = field(
+        default_factory=lambda: reactive.Value(None)
+    )  # Format: {"landscape": "name", "file": "filename"}
 
     # GIS editor layer statistics
     gis_stats: reactive.Value = field(default_factory=lambda: reactive.Value(None))
-    
+
     def reset(self):
         """Reset all state to initial values."""
         self.simulation.set(None)

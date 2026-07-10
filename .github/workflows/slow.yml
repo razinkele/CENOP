@@ -16,6 +16,14 @@ jobs:
         shell: bash -el {0} # login shell so the micromamba env is activated
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Skip data/NorthSea + data/CentralBaltic (~2 GB). Non-cone so all other data is
+          # retained (slow tests use synthetic landscapes, but keep parity with ci.yml).
+          sparse-checkout: |
+            /*
+            !/data/NorthSea
+            !/data/CentralBaltic
+          sparse-checkout-cone-mode: false
 
       - name: Set up micromamba environment
         uses: mamba-org/setup-micromamba@v2

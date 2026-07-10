@@ -4,6 +4,8 @@
 
 **CETacean Noise-Population Model with JASMINE Extensions**
 
+[![CI](https://github.com/razinkele/CENOP/actions/workflows/ci.yml/badge.svg?branch=CENOP-JASMINE)](https://github.com/razinkele/CENOP/actions/workflows/ci.yml)
+
 CENOP is a Python translation of the DEPONS (Disturbance Effects of POrpoises in the North Sea) agent-based model, algorithmically aligned with DEPONS 3.2 (136/153 features verified at full parity — see [Parity Analysis](docs/DEPONS-CENOP-PARITY-ANALYSIS.md)). It simulates how harbour porpoise population dynamics are affected by disturbances from offshore wind farm construction and ship noise.
 
 The JASMINE (Just Another Simulation Model In Nature Environments) extension adds research-grade physics-based movement, dynamic energy budgets, and learned avoidance behaviors.
@@ -102,8 +104,14 @@ Then open your browser to http://localhost:8000
 ## Running Tests
 
 ```bash
-# Full test suite (516+ tests)
-python3 -m pytest tests/ -x -q
+# Fast suite (810 tests; slow multi-year tests auto-deselected via addopts)
+python3 -m pytest tests/ -q
+
+# Slow validation tier (11 multi-year DEPONS/physiology tests, ~5 min)
+python3 -m pytest tests/ -m slow -q
+
+# Everything
+python3 -m pytest tests/ -m "slow or not slow" -q
 
 # Numba kernel tests only
 python3 -m pytest tests/test_numba_kernels.py -v
@@ -111,6 +119,9 @@ python3 -m pytest tests/test_numba_kernels.py -v
 # Kernel benchmark
 python3 scripts/benchmark_kernels.py
 ```
+
+Continuous integration (GitHub Actions) runs the lint gate (black + ruff) and the fast
+suite on every push and pull request; the slow validation tier runs nightly and on demand.
 
 ## Deployment
 

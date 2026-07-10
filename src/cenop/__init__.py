@@ -5,7 +5,7 @@ A Python translation of the DEPONS agent-based model for simulating
 harbour porpoise population dynamics under disturbance.
 """
 
-__version__ = "0.1.0"
+__version__ = "2.2.0"
 __author__ = "Arturas Razinkovas-Baziukas"
 
 from cenop.core.simulation import Simulation

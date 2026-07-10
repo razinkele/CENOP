@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cenop"
-version = "0.1.0"
+version = "2.2.0"
 description = "CENOP - CETacean Noise-Population Model: Python implementation of DEPONS porpoise population model with Shiny UI"
 readme = "README.md"
 license = "GPL-2.0-only"

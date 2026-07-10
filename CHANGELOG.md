@@ -2,6 +2,67 @@
 
 All notable changes to CENOP-JASMINE are documented in this file.
 
+## [2.2.0] - 2026-07-10
+
+### Deep-Review Fix Cycle (29 tasks, 6 phases)
+
+Adversarial code review (2026-07-06) and TDD fixes. Two CRITICAL model-validity issues
+plus default-path correctness, DEPONS parity, and backend equivalence.
+
+#### Critical model-validity fixes
+- Turbine deterrence vector now built from grid displacement, not metres — was ~400× too
+  large versus DEPONS and CENOP's own scalar deterrence path
+- Extracted the validated CRW generation/composition into a shared `crw_core` module and
+  routed the web-app movement path through it (previously ran an unvalidated CRW)
+
+#### Default-path correctness & reproducibility
+- Fixed double daily food regrowth on the vectorized path
+- Fully reset recycled dead-agent slots for weaned calves (SoA + PSM + behaviour/energy + id)
+- Seeded the PSM RNG and plumbed `psm_dist_mean/sd` (N(350;100), DEPONS 3.2); fixed stale
+  UI/controller defaults (300 → 350)
+- Fixed stale rS/rR energy-panel UI defaults (0.04 → 0.03)
+- Introduced `_WorkerHandle` (fresh stop_event + queue per run) to fix a Stop→Start worker race
+
+#### DEPONS parity
+- Gated non-DEPONS swimming/disturbance energy terms behind params (BMR-only by default)
+- Made turbine deterrence deterministic by default (probabilistic scaling behind a JASMINE opt-in)
+- Exposed true per-tick birth/death and per-cause mortality counters
+- Excluded paused / no-buoy ships from the deterrence candidate set (DEPONS `deterPorpoise` gate)
+- Restored the dropped age-1 weight in `AGE_DISTRIBUTION_FREQUENCY` (311/54 → 312/55 ones,
+  now bit-identical to DEPONS `PorpoiseSimBuilder`)
+
+#### Defense-in-depth & cleanup
+- Clamp non-positive vessel length in `jomopans_spl` and validate it at load time
+- Removed the effect-free blade-animation rAF loop and its dead constants/parameter
+
+### Backend Parity (Track B)
+- **JAX:** dispersal-heading parity with the NumPy reference (PSM-Type2 random turn), food
+  floor 0.01 (not `u_min`), and dead-slot exclusion from reference-memory updates
+- **Cython:** repaired all three documented defects — float32 `food_grid` cast, post-move
+  land rollback, seeded-RNG mortality — plus heading recompute after boundary reflection;
+  the single-tick backend-equivalence guard now passes (was `xfail`)
+
+### Reference Baselines
+- Regenerated the Kattegat reference baselines (undisturbed 5 yr, ships 2 yr, turbines 2 yr;
+  seed 42) after the parity fixes
+
+### Continuous Integration (new)
+- GitHub Actions: lint (black + ruff) and the fast suite on every push/PR; nightly slow
+  validation tier (`workflow_dispatch` on demand)
+- `environment.yml` reproducing the scientific stack via conda-forge (+ pip for the Shiny
+  stack and `jax[cpu]`)
+- Non-cone sparse-checkout skips ~2 GB of unused landscape regions per run
+- Repo-wide black + ruff format pass; ruff config migrated to `[tool.ruff.lint]` with a
+  documented ignore list (high-value rules stay enforced)
+
+### Fixes
+- `BatchRunner._run_parallel`'s sequential fallback referenced an undefined `progress`
+  (NameError masking the real failure) — surfaced by ruff F821
+- Ship-loader tests resolve `data/Kattegat/ships.json` relative to the repo root (were CWD-dependent)
+
+### Testing
+- 810 fast tests + 11 slow multi-year validation tests passing
+
 ## [2.1.0] - 2026-03-14
 
 ### DEPONS 3.2 Full Sync (5 Phases)

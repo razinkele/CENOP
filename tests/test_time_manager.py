@@ -9,14 +9,15 @@ The TimeManager is the foundation of the JASMINE-CENOP merge, providing:
 - JASMINE mode: Flexible timestep, event scheduling, research mode
 """
 
-import pytest
-import numpy as np
 from datetime import datetime, timedelta
 
-from cenop.core.time_manager import TimeManager, TimeMode, TimeState
+import numpy as np
+import pytest
+
 from cenop.core.simulation import Simulation
-from cenop.parameters import SimulationParameters
+from cenop.core.time_manager import TimeManager, TimeMode, TimeState
 from cenop.landscape.cell_data import create_homogeneous_landscape
+from cenop.parameters import SimulationParameters
 
 
 class TestTimeState:
@@ -109,7 +110,7 @@ class TestTimeManagerDEPONSMode:
         """Cannot change update frequencies in DEPONS mode."""
         tm = TimeManager(mode=TimeMode.DEPONS)
         with pytest.raises(RuntimeError, match="Cannot change update frequencies"):
-            tm.set_update_frequency('movement', 10)
+            tm.set_update_frequency("movement", 10)
 
     def test_deterministic_seeding(self):
         """Same tick should produce same seed."""
@@ -288,32 +289,32 @@ class TestTimeManagerJASMINEMode:
         tm = TimeManager(mode=TimeMode.JASMINE)
 
         # Default: movement every tick, food every 48 ticks
-        assert tm.should_update('movement')  # tick 0
-        assert tm.should_update('food')      # tick 0 is also food update
+        assert tm.should_update("movement")  # tick 0
+        assert tm.should_update("food")  # tick 0 is also food update
 
         tm.advance()  # tick 1
-        assert tm.should_update('movement')
-        assert not tm.should_update('food')
+        assert tm.should_update("movement")
+        assert not tm.should_update("food")
 
         # Advance to tick 48
         for _ in range(47):
             tm.advance()
 
-        assert tm.should_update('movement')
-        assert tm.should_update('food')
+        assert tm.should_update("movement")
+        assert tm.should_update("food")
 
     def test_custom_update_frequency(self):
         """JASMINE mode should allow custom update frequencies."""
         tm = TimeManager(mode=TimeMode.JASMINE)
-        tm.set_update_frequency('custom_system', 10)
+        tm.set_update_frequency("custom_system", 10)
 
-        assert tm.get_update_frequency('custom_system') == 10
+        assert tm.get_update_frequency("custom_system") == 10
 
         for i in range(25):
             if i % 10 == 0:
-                assert tm.should_update('custom_system')
+                assert tm.should_update("custom_system")
             else:
-                assert not tm.should_update('custom_system')
+                assert not tm.should_update("custom_system")
             tm.advance()
 
     def test_jasmine_seeding_differs(self):
@@ -329,8 +330,8 @@ class TestTimeManagerJASMINEMode:
         tm_depons.advance()
         tm_jasmine.advance()
 
-        seed_depons = tm_depons.get_seed()   # 42 + 1 = 43
-        seed_jasmine = tm_jasmine.get_seed() # 42 + 1*1000 = 1042
+        seed_depons = tm_depons.get_seed()  # 42 + 1 = 43
+        seed_jasmine = tm_jasmine.get_seed()  # 42 + 1*1000 = 1042
 
         assert seed_depons == 43
         assert seed_jasmine == 1042
@@ -436,11 +437,7 @@ class TestDEPONSReproducibility:
         """
         landscape = create_homogeneous_landscape(width=200, height=200, depth=20.0)
 
-        params = SimulationParameters(
-            porpoise_count=10,
-            sim_years=1,
-            random_seed=42
-        )
+        params = SimulationParameters(porpoise_count=10, sim_years=1, random_seed=42)
 
         # Run simulation twice with same seed
         sim1 = Simulation(params=params, cell_data=landscape)
@@ -449,10 +446,7 @@ class TestDEPONSReproducibility:
         positions_1 = []
         for _ in range(100):
             sim1.step()
-            positions_1.append((
-                sim1.population_manager.x.copy(),
-                sim1.population_manager.y.copy()
-            ))
+            positions_1.append((sim1.population_manager.x.copy(), sim1.population_manager.y.copy()))
 
         # Reset and run again with fresh landscape
         landscape2 = create_homogeneous_landscape(width=200, height=200, depth=20.0)
@@ -462,20 +456,15 @@ class TestDEPONSReproducibility:
         positions_2 = []
         for _ in range(100):
             sim2.step()
-            positions_2.append((
-                sim2.population_manager.x.copy(),
-                sim2.population_manager.y.copy()
-            ))
+            positions_2.append((sim2.population_manager.x.copy(), sim2.population_manager.y.copy()))
 
         # Compare trajectories
         for i, ((x1, y1), (x2, y2)) in enumerate(zip(positions_1, positions_2)):
             np.testing.assert_array_almost_equal(
-                x1, x2, decimal=10,
-                err_msg=f"X positions differ at step {i}"
+                x1, x2, decimal=10, err_msg=f"X positions differ at step {i}"
             )
             np.testing.assert_array_almost_equal(
-                y1, y2, decimal=10,
-                err_msg=f"Y positions differ at step {i}"
+                y1, y2, decimal=10, err_msg=f"Y positions differ at step {i}"
             )
 
     def test_different_seeds_different_trajectories(self):
@@ -498,16 +487,13 @@ class TestDEPONSReproducibility:
             sim2.step()
 
         # Should be different
-        assert not np.allclose(sim1.population_manager.x, sim2.population_manager.x), \
-            "Different seeds should produce different X positions"
+        assert not np.allclose(
+            sim1.population_manager.x, sim2.population_manager.x
+        ), "Different seeds should produce different X positions"
 
     def test_population_dynamics_deterministic(self):
         """Population stats should be deterministic with same seed."""
-        params = SimulationParameters(
-            porpoise_count=50,
-            sim_years=1,
-            random_seed=12345
-        )
+        params = SimulationParameters(porpoise_count=50, sim_years=1, random_seed=12345)
 
         # Run twice
         results = []
@@ -519,13 +505,15 @@ class TestDEPONSReproducibility:
             for _ in range(1000):  # ~20 days
                 sim.step()
 
-            results.append({
-                'tick': sim.state.tick,
-                'population': sim.population_manager.population_size,
-            })
+            results.append(
+                {
+                    "tick": sim.state.tick,
+                    "population": sim.population_manager.population_size,
+                }
+            )
 
-        assert results[0]['tick'] == results[1]['tick']
-        assert results[0]['population'] == results[1]['population']
+        assert results[0]["tick"] == results[1]["tick"]
+        assert results[0]["population"] == results[1]["population"]
 
     def test_time_manager_state_sync(self):
         """TimeManager state should sync with SimulationState."""
@@ -553,7 +541,7 @@ class TestSimulationTimeManagerIntegration:
         params = SimulationParameters(porpoise_count=5, random_seed=42)
         sim = Simulation(params=params, cell_data=landscape)
 
-        assert hasattr(sim, 'time_manager')
+        assert hasattr(sim, "time_manager")
         assert isinstance(sim.time_manager, TimeManager)
         assert sim.time_manager.mode == TimeMode.DEPONS
 

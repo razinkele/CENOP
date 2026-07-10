@@ -18,9 +18,10 @@ Known Differences (population.py vs porpoise.py):
 
 import numpy as np
 import pytest
-from cenop.parameters.simulation_params import SimulationParameters
+
 from cenop.agents.population import PorpoisePopulation
 from cenop.landscape.cell_data import create_homogeneous_landscape
+from cenop.parameters.simulation_params import SimulationParameters
 
 
 class TestMovementParameters:
@@ -157,7 +158,9 @@ class TestStepLength:
             pop.step()
 
         # prev_log_mov should be <= max_mov
-        assert np.all(pop.prev_log_mov <= params.max_mov + 0.01), "log_mov should not exceed max_mov"
+        assert np.all(
+            pop.prev_log_mov <= params.max_mov + 0.01
+        ), "log_mov should not exceed max_mov"
 
 
 class TestLandAvoidance:
@@ -277,7 +280,7 @@ class TestMovementStatistics:
         start_x, start_y = positions[0]
         end_x, end_y = positions[-1]
 
-        displacements = np.sqrt((end_x - start_x)**2 + (end_y - start_y)**2)
+        displacements = np.sqrt((end_x - start_x) ** 2 + (end_y - start_y) ** 2)
         active = pop.active_mask
         mean_displacement = np.mean(displacements[active])
 
@@ -285,7 +288,9 @@ class TestMovementStatistics:
 
         # Should have moved significantly but not absurdly far
         # 200 ticks * ~4 cells/tick = ~800 max, but CRW should curve back
-        assert 10 < mean_displacement < 500, f"Displacement {mean_displacement:.0f} outside expected range"
+        assert (
+            10 < mean_displacement < 500
+        ), f"Displacement {mean_displacement:.0f} outside expected range"
 
     def test_population_spreads_over_time(self):
         """Population should spread spatially over time."""
@@ -311,8 +316,9 @@ class TestMovementStatistics:
         print(f"Final spread: ({final_std_x:.1f}, {final_std_y:.1f})")
 
         # Spread should increase or stay similar (not collapse)
-        assert final_std_x + final_std_y >= (initial_std_x + initial_std_y) * 0.5, \
-            "Population should not collapse spatially"
+        assert (
+            final_std_x + final_std_y >= (initial_std_x + initial_std_y) * 0.5
+        ), "Population should not collapse spatially"
 
 
 class TestEnvironmentalModulation:
@@ -361,8 +367,8 @@ class TestCRWRejectionSampling:
             attempts = 0
             while abs(angle) > 180 and attempts < 200:
                 angle = np.random.normal(0, 4)  # R2
-                angle = -0.024 * 10.0 + angle   # b0 * prevAngle + R2
-                angle *= (-0.008 * 30 + 0.93 * 30 + (-14.0))  # env modulation
+                angle = -0.024 * 10.0 + angle  # b0 * prevAngle + R2
+                angle *= -0.008 * 30 + 0.93 * 30 + (-14.0)  # env modulation
                 attempts += 1
             angles.append(angle)
 

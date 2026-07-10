@@ -9,13 +9,13 @@ __version__ = "0.1.0"
 __author__ = "Arturas Razinkovas-Baziukas"
 
 from cenop.core.simulation import Simulation
-from cenop.parameters.simulation_params import SimulationParameters
-from cenop.parameters.constants import SimulationConstants
 from cenop.landscape.cell_data import (
-    CellData, 
+    CellData,
     create_homogeneous_landscape,
-    create_landscape_from_depons
+    create_landscape_from_depons,
 )
+from cenop.parameters.constants import SimulationConstants
+from cenop.parameters.simulation_params import SimulationParameters
 
 __all__ = [
     "Simulation",

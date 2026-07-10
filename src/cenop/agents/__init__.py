@@ -1,10 +1,10 @@
 """Agent definitions module."""
 
 from cenop.agents.base import Agent
-from cenop.agents.porpoise import Porpoise, PregnancyStatus
 from cenop.agents.population import PorpoisePopulation
-from cenop.agents.turbine import Turbine, TurbinePhase, TurbineManager
-from cenop.agents.ship import Ship, ShipManager, VesselClass, Route, Buoy
+from cenop.agents.porpoise import Porpoise, PregnancyStatus
+from cenop.agents.ship import Buoy, Route, Ship, ShipManager, VesselClass
+from cenop.agents.turbine import Turbine, TurbineManager, TurbinePhase
 
 __all__ = [
     "Agent",
@@ -18,5 +18,5 @@ __all__ = [
     "ShipManager",
     "VesselClass",
     "Route",
-    "Buoy"
+    "Buoy",
 ]

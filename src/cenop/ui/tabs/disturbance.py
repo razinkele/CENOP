@@ -14,20 +14,20 @@ def disturbance_tab():
                 ui.card_header("Porpoise Dispersal"),
                 ui.output_ui("dispersal_plot"),
                 height="350px",
-                class_="ocean-card"
+                class_="ocean-card",
             ),
             ui.card(
                 ui.card_header("Deterrence Events"),
                 ui.output_ui("deterrence_plot"),
                 height="350px",
-                class_="ocean-card"
+                class_="ocean-card",
             ),
-            col_widths=[6, 6]
+            col_widths=[6, 6],
         ),
         ui.card(
             ui.card_header("Noise Exposure Map"),
             ui.output_ui("noise_map"),
             height="350px",
-            class_="ocean-card"
-        )
+            class_="ocean-card",
+        ),
     )

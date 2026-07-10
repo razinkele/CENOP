@@ -15,13 +15,13 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 if TYPE_CHECKING:
-    from cenop.parameters.simulation_params import SimulationParameters
     from cenop.landscape.cell_data import CellData
+    from cenop.parameters.simulation_params import SimulationParameters
 
 
 class MovementMode(Enum):
@@ -57,12 +57,12 @@ class MovementState:
     dispersal_heading: np.ndarray  # Target heading for dispersal
 
     # Reference-memory attraction inputs (populated by the population glue; None -> zeros)
-    ve_total: Optional[np.ndarray] = field(default=None, kw_only=True)
-    vt_x: Optional[np.ndarray] = field(default=None, kw_only=True)
-    vt_y: Optional[np.ndarray] = field(default=None, kw_only=True)
+    ve_total: np.ndarray | None = field(default=None, kw_only=True)
+    vt_x: np.ndarray | None = field(default=None, kw_only=True)
+    vt_y: np.ndarray | None = field(default=None, kw_only=True)
 
     @classmethod
-    def create(cls, count: int, rng: Optional[np.random.Generator] = None) -> "MovementState":
+    def create(cls, count: int, rng: np.random.Generator | None = None) -> MovementState:
         """Create a new MovementState for count agents."""
         _rng = rng if rng is not None else np.random.default_rng()
         return cls(
@@ -88,15 +88,15 @@ class EnvironmentContext:
 
     depth: np.ndarray  # Water depth at current position
     salinity: np.ndarray  # Salinity at current position
-    temperature: Optional[np.ndarray] = None  # Temperature (JASMINE)
-    current_u: Optional[np.ndarray] = None  # Current velocity U component (JASMINE)
-    current_v: Optional[np.ndarray] = None  # Current velocity V component (JASMINE)
-    prey_density: Optional[np.ndarray] = None  # Prey density (JASMINE)
+    temperature: np.ndarray | None = None  # Temperature (JASMINE)
+    current_u: np.ndarray | None = None  # Current velocity U component (JASMINE)
+    current_v: np.ndarray | None = None  # Current velocity V component (JASMINE)
+    prey_density: np.ndarray | None = None  # Prey density (JASMINE)
 
     @classmethod
     def from_landscape(
-        cls, landscape: "CellData", x: np.ndarray, y: np.ndarray, month: int = 1
-    ) -> "EnvironmentContext":
+        cls, landscape: CellData, x: np.ndarray, y: np.ndarray, month: int = 1
+    ) -> EnvironmentContext:
         """Create environment context from landscape data."""
         positions = np.column_stack((x, y))
 
@@ -111,7 +111,7 @@ class EnvironmentContext:
     @classmethod
     def create_homogeneous(
         cls, count: int, depth: float = 30.0, salinity: float = 30.0
-    ) -> "EnvironmentContext":
+    ) -> EnvironmentContext:
         """Create homogeneous environment context."""
         return cls(
             depth=np.full(count, depth, dtype=np.float32),
@@ -134,8 +134,8 @@ class MovementResult:
     turning_angle: np.ndarray  # Turning angle applied
 
     # Raw DEPONS draws (before ref-mem/deterrence composition) for parity with inline path
-    pres_angle: Optional[np.ndarray] = None
-    log_mov: Optional[np.ndarray] = None
+    pres_angle: np.ndarray | None = None
+    log_mov: np.ndarray | None = None
 
 
 class MovementModule(ABC):
@@ -149,7 +149,7 @@ class MovementModule(ABC):
     current positions, state, and environment to produce displacements.
     """
 
-    def __init__(self, params: "SimulationParameters"):
+    def __init__(self, params: SimulationParameters):
         """
         Initialize movement module.
 
@@ -166,8 +166,8 @@ class MovementModule(ABC):
         state: MovementState,
         environment: EnvironmentContext,
         mask: np.ndarray,
-        deterrence_dx: Optional[np.ndarray] = None,
-        deterrence_dy: Optional[np.ndarray] = None,
+        deterrence_dx: np.ndarray | None = None,
+        deterrence_dy: np.ndarray | None = None,
     ) -> MovementResult:
         """
         Compute movement step for all agents.

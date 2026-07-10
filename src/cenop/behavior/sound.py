@@ -7,10 +7,11 @@ Translates from: SoundSource.java, Ship.java sound calculations
 
 from __future__ import annotations
 
-import numpy as np
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional, Tuple
 from enum import Enum
+from typing import TYPE_CHECKING
+
+import numpy as np
 
 if TYPE_CHECKING:
     from cenop.agents.ship import VesselClass
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
 
 class NoiseSourceType(Enum):
     """Type of noise source."""
+
     TURBINE_CONSTRUCTION = "turbine_construction"
     TURBINE_OPERATION = "turbine_operation"
     SHIP = "ship"
@@ -26,25 +28,23 @@ class NoiseSourceType(Enum):
 @dataclass
 class SoundPropagationParams:
     """Parameters for sound propagation calculations."""
-    
+
     # Sound propagation
-    alpha_hat: float = 0.0      # Absorption coefficient (dB/km)
-    beta_hat: float = 20.0      # Spreading loss factor (spherical = 20)
-    
+    alpha_hat: float = 0.0  # Absorption coefficient (dB/km)
+    beta_hat: float = 20.0  # Spreading loss factor (spherical = 20)
+
     # Deterrence thresholds
     response_threshold: float = 152.9  # RT: minimum level to cause response (dB re 1 µPa)
-    
+
     # Maximum deterrence distance
     max_deter_distance: float = 50.0  # km
-    
+
     # Ship-specific
     min_deter_distance_ships: float = 0.1  # km (100m minimum)
 
 
 def calculate_transmission_loss(
-    distance_m: float | np.ndarray,
-    alpha_hat: float = 0.0,
-    beta_hat: float = 20.0
+    distance_m: float | np.ndarray, alpha_hat: float = 0.0, beta_hat: float = 20.0
 ) -> float | np.ndarray:
     """
     Calculate transmission loss (TL) for sound propagation.
@@ -95,7 +95,7 @@ def calculate_received_level(
     source_level: float,
     distance_m: float | np.ndarray,
     alpha_hat: float = 0.0,
-    beta_hat: float = 20.0
+    beta_hat: float = 20.0,
 ) -> float | np.ndarray:
     """
     Calculate received sound level at a given distance.
@@ -120,49 +120,49 @@ def calculate_deterrence_distance(
     response_threshold: float,
     alpha_hat: float = 0.0,
     beta_hat: float = 20.0,
-    max_distance: float = 50000.0  # 50 km in meters
+    max_distance: float = 50000.0,  # 50 km in meters
 ) -> float:
     """
     Calculate the distance at which received level equals response threshold.
-    
+
     Solves: RT = SL - TL for distance
-    
+
     For spherical spreading (β=20) without absorption:
     r = 10^((SL - RT) / 20)
-    
+
     Args:
         source_level: Source level in dB
         response_threshold: Response threshold in dB
         alpha_hat: Absorption coefficient
         beta_hat: Spreading loss factor
         max_distance: Maximum distance to consider (meters)
-        
+
     Returns:
         Distance in meters where RL = RT
     """
     if source_level <= response_threshold:
         return 0.0
-    
+
     # For simple case without absorption
     if alpha_hat == 0:
         distance = 10 ** ((source_level - response_threshold) / beta_hat)
         return min(distance, max_distance)
-    
+
     # With absorption, use iterative approach
     # Binary search for distance
     low, high = 1.0, max_distance
-    
+
     for _ in range(50):  # Max iterations
         mid = (low + high) / 2
         rl = calculate_received_level(source_level, mid, alpha_hat, beta_hat)
-        
+
         if abs(rl - response_threshold) < 0.1:
             return mid
         elif rl > response_threshold:
             low = mid
         else:
             high = mid
-            
+
     return (low + high) / 2
 
 
@@ -170,46 +170,45 @@ def calculate_deterrence_distance(
 class TurbineNoise:
     """
     Turbine noise characteristics.
-    
+
     Based on DEPONS turbine deterrence model.
     """
-    
+
     # Source level for pile driving (construction)
     # Typical values: 180-220 dB re 1 µPa @ 1m
     source_level_construction: float = 200.0
-    
+
     # Source level for operational turbine (much lower)
     source_level_operation: float = 145.0
-    
+
     # Impact factor (relative to reference Roedsand turbine)
     impact: float = 1.0
-    
+
     def get_source_level(self, is_construction: bool = True) -> float:
         """Get effective source level including impact factor."""
         base_level = (
-            self.source_level_construction if is_construction 
-            else self.source_level_operation
+            self.source_level_construction if is_construction else self.source_level_operation
         )
         # Impact modifies the effective source level
         # impact > 1 means louder, impact < 1 means quieter
         return base_level + 10 * np.log10(self.impact) if self.impact > 0 else base_level
 
 
-@dataclass  
+@dataclass
 class ShipNoise:
     """
     Ship noise characteristics.
-    
+
     Based on JOMOPANS model used in DEPONS.
     Ship noise depends on vessel type, length, and speed.
     """
-    
+
     # Explicit source-level override (dB re 1 µPa @ 1m). When None, SL is computed
     # from the calibrated JOMOPANS model. Set by ships.json `impact` or by tests.
-    base_source_level: Optional[float] = None
+    base_source_level: float | None = None
 
     # Vessel class — drives the JOMOPANS source-level model (set from Ship.vessel_type).
-    vessel_class: "Optional[VesselClass]" = None
+    vessel_class: VesselClass | None = None
 
     # Vessel length (m) and speed (knots) — JOMOPANS inputs.
     length: float = 100.0
@@ -225,6 +224,7 @@ class ShipNoise:
             return self.base_source_level
         # Lazy import breaks the sound -> jomopans -> ship -> sound module cycle.
         from cenop.behavior.jomopans_spl import jomopans_spl
+
         return jomopans_spl(self.vessel_class, self.speed, self.length, band=12)
 
 
@@ -238,14 +238,30 @@ class ShipDeterrenceModel:
     """
 
     # Standardization constants — full precision (Java Ship.java:349-398)
-    STD_PROB_DAY = {'dist_mean': 5.801812, 'dist_sd': 2.602801,
-                    'noise_mean': 65.95304, 'noise_sd': 18.25469}
-    STD_PROB_NIGHT = {'dist_mean': 6.243703, 'dist_sd': 2.548173,
-                      'noise_mean': 68.9993, 'noise_sd': 14.81663}
-    STD_MAG_DAY = {'dist_mean': 5.311561, 'dist_sd': 2.698996,
-                   'noise_mean': 69.28605, 'noise_sd': 17.09946}
-    STD_MAG_NIGHT = {'dist_mean': 6.442084, 'dist_sd': 2.48903,
-                     'noise_mean': 68.86555, 'noise_sd': 15.09977}
+    STD_PROB_DAY = {
+        "dist_mean": 5.801812,
+        "dist_sd": 2.602801,
+        "noise_mean": 65.95304,
+        "noise_sd": 18.25469,
+    }
+    STD_PROB_NIGHT = {
+        "dist_mean": 6.243703,
+        "dist_sd": 2.548173,
+        "noise_mean": 68.9993,
+        "noise_sd": 14.81663,
+    }
+    STD_MAG_DAY = {
+        "dist_mean": 5.311561,
+        "dist_sd": 2.698996,
+        "noise_mean": 69.28605,
+        "noise_sd": 17.09946,
+    }
+    STD_MAG_NIGHT = {
+        "dist_mean": 6.442084,
+        "dist_sd": 2.48903,
+        "noise_mean": 68.86555,
+        "noise_sd": 15.09977,
+    }
 
     def __init__(
         self,
@@ -254,7 +270,7 @@ class ShipDeterrenceModel:
         pship_noise_day: float = 0.2172813,
         pship_dist_day: float = -0.1303880,
         pship_dist_x_noise_day: float = 0.0293443,
-        # Night coefficients - probability  
+        # Night coefficients - probability
         pship_int_night: float = -3.233771,
         pship_noise_night: float = 0.0,
         pship_dist_night: float = 0.085242,
@@ -268,36 +284,31 @@ class ShipDeterrenceModel:
         cship_int_night: float = 2.7543376,
         cship_noise_night: float = 0.0,
         cship_dist_night: float = 0.0284629,
-        cship_dist_x_noise_night: float = 0.0
+        cship_dist_x_noise_night: float = 0.0,
     ):
         # Probability coefficients
         self.pship_int_day = pship_int_day
         self.pship_noise_day = pship_noise_day
         self.pship_dist_day = pship_dist_day
         self.pship_dist_x_noise_day = pship_dist_x_noise_day
-        
+
         self.pship_int_night = pship_int_night
         self.pship_noise_night = pship_noise_night
         self.pship_dist_night = pship_dist_night
         self.pship_dist_x_noise_night = pship_dist_x_noise_night
-        
+
         # Magnitude coefficients
         self.cship_int_day = cship_int_day
         self.cship_noise_day = cship_noise_day
         self.cship_dist_day = cship_dist_day
         self.cship_dist_x_noise_day = cship_dist_x_noise_day
-        
+
         self.cship_int_night = cship_int_night
         self.cship_noise_night = cship_noise_night
         self.cship_dist_night = cship_dist_night
         self.cship_dist_x_noise_night = cship_dist_x_noise_night
-        
-    def calculate_deterrence_probability(
-        self,
-        spl: float,
-        distance_km: float,
-        is_day: bool = True
-    ):
+
+    def calculate_deterrence_probability(self, spl: float, distance_km: float, is_day: bool = True):
         """Calculate probability of deterrence response.
 
         Inputs are standardized using dataset means/SDs (Java Ship.java:349-398).
@@ -305,50 +316,49 @@ class ShipDeterrenceModel:
         if is_day:
             std = self.STD_PROB_DAY
             linear = (
-                self.pship_int_day +
-                self.pship_noise_day * ((spl - std['noise_mean']) / std['noise_sd']) +
-                self.pship_dist_day * ((distance_km - std['dist_mean']) / std['dist_sd']) +
-                self.pship_dist_x_noise_day * ((spl - std['noise_mean']) / std['noise_sd']) *
-                    ((distance_km - std['dist_mean']) / std['dist_sd'])
+                self.pship_int_day
+                + self.pship_noise_day * ((spl - std["noise_mean"]) / std["noise_sd"])
+                + self.pship_dist_day * ((distance_km - std["dist_mean"]) / std["dist_sd"])
+                + self.pship_dist_x_noise_day
+                * ((spl - std["noise_mean"]) / std["noise_sd"])
+                * ((distance_km - std["dist_mean"]) / std["dist_sd"])
             )
         else:
             std = self.STD_PROB_NIGHT
             linear = (
-                self.pship_int_night +
-                self.pship_noise_night * ((spl - std['noise_mean']) / std['noise_sd']) +
-                self.pship_dist_night * ((distance_km - std['dist_mean']) / std['dist_sd']) +
-                self.pship_dist_x_noise_night * ((spl - std['noise_mean']) / std['noise_sd']) *
-                    ((distance_km - std['dist_mean']) / std['dist_sd'])
+                self.pship_int_night
+                + self.pship_noise_night * ((spl - std["noise_mean"]) / std["noise_sd"])
+                + self.pship_dist_night * ((distance_km - std["dist_mean"]) / std["dist_sd"])
+                + self.pship_dist_x_noise_night
+                * ((spl - std["noise_mean"]) / std["noise_sd"])
+                * ((distance_km - std["dist_mean"]) / std["dist_sd"])
             )
 
         linear_clipped = np.clip(linear, -500, 500)
         prob = 1.0 / (1.0 + np.exp(-linear_clipped))
         return np.clip(prob, 0.0, 1.0)
-        
-    def calculate_deterrence_magnitude(
-        self,
-        spl: float,
-        distance_km: float,
-        is_day: bool = True
-    ):
+
+    def calculate_deterrence_magnitude(self, spl: float, distance_km: float, is_day: bool = True):
         """Calculate deterrence magnitude with standardized inputs."""
         if is_day:
             std = self.STD_MAG_DAY
             magnitude = (
-                self.cship_int_day +
-                self.cship_noise_day * ((spl - std['noise_mean']) / std['noise_sd']) +
-                self.cship_dist_day * ((distance_km - std['dist_mean']) / std['dist_sd']) +
-                self.cship_dist_x_noise_day * ((spl - std['noise_mean']) / std['noise_sd']) *
-                    ((distance_km - std['dist_mean']) / std['dist_sd'])
+                self.cship_int_day
+                + self.cship_noise_day * ((spl - std["noise_mean"]) / std["noise_sd"])
+                + self.cship_dist_day * ((distance_km - std["dist_mean"]) / std["dist_sd"])
+                + self.cship_dist_x_noise_day
+                * ((spl - std["noise_mean"]) / std["noise_sd"])
+                * ((distance_km - std["dist_mean"]) / std["dist_sd"])
             )
         else:
             std = self.STD_MAG_NIGHT
             magnitude = (
-                self.cship_int_night +
-                self.cship_noise_night * ((spl - std['noise_mean']) / std['noise_sd']) +
-                self.cship_dist_night * ((distance_km - std['dist_mean']) / std['dist_sd']) +
-                self.cship_dist_x_noise_night * ((spl - std['noise_mean']) / std['noise_sd']) *
-                    ((distance_km - std['dist_mean']) / std['dist_sd'])
+                self.cship_int_night
+                + self.cship_noise_night * ((spl - std["noise_mean"]) / std["noise_sd"])
+                + self.cship_dist_night * ((distance_km - std["dist_mean"]) / std["dist_sd"])
+                + self.cship_dist_x_noise_night
+                * ((spl - std["noise_mean"]) / std["noise_sd"])
+                * ((distance_km - std["dist_mean"]) / std["dist_sd"])
             )
         return np.exp(np.clip(magnitude, -50.0, 50.0))
 
@@ -382,9 +392,7 @@ class ShipDeterrenceModel:
         prob = np.asarray(
             self.calculate_deterrence_probability(rl, dist_km, is_day), dtype=np.float64
         )
-        mag = np.asarray(
-            self.calculate_deterrence_magnitude(rl, dist_km, is_day), dtype=np.float64
-        )
+        mag = np.asarray(self.calculate_deterrence_magnitude(rl, dist_km, is_day), dtype=np.float64)
         gate = rl > tships
         react = gate & (np.asarray(u_draw, dtype=np.float64) < prob)
         eff_mag = np.where(react, mag, 0.0)
@@ -394,9 +402,7 @@ class ShipDeterrenceModel:
 
 
 def response_probability_from_rl(
-    received_level: float | np.ndarray,
-    threshold: float = 152.9,
-    slope: float = 0.5
+    received_level: float | np.ndarray, threshold: float = 152.9, slope: float = 0.5
 ) -> float | np.ndarray:
     """
     Calculate response probability from received level using logistic function.
@@ -431,17 +437,17 @@ def calculate_deterrence_vector(
     source_x: float,
     source_y: float,
     strength: float,
-    deter_coeff: float = 0.07
-) -> Tuple[float, float]:
+    deter_coeff: float = 0.07,
+) -> tuple[float, float]:
     """
     Calculate deterrence vector pointing away from noise source.
-    
+
     Args:
         porpoise_x, porpoise_y: Porpoise position
         source_x, source_y: Noise source position
         strength: Deterrence strength/magnitude
         deter_coeff: Deterrence coefficient (c parameter)
-        
+
     Returns:
         (dx, dy) deterrence vector components
     """
@@ -452,13 +458,11 @@ def calculate_deterrence_vector(
     dy = porpoise_y - source_y
 
     # Scale by strength and coefficient (no division by distance)
-    return (
-        strength * dx * deter_coeff,
-        strength * dy * deter_coeff
-    )
+    return (strength * dx * deter_coeff, strength * dy * deter_coeff)
 
 
 # Backwards compatibility helper ------------------------------------------------
+
 
 def combine_rls(rl_arrays: list | np.ndarray) -> np.ndarray:
     """Combine multiple received-level arrays into a single received level per
@@ -480,6 +484,7 @@ def combine_rls(rl_arrays: list | np.ndarray) -> np.ndarray:
 @dataclass
 class HydrophoneRecord:
     """Record of loudest sound received in a tick."""
+
     ship_name: str = ""
     ship_utm_x: float = -1.0
     ship_utm_y: float = -1.0
@@ -507,8 +512,12 @@ class Hydrophone:
     """
 
     def __init__(
-        self, name: str, x: float, y: float,
-        utm_x: float = 0.0, utm_y: float = 0.0,
+        self,
+        name: str,
+        x: float,
+        y: float,
+        utm_x: float = 0.0,
+        utm_y: float = 0.0,
     ):
         self.name = name
         self.x = x

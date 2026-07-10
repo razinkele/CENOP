@@ -17,12 +17,12 @@ Translates from: JASMINE-MB TimeManager concept + DEPONS tick system
 from __future__ import annotations
 
 import csv
-import io
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Dict, List, Callable, Optional, Any
 from enum import Enum, auto
+from pathlib import Path
+from typing import Any
 
 
 class TimeMode(Enum):
@@ -32,6 +32,7 @@ class TimeMode(Enum):
     DEPONS: Fixed timestep, deterministic, regulatory-compliant
     JASMINE: Flexible timestep, event-driven, research mode
     """
+
     DEPONS = auto()
     JASMINE = auto()
 
@@ -50,6 +51,7 @@ class TimeState:
         month: Month (1-12)
         year: Year counter (starts at 1)
     """
+
     tick: int = 0
     day: int = 0
     month: int = 1
@@ -99,7 +101,7 @@ class Suntimes:
     When not loaded, falls back to fixed 6am-6pm (tick 12 to tick 36).
     """
 
-    def __init__(self, csv_path: Optional[str] = None):
+    def __init__(self, csv_path: str | None = None):
         # Default: fixed 6am (tick 12) to 6pm (tick 36)
         self._sunrise = [12] * 360
         self._sunset = [36] * 360
@@ -117,7 +119,7 @@ class Suntimes:
                 "Remove suntimes_path parameter to use default 6am-6pm."
             )
 
-        with open(path, "r") as f:
+        with open(path) as f:
             reader = csv.reader(f)
             header = next(reader)
             # Validate header
@@ -213,8 +215,8 @@ class TimeManager:
         dt_seconds: int = 1800,
         base_seed: int = 42,
         sim_years: int = 1,
-        start_datetime: Optional[datetime] = None,
-        suntimes_path: Optional[str] = None,
+        start_datetime: datetime | None = None,
+        suntimes_path: str | None = None,
     ):
         """
         Initialize time manager.
@@ -243,19 +245,19 @@ class TimeManager:
         self._state = TimeState()
 
         # Event scheduling (JASMINE mode only)
-        self._scheduled_events: Dict[int, List[Callable[[], None]]] = {}
+        self._scheduled_events: dict[int, list[Callable[[], None]]] = {}
 
         # Update frequency registry for subsystems
         # Key: subsystem name, Value: tick interval
-        self._update_frequencies: Dict[str, int] = {
-            'movement': 1,       # Every tick
-            'physiology': 1,     # Every tick
-            'deterrence': 1,     # Every tick
-            'food': 48,          # Daily
-            'memory': 48,        # Daily
-            'landscape': 48,     # Daily (monthly variation via set_month)
-            'reproduction': 48,  # Daily
-            'mortality': 48,     # Daily
+        self._update_frequencies: dict[str, int] = {
+            "movement": 1,  # Every tick
+            "physiology": 1,  # Every tick
+            "deterrence": 1,  # Every tick
+            "food": 48,  # Daily
+            "memory": 48,  # Daily
+            "landscape": 48,  # Daily (monthly variation via set_month)
+            "reproduction": 48,  # Daily
+            "mortality": 48,  # Daily
         }
 
         # Calculate total ticks
@@ -386,12 +388,7 @@ class TimeManager:
                 if new_month == 1:
                     new_year += 1
 
-        self._state = TimeState(
-            tick=new_tick,
-            day=new_day,
-            month=new_month,
-            year=new_year
-        )
+        self._state = TimeState(tick=new_tick, day=new_day, month=new_month, year=new_year)
 
     def reset(self) -> None:
         """Reset time manager to initial state."""
@@ -457,9 +454,11 @@ class TimeManager:
         Returns:
             True if at day boundary AND day is multiple of 30
         """
-        return (self.is_day_boundary() and
-                self._state.day > 0 and
-                self._state.day % self.DAYS_PER_MONTH == 0)
+        return (
+            self.is_day_boundary()
+            and self._state.day > 0
+            and self._state.day % self.DAYS_PER_MONTH == 0
+        )
 
     def is_year_boundary(self) -> bool:
         """
@@ -468,9 +467,11 @@ class TimeManager:
         Returns:
             True if at day boundary AND day is multiple of 360
         """
-        return (self.is_day_boundary() and
-                self._state.day > 0 and
-                self._state.day % self.DAYS_PER_YEAR == 0)
+        return (
+            self.is_day_boundary()
+            and self._state.day > 0
+            and self._state.day % self.DAYS_PER_YEAR == 0
+        )
 
     # =========================================================================
     # Subsystem Update Scheduling
@@ -540,11 +541,7 @@ class TimeManager:
             self._scheduled_events[tick] = []
         self._scheduled_events[tick].append(callback)
 
-    def schedule_event_at_datetime(
-        self,
-        dt: datetime,
-        callback: Callable[[], None]
-    ) -> None:
+    def schedule_event_at_datetime(self, dt: datetime, callback: Callable[[], None]) -> None:
         """
         Schedule an event at a specific datetime (JASMINE mode only).
 
@@ -559,7 +556,7 @@ class TimeManager:
         tick = int(delta.total_seconds() / self._dt_seconds)
         self.schedule_event(tick, callback)
 
-    def get_scheduled_events(self) -> List[Callable[[], None]]:
+    def get_scheduled_events(self) -> list[Callable[[], None]]:
         """
         Get events scheduled for current tick.
 
@@ -603,7 +600,7 @@ class TimeManager:
     # Serialization / Checkpointing
     # =========================================================================
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Serialize time manager state for checkpointing.
 
@@ -611,20 +608,20 @@ class TimeManager:
             Dictionary with all state needed to restore TimeManager
         """
         return {
-            'mode': self._mode.name,
-            'tick': self._state.tick,
-            'day': self._state.day,
-            'month': self._state.month,
-            'year': self._state.year,
-            'base_seed': self._base_seed,
-            'dt_seconds': self._dt_seconds,
-            'sim_years': self._sim_years,
-            'start_datetime': self._start_datetime.isoformat(),
-            'update_frequencies': self._update_frequencies.copy(),
+            "mode": self._mode.name,
+            "tick": self._state.tick,
+            "day": self._state.day,
+            "month": self._state.month,
+            "year": self._state.year,
+            "base_seed": self._base_seed,
+            "dt_seconds": self._dt_seconds,
+            "sim_years": self._sim_years,
+            "start_datetime": self._start_datetime.isoformat(),
+            "update_frequencies": self._update_frequencies.copy(),
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'TimeManager':
+    def from_dict(cls, data: dict[str, Any]) -> TimeManager:
         """
         Restore time manager from checkpoint.
 
@@ -634,25 +631,22 @@ class TimeManager:
         Returns:
             Restored TimeManager instance
         """
-        start_dt = datetime.fromisoformat(data['start_datetime'])
+        start_dt = datetime.fromisoformat(data["start_datetime"])
 
         tm = cls(
-            mode=TimeMode[data['mode']],
-            base_seed=data['base_seed'],
-            dt_seconds=data['dt_seconds'],
-            sim_years=data['sim_years'],
-            start_datetime=start_dt
+            mode=TimeMode[data["mode"]],
+            base_seed=data["base_seed"],
+            dt_seconds=data["dt_seconds"],
+            sim_years=data["sim_years"],
+            start_datetime=start_dt,
         )
 
         tm._state = TimeState(
-            tick=data['tick'],
-            day=data['day'],
-            month=data['month'],
-            year=data['year']
+            tick=data["tick"], day=data["day"], month=data["month"], year=data["year"]
         )
 
-        if 'update_frequencies' in data:
-            tm._update_frequencies = data['update_frequencies'].copy()
+        if "update_frequencies" in data:
+            tm._update_frequencies = data["update_frequencies"].copy()
 
         return tm
 

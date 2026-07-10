@@ -13,19 +13,18 @@ DEPONS Deterrence Model:
 
 import numpy as np
 import pytest
-from cenop.parameters.simulation_params import SimulationParameters
+
+from cenop.agents.turbine import Turbine, TurbinePhase
 from cenop.behavior.sound import (
-    calculate_transmission_loss,
-    calculate_received_level,
-    calculate_deterrence_vector,
-    calculate_deterrence_distance,
-    TurbineNoise,
-    ShipNoise,
     ShipDeterrenceModel,
+    TurbineNoise,
+    calculate_deterrence_distance,
+    calculate_deterrence_vector,
+    calculate_received_level,
+    calculate_transmission_loss,
     response_probability_from_rl,
 )
-from cenop.agents.turbine import Turbine, TurbinePhase
-from cenop.agents.ship import Ship
+from cenop.parameters.simulation_params import SimulationParameters
 
 
 class TestSoundPropagationParameters:
@@ -54,8 +53,9 @@ class TestSoundPropagationParameters:
     def test_max_deterrence_distance(self):
         """Verify max deterrence distance matches DEPONS 3.2 parameters.xml."""
         params = SimulationParameters()
-        assert params.deter_max_distance == 1000.0, \
-            "deter_max_distance should be 1000 km (parameters.xml dmax_deter, DEPONS 3.2)"
+        assert (
+            params.deter_max_distance == 1000.0
+        ), "deter_max_distance should be 1000 km (parameters.xml dmax_deter, DEPONS 3.2)"
 
 
 class TestTransmissionLoss:
@@ -163,9 +163,10 @@ class TestTurbineDeterrenceLogic:
         params = SimulationParameters()
         turbine = Turbine(
             id=1,
-            x=100.0, y=100.0,
+            x=100.0,
+            y=100.0,
             impact=200.0,  # Impact IS the source level in DEPONS
-            phase=TurbinePhase.CONSTRUCTION
+            phase=TurbinePhase.CONSTRUCTION,
         )
         turbine._is_active = True
 
@@ -175,17 +176,14 @@ class TestTurbineDeterrenceLogic:
         result = turbine.should_deter(105.0, 100.0, params, cell_size=400.0)
         should_deter, rl, distance_m, strength = result
 
-        assert not should_deter, "Porpoise at 2km should not be deterred (RL below 152 dB threshold)"
+        assert (
+            not should_deter
+        ), "Porpoise at 2km should not be deterred (RL below 152 dB threshold)"
 
     def test_turbine_should_deter_close(self):
         """Turbine should deter porpoises very close."""
         params = SimulationParameters()
-        turbine = Turbine(
-            id=2,
-            x=100.0, y=100.0,
-            impact=200.0,
-            phase=TurbinePhase.CONSTRUCTION
-        )
+        turbine = Turbine(id=2, x=100.0, y=100.0, impact=200.0, phase=TurbinePhase.CONSTRUCTION)
         turbine._is_active = True
 
         # Porpoise at 100m (0.25 grid cells)
@@ -291,9 +289,12 @@ class TestDeterrenceVector:
         """Deterrence vector should point away from noise source."""
         # Porpoise at (10, 0), source at (0, 0)
         dx, dy = calculate_deterrence_vector(
-            porpoise_x=10.0, porpoise_y=0.0,
-            source_x=0.0, source_y=0.0,
-            strength=1.0, deter_coeff=0.07
+            porpoise_x=10.0,
+            porpoise_y=0.0,
+            source_x=0.0,
+            source_y=0.0,
+            strength=1.0,
+            deter_coeff=0.07,
         )
 
         # Should point in +x direction (away from source)
@@ -337,7 +338,9 @@ class TestDeterrenceDistance:
         # r = 10^2.1 ≈ 126 m
         expected = 10 ** ((sl - threshold) / 20.0)
 
-        assert abs(dist - expected) < 1.0, f"Deterrence distance should be ~{expected:.0f}m, got {dist:.0f}m"
+        assert (
+            abs(dist - expected) < 1.0
+        ), f"Deterrence distance should be ~{expected:.0f}m, got {dist:.0f}m"
 
     def test_deterrence_distance_at_180db(self):
         """Calculate deterrence distance for 180 dB source."""
@@ -349,7 +352,9 @@ class TestDeterrenceDistance:
         # r = 10^((180-158)/20) = 10^1.1 ≈ 12.6 m
         expected = 10 ** ((sl - threshold) / 20.0)
 
-        assert abs(dist - expected) < 0.5, f"Deterrence distance should be ~{expected:.0f}m, got {dist:.0f}m"
+        assert (
+            abs(dist - expected) < 0.5
+        ), f"Deterrence distance should be ~{expected:.0f}m, got {dist:.0f}m"
 
 
 class TestProbabilisticDeterrence:
@@ -451,7 +456,7 @@ class TestTurbineDeterministicDeterrence:
         px = np.array([53.0])
         py = np.array([50.0])
 
-        det = SimulationParameters()                          # deterministic (DEPONS)
+        det = SimulationParameters()  # deterministic (DEPONS)
         prob = SimulationParameters(deter_probabilistic=True)  # JASMINE opt-in
 
         dx_det, _ = mgr.calculate_aggregate_deterrence_vectorized(px, py, det, cell_size=400.0)

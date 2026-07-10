@@ -3,9 +3,10 @@
 Ports Java RefMem.java and FastRefMemTurn.java to vectorized NumPy.
 """
 
-import numpy as np
 from dataclasses import dataclass
 from functools import lru_cache
+
+import numpy as np
 
 
 @dataclass
@@ -146,12 +147,19 @@ def compute_ve_total(
     # Try Numba fused kernel first
     try:
         from cenop.optimizations.kernels import compute_ve_total_kernel
+
         out = np.zeros(n_active, dtype=np.float64)
         compute_ve_total_kernel(
-            stored_util, mem_ptr,
+            stored_util,
+            mem_ptr,
             mem_count,
-            work_mem_table if work_mem_table.dtype == np.float64 else work_mem_table.astype(np.float64),
-            active if active.dtype == np.int64 else active.astype(np.int64), out,
+            (
+                work_mem_table
+                if work_mem_table.dtype == np.float64
+                else work_mem_table.astype(np.float64)
+            ),
+            active if active.dtype == np.int64 else active.astype(np.int64),
+            out,
         )
         ve_total[active] = out.astype(np.float32)
         return ve_total
@@ -233,14 +241,25 @@ def compute_attraction_vector(
     # Try Numba fused kernel first
     try:
         from cenop.optimizations.kernels import compute_attraction_kernel
+
         out_x = np.zeros(n_active, dtype=np.float64)
         out_y = np.zeros(n_active, dtype=np.float64)
         compute_attraction_kernel(
-            stored_util, pos_history_x, pos_history_y,
-            mem_ptr, mem_count,
-            current_x, current_y,
-            ref_mem_table if ref_mem_table.dtype == np.float64 else ref_mem_table.astype(np.float64),
-            active if active.dtype == np.int64 else active.astype(np.int64), out_x, out_y,
+            stored_util,
+            pos_history_x,
+            pos_history_y,
+            mem_ptr,
+            mem_count,
+            current_x,
+            current_y,
+            (
+                ref_mem_table
+                if ref_mem_table.dtype == np.float64
+                else ref_mem_table.astype(np.float64)
+            ),
+            active if active.dtype == np.int64 else active.astype(np.int64),
+            out_x,
+            out_y,
         )
         vt_x[active] = out_x.astype(np.float32)
         vt_y[active] = out_y.astype(np.float32)
@@ -348,9 +367,7 @@ def compute_attraction_vector(
         # Mask: skip index 0 (current position), skip entries beyond count, skip zero util
         n_valid = np.minimum(mem_count[active].astype(np.int32), mem_size)
         entry_idx = np.arange(mem_size)[np.newaxis, :]
-        valid = (
-            (entry_idx >= 1) & (entry_idx < n_valid[:, np.newaxis]) & (ordered_util != 0)
-        )
+        valid = (entry_idx >= 1) & (entry_idx < n_valid[:, np.newaxis]) & (ordered_util != 0)
         # Also mask zero-distance entries (same position)
         valid &= dist > 0
 

@@ -11,18 +11,19 @@ import json
 import logging
 import math
 import re
-import numpy as np
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, List, Optional, Tuple
 from enum import Enum
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+import numpy as np
 
 logger = logging.getLogger("CENOP")
 
 from cenop.agents.base import Agent
 from cenop.behavior.sound import (
-    ShipNoise,
     ShipDeterrenceModel,
+    ShipNoise,
     calculate_received_level,
 )
 from cenop.behavior.weston_flux import weston_flux_tl
@@ -39,16 +40,20 @@ except ImportError:
 MAX_DETER_DIST_M = 10_000.0
 
 
-def _compute_tl_percell(d_masked, depths, grain_sizes, salinities,
-                        temperature, beta_hat, alpha_hat):
+def _compute_tl_percell(
+    d_masked, depths, grain_sizes, salinities, temperature, beta_hat, alpha_hat
+):
     """Compute per-porpoise TL using WestonFlux with NODATA fallback."""
     n = len(d_masked)
     tl = np.empty(n, dtype=np.float64)
     for i in range(n):
         if depths[i] > 0.0 and grain_sizes[i] != -9999.0:
             tl[i] = weston_flux_tl(
-                d_masked[i], depths[i], grain_sizes[i],
-                temperature, salinities[i],
+                d_masked[i],
+                depths[i],
+                grain_sizes[i],
+                temperature,
+                salinities[i],
             )
         else:
             d = d_masked[i]
@@ -77,9 +82,13 @@ def _ship_received_level_from_env(source_level, dist_m, depths, grains, sal, par
     """
     if weston:
         tl = _compute_tl_percell(
-            dist_m, depths, grains, sal,
+            dist_m,
+            depths,
+            grains,
+            sal,
             params.weston_flux_default_temperature,
-            params.beta_hat, params.alpha_hat,
+            params.beta_hat,
+            params.alpha_hat,
         )
         rl = source_level - tl
         nodata = (depths <= -9999.0) | (grains <= -9999.0) | (sal <= -9999.0)
@@ -105,13 +114,11 @@ def _ship_received_level(source_level, dist_m, px, py, params, cell_data, month,
         sal = cell_data.get_salinities_vectorized(pos, month)
     else:
         depths = grains = sal = None
-    return _ship_received_level_from_env(
-        source_level, dist_m, depths, grains, sal, params, weston)
+    return _ship_received_level_from_env(source_level, dist_m, depths, grains, sal, params, weston)
 
 
 if TYPE_CHECKING:
     from cenop.parameters.simulation_params import SimulationParameters
-    from cenop.landscape.cell_data import CellData
 
 
 class VesselClass(Enum):
@@ -119,14 +126,15 @@ class VesselClass(Enum):
 
     Extended to 13 JOMOPANS classes (DEPONS 3.2).
     """
+
     BULKER = "bulker"
-    CARGO = "cargo"                    # Maps to CONTAINERSHIP in JOMOPANS
+    CARGO = "cargo"  # Maps to CONTAINERSHIP in JOMOPANS
     CHEMICAL_TANKER = "chemical_tanker"
-    CONTAINER = "container"            # = Java CONTAINERSHIP
+    CONTAINER = "container"  # = Java CONTAINERSHIP
     CRUISE = "cruise"
     DREDGER = "dredger"
     FISHING = "fishing"
-    GOVERNMENT = "government"          # = Java GOVERNMENT_RESEARCH
+    GOVERNMENT = "government"  # = Java GOVERNMENT_RESEARCH
     NAVAL = "naval"
     PASSENGER = "passenger"
     RECREATIONAL = "recreational"
@@ -153,32 +161,29 @@ def _vessel_class_from_type(type_str: str) -> VesselClass:
     raise ValueError(f"Unknown ship type: {type_str!r}")
 
 
-
-
-
 @dataclass
 class Buoy:
     """A waypoint along a ship's route."""
-    
+
     x: float
     y: float
-    speed: float = 10.0    # knots
-    pause_ticks: int = 0   # ticks to pause at this buoy
+    speed: float = 10.0  # knots
+    pause_ticks: int = 0  # ticks to pause at this buoy
 
 
 @dataclass
 class Route:
     """A ship route consisting of buoys (waypoints)."""
-    
+
     name: str = ""
-    buoys: List[Buoy] = field(default_factory=list)
-    
-    def get_buoy(self, index: int) -> Optional[Buoy]:
+    buoys: list[Buoy] = field(default_factory=list)
+
+    def get_buoy(self, index: int) -> Buoy | None:
         """Get buoy at index."""
         if 0 <= index < len(self.buoys):
             return self.buoys[index]
         return None
-        
+
     @property
     def length(self) -> int:
         """Number of buoys in route."""
@@ -189,39 +194,39 @@ class Route:
 class Ship(Agent):
     """
     Ship agent representing a vessel producing noise.
-    
+
     Ships move along routes between buoys and produce noise
     that can deter porpoises using day/night probability models.
-    
+
     Translates from: Ship.java
     """
-    
+
     # Identification
     name: str = ""
-    
+
     # Vessel characteristics
     vessel_type: VesselClass = VesselClass.OTHER
     vessel_length: float = 100.0  # meters
-    
+
     # Timing
     tick_start: int = 0
     tick_end: int = 2147483647
-    
+
     # Route
     route: Route = field(default_factory=Route)
     current_buoy_idx: int = 0
     ticks_paused: int = 0
-    
+
     # Current state
     current_speed: float = 10.0  # knots
     _is_active: bool = False
-    
+
     # Noise model
     noise: ShipNoise = field(default_factory=ShipNoise)
-    
+
     # Deterrence model
     deterrence_model: ShipDeterrenceModel = field(default_factory=ShipDeterrenceModel)
-    
+
     def __post_init__(self):
         """Initialize the noise model (JOMOPANS source level by default)."""
         self.noise = ShipNoise(
@@ -231,8 +236,8 @@ class Ship(Agent):
         )
         self._prev_x = self.x
         self._prev_y = self.y
-    
-    def is_active(self, tick: Optional[int] = None) -> bool:
+
+    def is_active(self, tick: int | None = None) -> bool:
         """Check if ship is present at given tick."""
         if tick is not None:
             return self.tick_start <= tick < self.tick_end
@@ -259,35 +264,35 @@ class Ship(Agent):
         self._prev_x, self._prev_y = self.x, self.y
         # Check if active
         self._is_active = self.tick_start <= current_tick < self.tick_end
-        
+
         if not self._is_active or not self.route.buoys:
             return
-            
+
         # Handle pausing at buoy
         if self.ticks_paused > 0:
             self.ticks_paused -= 1
             return
-            
+
         # Get current and next buoy
         current_buoy = self.route.get_buoy(self.current_buoy_idx)
         if self.route.length == 0:
             return
         next_idx = (self.current_buoy_idx + 1) % self.route.length
         next_buoy = self.route.get_buoy(next_idx)
-        
+
         if current_buoy is None or next_buoy is None:
             return
-            
+
         # Calculate movement towards next buoy
         dx = next_buoy.x - self.x
         dy = next_buoy.y - self.y
         distance = np.sqrt(dx**2 + dy**2)
-        
+
         # Speed in grid cells per tick (knots -> cells/30min)
         # 1 knot = 1.852 km/h = 0.926 km/30min
         # cell_size = 400m = 0.4km
         speed_cells = current_buoy.speed * 1.852 * 0.5 / 0.4
-        
+
         if distance <= speed_cells:
             # Arrived at next buoy
             self.x = next_buoy.x
@@ -300,52 +305,47 @@ class Ship(Agent):
             ratio = speed_cells / distance
             self.x += dx * ratio
             self.y += dy * ratio
-            
+
         # Update heading
         if distance > 0:
             self.heading = np.degrees(np.arctan2(dx, dy))
-            
+
         # Update noise model with current speed
         self.noise.speed = self.current_speed
-        
+
     def get_source_level(self) -> float:
         """Get current source level."""
         return self.noise.get_source_level()
-        
+
     def get_received_level(
         self,
         porpoise_x: float,
         porpoise_y: float,
         alpha: float = 0.0,
         beta: float = 20.0,
-        cell_size: float = 400.0
+        cell_size: float = 400.0,
     ) -> float:
         """
         Calculate received sound level at porpoise position.
-        
+
         Args:
             porpoise_x, porpoise_y: Porpoise position
             alpha: Absorption coefficient
             beta: Spreading loss factor
             cell_size: Cell size in meters
-            
+
         Returns:
             Received level in dB
         """
         dx = (porpoise_x - self.x) * cell_size
         dy = (porpoise_y - self.y) * cell_size
         distance_m = np.sqrt(dx**2 + dy**2)
-        
+
         if distance_m < 1.0:
             distance_m = 1.0
-            
-        return calculate_received_level(
-            self.get_source_level(),
-            distance_m,
-            alpha,
-            beta
-        )
-        
+
+        return calculate_received_level(self.get_source_level(), distance_m, alpha, beta)
+
     def calculate_deterrence(
         self,
         porpoise_x: float,
@@ -355,65 +355,74 @@ class Ship(Agent):
         cell_size: float = 400.0,
         cell_data=None,
         month: int = 1,
-    ) -> Tuple[bool, float, float, float]:
+    ) -> tuple[bool, float, float, float]:
         """
         Calculate deterrence effect on a porpoise.
-        
+
         Uses probabilistic day/night deterrence model from DEPONS.
-        
+
         Args:
             porpoise_x, porpoise_y: Porpoise position
             params: Simulation parameters
             is_day: True for daytime, False for nighttime
             cell_size: Cell size in meters
-            
+
         Returns:
             (should_deter, probability, magnitude, distance_km)
         """
         if not self._is_active:
             return (False, 0.0, 0.0, 0.0)
-            
+
         # Calculate distance
         dx = (porpoise_x - self.x) * cell_size
         dy = (porpoise_y - self.y) * cell_size
         distance_m = np.sqrt(dx**2 + dy**2)
         distance_km = distance_m / 1000.0
-        
+
         # Distance gates — DEPONS Ship.java:220-222 (strict > at floor, <= at cap)
         max_dist_m = min(MAX_DETER_DIST_M, params.deter_max_distance * 1000.0)
         min_dist_m = params.deter_min_distance_ships * 1000.0
         if not (distance_m > min_dist_m and distance_m <= max_dist_m):
             return (False, 0.0, 0.0, distance_km)
-            
+
         # Calculate received level
-        if (params.weston_flux_percell
-                and cell_data is not None
-                and getattr(cell_data, '_sediment', None) is not None):
+        if (
+            params.weston_flux_percell
+            and cell_data is not None
+            and getattr(cell_data, "_sediment", None) is not None
+        ):
             depth = cell_data.get_depth(porpoise_x, porpoise_y)
             grain_size = cell_data.get_sediment(porpoise_x, porpoise_y)
             if depth > 0 and grain_size != -9999.0:
-                salinity = cell_data.get_salinity(
-                    porpoise_x, porpoise_y, month
-                )
+                salinity = cell_data.get_salinity(porpoise_x, porpoise_y, month)
                 sl = self.get_source_level()
                 tl = weston_flux_tl(
-                    distance_m, depth, grain_size,
-                    params.weston_flux_default_temperature, salinity,
+                    distance_m,
+                    depth,
+                    grain_size,
+                    params.weston_flux_default_temperature,
+                    salinity,
                 )
                 spl = sl - tl
             else:
                 spl = self.get_received_level(
-                    porpoise_x, porpoise_y,
-                    params.alpha_hat, params.beta_hat, cell_size,
+                    porpoise_x,
+                    porpoise_y,
+                    params.alpha_hat,
+                    params.beta_hat,
+                    cell_size,
                 )
         else:
             spl = self.get_received_level(
-                porpoise_x, porpoise_y,
-                params.alpha_hat, params.beta_hat, cell_size,
+                porpoise_x,
+                porpoise_y,
+                params.alpha_hat,
+                params.beta_hat,
+                cell_size,
             )
 
         # Tships gate: skip deterrence below minimum RL (Java Ship.java:228)
-        tships = getattr(params, 'deter_ships_min_db', 80.0)
+        tships = getattr(params, "deter_ships_min_db", 80.0)
         # Fast-path: skip array allocation + kernel call when RL is below threshold
         # (the kernel also gates on tships, so this only short-circuits the no-reaction case).
         if spl <= tships:
@@ -425,39 +434,40 @@ class Ship(Agent):
         dm = np.array([max(distance_m, 1.0)], dtype=np.float64)
         u = np.array([np.random.random()], dtype=np.float64)
         _, _, prob, mag, react = self.deterrence_model.deterrence_components(
-            rl, dm, gdx, gdy, is_day, u, getattr(params, "deter_ships_min_db", 80.0))
+            rl, dm, gdx, gdy, is_day, u, getattr(params, "deter_ships_min_db", 80.0)
+        )
         return (bool(react[0]), float(prob[0]), float(mag[0]) if react[0] else 0.0, distance_km)
 
 
 class ShipManager:
     """
     Manages all ships in the simulation.
-    
+
     Handles ship movement, activation, and deterrence calculations.
     """
-    
-    def __init__(self, ships: Optional[List[Ship]] = None):
-        self.ships: List[Ship] = ships or []
+
+    def __init__(self, ships: list[Ship] | None = None):
+        self.ships: list[Ship] = ships or []
         self.enabled: bool = False
-        
+
     def set_enabled(self, enabled: bool) -> None:
         """Enable or disable ship traffic."""
         self.enabled = enabled
-        
+
     def update(self, current_tick: int) -> None:
         """Update all ships for the current tick."""
         if not self.enabled:
             return
         for ship in self.ships:
             ship.update(current_tick)
-            
-    def get_active_ships(self) -> List[Ship]:
+
+    def get_active_ships(self) -> list[Ship]:
         """Get list of currently active ships."""
         if not self.enabled:
             return []
         return [s for s in self.ships if s._is_active]
 
-    def get_deterring_ships(self) -> List[Ship]:
+    def get_deterring_ships(self) -> list[Ship]:
         """Active ships eligible to deter this tick: excludes paused ships and ships with
         no current buoy, mirroring DEPONS Ship.deterPorpoise (Ship.java:197-203)."""
         if not self.enabled:
@@ -473,7 +483,7 @@ class ShipManager:
         cell_size: float = 400.0,
         cell_data=None,
         month: int = 1,
-    ) -> Tuple[float, float, float]:
+    ) -> tuple[float, float, float]:
         """
         Calculate aggregate deterrence from all ships (scalar oracle path).
 
@@ -503,8 +513,11 @@ class ShipManager:
         max_dist_m = min(MAX_DETER_DIST_M, params.deter_max_distance * 1000.0)
         min_dist_m = params.deter_min_distance_ships * 1000.0
         tships = getattr(params, "deter_ships_min_db", 80.0)
-        weston = (params.weston_flux_percell and cell_data is not None
-                  and getattr(cell_data, "_sediment", None) is not None)
+        weston = (
+            params.weston_flux_percell
+            and cell_data is not None
+            and getattr(cell_data, "_sediment", None) is not None
+        )
         for ship in self.get_deterring_ships():
             gdx = porpoise_x - ship.x
             gdy = porpoise_y - ship.y
@@ -513,15 +526,30 @@ class ShipManager:
                 continue
             # Compute RL ONCE; use the same value for selection and the kernel (no double-compute).
             source_level = ship.noise.get_source_level()
-            rl = float(_ship_received_level(
-                source_level, np.array([dist_m]), np.array([porpoise_x]),
-                np.array([porpoise_y]), params, cell_data, month, weston)[0])
+            rl = float(
+                _ship_received_level(
+                    source_level,
+                    np.array([dist_m]),
+                    np.array([porpoise_x]),
+                    np.array([porpoise_y]),
+                    params,
+                    cell_data,
+                    month,
+                    weston,
+                )[0]
+            )
             if rl <= best_rl:
                 continue
             best_rl = rl
             vx, vy, _, mag, react = ship.deterrence_model.deterrence_components(
-                np.array([rl]), np.array([dist_m]), np.array([gdx]), np.array([gdy]),
-                is_day, np.array([np.random.random()]), tships)
+                np.array([rl]),
+                np.array([dist_m]),
+                np.array([gdx]),
+                np.array([gdy]),
+                is_day,
+                np.array([np.random.random()]),
+                tships,
+            )
             best_dx, best_dy = float(vx[0]), float(vy[0])
             best_mag = float(mag[0]) if bool(react[0]) else 0.0
         return (best_mag, best_dx, best_dy)
@@ -530,15 +558,15 @@ class ShipManager:
         self,
         porpoise_x: np.ndarray,
         porpoise_y: np.ndarray,
-        params: "SimulationParameters",
+        params: SimulationParameters,
         is_day: bool = True,
         cell_size: float = 400.0,
         cell_data=None,
         month: int = 1,
         base_seed: int = 0,
         tick: int = 0,
-        _force_u: Optional[float] = None,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+        _force_u: float | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Aggregate DEPONS ship deterrence over active ships with 30-substep
         within-tick interpolation (Ship.java interpolateStep).
 
@@ -582,8 +610,11 @@ class ShipManager:
         min_dist_m = params.deter_min_distance_ships * 1000.0
         max_dist_m = min(MAX_DETER_DIST_M, params.deter_max_distance * 1000.0)
         tships = getattr(params, "deter_ships_min_db", 80.0)
-        weston = (params.weston_flux_percell and cell_data is not None
-                  and getattr(cell_data, "_sediment", None) is not None)
+        weston = (
+            params.weston_flux_percell
+            and cell_data is not None
+            and getattr(cell_data, "_sediment", None) is not None
+        )
 
         # Process ships in ascending id order so the result is invariant to the input
         # ship-list order, including on an exact RL tie (the strict `>` winner test below
@@ -594,18 +625,18 @@ class ShipManager:
         for ship in sorted(active_ships, key=lambda s: int(s.id)):
             prev_x = getattr(ship, "_prev_x", ship.x)
             prev_y = getattr(ship, "_prev_y", ship.y)
-            sub_x = prev_x + (ship.x - prev_x) * t_frac   # (STEPS,)
+            sub_x = prev_x + (ship.x - prev_x) * t_frac  # (STEPS,)
             sub_y = prev_y + (ship.y - prev_y) * t_frac
 
             # Pre-cull: any porpoise in range at some slot lies within max_dist of the
             # swept segment, hence within (max_dist + half segment length) of its midpoint.
             mid_x = 0.5 * (prev_x + ship.x)
             mid_y = 0.5 * (prev_y + ship.y)
-            seg_len_m = float(np.hypot((ship.x - prev_x) * cell_size,
-                                       (ship.y - prev_y) * cell_size))
+            seg_len_m = float(
+                np.hypot((ship.x - prev_x) * cell_size, (ship.y - prev_y) * cell_size)
+            )
             cand_r = max_dist_m + 0.5 * seg_len_m
-            mid_d = np.hypot((porpoise_x - mid_x) * cell_size,
-                             (porpoise_y - mid_y) * cell_size)
+            mid_d = np.hypot((porpoise_x - mid_x) * cell_size, (porpoise_y - mid_y) * cell_size)
             cand = np.flatnonzero(mid_d <= cand_r)
             if cand.size == 0:
                 continue
@@ -620,8 +651,7 @@ class ShipManager:
             # Only the marginal Bernoulli RATE matches DEPONS (global draw order is
             # unreproducible under SoA).
             if _force_u is None:
-                rng = np.random.default_rng(
-                    np.random.SeedSequence([base_seed, tick, int(ship.id)]))
+                rng = np.random.default_rng(np.random.SeedSequence([base_seed, tick, int(ship.id)]))
                 u_all = rng.random((n, STEPS))
             else:
                 u_all = None
@@ -662,14 +692,16 @@ class ShipManager:
             else:
                 depths_ir = grains_ir = sal_ir = None
             rl_ir = _ship_received_level_from_env(
-                source_level, d_ir, depths_ir, grains_ir, sal_ir, params, weston)
+                source_level, d_ir, depths_ir, grains_ir, sal_ir, params, weston
+            )
 
             if _force_u is None:
-                u_ir = u_all[cand, :].ravel()[ir]         # porpoise-major rows
+                u_ir = u_all[cand, :].ravel()[ir]  # porpoise-major rows
             else:
                 u_ir = np.full(ir.size, float(_force_u), dtype=np.float64)
             vx_ir, vy_ir, _, _, _ = ship.deterrence_model.deterrence_components(
-                rl_ir, d_ir, gdx_ir, gdy_ir, is_day, u_ir, tships)
+                rl_ir, d_ir, gdx_ir, gdy_ir, is_day, u_ir, tships
+            )
 
             # Scatter back onto the (m, STEPS) grid: out-of-range slots keep RL = -inf
             # (so the `rl > tships` winner test excludes them, exactly as the explicit
@@ -699,7 +731,7 @@ class ShipManager:
         porpoise_y: np.ndarray,
         params: SimulationParameters,
         is_day: bool = True,
-        cell_size: float = 400.0
+        cell_size: float = 400.0,
     ) -> np.ndarray:
         """
         Compute ambient RL at porpoise positions from active ships.
@@ -731,18 +763,18 @@ class ShipManager:
         nonzero = lin_power > 0
         rl_combined[nonzero] = 10.0 * np.log10(lin_power[nonzero])
         return rl_combined
-        
+
     def load_from_file(
         self,
         routes_file: str,
         ships_file: str,
         utm_origin_x: float = 0.0,
         utm_origin_y: float = 0.0,
-        cell_size: float = 400.0
+        cell_size: float = 400.0,
     ) -> None:
         """
         Load ships and routes from files.
-        
+
         Args:
             routes_file: Path to routes definition file
             ships_file: Path to ships definition file
@@ -751,36 +783,32 @@ class ShipManager:
         """
         # Load routes first
         routes = self._load_routes(routes_file, utm_origin_x, utm_origin_y, cell_size)
-        
+
         # Load ships and assign routes
         self.ships = self._load_ships(ships_file, routes)
-        
+
     def _load_routes(
-        self,
-        filepath: str,
-        utm_origin_x: float,
-        utm_origin_y: float,
-        cell_size: float
+        self, filepath: str, utm_origin_x: float, utm_origin_y: float, cell_size: float
     ) -> dict:
         """Load routes from file."""
         routes = {}
         path = Path(filepath)
-        
+
         if not path.exists():
             logger.warning("Ship route file not found: %s. Ships will have no routes.", filepath)
             return routes
-            
+
         # Parse route file format
         # (simplified - actual format may vary)
         current_route = None
-        
-        with open(path, 'r') as f:
+
+        with open(path) as f:
             for line in f:
                 line = line.strip()
-                if not line or line.startswith('#'):
+                if not line or line.startswith("#"):
                     continue
-                    
-                if line.startswith('ROUTE'):
+
+                if line.startswith("ROUTE"):
                     parts = line.split()
                     route_name = parts[1] if len(parts) > 1 else f"route_{len(routes)}"
                     current_route = Route(name=route_name)
@@ -794,39 +822,42 @@ class ShipManager:
                             speed = float(parts[2]) if len(parts) > 2 else 10.0
                             pause = int(parts[3]) if len(parts) > 3 else 0
                         except ValueError as e:
-                            logger.warning("Route file: invalid value in route '%s' (%s) — skipping waypoint",
-                                         current_route.name, e)
+                            logger.warning(
+                                "Route file: invalid value in route '%s' (%s) — skipping waypoint",
+                                current_route.name,
+                                e,
+                            )
                             continue
-                        
+
                         grid_x = (utm_x - utm_origin_x) / cell_size
                         grid_y = (utm_y - utm_origin_y) / cell_size
-                        
+
                         buoy = Buoy(x=grid_x, y=grid_y, speed=speed, pause_ticks=pause)
                         current_route.buoys.append(buoy)
-                        
+
         return routes
-        
-    def _load_ships(self, filepath: str, routes: dict) -> List[Ship]:
+
+    def _load_ships(self, filepath: str, routes: dict) -> list[Ship]:
         """Load ships from file."""
         ships = []
         path = Path(filepath)
-        
+
         if not path.exists():
             return ships
-            
-        with open(path, 'r') as f:
+
+        with open(path) as f:
             # Skip header
             next(f, None)
-            
+
             for i, line in enumerate(f):
                 line = line.strip()
-                if not line or line.startswith('#'):
+                if not line or line.startswith("#"):
                     continue
-                    
+
                 parts = line.split()
                 if len(parts) < 4:
                     continue
-                    
+
                 try:
                     name = parts[0]
                     vessel_type_str = parts[1].lower()
@@ -835,23 +866,24 @@ class ShipManager:
                 except (ValueError, IndexError) as e:
                     logger.warning("Ships file line %d: invalid data (%s) — skipping", i + 2, e)
                     continue
-                
+
                 # Parse vessel type
                 vessel_type = VesselClass.OTHER
                 for vt in VesselClass:
                     if vt.value == vessel_type_str:
                         vessel_type = vt
                         break
-                        
+
                 # Get route
                 route = routes.get(route_name)
                 if route is None:
                     logger.warning(
                         "Ship '%s' references unknown route '%s' — ship will be stationary.",
-                        name, route_name,
+                        name,
+                        route_name,
                     )
                     route = Route()
-                
+
                 # Optional timing
                 try:
                     tick_start = int(parts[4]) if len(parts) > 4 else 0
@@ -860,17 +892,18 @@ class ShipManager:
                     logger.warning(
                         "Ship '%s': invalid tick timing values (%s) — "
                         "ship will be active for entire simulation.",
-                        name, e,
+                        name,
+                        e,
                     )
                     tick_start = 0
                     tick_end = 2147483647
-                
+
                 # Initial position from first buoy
                 x, y = 0.0, 0.0
                 if route.buoys:
                     x = route.buoys[0].x
                     y = route.buoys[0].y
-                
+
                 ship = Ship(
                     id=i,
                     x=x,
@@ -881,32 +914,32 @@ class ShipManager:
                     vessel_length=length,
                     route=route,
                     tick_start=tick_start,
-                    tick_end=tick_end
+                    tick_end=tick_end,
                 )
                 ships.append(ship)
-                
+
         return ships
-        
+
     @property
     def count(self) -> int:
         """Number of ships."""
         return len(self.ships)
-        
+
     @property
     def active_count(self) -> int:
         """Number of active ships."""
         return len(self.get_active_ships())
-    
+
     def load_from_json(
         self,
         json_file: str,
         utm_origin_x: float = 3976618.0,  # Fallback UTM origin X
         utm_origin_y: float = 3363923.0,  # Fallback UTM origin Y
-        cell_size: float = 400.0
+        cell_size: float = 400.0,
     ) -> None:
         """
         Load ships and routes from DEPONS-format JSON file.
-        
+
         The JSON format matches DEPONS ships.json:
         {
             "routes": [
@@ -918,7 +951,7 @@ class ShipManager:
                 ...
             ]
         }
-        
+
         Args:
             json_file: Path to ships.json file
             utm_origin_x: UTM X origin (XLLCORNER from bathy.asc)
@@ -931,43 +964,46 @@ class ShipManager:
             return
 
         try:
-            with open(path, 'r') as f:
+            with open(path) as f:
                 data = json.load(f)
         except json.JSONDecodeError as e:
             logger.error("Failed to parse ships JSON: %s", e)
             self.enabled = False
             return
-            
+
         # Parse routes
         routes_dict = {}
         for route_data in data.get("routes", []):
             route_name = route_data.get("name", f"route_{len(routes_dict)}")
             buoys = []
-            
+
             for waypoint in route_data.get("route", []):
                 # Convert UTM to grid coordinates
                 utm_x = waypoint.get("x", 0.0)
                 utm_y = waypoint.get("y", 0.0)
-                
+
                 grid_x = (utm_x - utm_origin_x) / cell_size
                 grid_y = (utm_y - utm_origin_y) / cell_size
-                
+
                 # Speed from waypoint JSON; may be overridden per-ship below if ship record supplies an explicit speed.
-                buoy = Buoy(x=grid_x, y=grid_y,
-                            speed=waypoint.get("speed", 10.0),
-                            pause_ticks=waypoint.get("pause", 0))
+                buoy = Buoy(
+                    x=grid_x,
+                    y=grid_y,
+                    speed=waypoint.get("speed", 10.0),
+                    pause_ticks=waypoint.get("pause", 0),
+                )
                 buoys.append(buoy)
-                
+
             routes_dict[route_name] = Route(name=route_name, buoys=buoys)
-            
+
         # Parse ships
         self.ships = []
         for i, ship_data in enumerate(data.get("ships", [])):
             name = ship_data.get("name", f"ship_{i}")
             if ship_data.get("survey"):
                 logger.debug("Ship %s: 'survey' field present but not modeled (ignored)", name)
-            speed = ship_data.get("speed")          # ship-level override; None -> keep buoy speeds
-            impact = ship_data.get("impact")        # explicit SL override; None -> JOMOPANS
+            speed = ship_data.get("speed")  # ship-level override; None -> keep buoy speeds
+            impact = ship_data.get("impact")  # explicit SL override; None -> JOMOPANS
             start_tick = ship_data.get("start", 0)
             route_name = ship_data.get("route", "")
             length_m = ship_data.get("length", 100.0)
@@ -976,13 +1012,15 @@ class ShipManager:
             except (TypeError, ValueError):
                 logger.warning(
                     "Ship '%s': non-numeric length %r — using default 100 m.",
-                    name, length_m,
+                    name,
+                    length_m,
                 )
                 length_m = 100.0
             if length_m <= 0.0:
                 logger.warning(
                     "Ship '%s': non-positive length %s m — using default 100 m.",
-                    name, length_m,
+                    name,
+                    length_m,
                 )
                 length_m = 100.0
 
@@ -1003,9 +1041,16 @@ class ShipManager:
             vessel_type = _vessel_class_from_type(ship_data.get("type") or "Other")
 
             ship = Ship(
-                id=i, x=x, y=y, heading=0.0, name=name,
-                vessel_type=vessel_type, vessel_length=length_m,
-                route=route, tick_start=start_tick, tick_end=2147483647,
+                id=i,
+                x=x,
+                y=y,
+                heading=0.0,
+                name=name,
+                vessel_type=vessel_type,
+                vessel_length=length_m,
+                route=route,
+                tick_start=start_tick,
+                tick_end=2147483647,
             )
 
             # Explicit dB override only when impact is present and positive (CENOP extension;
@@ -1014,5 +1059,7 @@ class ShipManager:
                 ship.noise.base_source_level = impact
 
             self.ships.append(ship)
-            
-        logger.info("Loaded %d ships with %d routes from %s", len(self.ships), len(routes_dict), json_file)
+
+        logger.info(
+            "Loaded %d ships with %d routes from %s", len(self.ships), len(routes_dict), json_file
+        )

@@ -4,9 +4,9 @@ Each function returns a layer dict compatible with MapWidget.update().
 """
 
 import numpy as np
-from shiny_deckgl import icon_layer, scatterplot_layer, bitmap_layer, trips_layer
-from shiny_deckgl.ibm import ICON_ATLAS as IBM_ICON_ATLAS, ICON_MAPPING as IBM_ICON_MAPPING
-
+from shiny_deckgl import bitmap_layer, icon_layer, scatterplot_layer, trips_layer
+from shiny_deckgl.ibm import ICON_ATLAS as IBM_ICON_ATLAS
+from shiny_deckgl.ibm import ICON_MAPPING as IBM_ICON_MAPPING
 
 # -- Porpoise icon: use IBM marine species sprite atlas --
 PORPOISE_ICON_ATLAS = IBM_ICON_ATLAS
@@ -21,8 +21,7 @@ TURBINE_POLE_ATLAS = (
     '<circle cx="24" cy="14" r="3"/></g></svg>'
 )
 TURBINE_POLE_MAPPING = {
-    "pole": {"x": 0, "y": 0, "width": 48, "height": 48,
-             "anchorY": 14, "anchorX": 24},
+    "pole": {"x": 0, "y": 0, "width": 48, "height": 48, "anchorY": 14, "anchorX": 24},
 }
 
 # -- Turbine blade icon --
@@ -33,38 +32,62 @@ TURBINE_BLADE_ATLAS = (
     '<path d="M22 14 L24 1 L26 14 Z"/>'
     '<path d="M25 15.7 L12.7 20.5 L23 12.3 Z"/>'
     '<path d="M25 12.3 L35.3 20.5 L23 15.7 Z"/>'
-    '</g></svg>'
+    "</g></svg>"
 )
 TURBINE_BLADE_MAPPING = {
-    "blade": {"x": 0, "y": 0, "width": 48, "height": 48,
-              "anchorY": 14, "anchorX": 24},
+    "blade": {"x": 0, "y": 0, "width": 48, "height": 48, "anchorY": 14, "anchorX": 24},
 }
 
 
 # -- Standard color ramps for GIS layers (6-stop gradients) --
 GIS_COLOR_SCHEMES = {
     "viridis": [
-        [255, 255, 217], [253, 231, 37], [94, 201, 98],
-        [33, 145, 140], [59, 82, 139], [68, 1, 84],
+        [255, 255, 217],
+        [253, 231, 37],
+        [94, 201, 98],
+        [33, 145, 140],
+        [59, 82, 139],
+        [68, 1, 84],
     ],
     "green": [
-        [8, 48, 20], [20, 100, 40], [40, 160, 60],
-        [80, 200, 80], [140, 230, 100], [200, 255, 140],
+        [8, 48, 20],
+        [20, 100, 40],
+        [40, 160, 60],
+        [80, 200, 80],
+        [140, 230, 100],
+        [200, 255, 140],
     ],
     "blue_white": [
-        [245, 250, 255], [200, 220, 240], [140, 180, 230],
-        [90, 140, 215], [50, 100, 200], [20, 60, 180],
+        [245, 250, 255],
+        [200, 220, 240],
+        [140, 180, 230],
+        [90, 140, 215],
+        [50, 100, 200],
+        [20, 60, 180],
     ],
     "yellow_red": [
-        [255, 255, 178], [254, 204, 92], [253, 141, 60],
-        [240, 59, 32], [189, 0, 38], [128, 0, 38],
+        [255, 255, 178],
+        [254, 204, 92],
+        [253, 141, 60],
+        [240, 59, 32],
+        [189, 0, 38],
+        [128, 0, 38],
     ],
 }
 
 CATEGORICAL_COLORS = [
-    [31,119,180],[255,127,14],[44,160,44],[214,39,40],
-    [148,103,189],[140,86,75],[227,119,194],[127,127,127],
-    [188,189,34],[23,190,207],[174,199,232],[255,187,120],
+    [31, 119, 180],
+    [255, 127, 14],
+    [44, 160, 44],
+    [214, 39, 40],
+    [148, 103, 189],
+    [140, 86, 75],
+    [227, 119, 194],
+    [127, 127, 127],
+    [188, 189, 34],
+    [23, 190, 207],
+    [174, 199, 232],
+    [255, 187, 120],
 ]
 
 
@@ -157,6 +180,7 @@ def array_to_base64_png(rgba: np.ndarray) -> str:
     """
     import base64
     import io
+
     from PIL import Image
 
     # Flip vertically: row 0 = south → PNG bottom row, so PNG top = north
@@ -191,9 +215,7 @@ def build_porpoise_layer(positions: list[dict]) -> dict:
     )
 
 
-def build_porpoise_trails_layer(
-    trails: list[dict], current_time: float = 0
-) -> dict:
+def build_porpoise_trails_layer(trails: list[dict], current_time: float = 0) -> dict:
     """Build porpoise trace layer using TripsLayer with decaying trails.
 
     Each trail is a dict with 'path' (list of [lon, lat, timestamp] coords)
@@ -263,9 +285,9 @@ def build_turbine_pole_layer(turbine_data: list) -> dict:
 
     # Compute size and color server-side (was JS ternary expressions)
     _PHASE_COLORS = {
-        'construction': [255, 70, 40, 220],
-        'operational': [50, 160, 240, 220],
-        'planned': [180, 180, 180, 180],
+        "construction": [255, 70, 40, 220],
+        "operational": [50, 160, 240, 220],
+        "planned": [180, 180, 180, 180],
     }
     for t in turbine_data:
         t["size"] = max(20, min(64, (t.get("radius", 300)) / 15))
@@ -297,9 +319,9 @@ def build_turbine_blade_layer(turbine_data: list, rotation: float = 0) -> dict:
 
     # Compute size, color, and angle server-side
     _PHASE_COLORS = {
-        'construction': [255, 70, 40, 220],
-        'operational': [50, 160, 240, 220],
-        'planned': [180, 180, 180, 180],
+        "construction": [255, 70, 40, 220],
+        "operational": [50, 160, 240, 220],
+        "planned": [180, 180, 180, 180],
     }
     for t in turbine_data:
         t["size"] = max(20, min(64, (t.get("radius", 300)) / 15))
@@ -346,22 +368,25 @@ def compute_grid_bounds(metadata, source_crs: str) -> list[float]:
 
     # Sample along all 4 edges for accurate bbox (edges curve in WGS84)
     n = 100
-    edge_xs = np.concatenate([
-        np.linspace(x_min, x_max, n),  # south edge
-        np.linspace(x_min, x_max, n),  # north edge
-        np.full(n, x_min),             # west edge
-        np.full(n, x_max),             # east edge
-    ])
-    edge_ys = np.concatenate([
-        np.full(n, y_min),
-        np.full(n, y_max),
-        np.linspace(y_min, y_max, n),
-        np.linspace(y_min, y_max, n),
-    ])
+    edge_xs = np.concatenate(
+        [
+            np.linspace(x_min, x_max, n),  # south edge
+            np.linspace(x_min, x_max, n),  # north edge
+            np.full(n, x_min),  # west edge
+            np.full(n, x_max),  # east edge
+        ]
+    )
+    edge_ys = np.concatenate(
+        [
+            np.full(n, y_min),
+            np.full(n, y_max),
+            np.linspace(y_min, y_max, n),
+            np.linspace(y_min, y_max, n),
+        ]
+    )
     lons, lats = transformer.transform(edge_xs, edge_ys)
 
-    return [float(np.min(lons)), float(np.min(lats)),
-            float(np.max(lons)), float(np.max(lats))]
+    return [float(np.min(lons)), float(np.min(lats)), float(np.max(lons)), float(np.max(lats))]
 
 
 def reproject_grid_to_wgs84(
@@ -441,8 +466,9 @@ def reproject_grid_to_wgs84(
     col_nn = np.floor(col_f + 0.5).astype(int)
     row_nn = np.floor(row_f + 0.5).astype(int)
 
-    in_bounds = ((col_nn >= 0) & (col_nn < metadata.ncols) &
-                 (row_nn >= 0) & (row_nn < metadata.nrows))
+    in_bounds = (
+        (col_nn >= 0) & (col_nn < metadata.ncols) & (row_nn >= 0) & (row_nn < metadata.nrows)
+    )
 
     out_data = np.full((out_h, out_w), nodata, dtype=data.dtype)
     # Clip indices to valid range (in_bounds already filters, clip is safety)
@@ -487,7 +513,10 @@ def build_grid_bitmap_layer(
 
     # Reproject to WGS84 pixel space to eliminate projection distortion
     reproj_data, bounds = reproject_grid_to_wgs84(
-        data, metadata, source_crs, nodata=nodata,
+        data,
+        metadata,
+        source_crs,
+        nodata=nodata,
     )
 
     # Generate RGBA image from reprojected data and encode as PNG
@@ -518,10 +547,12 @@ def build_grid_bitmap_layer(
             if not valid[row, col]:
                 continue
             lon, lat = grid_to_lonlat(col, row, metadata, source_crs)
-            tooltip_data.append({
-                "position": [lon, lat],
-                "value": round(val, 4),
-            })
+            tooltip_data.append(
+                {
+                    "position": [lon, lat],
+                    "value": round(val, 4),
+                }
+            )
 
     scatter = scatterplot_layer(
         f"{layer_id}-tooltip",

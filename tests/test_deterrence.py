@@ -26,7 +26,9 @@ class TestTurbineDeterrenceVector:
 
         # Raw displacement is (5.0, 0.0), so dx should be 5.0 * 1.0 * 1.0 = 5.0
         # If normalized, dx would be 1.0 (unit vector)
-        assert dx == pytest.approx(5.0), f"dx should be raw*strength*coeff=5.0, got {dx} (normalized?)"
+        assert dx == pytest.approx(
+            5.0
+        ), f"dx should be raw*strength*coeff=5.0, got {dx} (normalized?)"
         assert dy == pytest.approx(0.0), f"dy should be 0.0, got {dy}"
 
     def test_no_normalization_diagonal(self):
@@ -90,12 +92,12 @@ class TestTurbineDeterrenceVector:
             )
             if exp_dx != 0.0 or exp_dy != 0.0:
                 saw_nonzero = True
-            assert vec_dx[i] == pytest.approx(exp_dx, rel=1e-9, abs=1e-12), (
-                f"porpoise {i}: vectorized dx {vec_dx[i]} != scalar oracle {exp_dx}"
-            )
-            assert vec_dy[i] == pytest.approx(exp_dy, rel=1e-9, abs=1e-12), (
-                f"porpoise {i}: vectorized dy {vec_dy[i]} != scalar oracle {exp_dy}"
-            )
+            assert vec_dx[i] == pytest.approx(
+                exp_dx, rel=1e-9, abs=1e-12
+            ), f"porpoise {i}: vectorized dx {vec_dx[i]} != scalar oracle {exp_dx}"
+            assert vec_dy[i] == pytest.approx(
+                exp_dy, rel=1e-9, abs=1e-12
+            ), f"porpoise {i}: vectorized dy {vec_dy[i]} != scalar oracle {exp_dy}"
         assert saw_nonzero, (
             "parity test is vacuous: no porpoise deterred (all-zero comparison) — "
             "raise impact / lower threshold / move porpoises in-range"
@@ -132,9 +134,9 @@ class TestTurbineDeterrenceVector:
         tl = params.beta_hat * np.log10(dist_m) + params.alpha_hat * dist_m
         strength = (200.0 - tl) - params.deter_threshold
         expected_dx = strength * 5.0 * params.deter_coeff  # GRID units
-        assert vec_dx[0] == pytest.approx(expected_dx, rel=1e-9), (
-            f"grid-unit dx expected {expected_dx}, got {vec_dx[0]}"
-        )
+        assert vec_dx[0] == pytest.approx(
+            expected_dx, rel=1e-9
+        ), f"grid-unit dx expected {expected_dx}, got {vec_dx[0]}"
         # Guard against the metres value (which is cell_size=400x larger).
         assert vec_dx[0] < expected_dx * 2.0, "vector still in metres (400x too large)?"
         assert vec_dy[0] == pytest.approx(0.0, abs=1e-9)
@@ -143,15 +145,19 @@ class TestTurbineDeterrenceVector:
         """Ships use DEPONS unit-vector x magnitude (NOT raw displacement x deter_coeff)."""
         from cenop.agents.ship import Ship, ShipManager, VesselClass
         from cenop.parameters.simulation_params import SimulationParameters
+
         params = SimulationParameters()
         s = Ship(id=1, x=50.0, y=50.0, vessel_type=VesselClass.CARGO)
-        s._is_active = True; s.noise.base_source_level = 200.0
-        mgr = ShipManager([s]); mgr.enabled = True
-        px = np.array([50.0 + 2000.0 / 400.0]); py = np.array([50.0])  # 2 km east
+        s._is_active = True
+        s.noise.base_source_level = 200.0
+        mgr = ShipManager([s])
+        mgr.enabled = True
+        px = np.array([50.0 + 2000.0 / 400.0])
+        py = np.array([50.0])  # 2 km east
         dx, dy = mgr.calculate_aggregate_deterrence_vectorized(px, py, params, _force_u=0.0)
-        assert dx[0] != 0.0          # forced reaction -> non-zero
+        assert dx[0] != 0.0  # forced reaction -> non-zero
         assert 0.0 < abs(dx[0]) < 5.0  # unit-vector x mag, NOT raw 5-cell displacement
-        assert dx[0] > 0.0           # pushed east, away from ship
+        assert dx[0] > 0.0  # pushed east, away from ship
 
 
 class TestTLParameterDefaults:
@@ -163,19 +169,24 @@ class TestTLParameterDefaults:
     def test_kattegat_calibrated_values(self):
         """Verify Phase 1 parameter values are preserved."""
         from cenop.parameters.simulation_params import SimulationParameters
+
         params = SimulationParameters()
 
         # Sound propagation (Kattegat-calibrated, DEPONS 3.2)
-        assert params.alpha_hat == pytest.approx(0.00027), \
-            f"alpha_hat should be 0.00027, got {params.alpha_hat}"
-        assert params.beta_hat == pytest.approx(14.72), \
-            f"beta_hat should be 14.72, got {params.beta_hat}"
+        assert params.alpha_hat == pytest.approx(
+            0.00027
+        ), f"alpha_hat should be 0.00027, got {params.alpha_hat}"
+        assert params.beta_hat == pytest.approx(
+            14.72
+        ), f"beta_hat should be 14.72, got {params.beta_hat}"
 
         # Deterrence (Kattegat-calibrated, DEPONS 3.2)
-        assert params.deter_coeff == pytest.approx(0.012), \
-            f"deter_coeff should be 0.012, got {params.deter_coeff}"
-        assert params.deter_threshold == pytest.approx(152.0), \
-            f"deter_threshold should be 152.0, got {params.deter_threshold}"
+        assert params.deter_coeff == pytest.approx(
+            0.012
+        ), f"deter_coeff should be 0.012, got {params.deter_coeff}"
+        assert params.deter_threshold == pytest.approx(
+            152.0
+        ), f"deter_threshold should be 152.0, got {params.deter_threshold}"
 
     def test_deter_max_distance_is_1000km(self):
         """deter_max_distance should be 1000.0 km (parameters.xml dmax_deter).
@@ -189,10 +200,12 @@ class TestTLParameterDefaults:
         overwritten in every code path. CENOP stores km and converts with *1000 at use.
         """
         from cenop.parameters.simulation_params import SimulationParameters
+
         params = SimulationParameters()
 
-        assert params.deter_max_distance == pytest.approx(1000.0), \
-            f"deter_max_distance should be 1000.0 km, got {params.deter_max_distance}"
+        assert params.deter_max_distance == pytest.approx(
+            1000.0
+        ), f"deter_max_distance should be 1000.0 km, got {params.deter_max_distance}"
 
 
 class TestShipDeterrenceStandardization:
@@ -210,20 +223,22 @@ class TestShipDeterrenceStandardization:
 
         # Two distances that are equidistant from the standardization mean
         # should produce symmetric changes in probability
-        dist_below_mean = 3.0   # km
-        dist_above_mean = 8.6   # km (roughly symmetric around mean 5.8)
+        dist_below_mean = 3.0  # km
+        dist_above_mean = 8.6  # km (roughly symmetric around mean 5.8)
         noise_db = 80.0
 
         prob_below = model.calculate_deterrence_probability(noise_db, dist_below_mean, is_day=True)
         prob_above = model.calculate_deterrence_probability(noise_db, dist_above_mean, is_day=True)
 
         # Closer should have higher deterrence probability
-        assert prob_below > prob_above, \
-            f"Closer distance should have higher prob: {prob_below} vs {prob_above}"
+        assert (
+            prob_below > prob_above
+        ), f"Closer distance should have higher prob: {prob_below} vs {prob_above}"
 
         # With standardization, the probabilities should be meaningful (not ~0 or ~1 for typical inputs)
-        assert 0.01 < prob_below < 0.99, \
-            f"Day probability at 3km, 80dB should be in meaningful range, got {prob_below}"
+        assert (
+            0.01 < prob_below < 0.99
+        ), f"Day probability at 3km, 80dB should be in meaningful range, got {prob_below}"
 
     def test_tships_minimum_gate(self):
         """Ship deterrence should be skipped when RL <= Tships (80 dB).
@@ -235,10 +250,12 @@ class TestShipDeterrenceStandardization:
         unit-test default, not the production runtime value.
         """
         from cenop.parameters.simulation_params import SimulationParameters
+
         params = SimulationParameters()
-        assert hasattr(params, 'deter_ships_min_db'), "Missing deter_ships_min_db parameter"
-        assert params.deter_ships_min_db == pytest.approx(80.0), \
-            f"deter_ships_min_db should be 80.0, got {params.deter_ships_min_db}"
+        assert hasattr(params, "deter_ships_min_db"), "Missing deter_ships_min_db parameter"
+        assert params.deter_ships_min_db == pytest.approx(
+            80.0
+        ), f"deter_ships_min_db should be 80.0, got {params.deter_ships_min_db}"
 
     def test_ship_deterrence_gated_below_tships(self):
         """Ship with RL below Tships (80 dB) should produce zero deterrence."""
@@ -254,8 +271,7 @@ class TestShipDeterrenceStandardization:
 
         # Porpoise at extreme distance
         result = s.calculate_deterrence(
-            porpoise_x=1000.0, porpoise_y=1000.0,
-            params=params, is_day=True, cell_size=400.0
+            porpoise_x=1000.0, porpoise_y=1000.0, params=params, is_day=True, cell_size=400.0
         )
         should_deter, prob, magnitude, dist_km = result
 
@@ -291,14 +307,16 @@ class TestPhase5Integration:
     def test_deterrence_parameters_consistent(self):
         """All deterrence parameters should be internally consistent."""
         from cenop.parameters.simulation_params import SimulationParameters
+
         params = SimulationParameters()
 
         # Max distance matches parameters.xml dmax_deter = 1000 km
-        assert params.deter_max_distance == pytest.approx(1000.0), \
-            f"deter_max_distance={params.deter_max_distance} should be 1000.0 km"
+        assert params.deter_max_distance == pytest.approx(
+            1000.0
+        ), f"deter_max_distance={params.deter_max_distance} should be 1000.0 km"
 
         # Tships gate should be set
-        assert hasattr(params, 'deter_ships_min_db')
+        assert hasattr(params, "deter_ships_min_db")
         assert params.deter_ships_min_db > 0
 
         # Deterrence coeff should be positive
@@ -314,12 +332,14 @@ class TestPhase5Integration:
     def test_weston_flux_importable(self):
         """WestonFlux module should be importable and functional."""
         from cenop.behavior.weston_flux import weston_flux_tl
+
         tl = weston_flux_tl(1000.0, 30.0, 2.0, 10.0, 35.0)
         assert tl > 0
 
     def test_jomopans_importable(self):
         """JOMOPANS module should be importable and functional."""
-        from cenop.behavior.jomopans_spl import jomopans_spl
         from cenop.agents.ship import VesselClass
+        from cenop.behavior.jomopans_spl import jomopans_spl
+
         spl = jomopans_spl(VesselClass.CARGO, 10.0, 100.0)
         assert spl > 0

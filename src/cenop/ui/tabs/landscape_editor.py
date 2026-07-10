@@ -6,7 +6,7 @@ using a shiny-deckgl MapWidget.
 """
 
 from shiny import ui
-from shiny_deckgl import MapWidget, CARTO_POSITRON, fullscreen_widget
+from shiny_deckgl import CARTO_POSITRON, MapWidget
 
 # Module-level widget instance — shared between UI and server
 gis_map = MapWidget(
@@ -35,7 +35,8 @@ def landscape_editor_tab():
             ui.card(
                 ui.card_header("Layer Controls"),
                 ui.input_select(
-                    "gis_layer", "Data Layer",
+                    "gis_layer",
+                    "Data Layer",
                     choices={
                         "bathymetry": "Bathymetry (Depth)",
                         "dist_to_coast": "Distance to Coast",
@@ -45,22 +46,21 @@ def landscape_editor_tab():
                         "blocks": "Blocks",
                         "food_prob": "Food Probability",
                     },
-                    selected="bathymetry"
+                    selected="bathymetry",
                 ),
                 ui.output_ui("gis_month_control"),
-                ui.input_action_button("gis_load", "Load Layer",
-                                       class_="btn-primary w-100 mt-2"),
+                ui.input_action_button("gis_load", "Load Layer", class_="btn-primary w-100 mt-2"),
                 ui.tags.hr(),
                 ui.tags.h6("Layer Statistics"),
                 ui.output_ui("gis_layer_stats"),
-                height="auto"
+                height="auto",
             ),
             # Right: map
             ui.card(
                 ui.card_header("Spatial Viewer"),
                 gis_map.ui(width="100%", height="560px"),
-                height="620px"
+                height="620px",
             ),
-            col_widths=[3, 9]
-        )
+            col_widths=[3, 9],
+        ),
     )

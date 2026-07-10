@@ -9,6 +9,7 @@ reference speeds, damping coefficients, and cargo hump flags.
 """
 
 import math
+
 from cenop.agents.ship import VesselClass
 
 # Default frequency band: 10^(12/10) * 1000 Hz ≈ 15848.93 Hz
@@ -17,7 +18,7 @@ DEFAULT_BAND = 12
 # Reference vessel speeds (knots) per class — Java lookupVC()
 _VC_SPEED = {
     VesselClass.BULKER: 13.9,
-    VesselClass.CARGO: 18.0,       # Same as CONTAINERSHIP
+    VesselClass.CARGO: 18.0,  # Same as CONTAINERSHIP
     VesselClass.CHEMICAL_TANKER: 12.4,  # Same as TANKER
     VesselClass.CONTAINER: 18.0,
     VesselClass.CRUISE: 17.1,
@@ -111,14 +112,14 @@ def jomopans_spl(
     l_val = (600.0 / d_vc) if lf_hump else (480.0 / d_vc)
 
     # Spectral density
-    sp = (i_val
-          - 10.0 * (j_val + 2) * math.log10(l_val)
-          + 5.0 * j_val * math.log10(frequency)
-          - 10.0 * math.log10(
-              (1 - (frequency / l_val) ** (0.5 * (j_val + 2))) ** 2 + k_val ** 2
-          )
-          + 60.0 * math.log10(speed_knots / d_vc)
-          + 20.0 * math.log10(length_eff / L_REF))
+    sp = (
+        i_val
+        - 10.0 * (j_val + 2) * math.log10(l_val)
+        + 5.0 * j_val * math.log10(frequency)
+        - 10.0 * math.log10((1 - (frequency / l_val) ** (0.5 * (j_val + 2))) ** 2 + k_val**2)
+        + 60.0 * math.log10(speed_knots / d_vc)
+        + 20.0 * math.log10(length_eff / L_REF)
+    )
 
     # Convert spectral density to decidecade band level
     return sp + 10.0 * math.log10(0.231 * frequency)

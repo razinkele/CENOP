@@ -1,25 +1,26 @@
 # Ensure the local `src` package dir is available during tests
 # This helps pytest discover `cenop` when running tests without an editable install.
-import sys
 import os
+import sys
 import typing
 
 # Patch coverage.types for numba compatibility (numba 0.64 expects attrs
 # that were renamed/removed in newer coverage versions).
 try:
     import coverage.types as _ct
-    if not hasattr(_ct, 'Tracer') and hasattr(_ct, 'TracerCore'):
+
+    if not hasattr(_ct, "Tracer") and hasattr(_ct, "TracerCore"):
         _ct.Tracer = _ct.TracerCore
-    if not hasattr(_ct, 'TTracer') and hasattr(_ct, 'TracerCore'):
+    if not hasattr(_ct, "TTracer") and hasattr(_ct, "TracerCore"):
         _ct.TTracer = _ct.TracerCore
-    for _attr in ('TShouldTraceFn', 'TShouldStartContextFn'):
+    for _attr in ("TShouldTraceFn", "TShouldStartContextFn"):
         if not hasattr(_ct, _attr):
             setattr(_ct, _attr, typing.Any)
 except ImportError:
     pass
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-SRC = os.path.join(ROOT, 'src')
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+SRC = os.path.join(ROOT, "src")
 if SRC not in sys.path:
     sys.path.insert(0, SRC)
 

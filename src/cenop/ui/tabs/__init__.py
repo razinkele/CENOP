@@ -5,11 +5,11 @@ Contains all tab UI definitions.
 """
 
 from .dashboard import dashboard_tab
-from .settings import settings_tab
-from .population import population_tab
 from .disturbance import disturbance_tab
 from .export import export_tab
 from .landscape_editor import landscape_editor_tab
+from .population import population_tab
+from .settings import settings_tab
 
 __all__ = [
     "dashboard_tab",
@@ -17,5 +17,5 @@ __all__ = [
     "population_tab",
     "disturbance_tab",
     "landscape_editor_tab",
-    "export_tab"
+    "export_tab",
 ]

@@ -38,28 +38,25 @@ Factory Functions:
 """
 
 from cenop.movement.base import (
-    MovementModule,
-    MovementMode,
-    MovementState,
     EnvironmentContext,
+    MovementMode,
+    MovementModule,
     MovementResult,
+    MovementState,
 )
-
 from cenop.movement.depons_crw import (
     DEPONSCRWMovement,
     DEPONSCRWMovementVectorized,
 )
-
-from cenop.movement.jasmine_physics import (
-    JASMINEPhysicsMovement,
-    JASMINEMovementState,
-    JASMINEEnvironmentContext,
-)
-
 from cenop.movement.hybrid import (
     HybridMovementSelector,
     HybridStrategy,
     create_movement_module,
+)
+from cenop.movement.jasmine_physics import (
+    JASMINEEnvironmentContext,
+    JASMINEMovementState,
+    JASMINEPhysicsMovement,
 )
 
 __all__ = [

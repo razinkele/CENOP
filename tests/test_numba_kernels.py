@@ -1,4 +1,5 @@
 """Tests for Numba-accelerated simulation kernels."""
+
 import numpy as np
 import pytest
 
@@ -8,6 +9,7 @@ class TestReflectBoundariesKernel:
 
     def test_no_reflection_needed(self):
         from cenop.optimizations.kernels import reflect_boundaries_kernel
+
         new_x = np.array([5.0, 10.0, 15.0], dtype=np.float64)
         new_y = np.array([5.0, 10.0, 15.0], dtype=np.float64)
         dx = np.array([1.0, 1.0, 1.0], dtype=np.float64)
@@ -19,6 +21,7 @@ class TestReflectBoundariesKernel:
 
     def test_reflect_below_zero(self):
         from cenop.optimizations.kernels import reflect_boundaries_kernel
+
         new_x = np.array([-3.0], dtype=np.float64)
         new_y = np.array([-5.0], dtype=np.float64)
         dx = np.array([-1.0], dtype=np.float64)
@@ -32,6 +35,7 @@ class TestReflectBoundariesKernel:
 
     def test_reflect_above_max(self):
         from cenop.optimizations.kernels import reflect_boundaries_kernel
+
         new_x = np.array([22.0], dtype=np.float64)
         new_y = np.array([25.0], dtype=np.float64)
         dx = np.array([1.0], dtype=np.float64)
@@ -45,6 +49,7 @@ class TestReflectBoundariesKernel:
 
     def test_mask_skips_inactive(self):
         from cenop.optimizations.kernels import reflect_boundaries_kernel
+
         new_x = np.array([-3.0, -3.0], dtype=np.float64)
         new_y = np.array([5.0, 5.0], dtype=np.float64)
         dx = np.array([-1.0, -1.0], dtype=np.float64)
@@ -60,8 +65,9 @@ class TestReflectBoundariesKernel:
         assert dx[1] == pytest.approx(-1.0)
 
     def test_equivalence_with_numpy_version(self):
-        from cenop.optimizations.kernels import reflect_boundaries_kernel
         from cenop.agents.population import PorpoisePopulation as Population
+        from cenop.optimizations.kernels import reflect_boundaries_kernel
+
         rng = np.random.default_rng(42)
         n = 200
         new_x_nb = rng.uniform(-5, 25, n).astype(np.float64)
@@ -100,12 +106,27 @@ class TestCRWAngleStepKernel:
         out_log_mov = np.zeros(n, dtype=np.float64)
 
         crw_angle_step_kernel(
-            prev_angle, prev_log_mov, depths, salinity,
-            rand_angle, rand_len, mask,
-            out_pres_angle, out_log_mov,
-            0.0, 0.0, 0.0, 1.0,  # angle params (b0=0, b1=0, b2=0, b3=1)
-            0.5, 0.0, 0.0, 3.0,  # step params
-            0.0, 4.0, 0.0, 1.0,  # random distribution params
+            prev_angle,
+            prev_log_mov,
+            depths,
+            salinity,
+            rand_angle,
+            rand_len,
+            mask,
+            out_pres_angle,
+            out_log_mov,
+            0.0,
+            0.0,
+            0.0,
+            1.0,  # angle params (b0=0, b1=0, b2=0, b3=1)
+            0.5,
+            0.0,
+            0.0,
+            3.0,  # step params
+            0.0,
+            4.0,
+            0.0,
+            1.0,  # random distribution params
             0.00001,
         )
 
@@ -132,18 +153,34 @@ class TestCRWAngleStepKernel:
 
         np.random.seed(42)  # Seed so retries are deterministic
         crw_angle_step_kernel(
-            prev_angle, prev_log_mov, depths, salinity,
-            rand_angle, rand_len, mask,
-            out_pres_angle, out_log_mov,
-            0.0, 0.0, 0.0, 1.0,
-            0.5, 0.0, 0.0, 3.0,
-            0.0, 4.0, 0.0, 1.0,
+            prev_angle,
+            prev_log_mov,
+            depths,
+            salinity,
+            rand_angle,
+            rand_len,
+            mask,
+            out_pres_angle,
+            out_log_mov,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.5,
+            0.0,
+            0.0,
+            3.0,
+            0.0,
+            4.0,
+            0.0,
+            1.0,
             0.00001,
         )
 
         # After rejection sampling, angle should be within valid range
-        assert abs(out_pres_angle[0]) <= 180.0, \
-            f"pres_angle should be <= 180 after rejection, got {out_pres_angle[0]}"
+        assert (
+            abs(out_pres_angle[0]) <= 180.0
+        ), f"pres_angle should be <= 180 after rejection, got {out_pres_angle[0]}"
 
     def test_step_length_rejection(self):
         """Step exceeding max_mov should be resampled or clamped."""
@@ -162,17 +199,33 @@ class TestCRWAngleStepKernel:
 
         np.random.seed(42)
         crw_angle_step_kernel(
-            prev_angle, prev_log_mov, depths, salinity,
-            rand_angle, rand_len, mask,
-            out_pres_angle, out_log_mov,
-            0.0, 0.0, 0.0, 1.0,
-            0.5, 0.0, 0.0, 3.0,
-            0.0, 4.0, 0.0, 1.0,
+            prev_angle,
+            prev_log_mov,
+            depths,
+            salinity,
+            rand_angle,
+            rand_len,
+            mask,
+            out_pres_angle,
+            out_log_mov,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.5,
+            0.0,
+            0.0,
+            3.0,
+            0.0,
+            4.0,
+            0.0,
+            1.0,
             0.00001,
         )
 
-        assert out_log_mov[0] <= 3.0, \
-            f"log_mov should be <= max_mov after rejection, got {out_log_mov[0]}"
+        assert (
+            out_log_mov[0] <= 3.0
+        ), f"log_mov should be <= max_mov after rejection, got {out_log_mov[0]}"
 
     def test_mask_skips_inactive(self):
         """Masked-out agents should have zero angle and unchanged log_mov."""
@@ -190,24 +243,40 @@ class TestCRWAngleStepKernel:
         out_log_mov = np.zeros(n, dtype=np.float64)
 
         crw_angle_step_kernel(
-            prev_angle, prev_log_mov, depths, salinity,
-            rand_angle, rand_len, mask,
-            out_pres_angle, out_log_mov,
-            0.0, 0.0, 0.0, 1.0,
-            0.5, 0.0, 0.0, 3.0,
-            0.0, 4.0, 0.0, 1.0,
+            prev_angle,
+            prev_log_mov,
+            depths,
+            salinity,
+            rand_angle,
+            rand_len,
+            mask,
+            out_pres_angle,
+            out_log_mov,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.5,
+            0.0,
+            0.0,
+            3.0,
+            0.0,
+            4.0,
+            0.0,
+            1.0,
             0.00001,
         )
 
         assert out_pres_angle[0] != 0.0  # Active agent computed
         assert out_pres_angle[1] == 0.0  # Masked agent zero
-        assert out_log_mov[1] == 2.0     # Unchanged
+        assert out_log_mov[1] == 2.0  # Unchanged
 
 
 def test_crw_loop2_with_correct_m():
     """With m=0.00001, loop 2 should never fire (prevMov > m for all normal movement)."""
-    from cenop.optimizations.kernels import crw_angle_step_kernel
     import numpy as np
+
+    from cenop.optimizations.kernels import crw_angle_step_kernel
 
     n = 100
     rng = np.random.default_rng(42)
@@ -222,11 +291,27 @@ def test_crw_loop2_with_correct_m():
     out_log_mov = np.zeros(n)
 
     crw_angle_step_kernel(
-        prev_angle, prev_log_mov, depths, salinity,
-        rand_angle, rand_len, mask, out_pres_angle, out_log_mov,
-        -0.024, -0.008, 0.93, -14.0,
-        0.35, 0.0005, -0.02, 1.73,
-        0.0, 4.0, 1.25, 0.15,
+        prev_angle,
+        prev_log_mov,
+        depths,
+        salinity,
+        rand_angle,
+        rand_len,
+        mask,
+        out_pres_angle,
+        out_log_mov,
+        -0.024,
+        -0.008,
+        0.93,
+        -14.0,
+        0.35,
+        0.0005,
+        -0.02,
+        1.73,
+        0.0,
+        4.0,
+        1.25,
+        0.15,
         0.00001,
     )
     assert np.all(np.abs(out_pres_angle[mask]) <= 180.0)
@@ -235,8 +320,9 @@ def test_crw_loop2_with_correct_m():
 
 def test_crw_loop2_fires_with_high_m():
     """With m=1000 (high), loop 2 fires for all agents. Verify angles are reduced below 180."""
-    from cenop.optimizations.kernels import crw_angle_step_kernel
     import numpy as np
+
+    from cenop.optimizations.kernels import crw_angle_step_kernel
 
     n = 50
     rng = np.random.default_rng(99)
@@ -251,16 +337,32 @@ def test_crw_loop2_fires_with_high_m():
     out_log_mov = np.zeros(n)
 
     crw_angle_step_kernel(
-        prev_angle, prev_log_mov, depths, salinity,
-        rand_angle, rand_len, mask, out_pres_angle, out_log_mov,
-        -0.024, -0.008, 0.93, -14.0,
-        0.35, 0.0005, -0.02, 0.5,
-        0.0, 4.0, 1.25, 0.15,
+        prev_angle,
+        prev_log_mov,
+        depths,
+        salinity,
+        rand_angle,
+        rand_len,
+        mask,
+        out_pres_angle,
+        out_log_mov,
+        -0.024,
+        -0.008,
+        0.93,
+        -14.0,
+        0.35,
+        0.0005,
+        -0.02,
+        0.5,
+        0.0,
+        4.0,
+        1.25,
+        0.15,
         1000.0,
     )
-    assert np.all(np.abs(out_pres_angle[mask]) <= 180.0), (
-        f"Loop 2 failed to reduce angles: max={np.max(np.abs(out_pres_angle))}"
-    )
+    assert np.all(
+        np.abs(out_pres_angle[mask]) <= 180.0
+    ), f"Loop 2 failed to reduce angles: max={np.max(np.abs(out_pres_angle))}"
     assert np.all(np.isfinite(out_pres_angle))
 
 
@@ -284,8 +386,18 @@ class TestTurnPositionKernel:
         out_yi = np.zeros(n, dtype=np.int32)
 
         turn_position_kernel(
-            x, y, heading, step_dist, 90.0, 20, 20,
-            out_x, out_y, out_heading, out_xi, out_yi,
+            x,
+            y,
+            heading,
+            step_dist,
+            90.0,
+            20,
+            20,
+            out_x,
+            out_y,
+            out_heading,
+            out_xi,
+            out_yi,
         )
 
         # heading = (0 + 90) % 360 = 90, rads = pi/2
@@ -312,8 +424,18 @@ class TestTurnPositionKernel:
 
         # Turn 90 degrees: dx = sin(pi/2)*4 = 4, new_x = 22 > 19 (max)
         turn_position_kernel(
-            x, y, heading, step_dist, 90.0, 20, 20,
-            out_x, out_y, out_heading, out_xi, out_yi,
+            x,
+            y,
+            heading,
+            step_dist,
+            90.0,
+            20,
+            20,
+            out_x,
+            out_y,
+            out_heading,
+            out_xi,
+            out_yi,
         )
 
         # Should be reflected: 2*19 - 22 = 16
@@ -337,8 +459,18 @@ class TestTurnPositionKernelIndices:
         out_xi = np.zeros(n, dtype=np.int32)
         out_yi = np.zeros(n, dtype=np.int32)
         turn_position_kernel(
-            x, y, heading, step, 90.0, 50, 50,
-            out_x, out_y, out_h, out_xi, out_yi,
+            x,
+            y,
+            heading,
+            step,
+            90.0,
+            50,
+            50,
+            out_x,
+            out_y,
+            out_h,
+            out_xi,
+            out_yi,
         )
         assert out_xi.dtype == np.int32
         assert out_yi.dtype == np.int32
@@ -359,8 +491,18 @@ class TestTurnPositionKernelIndices:
         out_xi = np.zeros(n, dtype=np.int32)
         out_yi = np.zeros(n, dtype=np.int32)
         turn_position_kernel(
-            x, y, heading, step, 0.0, 50, 50,
-            out_x, out_y, out_h, out_xi, out_yi,
+            x,
+            y,
+            heading,
+            step,
+            0.0,
+            50,
+            50,
+            out_x,
+            out_y,
+            out_h,
+            out_xi,
+            out_yi,
         )
         assert out_xi[0] == int(out_x[0])
         assert out_yi[0] == int(out_y[0])
@@ -402,8 +544,9 @@ class TestEatFoodKernel:
 
         # Total demand: 60 + 60 = 120, available: 100 (full cell food)
         # Each gets proportional share: 60/120 * 100 = 50.0
-        assert food_eaten[0] == pytest.approx(food_eaten[1], abs=0.1), \
-            "Equal-fraction agents should get equal shares (proportional)"
+        assert food_eaten[0] == pytest.approx(
+            food_eaten[1], abs=0.1
+        ), "Equal-fraction agents should get equal shares (proportional)"
         assert food_eaten[0] + food_eaten[1] == pytest.approx(100.0, abs=0.1)
         # Grid floors to min_food after depletion
         assert food_grid[0, 0] == pytest.approx(0.01, abs=0.01)
@@ -447,8 +590,9 @@ class TestEatFoodKernel:
         eat_food_kernel(grid2, x, y, frac_rev, eaten_rev, 0.01, dg2)
 
         # Agent asking for 0.7 should get same amount in both orderings
-        assert eaten_fwd[0] == pytest.approx(eaten_rev[1], abs=0.01), \
-            "Proportional sharing should be order-independent"
+        assert eaten_fwd[0] == pytest.approx(
+            eaten_rev[1], abs=0.01
+        ), "Proportional sharing should be order-independent"
         assert grid1[0, 0] == pytest.approx(grid2[0, 0], abs=0.01)
 
     def test_minimum_food_floor(self):
@@ -484,8 +628,17 @@ class TestDEPONSBmrCostKernel:
         out_cost = np.zeros(n, dtype=np.float32)
 
         depons_bmr_cost_kernel(
-            speed, scaling, is_lactating, is_disturbed, deter_magnitude,
-            mask, out_cost, 4.5, 1.4, 0.0001, 0.002,
+            speed,
+            scaling,
+            is_lactating,
+            is_disturbed,
+            deter_magnitude,
+            mask,
+            out_cost,
+            4.5,
+            1.4,
+            0.0001,
+            0.002,
         )
 
         assert out_cost[0] > 0
@@ -505,8 +658,17 @@ class TestDEPONSBmrCostKernel:
         out_cost = np.zeros(n, dtype=np.float32)
 
         depons_bmr_cost_kernel(
-            speed, scaling, is_lactating, is_disturbed, deter_magnitude,
-            mask, out_cost, 4.5, 1.4, 0.0001, 0.002,
+            speed,
+            scaling,
+            is_lactating,
+            is_disturbed,
+            deter_magnitude,
+            mask,
+            out_cost,
+            4.5,
+            1.4,
+            0.0001,
+            0.002,
         )
 
         assert out_cost[0] > 0
@@ -515,8 +677,8 @@ class TestDEPONSBmrCostKernel:
     def test_equivalence_with_python(self):
         """Numba kernel must match DEPONSEnergyModule.compute_bmr_cost output."""
         from cenop.optimizations.kernels import depons_bmr_cost_kernel
-        from cenop.physiology.energy_budget import DEPONSEnergyModule, EnergyState, EnergyContext
         from cenop.parameters.simulation_params import SimulationParameters
+        from cenop.physiology.energy_budget import DEPONSEnergyModule, EnergyContext, EnergyState
 
         n = 50
         rng = np.random.default_rng(42)
@@ -551,8 +713,15 @@ class TestDEPONSBmrCostKernel:
         # Numba path
         nb_cost = np.zeros(n, dtype=np.float32)
         depons_bmr_cost_kernel(
-            speed, scaling, is_lact, is_dist, deter_mag,
-            mask, nb_cost, module.e_use_per_30_min, module.e_lact,
+            speed,
+            scaling,
+            is_lact,
+            is_dist,
+            deter_mag,
+            mask,
+            nb_cost,
+            module.e_use_per_30_min,
+            module.e_lact,
             module.e_use_per_km,
             0.002 if module.jasmine_disturbance_energy else 0.0,
         )
@@ -581,8 +750,9 @@ class TestSocialAccumulateKernel:
         uy_total = np.zeros(count, dtype=np.float64)
         sw_total = np.zeros(count, dtype=np.float64)
 
-        social_accumulate_kernel(idx_i, idx_j, dx_ij, dy_ij, dist, p_i, p_j,
-                                ux_total, uy_total, sw_total)
+        social_accumulate_kernel(
+            idx_i, idx_j, dx_ij, dy_ij, dist, p_i, p_j, ux_total, uy_total, sw_total
+        )
 
         # Agent 0 hears agent 1: ux += (1/1)*0.8 = 0.8
         assert ux_total[0] == pytest.approx(0.8, abs=0.01)
@@ -614,8 +784,9 @@ class TestSocialAccumulateKernel:
         uy_total = np.zeros(count, dtype=np.float64)
         sw_total = np.zeros(count, dtype=np.float64)
 
-        social_accumulate_kernel(idx_i, idx_j, dx_ij, dy_ij, dist, p_i, p_j,
-                                ux_total, uy_total, sw_total)
+        social_accumulate_kernel(
+            idx_i, idx_j, dx_ij, dy_ij, dist, p_i, p_j, ux_total, uy_total, sw_total
+        )
 
         # Agent 0: ux from pair0=(1/1)*1=1, ux from pair1=(0/1)*1=0 → total=1
         assert ux_total[0] == pytest.approx(1.0, abs=0.01)
@@ -643,8 +814,7 @@ class TestSocialAccumulateKernel:
         ux_k = np.zeros(count, dtype=np.float64)
         uy_k = np.zeros(count, dtype=np.float64)
         sw_k = np.zeros(count, dtype=np.float64)
-        social_accumulate_kernel(idx_i, idx_j, dx_ij, dy_ij, dist, p_i, p_j,
-                                ux_k, uy_k, sw_k)
+        social_accumulate_kernel(idx_i, idx_j, dx_ij, dy_ij, dist, p_i, p_j, ux_k, uy_k, sw_k)
 
         # NumPy reference path (matching existing population.py logic)
         ux_ij = dx_ij / dist
@@ -763,8 +933,18 @@ class TestLandAvoidanceKernel:
         out_heading = np.zeros(n, dtype=np.float64)
         resolved = np.zeros(n, dtype=np.bool_)
         land_avoidance_kernel(
-            x, y, heading, step_dist, depth_grid, min_depth,
-            base_angles, jitter, out_x, out_y, out_heading, resolved,
+            x,
+            y,
+            heading,
+            step_dist,
+            depth_grid,
+            min_depth,
+            base_angles,
+            jitter,
+            out_x,
+            out_y,
+            out_heading,
+            resolved,
         )
         assert np.all(resolved)
         assert np.all(out_x >= 0) and np.all(out_x < 50)
@@ -794,8 +974,18 @@ class TestLandAvoidanceKernel:
         out_heading = np.zeros(n, dtype=np.float64)
         resolved = np.zeros(n, dtype=np.bool_)
         land_avoidance_kernel(
-            x, y, heading, step_dist, depth_grid, 1.0,
-            base_angles, jitter, out_x, out_y, out_heading, resolved,
+            x,
+            y,
+            heading,
+            step_dist,
+            depth_grid,
+            1.0,
+            base_angles,
+            jitter,
+            out_x,
+            out_y,
+            out_heading,
+            resolved,
         )
         assert resolved[0]
         # Should pick right (deeper: 30 > 10)
@@ -818,8 +1008,18 @@ class TestLandAvoidanceKernel:
         out_heading = np.zeros(n, dtype=np.float64)
         resolved = np.zeros(n, dtype=np.bool_)
         land_avoidance_kernel(
-            x, y, heading, step_dist, depth_grid, 1.0,
-            base_angles, jitter, out_x, out_y, out_heading, resolved,
+            x,
+            y,
+            heading,
+            step_dist,
+            depth_grid,
+            1.0,
+            base_angles,
+            jitter,
+            out_x,
+            out_y,
+            out_heading,
+            resolved,
         )
         assert not resolved[0]
 
@@ -848,8 +1048,18 @@ class TestLandAvoidanceKernel:
         out_heading = np.zeros(n, dtype=np.float64)
         resolved = np.zeros(n, dtype=np.bool_)
         land_avoidance_kernel(
-            x, y, heading, step_dist, depth_grid, 1.0,
-            base_angles, jitter, out_x, out_y, out_heading, resolved,
+            x,
+            y,
+            heading,
+            step_dist,
+            depth_grid,
+            1.0,
+            base_angles,
+            jitter,
+            out_x,
+            out_y,
+            out_heading,
+            resolved,
         )
         assert resolved[0]
         assert out_heading[0] == pytest.approx(70.0, abs=1.0)
@@ -951,6 +1161,7 @@ class TestKernelParallelFlags:
 
     def test_small_n_kernels_not_parallel(self):
         from cenop.optimizations import kernels as k
+
         if not k.NUMBA_AVAILABLE:
             pytest.skip("numba not installed — njit is a no-op passthrough")
         offenders = []
@@ -958,18 +1169,17 @@ class TestKernelParallelFlags:
             opts = getattr(getattr(k, name), "targetoptions", {})
             if opts.get("parallel") is True:
                 offenders.append(name)
-        assert not offenders, (
-            f"still parallel=True (strip it — over-forks the pool): {offenders}"
-        )
+        assert not offenders, f"still parallel=True (strip it — over-forks the pool): {offenders}"
 
     def test_regrow_food_kernel_stays_parallel(self):
         from cenop.optimizations import kernels as k
+
         if not k.NUMBA_AVAILABLE:
             pytest.skip("numba not installed — njit is a no-op passthrough")
         opts = getattr(k.regrow_food_kernel, "targetoptions", {})
-        assert opts.get("parallel") is True, (
-            "regrow_food_kernel (~1e5 cells) should keep parallel=True"
-        )
+        assert (
+            opts.get("parallel") is True
+        ), "regrow_food_kernel (~1e5 cells) should keep parallel=True"
 
 
 class TestTurnPositionEquivalence:
@@ -986,11 +1196,9 @@ class TestTurnPositionEquivalence:
         nx = x + np.sin(rads) * step_dist
         ny = y + np.cos(rads) * step_dist
         # mirror the kernel's if/elif reflect (below wins over above), then clamp
-        nx = np.where(nx < 0.0, -nx,
-                      np.where(nx > max_x, 2.0 * max_x - nx, nx))
+        nx = np.where(nx < 0.0, -nx, np.where(nx > max_x, 2.0 * max_x - nx, nx))
         nx = np.clip(nx, 0.0, max_x)
-        ny = np.where(ny < 0.0, -ny,
-                      np.where(ny > max_y, 2.0 * max_y - ny, ny))
+        ny = np.where(ny < 0.0, -ny, np.where(ny > max_y, 2.0 * max_y - ny, ny))
         ny = np.clip(ny, 0.0, max_y)
         xi = np.clip(nx.astype(np.int32), 0, world_w - 1)
         yi = np.clip(ny.astype(np.int32), 0, world_h - 1)
@@ -998,6 +1206,7 @@ class TestTurnPositionEquivalence:
 
     def test_turn_position_matches_numpy(self):
         from cenop.optimizations.kernels import turn_position_kernel
+
         rng = np.random.default_rng(2024)
         n = 300
         world_w = world_h = 200
@@ -1011,10 +1220,12 @@ class TestTurnPositionEquivalence:
         out_h = np.empty(n, dtype=np.float64)
         out_xi = np.empty(n, dtype=np.int32)
         out_yi = np.empty(n, dtype=np.int32)
-        turn_position_kernel(x, y, heading, step, turn_delta, world_w, world_h,
-                             out_x, out_y, out_h, out_xi, out_yi)
+        turn_position_kernel(
+            x, y, heading, step, turn_delta, world_w, world_h, out_x, out_y, out_h, out_xi, out_yi
+        )
         ref_h, ref_x, ref_y, ref_xi, ref_yi = self._numpy_reference(
-            x, y, heading, step, turn_delta, world_w, world_h)
+            x, y, heading, step, turn_delta, world_w, world_h
+        )
         np.testing.assert_allclose(out_x, ref_x, atol=1e-9)
         np.testing.assert_allclose(out_y, ref_y, atol=1e-9)
         np.testing.assert_allclose(out_h, ref_h, atol=1e-9)

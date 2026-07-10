@@ -2,15 +2,16 @@
 
 import numpy as np
 import pytest
-import sys
-import os
+
 
 def _try_import_cython():
     try:
-        from cenop.optimizations.tick_cython import cython_available
+        from cenop.optimizations.tick_cython import cython_available  # noqa: F401
+
         return True
     except ImportError:
         return False
+
 
 CYTHON_OK = _try_import_cython()
 
@@ -19,6 +20,7 @@ CYTHON_OK = _try_import_cython()
 class TestCythonAvailable:
     def test_module_loads(self):
         from cenop.optimizations.tick_cython import cython_available
+
         assert cython_available() is True
 
 
@@ -52,15 +54,42 @@ class TestCythonFullPostCRW:
             rand_mort = np.random.random(n)
 
             deaths = cython_depons_post_crw(
-                x, y, heading, prev_angle, prev_log_mov, energy,
-                active, is_disp, with_calf,
-                pres_angle, log_mov, ve_total, vt_x, vt_y,
-                food, depth, out_food, disp_dist, rand_mort,
-                0.001, 4.0, 4.5, 1.4, 1.0, 0.4, 1.0, 200, 200,
+                x,
+                y,
+                heading,
+                prev_angle,
+                prev_log_mov,
+                energy,
+                active,
+                is_disp,
+                with_calf,
+                pres_angle,
+                log_mov,
+                ve_total,
+                vt_x,
+                vt_y,
+                food,
+                depth,
+                out_food,
+                disp_dist,
+                rand_mort,
+                0.001,
+                4.0,
+                4.5,
+                1.4,
+                1.0,
+                0.4,
+                1.0,
+                200,
+                200,
             )
             return (
-                x.copy(), y.copy(), heading.copy(),
-                energy.copy(), active.copy(), out_food.copy(),
+                x.copy(),
+                y.copy(),
+                heading.copy(),
+                energy.copy(),
+                active.copy(),
+                out_food.copy(),
             )
 
         r1 = run_once(42)
@@ -87,7 +116,8 @@ class TestCythonFullPostCRW:
             np.random.uniform(0, 360, n).astype(np.float32),
             np.zeros(n, dtype=np.float64),
             np.full(n, 1.0, dtype=np.float64),
-            energy, active,
+            energy,
+            active,
             np.zeros(n, dtype=np.uint8),
             np.zeros(n, dtype=np.uint8),
             np.zeros(n, dtype=np.float64),
@@ -95,8 +125,20 @@ class TestCythonFullPostCRW:
             np.zeros(n, dtype=np.float32),
             np.zeros(n, dtype=np.float32),
             np.zeros(n, dtype=np.float32),
-            food, depth, out_food, disp_dist, rand_mort,
-            0.001, 4.0, 4.5, 1.4, 1.0, 0.4, 1.0, 200, 200,
+            food,
+            depth,
+            out_food,
+            disp_dist,
+            rand_mort,
+            0.001,
+            4.0,
+            4.5,
+            1.4,
+            1.0,
+            0.4,
+            1.0,
+            200,
+            200,
         )
         assert out_food.sum() > 0, "Agents should have eaten food"
 
@@ -120,7 +162,8 @@ class TestCythonFullPostCRW:
             np.random.uniform(0, 360, n).astype(np.float32),
             np.zeros(n, dtype=np.float64),
             np.full(n, 1.0, dtype=np.float64),
-            energy, active,
+            energy,
+            active,
             np.zeros(n, dtype=np.uint8),
             np.zeros(n, dtype=np.uint8),
             np.zeros(n, dtype=np.float64),
@@ -128,8 +171,20 @@ class TestCythonFullPostCRW:
             np.zeros(n, dtype=np.float32),
             np.zeros(n, dtype=np.float32),
             np.zeros(n, dtype=np.float32),
-            food, depth, out_food, disp_dist, rand_mort,
-            0.001, 4.0, 4.5, 1.4, 100.0, 0.4, 1.0, 200, 200,
+            food,
+            depth,
+            out_food,
+            disp_dist,
+            rand_mort,
+            0.001,
+            4.0,
+            4.5,
+            1.4,
+            100.0,
+            0.4,
+            1.0,
+            200,
+            200,
         )
         assert deaths == n, "All agents should die with extreme mortality"
         assert np.sum(active) == 0
@@ -144,12 +199,12 @@ def test_cython_reflection_recomputes_heading():
     W = H = 100
     x = np.array([1.0], dtype=np.float32)
     y = np.array([50.0], dtype=np.float32)
-    heading = np.array([270.0], dtype=np.float32)          # points toward -x
+    heading = np.array([270.0], dtype=np.float32)  # points toward -x
     prev_angle = np.zeros(1, dtype=np.float64)
     prev_log_mov = np.zeros(1, dtype=np.float64)
     energy = np.array([10.0], dtype=np.float32)
     active = np.ones(1, dtype=np.uint8)
-    is_disp = np.ones(1, dtype=np.uint8)                   # step = disp_step
+    is_disp = np.ones(1, dtype=np.uint8)  # step = disp_step
     with_calf = np.zeros(1, dtype=np.uint8)
     pres_angle = np.zeros(1, dtype=np.float64)
     log_mov = np.zeros(1, dtype=np.float64)
@@ -157,17 +212,40 @@ def test_cython_reflection_recomputes_heading():
     vt_x = np.zeros(1, dtype=np.float32)
     vt_y = np.zeros(1, dtype=np.float32)
     food = np.zeros((H, W), dtype=np.float32)
-    depth = np.full((H, W), 20.0, dtype=np.float64)        # all water -> no rollback
+    depth = np.full((H, W), 20.0, dtype=np.float64)  # all water -> no rollback
     out_food = np.zeros(1, dtype=np.float32)
     disp_dist = np.zeros(1, dtype=np.float32)
-    rand_mort = np.zeros(1, dtype=np.float64)              # rand=0 -> no death
+    rand_mort = np.zeros(1, dtype=np.float64)  # rand=0 -> no death
 
     cython_depons_post_crw(
-        x, y, heading, prev_angle, prev_log_mov, energy,
-        active, is_disp, with_calf,
-        pres_angle, log_mov, ve_total, vt_x, vt_y,
-        food, depth, out_food, disp_dist, rand_mort,
-        0.0, 3.0, 0.0, 1.0, 1.0, 0.4, 1.0, W, H,   # disp_step=3.0 -> step=3
+        x,
+        y,
+        heading,
+        prev_angle,
+        prev_log_mov,
+        energy,
+        active,
+        is_disp,
+        with_calf,
+        pres_angle,
+        log_mov,
+        ve_total,
+        vt_x,
+        vt_y,
+        food,
+        depth,
+        out_food,
+        disp_dist,
+        rand_mort,
+        0.0,
+        3.0,
+        0.0,
+        1.0,
+        1.0,
+        0.4,
+        1.0,
+        W,
+        H,  # disp_step=3.0 -> step=3
     )
     # ddx = sin(270deg)*3 = -3 -> nx = 1-3 = -2 -> reflect -> nx = 2, ddx -> +3
     assert abs(float(x[0]) - 2.0) < 1e-4

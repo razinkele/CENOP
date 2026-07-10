@@ -20,16 +20,16 @@ Translates from: Porpoise.java move() method
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from cenop.movement.base import (
-    MovementModule,
-    MovementMode,
-    MovementState,
     EnvironmentContext,
+    MovementMode,
+    MovementModule,
     MovementResult,
+    MovementState,
 )
 
 if TYPE_CHECKING:
@@ -52,7 +52,7 @@ class DEPONSCRWMovement(MovementModule):
     to produce realistic movement patterns.
     """
 
-    def __init__(self, params: "SimulationParameters", rng: Optional[np.random.Generator] = None):
+    def __init__(self, params: SimulationParameters, rng: np.random.Generator | None = None):
         """
         Initialize DEPONS CRW movement module.
 
@@ -92,15 +92,15 @@ class DEPONSCRWMovement(MovementModule):
 
         # Preallocated work arrays (set on first use)
         self._work_arrays_size = 0
-        self._rand_angle: Optional[np.ndarray] = None
-        self._rand_len: Optional[np.ndarray] = None
-        self._angle_tmp: Optional[np.ndarray] = None
-        self._env_mod: Optional[np.ndarray] = None
-        self._log_mov: Optional[np.ndarray] = None
-        self._step_dist: Optional[np.ndarray] = None
-        self._rads: Optional[np.ndarray] = None
-        self._dx: Optional[np.ndarray] = None
-        self._dy: Optional[np.ndarray] = None
+        self._rand_angle: np.ndarray | None = None
+        self._rand_len: np.ndarray | None = None
+        self._angle_tmp: np.ndarray | None = None
+        self._env_mod: np.ndarray | None = None
+        self._log_mov: np.ndarray | None = None
+        self._step_dist: np.ndarray | None = None
+        self._rads: np.ndarray | None = None
+        self._dx: np.ndarray | None = None
+        self._dy: np.ndarray | None = None
 
     def _ensure_work_arrays(self, count: int) -> None:
         """Ensure work arrays are allocated for count agents."""
@@ -125,8 +125,8 @@ class DEPONSCRWMovement(MovementModule):
         state: MovementState,
         environment: EnvironmentContext,
         mask: np.ndarray,
-        deterrence_dx: Optional[np.ndarray] = None,
-        deterrence_dy: Optional[np.ndarray] = None,
+        deterrence_dx: np.ndarray | None = None,
+        deterrence_dy: np.ndarray | None = None,
     ) -> MovementResult:
         """DEPONS CRW step via the shared validated core.
 
@@ -135,7 +135,7 @@ class DEPONSCRWMovement(MovementModule):
         (deterrence enters the heading vector, NOT the raw displacement). Dispersal heading
         override is the caller's responsibility. Exposes raw pres_angle/log_mov for parity.
         """
-        from cenop.movement.crw_core import generate_crw_angle_step, compose_movement
+        from cenop.movement.crw_core import compose_movement, generate_crw_angle_step
 
         count = len(x)
         depths = np.asarray(environment.depth, dtype=np.float64)

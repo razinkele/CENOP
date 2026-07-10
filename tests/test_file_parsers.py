@@ -1,15 +1,15 @@
 """Tests for file parser validation and error handling."""
 
-import pytest
-import numpy as np
-import tempfile
-import os
 import json
 import logging
+import os
+import tempfile
 
-from cenop.landscape.cell_data import load_bathymetry_from_asc
+import pytest
+
+from cenop.agents.ship import ShipManager
 from cenop.agents.turbine import Turbine
-from cenop.agents.ship import ShipManager, Route, Buoy
+from cenop.landscape.cell_data import load_bathymetry_from_asc
 
 
 class TestASCParser:
@@ -17,8 +17,8 @@ class TestASCParser:
 
     def _write_asc(self, content: str) -> str:
         """Write content to a temp ASC file and return path."""
-        fd, path = tempfile.mkstemp(suffix='.asc')
-        with os.fdopen(fd, 'w') as f:
+        fd, path = tempfile.mkstemp(suffix=".asc")
+        with os.fdopen(fd, "w") as f:
             f.write(content)
         return path
 
@@ -45,12 +45,7 @@ class TestASCParser:
 
     def test_missing_header_line(self):
         """Missing header line raises ValueError."""
-        content = (
-            "ncols 3\n"
-            "nrows 2\n"
-            "1.0 2.0 3.0\n"
-            "4.0 5.0 6.0\n"
-        )
+        content = "ncols 3\n" "nrows 2\n" "1.0 2.0 3.0\n" "4.0 5.0 6.0\n"
         path = self._write_asc(content)
         try:
             with pytest.raises(ValueError, match="header"):
@@ -109,8 +104,8 @@ class TestTurbineParser:
     """Tests for turbine file parser validation."""
 
     def _write_turbine(self, content: str) -> str:
-        fd, path = tempfile.mkstemp(suffix='.txt')
-        with os.fdopen(fd, 'w') as f:
+        fd, path = tempfile.mkstemp(suffix=".txt")
+        with os.fdopen(fd, "w") as f:
             f.write(content)
         return path
 
@@ -130,11 +125,7 @@ class TestTurbineParser:
 
     def test_non_numeric_coordinates(self):
         """Non-numeric coordinates are skipped with warning."""
-        content = (
-            "name x y impact\n"
-            "T1 abc def 0.5\n"
-            "T2 500400.0 6000400.0 0.7\n"
-        )
+        content = "name x y impact\n" "T1 abc def 0.5\n" "T2 500400.0 6000400.0 0.7\n"
         path = self._write_turbine(content)
         try:
             turbines = Turbine.load_from_file(path, 500000.0, 6000000.0, 400.0)
@@ -156,18 +147,14 @@ class TestShipParser:
     """Tests for ship route/ship file parser validation."""
 
     def _write_file(self, content: str) -> str:
-        fd, path = tempfile.mkstemp(suffix='.txt')
-        with os.fdopen(fd, 'w') as f:
+        fd, path = tempfile.mkstemp(suffix=".txt")
+        with os.fdopen(fd, "w") as f:
             f.write(content)
         return path
 
     def test_valid_route(self):
         """Valid route file parses correctly."""
-        content = (
-            "ROUTE test_route\n"
-            "500000.0 6000000.0 10.0\n"
-            "500400.0 6000400.0 10.0\n"
-        )
+        content = "ROUTE test_route\n" "500000.0 6000000.0 10.0\n" "500400.0 6000400.0 10.0\n"
         path = self._write_file(content)
         try:
             manager = ShipManager.__new__(ShipManager)
@@ -179,11 +166,7 @@ class TestShipParser:
 
     def test_non_numeric_route_coordinates(self):
         """Non-numeric route coordinates are skipped with warning."""
-        content = (
-            "ROUTE test_route\n"
-            "abc def\n"
-            "500400.0 6000400.0 10.0\n"
-        )
+        content = "ROUTE test_route\n" "abc def\n" "500400.0 6000400.0 10.0\n"
         path = self._write_file(content)
         try:
             manager = ShipManager.__new__(ShipManager)
@@ -199,19 +182,25 @@ class TestShipJsonLengthValidation:
     """Ship JSON loader must reject non-positive vessel length (Finding #26)."""
 
     def _write_json(self, obj) -> str:
-        fd, path = tempfile.mkstemp(suffix='.json')
-        with os.fdopen(fd, 'w') as f:
+        fd, path = tempfile.mkstemp(suffix=".json")
+        with os.fdopen(fd, "w") as f:
             json.dump(obj, f)
         return path
 
     def _ship_json(self, length_val):
         return {
-            "routes": [{"name": "r1", "route": [
-                {"x": 3976618.0, "y": 3363923.0, "speed": 10.0},
-                {"x": 3977018.0, "y": 3364323.0, "speed": 10.0},
-            ]}],
-            "ships": [{"name": "bad", "type": "Cargo",
-                       "length": length_val, "route": "r1", "start": 0}],
+            "routes": [
+                {
+                    "name": "r1",
+                    "route": [
+                        {"x": 3976618.0, "y": 3363923.0, "speed": 10.0},
+                        {"x": 3977018.0, "y": 3364323.0, "speed": 10.0},
+                    ],
+                }
+            ],
+            "ships": [
+                {"name": "bad", "type": "Cargo", "length": length_val, "route": "r1", "start": 0}
+            ],
         }
 
     def test_negative_length_substitutes_default_and_warns(self, caplog):

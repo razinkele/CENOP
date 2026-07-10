@@ -7,28 +7,27 @@ shiny-deckgl MapWidget in the Landscape tab.
 
 import html
 import logging
-import numpy as np
-from shiny import render, ui, reactive
-from shiny_deckgl import legend_control, scale_widget, fullscreen_widget
 
-from cenop.ui.tabs.landscape_editor import gis_map
+import numpy as np
+from shiny import reactive, render, ui
+from shiny_deckgl import fullscreen_widget, legend_control, scale_widget
+
 from cenop.server.map_layers import (
     build_grid_bitmap_layer,
-    GIS_COLOR_SCHEMES,
-    CATEGORICAL_COLORS,
 )
+from cenop.ui.tabs.landscape_editor import gis_map
 
 logger = logging.getLogger("CENOP")
 
 # Layer name → (attribute on CellData, color scheme, is_monthly)
 LAYER_CONFIG = {
-    "bathymetry":     ("_depth",          "viridis",     False),
-    "dist_to_coast":  ("_dist_to_coast",  "yellow_red",  False),
-    "sediment":       ("_sediment",       "categorical", False),
-    "prey":           ("_entropy",        "green",       True),
-    "salinity":       ("_salinity",       "blue_white",  True),
-    "blocks":         ("_blocks",         "categorical", False),
-    "food_prob":      ("_food_prob",      "green",       False),
+    "bathymetry": ("_depth", "viridis", False),
+    "dist_to_coast": ("_dist_to_coast", "yellow_red", False),
+    "sediment": ("_sediment", "categorical", False),
+    "prey": ("_entropy", "green", True),
+    "salinity": ("_salinity", "blue_white", True),
+    "blocks": ("_blocks", "categorical", False),
+    "food_prob": ("_food_prob", "green", False),
 }
 
 LAYER_DISPLAY_NAMES = {
@@ -71,9 +70,13 @@ def register_gis_editor_renderers(input, output, session, state):
         landscape_name = input.landscape()
 
         # Load CellData (cached per landscape)
-        if _gis_cell_data_cache["landscape"] != landscape_name or _gis_cell_data_cache["cell_data"] is None:
+        if (
+            _gis_cell_data_cache["landscape"] != landscape_name
+            or _gis_cell_data_cache["cell_data"] is None
+        ):
             try:
                 from cenop.landscape import CellData, create_homogeneous_landscape
+
                 if landscape_name == "Homogeneous":
                     cell_data = create_homogeneous_landscape()
                 else:
@@ -90,12 +93,14 @@ def register_gis_editor_renderers(input, output, session, state):
         cell_data = _gis_cell_data_cache["cell_data"]
         raw = getattr(cell_data, attr_name, None)
         if raw is None:
-            ui.notification_show(f"Layer '{display_name}' not available for this landscape.", type="warning")
+            ui.notification_show(
+                f"Layer '{display_name}' not available for this landscape.", type="warning"
+            )
             return
 
         # For monthly layers, select the month slice
         if is_monthly:
-            month = input.gis_month() if hasattr(input, 'gis_month') else 1
+            month = input.gis_month() if hasattr(input, "gis_month") else 1
             try:
                 month = int(month)
             except (TypeError, ValueError):
@@ -111,7 +116,8 @@ def register_gis_editor_renderers(input, output, session, state):
 
         grid_height, grid_width = data_array.shape
 
-        from cenop.ui.sidebar import LANDSCAPE_CRS, LANDSCAPE_BOUNDS
+        from cenop.ui.sidebar import LANDSCAPE_BOUNDS, LANDSCAPE_CRS
+
         source_crs = LANDSCAPE_CRS.get(landscape_name, "EPSG:3035")
         meta = cell_data.metadata
 
@@ -129,22 +135,28 @@ def register_gis_editor_renderers(input, output, session, state):
 
         # Build unified bitmap + tooltip layers
         layers = build_grid_bitmap_layer(
-            f"gis-{layer_key}", data_array, meta, source_crs, scheme,
+            f"gis-{layer_key}",
+            data_array,
+            meta,
+            source_crs,
+            scheme,
         )
 
         # Count tooltip points for stats display
         tooltip_layer = layers[1]
         sampled_count = len(tooltip_layer.get("data", []))
 
-        state.gis_stats.set({
-            "min": d_min,
-            "max": d_max,
-            "mean": float(np.mean(valid_vals)) if len(valid_vals) > 0 else 0.0,
-            "std": float(np.std(valid_vals)) if len(valid_vals) > 0 else 0.0,
-            "coverage": f"{len(valid_vals)}/{data_array.size}",
-            "sampled": sampled_count,
-            "layer": display_name,
-        })
+        state.gis_stats.set(
+            {
+                "min": d_min,
+                "max": d_max,
+                "mean": float(np.mean(valid_vals)) if len(valid_vals) > 0 else 0.0,
+                "std": float(np.std(valid_vals)) if len(valid_vals) > 0 else 0.0,
+                "coverage": f"{len(valid_vals)}/{data_array.size}",
+                "sampled": sampled_count,
+                "layer": display_name,
+            }
+        )
 
         # Build legend targets (layer_id → label)
         legend_targets = {"gis-bitmap": display_name}
@@ -160,21 +172,26 @@ def register_gis_editor_renderers(input, output, session, state):
         )
 
         # Legend is a MapLibre control — must use set_controls, not update
-        await gis_map.set_controls(session, [
-            legend_control(
-                legend_targets,
-                position="bottom-left",
-                title=display_name,
-                show_default=True,
-            ),
-        ])
+        await gis_map.set_controls(
+            session,
+            [
+                legend_control(
+                    legend_targets,
+                    position="bottom-left",
+                    title=display_name,
+                    show_default=True,
+                ),
+            ],
+        )
 
         # Fly to landscape bounds
         center_lat = (lat_min + lat_max) / 2
         center_lon = (lon_min + lon_max) / 2
         await gis_map.fly_to(session, longitude=center_lon, latitude=center_lat, zoom=7)
 
-        logger.info("GIS layer '%s': bitmap rendered, %d tooltip points", display_name, sampled_count)
+        logger.info(
+            "GIS layer '%s': bitmap rendered, %d tooltip points", display_name, sampled_count
+        )
 
     @render.ui
     def gis_layer_stats():
@@ -185,7 +202,7 @@ def register_gis_editor_renderers(input, output, session, state):
 
         safe_layer = html.escape(str(stats["layer"]))
         safe_coverage = html.escape(str(stats["coverage"]))
-        return ui.HTML(f'''
+        return ui.HTML(f"""
         <table class="table table-sm table-borderless" style="font-size:0.8rem;">
             <tr><td class="text-muted">Layer</td><td><b>{safe_layer}</b></td></tr>
             <tr><td class="text-muted">Min</td><td>{stats["min"]:.4f}</td></tr>
@@ -195,4 +212,4 @@ def register_gis_editor_renderers(input, output, session, state):
             <tr><td class="text-muted">Coverage</td><td>{safe_coverage}</td></tr>
             <tr><td class="text-muted">Displayed</td><td>{stats["sampled"]} pts</td></tr>
         </table>
-        ''')
+        """)

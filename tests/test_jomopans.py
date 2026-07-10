@@ -2,7 +2,6 @@
 
 import math
 
-import pytest
 from cenop.agents.ship import VesselClass
 from cenop.behavior.jomopans_spl import jomopans_spl
 

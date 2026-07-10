@@ -63,7 +63,18 @@ target-version = ["py310", "py311", "py312", "py313"]
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP"]
+# Pre-existing style debt that is not enforced retroactively (clean up opportunistically).
+# The high-value rules stay on — undefined names (F821), unused imports (F401), import
+# order (I), and modernization (UP) — so the CI lint gate catches real regressions.
+ignore = [
+    "E501",  # line length: owned by the black formatter; leftovers are unsplittable strings/URLs
+    "E402",  # import-not-at-top: intentional (logger / sys.path setup precedes some imports)
+    "E712",  # == True / == False: many are element-wise numpy comparisons where truthiness differs
+    "F841",  # unused local variable: auto-removal risks dropping a side-effecting RHS
+]
 
 [tool.mypy]
 python_version = "3.10"

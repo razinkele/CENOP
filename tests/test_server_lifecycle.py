@@ -224,7 +224,7 @@ def test_server_closures_use_worker_handle_and_drop_shared_clear():
     assert "stop_event.clear()" not in src
     # The server must own a fresh-per-run handle and route lifecycle through it.
     assert "worker = _WorkerHandle()" in src
-    assert "worker.new_run(" in src          # start_simulation + reset_simulation
+    assert "worker.new_run(" in src  # start_simulation + reset_simulation
     assert "worker.stop_event.set()" in src  # stop_simulation
-    assert "worker.start(" in src            # start_simulation
+    assert "worker.start(" in src  # start_simulation
     assert "result_queue = worker.result_queue" in src  # poll snapshots the queue

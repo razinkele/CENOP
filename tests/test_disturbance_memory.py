@@ -8,17 +8,16 @@ Tests the memory/cognition system including:
 - DEPONS vs JASMINE mode differences
 """
 
-import pytest
 import numpy as np
+import pytest
 
 from cenop.behavior.disturbance_memory import (
-    MemoryMode,
-    DisturbanceMemoryState,
-    DisturbanceMemoryContext,
     AvoidanceResult,
-    DisturbanceMemoryModule,
     DEPONSMemoryModule,
+    DisturbanceMemoryContext,
+    DisturbanceMemoryState,
     JASMINEMemoryModule,
+    MemoryMode,
     create_memory_module,
 )
 from cenop.parameters import SimulationParameters
@@ -270,10 +269,10 @@ class TestJASMINEMemoryModule:
 
         stats = module.get_statistics(state, mask)
 
-        assert 'mean_exposure' in stats
-        assert 'mean_event_count' in stats
-        assert 'agents_with_memory' in stats
-        assert stats['agents_with_memory'] == 10
+        assert "mean_exposure" in stats
+        assert "mean_event_count" in stats
+        assert "agents_with_memory" in stats
+        assert stats["agents_with_memory"] == 10
 
 
 class TestFactoryFunction:
@@ -368,7 +367,7 @@ class TestMemoryIntegration:
 
         stats = module.get_statistics(state, mask)
 
-        assert stats['mean_exposure'] == 1.0  # Only active agents
+        assert stats["mean_exposure"] == 1.0  # Only active agents
 
 
 if __name__ == "__main__":

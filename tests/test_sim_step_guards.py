@@ -1,7 +1,7 @@
 """Tests for sim.step() deterrence skip guards."""
 
 import numpy as np
-import pytest
+
 from cenop.core.simulation import Simulation
 from cenop.parameters.simulation_params import SimulationParameters
 

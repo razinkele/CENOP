@@ -1,10 +1,10 @@
 """Tests for DEPONS 3.2 pregnancy FSM."""
 
 import numpy as np
-import pytest
+
 from cenop.agents.population import PorpoisePopulation
-from cenop.parameters.simulation_params import SimulationParameters
 from cenop.landscape.cell_data import create_homogeneous_landscape
+from cenop.parameters.simulation_params import SimulationParameters
 
 
 class TestPregnancyStatusArray:
@@ -14,7 +14,7 @@ class TestPregnancyStatusArray:
         """Population should have pregnancy_status array (int8)."""
         params = SimulationParameters()
         pop = PorpoisePopulation(count=50, params=params)
-        assert hasattr(pop, 'pregnancy_status')
+        assert hasattr(pop, "pregnancy_status")
         assert pop.pregnancy_status.dtype == np.int8
         assert pop.pregnancy_status.shape == (50,)
 
@@ -36,7 +36,7 @@ class TestPregnancyStatusArray:
     def test_no_max_breeding_age_cap(self):
         """No max_breeding_age should limit reproduction."""
         params = SimulationParameters()
-        if hasattr(params, 'max_breeding_age'):
+        if hasattr(params, "max_breeding_age"):
             assert params.max_breeding_age >= params.max_age
 
 
@@ -164,8 +164,9 @@ class TestReproductionScheduling:
             pop._handle_reproduction(pop.active_mask)
 
         # If FSM ran, immature females at maturity should now be ready-to-mate
-        assert np.all(pop.pregnancy_status == 2), \
-            "FSM should have transitioned immature→ready-to-mate"
+        assert np.all(
+            pop.pregnancy_status == 2
+        ), "FSM should have transitioned immature→ready-to-mate"
 
     def test_reproduction_daily_gate(self):
         """_update_pregnancy_status should only run at day boundary (tick % 48 == 0).
@@ -216,8 +217,9 @@ class TestReproductionScheduling:
         # If old breeding-season gate were still active, this would return early
         # because day 10 is not in 195-255. With the FSM, mating should happen.
         pregnant_count = int(np.sum(pop.pregnancy_status == 1))
-        assert pregnant_count > 0, \
-            "FSM should allow mating on day 10 (old model would block outside 195-255)"
+        assert (
+            pregnant_count > 0
+        ), "FSM should allow mating on day 10 (old model would block outside 195-255)"
 
 
 class TestMatingDayReRandomization:
@@ -239,8 +241,9 @@ class TestMatingDayReRandomization:
 
         new_mating_days = pop.mating_day[:25]
         # Days should have changed (extremely unlikely to stay exactly the same)
-        assert not np.array_equal(initial_mating_days, new_mating_days), \
-            "Mating days should change after re-randomization"
+        assert not np.array_equal(
+            initial_mating_days, new_mating_days
+        ), "Mating days should change after re-randomization"
         # Males should still be -99
         assert np.all(pop.mating_day[25:] == -99)
         # New days should be around 225
@@ -280,8 +283,9 @@ class TestBycatchDaily:
         pop._check_mortality(mask, initial_active)
 
         # No bycatch deaths should occur mid-day (energy=20 means no starvation either)
-        assert int(np.sum(pop.active_mask)) == initial_active, \
-            "No deaths should occur mid-day with high energy"
+        assert (
+            int(np.sum(pop.active_mask)) == initial_active
+        ), "No deaths should occur mid-day with high energy"
 
     def test_bycatch_fires_on_day_boundary(self):
         """Bycatch should run on day boundary ticks (_global_tick % 48 == 0)."""
@@ -310,9 +314,10 @@ class TestBycatchDaily:
         bycatch_prob = 0.10  # 10% annual
         daily_surv = np.exp(np.log(1 - bycatch_prob) / 360)
         # After 360 days: daily_surv^360 should equal (1 - bycatch_prob)
-        annual_surv = daily_surv ** 360
-        assert abs(annual_surv - (1 - bycatch_prob)) < 1e-10, \
-            f"Formula should reproduce annual rate: {annual_surv} vs {1 - bycatch_prob}"
+        annual_surv = daily_surv**360
+        assert (
+            abs(annual_surv - (1 - bycatch_prob)) < 1e-10
+        ), f"Formula should reproduce annual rate: {annual_surv} vs {1 - bycatch_prob}"
 
     def test_max_age_also_daily(self):
         """Max-age death should only be checked on day boundaries, not every tick."""
@@ -327,8 +332,9 @@ class TestBycatchDaily:
         pop._check_mortality(mask, 10)
 
         # Max-age should not fire mid-day
-        assert int(np.sum(pop.active_mask)) == 10, \
-            "Max-age death should not fire on non-day-boundary tick"
+        assert (
+            int(np.sum(pop.active_mask)) == 10
+        ), "Max-age death should not fire on non-day-boundary tick"
 
 
 class TestPhase2Integration:
@@ -361,8 +367,9 @@ class TestPhase2Integration:
         final_count = int(np.sum(pop.active_mask))
 
         ratio = final_count / initial_count
-        assert 0.5 < ratio < 1.5, \
-            f"Population ratio {ratio:.2f} ({initial_count}→{final_count}) outside stability band"
+        assert (
+            0.5 < ratio < 1.5
+        ), f"Population ratio {ratio:.2f} ({initial_count}→{final_count}) outside stability band"
 
     def test_pregnancy_states_realistic(self):
         """After 50 days, pregnancy state distribution should be valid."""
@@ -385,17 +392,20 @@ class TestPhase2Integration:
             n_immature = int(np.sum(pop.pregnancy_status[females] == 0))
 
             # All females should have a valid pregnancy status (0, 1, or 2)
-            assert n_pregnant + n_ready + n_immature == n_females, \
-                "All females should have a valid pregnancy status"
+            assert (
+                n_pregnant + n_ready + n_immature == n_females
+            ), "All females should have a valid pregnancy status"
 
             # At least some should be pregnant (given init seeds ~68% at start)
-            assert n_pregnant > 0 or n_ready > 0, \
-                "Should have some pregnant or ready-to-mate females"
+            assert (
+                n_pregnant > 0 or n_ready > 0
+            ), "Should have some pregnant or ready-to-mate females"
 
 
 def test_mating_day_clipped_to_valid_range():
     """Mating days must be clipped to [0, 359]."""
     import numpy as np
+
     raw = np.array([-10, 0, 180, 225, 359, 400, 500], dtype=np.float64)
     clipped = np.clip(raw, 0, 359).astype(np.int16)
     assert clipped[0] == 0
@@ -412,15 +422,16 @@ def test_mating_day_clipped_to_valid_range():
 def test_pregnancy_init_nonpregnant_mature_stay_ready():
     """Mature females that don't conceive should remain status=2, not reset to 0."""
     import numpy as np
+
     params = SimulationParameters(porpoise_count=500)
     rng = np.random.default_rng(42)
     pop = PorpoisePopulation(count=500, params=params)
     mature_female = pop.is_female & (pop.age >= pop.params.maturity_age) & pop.active_mask
     not_pregnant = mature_female & (pop.pregnancy_status != 1)
     assert np.sum(not_pregnant) > 0, "Need at least one non-pregnant mature female"
-    assert np.all(pop.pregnancy_status[not_pregnant] == 2), (
-        f"Found {np.sum(pop.pregnancy_status[not_pregnant] == 0)} mature females incorrectly at status 0"
-    )
+    assert np.all(
+        pop.pregnancy_status[not_pregnant] == 2
+    ), f"Found {np.sum(pop.pregnancy_status[not_pregnant] == 0)} mature females incorrectly at status 0"
 
 
 class TestWeanedCalfSlotReset:
@@ -564,8 +575,8 @@ class TestRecycledSlotNestedStateReset:
         pop._reset_recycled_slots(np.array([slot], dtype=np.intp))
 
         assert pop._psm_instances[slot].preferred_distance != 999.0  # redrawn
-        assert len(pop._psm_instances[slot]._mem_cells) == 0          # memory cleared
-        assert int(pop.ids[slot]) == 6                                # first recycled id == count
+        assert len(pop._psm_instances[slot]._mem_cells) == 0  # memory cleared
+        assert int(pop.ids[slot]) == 6  # first recycled id == count
         assert int(pop.ids[slot]) != old_id
 
     def test_reset_clears_behavior_and_energy_rows_when_attached(self):

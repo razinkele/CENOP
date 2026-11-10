@@ -303,13 +303,13 @@ that fixed each row on branch `fix/phantom-food-2026-11-10`.
 | D6 | Heading at activation | `previousStepHeading = targetHeading` | `_prev_step_heading` captured *before* target selection (3148/3236 vs 3150/3238); the target heading written to `heading` is overwritten next tick, so the animal disperses along its last foraging heading | **new, bug** | `8e17aa7` |
 | D7 | Turn angle | ±`PSM_angle` = 40° | reads `psm_type2_random_angle`, which `SimulationParameters` lacks, so falls back to 20°; the same at the JAX call (2580); the UI `psm_angle` is ignored | **new, bug** | `d75636c` |
 | D8 | Logistic input | path length / (0.95 × start-to-target) | straight-line displacement / target distance | known | `d75636c` |
-| D9 | Per-step stops | stops on any of: the point 5 cells ahead is off the grid, or its depth ≤ wdisp; also on the not-enough-water state, but that is written only by `stdMove`/`avoidLand` and is frozen while dispersing, so it can fire only on the first `disperse()` call, before any move (an activation filter, not an episode end) | none | known | `5a8ae40` |
+| D9 | Per-step stops | stops on any of: the point 5 cells ahead is off the grid, or its depth ≤ wdisp; also on the not-enough-water state, but that is written only by `stdMove`/`avoidLand` and is frozen while dispersing, so it can fire only on the first `disperse()` call, before any move (an activation filter, not an episode end) | none | known | per-step stops `5a8ae40`; first-call water filter fixed: `2e7401b`, `4c39546` (NumPy), `480c7b7` (JAX) |
 | D10 | Completion | path length ≥ 0.95 × start-to-target, checked *before* the step | displacement ≥ 0.95 × target distance, checked *after* the step | known | `5a8ae40` (+ `0b72289`: non-CRW modules keep displacement completion) |
 | D11 | Land while dispersing | `forward()` has no land test; the stops keep the animal off land | land avoidance turns `heading`; the next tick rebuilds it from `_prev_step_heading`, so the turn is lost | new | `5a8ae40` |
 | D12 | Same-tick fallthrough | after a stop inside `disperse()`, `stdMove` runs in the same tick | stop evaluated after the dispersal step | minor | `5a8ae40` |
 | D13 | CRW state | `prevAngle` and `prevLogMov` frozen while dispersing (`stdMove` skipped) | updated every tick for dispersers | minor | `5a8ae40` |
 | D14 | JAX backend | — | the JAX backend (`jax_kernels.py`, `tick_jax.py`) now mirrors the fixed NumPy behaviour (Task 5, `b9659a1`, `eae0d3a`, `bd55bda`), so D1–D13 apply there too; every later change must be mirrored | fixed with D1–D13 | `b9659a1`, `eae0d3a`, `bd55bda` (+ `bb7c829`: new activations get the same-day stops) |
-| D15 | Foraging land check (outside dispersal) | `checkDepth()` samples every 0.1 cell along the heading out to `presMov` cells (4× the step) before turning; its result is also the not-enough-water state that D9 reads | land avoidance tests only the destination cell at the step distance | new, untested; candidate for the dispersal-off energy residual | open |
+| D15 | Foraging land check (outside dispersal) | `checkDepth()` samples every 0.1 cell along the heading out to `presMov` cells (4× the step) before turning; its result is also the not-enough-water state that D9 reads | land avoidance tests only the destination cell at the step distance | established as the main cause of the dispersal-off residual (Finding 4) | fixed: `75df4b9`, `b0c770d`, `14dc077`, `c6d4194` (NumPy/Numba), `480c7b7` (JAX); acceptance: see Step 5 (not fully met) |
 | D16 | Reference-memory order | DEPONS `refMemTurn` runs after the dispersal `forward()`, so it sees the post-move position | CENOP's `_update_reference_memory` runs before the disperser moves | deferred with D15 (pre-existing, outside D1–D14) | open |
 | — | Logistic shape | `LogisticDecreaseSSLogis(1, 0, 0.6)` = 1/(1+e^(−x/0.6)), *increasing* despite the name | same | match | — |
 | — | Dispersal energy cost | `E_USE_PER_KM = 0` | 0 | match | — |
@@ -427,7 +427,7 @@ Two other things checked:
 - **Tracking perturbs DEPONS's trajectory slightly** (day 90: 1,633 untracked against 1,619 with
   200 tracked), but not its statistics. This answers an open item in the A1 report.
 
-### Finding 4: the dispersal-off residual (D15 investigation, in progress)
+### Finding 4: the dispersal-off residual (D15; ported, acceptance in Step 5)
 
 Runs: dispersal off in both models, communication off.
 - DEPONS: `scenarios/dispoff_tracked200.json`, 200 tracked animals.
@@ -573,8 +573,59 @@ What this shows:
   DEPONS's activation therefore spans 0.133–0.173 across seeds, and CENOP + port's 0.151 / 0.162
   lies inside that span.
 
-**Next:** port D15 into the source, test-first and in all backends, in its own plan, with these
-numbers as acceptance. Then check the combined dispersal-on configuration against DEPONS.
+**Step 5: acceptance on the fixed source** (D15 and the D9 first-call filter ported; commits
+`75df4b9`, `b0c770d`, `14dc077`, `c6d4194`, `2e7401b`, `4c39546`, `480c7b7`, plus the docs commit
+of this section). The probe prototype switches (`port`, `--d15-port`) were removed from
+`cenop_budget.py`, `cenop_disp_rates.py` and `spatial_fingerprint.py`; `d15_land_port.py` stays as
+the historical prototype and applies only to code before commit `46e2a39`. Runs: NumPy/Numba,
+`JAX_PLATFORMS=cpu`, v3.2 Kattegat copy, communication off, 2000 animals, seeds 42 / 43.
+DEPONS values are the dispersal-off tracked-200 runs (`depons_budget.py`); intake per animal-tick
+is the inferred column, at 7 d.p. for the ±3% test.
+
+**Result: acceptance NOT fully met.** One metric is outside its range: the dispersal-off intake of
+seed 43 in the day 45–60 bin (+3.27% against ±3%). Everything else is inside. No tuning was done.
+
+| Metric (range) | DEPONS s42 / s43 | CENOP s42 | CENOP s43 | Result |
+|---|---|---|---|---|
+| off N at day 90 (±4%) | 1737 / 1722 | 1741 (+0.2%) | 1777 (+3.2%) | pass |
+| off N at day 120 (±4%) | 1442 / 1417 | 1451 (+0.6%) | 1464 (+3.3%) | pass |
+| off N at day 150 (±4%) | 989 / 994 | 1004 (+1.5%) | 1013 (+1.9%) | pass |
+| off N at day 165 (±4%) | 780 / 784 | 795 (+1.9%) | 789 (+0.6%) | pass |
+| off intake days 0–15 (±3%) | 0.0035233 / 0.0035183 | 0.0035416 (+0.5%) | 0.0035462 (+0.8%) | pass |
+| off intake days 15–30 | 0.0032873 / 0.0033413 | 0.0033631 (+2.3%) | 0.0033698 (+0.9%) | pass |
+| off intake days 30–45 | 0.0033274 / 0.0032658 | 0.0033294 (+0.1%) | 0.0033368 (+2.2%) | pass |
+| off intake days 45–60 | 0.0032553 / 0.0032269 | 0.0032879 (+1.0%) | 0.0033325 (**+3.3%**) | **s43 fail** |
+| off intake days 60–75 | 0.0032631 / 0.0032177 | 0.0033285 (+2.0%) | 0.0032835 (+2.0%) | pass |
+| off intake days 75–90 | 0.0033553 / 0.0033767 | 0.0033993 (+1.3%) | 0.0033897 (+0.4%) | pass |
+| time within 1 km of coast, days 0–15 / 15–30 (0.5–2.5%) | — | 1.16% / 0.95% | 1.11% / 1.06% | pass |
+| activation rate (0.11–0.19) | 0.133 / 0.173 | 0.152 | 0.157 | pass |
+| episode moves median (4–6) / mean (8–15) | 5 / 5; 12.1 / 10.1 | 5 / 10.5 | 5 / 10.7 | pass |
+| tick share dispersing (0.8–1.8%) | 1.34% / 1.36% | 1.26% | 1.35% | pass |
+| on/off N ratio, day 150 (0.75–0.87) | 0.801 / 0.829 | 824 / 1004 = 0.821 | 817 / 1013 = 0.807 | pass |
+
+Informational:
+- Stock (dispersal on) N at days 120 / 150 / 180: s42 1203 / 824 / 598 (DEPONS 1210 / 792 / 528);
+  s43 1193 / 817 / 587 (DEPONS 1203 / 824 / 546). Day 180 is +13% / +8% above DEPONS.
+- Spatial fingerprint, seed 42, days 0–30: coast <1 km 1.1%, depth <1 m 0.10%.
+- Remainders unchanged: mean energy (dispersal off, days 90 / 120 / 135 / 150 / 165) s42
+  6.32 / 5.13 / 4.41 / 3.92 / 3.77, s43 6.23 / 5.08 / 4.36 / 3.91 / 3.77, against DEPONS
+  6.36 / 5.24 / 4.59 / 4.09 / 3.79 (s42) and 6.33 / 5.31 / 4.67 / 4.17 / 3.88 (s43): an undershoot
+  of 0.0–0.3. Deaths days 165–180: 169 / 160 against DEPONS 203 / 191, lactating share 4.3% /
+  6.3%. Both remainders stay open.
+- Lithuania (default landscape, 60 days, 10000 animals, defaults), this code against `46e2a39`:
+  N 9856 / 9839 against 9989 / 9991 (s42 / s43); mean energy 15.51 / 15.50 against 14.06 / 14.05;
+  share of time within 1 km of the coast (disttocoast in km) 19.9% / 19.8% against 20.5% / 20.5%.
+  No DEPONS reference exists for Lithuania.
+- Known deviations introduced: beh-5 depth ties use a fixed neighbour order (DEPONS shuffles);
+  look-ahead points are reflected at the grid edge as in DEPONS's BouncyBorders, but beh-5
+  neighbours outside the grid read as land.
+- JAX is about 5x slower per tick on real landscapes after this change (about 70 ms against 13 ms
+  at 2000 animals; Numba about 7 ms). It stays opt-in.
+
+**Next:** decide whether the +3.3% on one intake bin of one seed (all other bins and the whole
+population curve inside the ranges, N within +3.3%) is accepted as met, then regenerate the
+Kattegat baselines. The two remainders (energy undershoot, late deaths) are the next
+investigation.
 
 ## Unverified
 
@@ -624,8 +675,8 @@ numbers as acceptance. Then check the combined dispersal-on configuration agains
    - Controller ruling: the non-CRW modules (JASMINE physics, hybrid;
      `_update_movement_module_generic`) keep the pre-existing straight-line displacement
      completion. DEPONS parity applies to the CRW paths only.
-   - Not ported: the not-enough-water first-call filter (needs D15's look-ahead state); D15 and
-     D16 are deferred.
+   - Not ported at the time: the not-enough-water first-call filter and D15. Both are now ported
+     (Finding 4, Step 5). D16 remains deferred.
    - Acceptance (`cenop_disp_rates.py <mode> 180 120 <seed>` on the fixed code, rates over days
      0–120; the probe counts animals that make a dispersal move, i.e. after `_disperse_step`):
 
@@ -661,7 +712,8 @@ numbers as acceptance. Then check the combined dispersal-on configuration agains
      (empty memory) is 0.5% on Lithuania 329×381, 2.6% on Homogeneous 400×400 and 31.9% on
      Kattegat 600×1000 (final review, `target_success.py`; CHANGELOG).
    - Slow tier: 11 passed.
-   - Open: the dispersal-off N excess (non-dispersal residual, D15) remains; baselines are stale.
+   - The dispersal-off N excess (non-dispersal residual) was D15; it is now ported (Finding 4,
+     Step 5: acceptance not fully met, one intake bin of seed 43 at +3.3%). Baselines are stale.
 4. **Then regenerate the Kattegat baselines and record the behaviour change** in the CHANGELOG.
    Any paper text or figures built on CENOP real-landscape populations need re-running.
 

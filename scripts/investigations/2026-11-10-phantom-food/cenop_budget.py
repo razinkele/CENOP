@@ -7,7 +7,7 @@ Per 15-day bin, with dispersal off (as DEPONS `dispersal=off`), communication of
 - deaths (starvation / other) and births in the bin;
 - lactating share (mean over the bin).
 
-Usage: cenop_budget.py <data_dir with Kattegat/> [seed] [days] [port]  (port = apply d15_land_port)
+Usage: cenop_budget.py <data_dir with Kattegat/> [seed] [days]
 """
 
 import sys
@@ -28,12 +28,6 @@ days = int(sys.argv[3]) if len(sys.argv) > 3 else 180
 BIN = 15
 
 P.PorpoisePopulation._check_dispersal_trigger = lambda self, mask: None  # dispersal off
-PORT = len(sys.argv) > 4 and sys.argv[4] == "port"
-if PORT:
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    import d15_land_port  # noqa: E402
-
-    d15_land_port.apply(P)
 
 EXACT = [0.0]
 _orig_psm = P.PorpoisePopulation._update_psm
@@ -62,7 +56,7 @@ sim = Simulation(params=params, cell_data=cd, seed=seed)
 sim.initialize()
 pm = sim.population_manager
 
-print(f"CENOP dispersal off, seed {seed}{', DEPONS land port' if PORT else ''}")
+print(f"CENOP dispersal off, seed {seed}")
 print(
     "bin(days)   N0    E0   intake/at(inferred)  intake/at(exact)  deaths(starv/other)  births  lact  coast<1km  depth<1m"
 )

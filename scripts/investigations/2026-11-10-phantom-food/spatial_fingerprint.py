@@ -12,7 +12,7 @@ share of animal-ticks, and mean intake per animal-tick.
   attributed to the pre-step cell by CENOP's own lookup (int truncation) and arrays.
 
 Usage: spatial_fingerprint.py depons <RandomPorpoise.csv> <landscape dir with bathy.asc>
-       spatial_fingerprint.py cenop <data_dir with Kattegat/> [seed] [port]
+       spatial_fingerprint.py cenop <data_dir with Kattegat/> [seed]
 """
 
 import csv
@@ -101,12 +101,6 @@ def cenop(data_dir, seed):
         return orig(self, mask, food_gained)
 
     P.PorpoisePopulation._update_psm = psm
-    port = len(sys.argv) > 4 and sys.argv[4] == "port"
-    if port:
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
-        import d15_land_port
-
-        d15_land_port.apply(P)
     params = SimulationParameters(
         porpoise_count=2000,
         sim_years=1,
@@ -137,15 +131,8 @@ def cenop(data_dir, seed):
         out_c.append(cd._dist_to_coast[yi[ok], xi[ok]])
         out_i.append(v[ok])
         out_t.append(np.full(int(ok.sum()), (tick - 1) // 48))
-    if port:
-        st = d15_land_port.STATS
-        print(
-            "port branch counts per checked animal-tick:",
-            {k: round(v / max(st["checked"], 1), 6) for k, v in st.items()},
-            st,
-        )
     report(
-        f"CENOP seed {seed}{' + port' if port else ''}",
+        f"CENOP seed {seed}",
         np.concatenate(out_d),
         np.concatenate(out_c),
         np.concatenate(out_i),

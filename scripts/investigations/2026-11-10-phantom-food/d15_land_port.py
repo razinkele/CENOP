@@ -21,6 +21,9 @@ turn in `_update_movement`); (4) replaces `_handle_land_avoidance` with border r
 keeps them in water). The beh-4 walk uses CENOP's reference-memory position ring buffer, whose
 newest entry is DEPONS's posList.get(1); this is an approximation of a rare branch.
 
+HISTORICAL: this prototype applies only to code before the D15 plan (commit 46e2a39). The port is now
+in the source (commits 75df4b9 ... 480c7b7); applying this on top would double-patch.
+
 Usage: import d15_land_port; d15_land_port.apply(P) where P is cenop.agents.population.
 """
 

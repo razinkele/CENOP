@@ -255,14 +255,12 @@ Two other things checked:
    - 6 tests went RED → GREEN (`tests/test_food_floor_parity.py`).
    - Fast suite 901 passed; slow tier 11 passed (homogeneous landscapes, unchanged).
    - Not merged.
-2. **Communication default** (finding 2). This is a design question, not a mechanical fix. The
-   options:
-   - (a) set `communication_enabled=False` for DEPONS-parity runs (baselines, A2) only;
-   - (b) make False the default;
-   - (c) rescale the social vector relative to DEPONS's `crwContrib` (about 0.001), so that
-     JASMINE social behaviour stops dominating movement.
-
-   The scientific intent of the JASMINE social term decides which.
+2. **Communication default** (finding 2). **Decided 2026-11-10: option (b), default off.**
+   - `SimulationParameters.communication_enabled` is now `False`, matching the UI checkbox, which
+     was already off. Tests are in `tests/test_settings_defaults.py::TestCommunicationDefault`.
+   - Rescaling the social vector relative to DEPONS's `crwContrib` (option c) remains an open
+     JASMINE issue (CHANGELOG Known issues).
+   - Side effect: with communication off, homogeneous landscapes now take the Cython fast path.
 3. **Finish finding 3** before regenerating baselines or making any parity claim:
    - fix the trigger off-by-one (TDD);
    - find why CENOP dispersal episodes persist;

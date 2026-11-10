@@ -13,7 +13,39 @@ All notable changes to CENOP-JASMINE are documented in this file.
   `validation/depons_java/README.md` and
   `docs/superpowers/specs/2026-11-10-track-a1-spike-report.md`
 
+### Fixed — model behaviour changes (see `docs/superpowers/specs/2026-11-10-phantom-food-investigation.md`)
+- **Phantom food.** The vectorised eating code raised every cell an animal visited to the
+  0.01 "artificial food" floor, including empty cells outside the food patches. DEPONS floors
+  only cells that had food. Within a month almost the whole sea held 0.01 food that porpoises
+  ate at nearly every step (more than twice their basal energy use), so populations on
+  patchy real landscapes (e.g. Kattegat) were artificially stable.
+  - Fixed in the Numba (v1/v2), JAX and Cython eat paths. The JAX path also no longer lets dead
+    agent slots remove food.
+  - Present in every release since the vectorised eat path was introduced (2026-01-26),
+    including v2.2.0.
+  - Homogeneous landscapes (food in every cell), including the slow validation tier, are
+    unaffected.
+  - **Committed Kattegat baselines are stale.** Real-landscape population results from earlier
+    versions should be re-run.
+
+### Changed
+- **`communication_enabled` now defaults to `False` in `SimulationParameters`.** This matches
+  the UI checkbox, which was already off.
+  - With realistic food the DEPONS random-walk weight is about 0.001, so the JASMINE
+    social/cohesion vector took over the heading: 69% of steps reversed direction, and net
+    movement was 1.9 km a day against DEPONS's 10.5 km.
+  - JASMINE social behaviour is now opt-in. Headless runs (scripts, baselines, tests) were the
+    only ones affected.
+  - With communication off, homogeneous landscapes now use the (equivalence-tested) Cython
+    fast path.
+
 ### Known issues (found 2026-11-10, not yet fixed)
+- **JASMINE social vector scaling.** When enabled, the social vector overrides the DEPONS random
+  walk under realistic food. It needs rescaling before social behaviour is used in science runs.
+- **Dispersal over-triggers.** On Kattegat, about 75% of CENOP porpoises end up dispersing,
+  against about 1% in DEPONS, and the population collapses faster.
+  - The trigger checks two days of declining energy where DEPONS checks three.
+  - Dispersal episodes also persist much longer than in DEPONS; the cause is not yet known.
 - `data/Kattegat` is the DEPONS **v3.0** Kattegat landscape, not v3.2 (all 33 files
   byte-identical to v3.0; prey, salinity, distance-to-coast and patch maps differ from
   v3.2). CENOP's loader cannot read the v3.2 files as shipped

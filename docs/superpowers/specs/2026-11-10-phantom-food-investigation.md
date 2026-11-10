@@ -305,8 +305,9 @@ Sources compared:
 | D11 | Land while dispersing | `forward()` has no land test; the stops keep the animal off land | land avoidance turns `heading`; the next tick rebuilds it from `_prev_step_heading`, so the turn is lost | new |
 | D12 | Same-tick fallthrough | after a stop inside `disperse()`, `stdMove` runs in the same tick | stop evaluated after the dispersal step | minor |
 | D13 | CRW state | `prevAngle` and `prevLogMov` frozen while dispersing (`stdMove` skipped) | updated every tick for dispersers | minor |
-| D14 | JAX backend | — | mirrors NumPy, including its gaps: `jax_heading_composition` restores the PSM heading for dispersers before `new_prev_step_heading` is taken (an earlier version of this row said otherwise), and `jax_dispersal_update` has the same completion and stop gaps; every fix must be mirrored | same gaps, no extra divergence |
+| D14 | JAX backend | — | the JAX backend (`jax_kernels.py`, `tick_jax.py`) now mirrors the fixed NumPy behaviour (Task 5, `b9659a1`, `eae0d3a`, `bd55bda`), so D1–D13 apply there too; every later change must be mirrored | fixed with D1–D13 |
 | D15 | Foraging land check (outside dispersal) | `checkDepth()` samples every 0.1 cell along the heading out to `presMov` cells (4× the step) before turning; its result is also the not-enough-water state that D9 reads | land avoidance tests only the destination cell at the step distance | new, untested; candidate for the dispersal-off energy residual |
+| D16 | Reference-memory order | DEPONS `refMemTurn` runs after the dispersal `forward()`, so it sees the post-move position | CENOP's `_update_reference_memory` runs before the disperser moves | deferred with D15 (pre-existing, outside D1–D14) |
 | — | Logistic shape | `LogisticDecreaseSSLogis(1, 0, 0.6)` = 1/(1+e^(−x/0.6)), *increasing* despite the name | same | match |
 | — | Dispersal energy cost | `E_USE_PER_KM = 0` | 0 | match |
 | — | Daily energy stop | 10-day buffer; stop if E[0] > min(E[1..7]), in the same daily step as the trigger | 10 columns; same rule, same tick | match |
@@ -429,8 +430,8 @@ Two other things checked:
   - DEPONS population on-patch rate (200 tracked animals).
 - DEPONS run on the v3.0 landscape (not done). Not needed for the verdicts, because v3.2 has
   more food.
-- Finding 3's root cause: **now established** with in-memory probes. The fixed code itself is not
-  yet verified.
+- Finding 3's root cause: **now established** with in-memory probes, and the fixed code was
+  verified 2026-11-10 against DEPONS rates on two seeds (Decision needed, item 3).
 - The non-dispersal residual (CENOP N +12–22% from day 150, with dispersal off in both models).
 - Single seed (42) for CENOP comparisons. DEPONS seeds 42 and 43 agree closely.
 - N=200 (TRACE scale) not re-checked after the fixes.
@@ -451,18 +452,43 @@ Two other things checked:
    - Rescaling the social vector relative to DEPONS's `crwContrib` (option c) remains an open
      JASMINE issue (CHANGELOG Known issues).
    - Side effect: with communication off, homogeneous landscapes now take the Cython fast path.
-3. **Finding 3: root cause established; fixes not started.** Needs its own plan, because
-   it changes model behaviour in the NumPy, Numba and JAX paths.
-   - Port D1, D3–D10 test-first, plus D2 and D13 (cheap): trigger, target selection, target
-     heading, `psm_angle`, path-length logistic and completion, and the per-step stops checked
-     *before* the move, with a stopped animal taking its normal CRW step in the same tick
-     (fixes D11/D12).
-   - The not-enough-water stop acts only on the first dispersal call (an activation filter); it needs D15's look-ahead state, so it may come with D15.
-   - Mirror the changes in `jax_kernels.py`/`tick_jax.py` (D14) or mark JAX as non-parity.
-   - Acceptance: DEPONS's rates (activation ≈ 0.13, median 5 moves, tick share ≈ 1.3%, on/off
-     N ratio), not the probe's "+ all" row. The probe stops *after* the move and wraps
-     `_update_dispersal`, which the fix restructures; its attribution needs adapting.
-   - Then investigate the non-dispersal residual (D15 first).
+3. **Finding 3: PSM-Type2 dispersal ported to DEPONS 3.2, on branch `fix/phantom-food-2026-11-10`
+   (not merged).** Acceptance measured 2026-11-10: **met on both seeds.**
+   - Commits:
+     - `8e17aa7` target selection: validated targets, no dispersal when none found, start heading
+       for the target (D3–D6)
+     - `a255bbe` trigger needs `t_disp` strict drops of the 3-d.p. daily mean (D1, D2)
+     - `d75636c` PSM turn uses `psm_angle` (40) and path length (D7, D8)
+     - `5a8ae40` per-step stops (off-grid, shallow ahead), path-length completion, same-tick CRW
+       (D9–D13)
+     - `0b72289` non-CRW movement modules keep the straight-line displacement completion
+     - `b9659a1` JAX backend mirrors the per-tick dispersal
+     - `eae0d3a` JAX skips the depth stop when there is no depth grid
+     - `bd55bda` JAX rounds the daily energy mean exactly as NumPy
+   - Controller ruling: the non-CRW modules (JASMINE physics, hybrid;
+     `_update_movement_module_generic`) keep the pre-existing straight-line displacement
+     completion. DEPONS parity applies to the CRW paths only.
+   - Not ported: the not-enough-water first-call filter (needs D15's look-ahead state); D15 and
+     D16 are deferred.
+   - Acceptance (`cenop_disp_rates.py <mode> 180 120 <seed>` on the fixed code, rates over days
+     0–120; the probe counts animals that make a dispersal move, i.e. after `_disperse_step`):
+
+| Metric | DEPONS | CENOP s42 | CENOP s43 | Accepted | Result |
+|---|---|---|---|---|---|
+| activation (starts per eligible predicate-day) | 0.133 | 0.126 | 0.134 | 0.10–0.16 | pass |
+| episode moves median | 5 | 5 | 5 | 4–6 | pass |
+| episode moves mean | 12.1 | 11.0 | 10.8 | 8–15 | pass |
+| tick share dispersing | 1.34% | 1.09% | 1.15% | 0.8–1.8% | pass |
+| on/off N ratio, day 150 | 0.80 / 0.81 (s42 / s43) | 0.850 | 0.821 | 0.75–0.87 | pass |
+
+   - CENOP N at days 120 / 150 / 180: s42 stock 1,283 / 941 / 613, dispersal off 1,472 / 1,107 /
+     694; s43 stock 1,281 / 893 / 607, dispersal off 1,478 / 1,088 / 728. On/off ratio at days
+     120 / 180: s42 0.872 / 0.883, s43 0.867 / 0.834 (DEPONS 0.833 / 0.930 s42, 0.825 / 0.922
+     s43).
+   - 96–97% of episodes end on the off-grid/shallow look-ahead stop, 2% on the energy rule, 1–2%
+     on path completion.
+   - Slow tier: 11 passed.
+   - Open: the dispersal-off N excess (non-dispersal residual, D15) remains; baselines are stale.
 4. **Then regenerate the Kattegat baselines and record the behaviour change** in the CHANGELOG.
    Any paper text or figures built on CENOP real-landscape populations need re-running.
 

@@ -8,19 +8,13 @@ over days [0, max_day), all animals:
 - tick share dispersing, averaged over every tick;
 - episode length in dispersal moves, and the end reason as attributed in code.
 
-Modes (combinable with '+'), all applied in memory, no source edits:
+Modes: only these two are valid on the fixed code (PSM-Type2 parity, D1-D13 in the source):
   stock     CENOP as is (communication off)
-  tdisp4    t_disp=4, i.e. DEPONS's three drops (D1)
-  water     DEPONS per-step stops on the dispersal heading: point 5 cells ahead off-grid or
-            depth <= wdisp (D9; the not-enough-water state is not modelled)
-  target    DEPONS target selection (D3-D5): no 50-cell trigger gate; memory target only with
-            >= 50 visited cells, plain food/ticks fitness over [pref +- tol]/0.4; otherwise up to
-            1000 random tries needing an in-grid cell with depth > 0 and prey > 0 this month;
-            failure = no dispersal
-  heading   start from the target heading: previousStepHeading = targetHeading (D6)
-  angle40   +-40 deg PSM turn instead of the 20 deg fallback (D7)
-  pathlen   path length drives both the logistic and completion (D8, D10)
   nodisp    no dispersal at all (controlled baseline for the on/off ratio)
+The earlier modes (tdisp4, water, target, heading, angle40, pathlen) re-applied fixes that are
+now in the source; their code paths were removed. Starts, moves and tick share count animals that
+make a dispersal move in a tick: PorpoisePopulation._disperse_step is wrapped and the mask of
+animals still dispersing after it (completion and look-ahead stops applied) is recorded.
 
 Usage: cenop_disp_rates.py <data_dir with Kattegat/> <mode> [max_day] [rate_days] [seed]
 """
@@ -42,60 +36,15 @@ data_dir, mode = sys.argv[1], sys.argv[2]
 max_day = int(sys.argv[3]) if len(sys.argv) > 3 else 120
 rate_days = int(sys.argv[4]) if len(sys.argv) > 4 else max_day  # rates over [0, rate_days)
 SEED = int(sys.argv[5]) if len(sys.argv) > 5 else 42
-WDISP = 4.0
-REASONS = {1: "water/off-grid ahead", 2: "day-boundary (energy stop)", 3: "complete/deterrence"}
+REASONS = {
+    1: "off-grid/shallow ahead",
+    2: "day-boundary (energy stop)",
+    3: "path complete/deterrence",
+}
 S = Counter()
 
 _orig_trig = P.PorpoisePopulation._check_dispersal_trigger
 _orig_upd = P.PorpoisePopulation._update_dispersal
-
-
-def _depons_activate(self, i):
-    """AbstractPSMDispersal.activate + findMostAttractiveMemCell (PSM-Type2). Returns success."""
-    tol = self.params.psm_tol
-    pref = self._psm_instances[i].preferred_distance
-    sx, sy = float(self.x[i]), float(self.y[i])
-    ticks = self.psm_buffer[i, :, :, 0]
-    vy, vx = np.nonzero(ticks)
-    tgt = None
-    if len(vx) >= 50:
-        cs = self.psm_cell_size
-        cx = vx * cs + cs // 2
-        cy = vy * cs + cs // 2
-        d = np.hypot(cx - sx, cy - sy)
-        cand = (d >= (pref - tol) / 0.4) & (d <= (pref + tol) / 0.4)
-        if cand.any():
-            fit = self.psm_buffer[i, vy, vx, 1] / ticks[vy, vx]
-            k = np.flatnonzero(cand)[np.argmax(fit[cand])]
-            tgt = (float(cx[k]), float(cy[k]))
-    if tgt is None:
-        # 1000 tries drawn at once; the first valid one wins (same semantics as the Java loop).
-        w, h = self.landscape.width, self.landscape.height
-        ent = self.landscape._entropy[self._get_current_month() - 1]
-        hd = np.radians(self.rng.random(1000) * 360.0)
-        dist = (pref + self.rng.random(1000) * 2 * tol - tol) / 0.4
-        tx = sx + dist * np.sin(hd)
-        ty = sy + dist * np.cos(hd)
-        xi = np.rint(tx).astype(np.int64)
-        yi = np.rint(ty).astype(np.int64)
-        ok = (xi >= 0) & (yi >= 0) & (xi < w) & (yi < h)
-        xc, yc = np.clip(xi, 0, w - 1), np.clip(yi, 0, h - 1)
-        ok &= (self.landscape._depth[yc, xc] > 0) & (ent[yc, xc] > 0)
-        if ok.any():
-            k = int(np.argmax(ok))
-            tgt = (float(tx[k]), float(ty[k]))
-    if tgt is None:
-        S["target_fail"] += 1
-        return False
-    th = np.degrees(np.arctan2(tgt[0] - sx, tgt[1] - sy)) % 360.0
-    self.is_dispersing[i] = True
-    self.dispersal_start_x[i], self.dispersal_start_y[i] = sx, sy
-    self.dispersal_target_x[i], self.dispersal_target_y[i] = tgt
-    self.dispersal_target_distance[i] = float(np.hypot(tgt[0] - sx, tgt[1] - sy))
-    self.dispersal_distance_traveled[i] = 0.0
-    self._prev_step_heading[i] = th if "heading" in mode else self.heading[i]
-    self.heading[i] = th
-    return True
 
 
 def _trig(self, mask):
@@ -105,88 +54,41 @@ def _trig(self, mask):
         pred = mask & (r[:, 0] < r[:, 1]) & (r[:, 1] < r[:, 2]) & (r[:, 2] < r[:, 3])
         S["pred"] += int(pred.sum())
         S["elig"] += int((pred & ~before).sum())
-    if "nodisp" in mode:
-        pass
-    elif "target" in mode:
-        t_disp = max(2, min(self.params.t_disp, self._energy_history.shape[1]))
-        dec = np.ones(self.count, dtype=bool)
-        for k in range(t_disp - 1):
-            dec &= self._energy_history[:, k] < self._energy_history[:, k + 1]
-        for i in np.flatnonzero(mask & dec & ~self.is_dispersing):
-            _depons_activate(self, i)
-    else:
+    if "nodisp" not in mode:
         _orig_trig(self, mask)
-        if "heading" in mode:
-            new = self.is_dispersing & ~before
-            dx = self.dispersal_target_x[new] - self.x[new]
-            dy = self.dispersal_target_y[new] - self.y[new]
-            self._prev_step_heading[new] = np.degrees(np.arctan2(dx, dy)) % 360.0
     self._new_act = self.is_dispersing & ~before
     S["raw_act"] += int(self._new_act.sum())
 
 
-_orig_head = P.PorpoisePopulation._apply_dispersal_heading
+_orig_step = P.PorpoisePopulation._disperse_step
 
 
-def _head_pathlen(self, mask):
-    """DispersalPSMType2.calculateNewHeading with distPerc = path / (0.95 x start-to-target)."""
-    disp = mask & self.is_dispersing
-    if not disp.any():
-        return
-    ang = getattr(self.params, "psm_type2_random_angle", 20.0)
-    delta = self.rng.uniform(-ang, ang, int(disp.sum()))
-    tgt = 0.95 * self.dispersal_target_distance[disp]
-    perc = np.where(tgt > 0, self.dispersal_distance_traveled[disp] / np.maximum(tgt, 1e-9), 0.0)
-    logistic = 1.0 / (1.0 + np.exp(-(3 * perc - 1.5) / self.params.psm_log))
-    self.heading[disp] = (self._prev_step_heading[disp] + delta * logistic) % 360.0
-    self._prev_step_heading[disp] = self.heading[disp]
+def _step(self, mask):
+    """Record who makes a dispersal move this tick; attribute look-ahead / path-length stops."""
+    before = mask & self.is_dispersing
+    complete = before & (self.dispersal_distance_traveled >= 0.95 * self.dispersal_target_distance)
+    _orig_step(self, mask)
+    self._moving = mask & self.is_dispersing
+    ended = before & ~self.is_dispersing
+    self._end_reason[ended] = np.where(complete, 3, 1)[ended]
 
 
 def _upd(self, mask):
     before = self.is_dispersing & mask
-    water = np.zeros_like(before)
-    if "water" in mode and before.any() and self.landscape is not None:
-        idx = np.flatnonzero(before)
-        step = self.params.mean_disp_dist / 0.4
-        rad = np.radians(self._prev_step_heading[idx])
-        px = self.x[idx] + np.sin(rad) * step
-        py = self.y[idx] + np.cos(rad) * step
-        w, h = self.landscape.width, self.landscape.height
-        outside = (px < 0) | (py < 0) | (px >= w - 0.5) | (py >= h - 0.5)
-        xi = np.clip(px.astype(np.int32), 0, w - 1)
-        yi = np.clip(py.astype(np.int32), 0, h - 1)
-        stop = idx[outside | (self.landscape._depth[yi, xi] <= WDISP)]
-        water[stop] = True
-        self.is_dispersing[stop] = False
-        self.dispersal_distance_traveled[stop] = 0.0
-        self.days_declining_energy[stop] = 0
-    if "pathlen" in mode:
-        done = (
-            mask
-            & self.is_dispersing
-            & (self.dispersal_distance_traveled >= 0.95 * self.dispersal_target_distance)
-        )
-        self.is_dispersing[done] = False
-        self.dispersal_distance_traveled[done] = 0.0
-        self.days_declining_energy[done] = 0
     _orig_upd(self, mask)
     ended = before & ~self.is_dispersing
     boundary = self._tick_counter == 0 and self._global_tick > 0
-    reason = np.where(water, 1, 2 if boundary else 3)
-    self._end_reason[ended] = reason[ended]
+    self._end_reason[ended] = 2 if boundary else 3
     new = getattr(self, "_new_act", None)
     if new is not None and boundary:
-        S["kill_water0"] += int((new & water).sum())
-        S["kill_energy0"] += int((new & ended & ~water).sum())
+        S["kill_energy0"] += int((new & ended).sum())
         self._new_act = None
 
 
 P.PorpoisePopulation._check_dispersal_trigger = _trig
 P.PorpoisePopulation._update_dispersal = _upd
-if "pathlen" in mode:
-    P.PorpoisePopulation._apply_dispersal_heading = _head_pathlen
+P.PorpoisePopulation._disperse_step = _step
 
-kw = {"t_disp": 4} if "tdisp4" in mode else {}
 params = SimulationParameters(
     porpoise_count=2000,
     sim_years=1,
@@ -195,10 +97,7 @@ params = SimulationParameters(
     ships_enabled=False,
     turbines="off",
     communication_enabled=False,
-    **kw,
 )
-if "angle40" in mode:
-    params.psm_type2_random_angle = 40.0
 cd = CellData("Kattegat", data_dir)
 cd.load()
 sim = Simulation(params=params, cell_data=cd, seed=SEED)
@@ -214,9 +113,12 @@ starts = disp_ticks = alive_ticks = 0
 S_win = None
 for tick in range(1, max_day * 48 + 1):
     window = tick <= rate_days * 48
+    a0 = pm.active_mask.copy()
+    pm._moving = np.zeros(N, dtype=bool)
+    sim.step()
+    a1 = pm.active_mask
     if window:
-        a0 = pm.active_mask.copy()
-        d0 = pm.is_dispersing & a0
+        d0 = pm._moving & a0  # animals that made a dispersal move this tick
         new = d0 & ~in_ep
         starts += int(new.sum())
         in_ep |= new
@@ -225,9 +127,6 @@ for tick in range(1, max_day * 48 + 1):
         moves[d0] += 1
         disp_ticks += int(d0.sum())
         alive_ticks += int(a0.sum())
-    sim.step()
-    a1 = pm.active_mask
-    if window:
         gone = in_ep & (~a1 | (pm.ids != ep_id))  # death or slot recycled: censored
         ended = in_ep & ~gone & ~pm.is_dispersing
         for e in np.flatnonzero(ended):
@@ -249,8 +148,7 @@ print(f"  predicate rate      {S['pred'] / ad:.4f} per animal-day")
 print(f"  eligible pred-days  {S['elig'] / ad:.4f} per animal-day")
 print(
     f"  raw activations     {S['raw_act'] / ad:.4f} per animal-day "
-    f"(killed same tick: energy {S['kill_energy0']}, water {S['kill_water0']}; "
-    f"target failures {S['target_fail']})"
+    f"(killed same tick: energy {S['kill_energy0']})"
 )
 print(f"  starts (visible)    {starts / ad:.4f} per animal-day")
 print(f"  activation rate     {starts / max(S['elig'], 1):.3f} starts per eligible predicate-day")

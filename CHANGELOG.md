@@ -39,16 +39,29 @@ All notable changes to CENOP-JASMINE are documented in this file.
   - With communication off, homogeneous landscapes now use the (equivalence-tested) Cython
     fast path.
 
+- **PSM-Type2 dispersal now follows DEPONS 3.2. This is a model behaviour change.** On
+  Kattegat about 75% of porpoises ended up dispersing against about 1% in DEPONS. Now:
+  - the trigger fires after `t_disp` strict drops of the 3-d.p. daily mean energy;
+  - targets are validated, and an animal with no valid target does not disperse;
+  - a new disperser starts heading for its target;
+  - the dispersal turn is +/-`psm_angle` (40 degrees), weighted by path length travelled;
+  - dispersal stops when the point 5 cells ahead is off the grid or no deeper than `wdisp` (4 m);
+  - completion is on path length travelled (95% of the target distance).
+  - The JAX backend mirrors all of this.
+  - Measured against DEPONS 3.2 (Kattegat, seeds 42 and 43, days 0-120): activation 0.126 /
+    0.134 (DEPONS 0.133), episode median 5 moves, mean 11.0 / 10.8 (12.1), tick share dispersing
+    1.09% / 1.15% (1.34%), N with/without dispersal at day 150 0.85 / 0.82 (0.80 / 0.81).
+  - **The committed Kattegat baselines are stale** until regenerated.
+
 ### Known issues (found 2026-11-10, not yet fixed)
 - **JASMINE social vector scaling.** When enabled, the social vector overrides the DEPONS random
   walk under realistic food. It needs rescaling before social behaviour is used in science runs.
-- **Dispersal over-triggers.** On Kattegat, about 75% of CENOP porpoises end up dispersing,
-  against about 1% in DEPONS, and the population collapses faster.
-  - The trigger checks two days of declining energy where DEPONS checks three.
-  - DEPONS's per-step stops (shallow water ahead, leaving the landscape) are missing.
-  - Completion uses straight-line displacement instead of path length travelled.
-  - Even with these corrected, episodes persist far longer than DEPONS's (median 5 ticks); the
-    full cause is not yet known.
+- **Non-CRW movement modules keep the old dispersal completion.** The JASMINE physics and
+  hybrid modules (`_update_movement_module_generic`) still end dispersal on straight-line
+  displacement from the start point, not on path length. DEPONS parity applies to the CRW paths
+  only.
+- Not ported from DEPONS dispersal: the not-enough-water first-call filter, and the order of the
+  reference-memory turn relative to the dispersal move (spec rows D15, D16).
 - `data/Kattegat` is the DEPONS **v3.0** Kattegat landscape, not v3.2 (all 33 files
   byte-identical to v3.0; prey, salinity, distance-to-coast and patch maps differ from
   v3.2). CENOP's loader cannot read the v3.2 files as shipped

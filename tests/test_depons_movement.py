@@ -236,7 +236,7 @@ class TestDispersalMovement:
         print(f"Normal mean change: {np.mean(change_norm):.1f}")
 
     def test_dispersal_completion(self):
-        """Dispersal should complete at 95% of target distance."""
+        """Dispersal should complete once the path travelled reaches 95% of target distance."""
         params = SimulationParameters(porpoise_count=10, random_seed=42)
         landscape = create_homogeneous_landscape(width=500, height=500)
         pop = PorpoisePopulation(10, params, landscape)
@@ -251,13 +251,18 @@ class TestDispersalMovement:
         pop.dispersal_target_x[0] = 150.0
         pop.dispersal_target_y[0] = 100.0
         pop.heading[0] = 90.0  # East
+        pop._prev_step_heading[0] = 90.0
 
-        # Move towards target manually
-        pop.x[0] = 147.5  # 95% of distance
-        pop._update_dispersal(pop.active_mask)
+        # Path length (not displacement) decides; the porpoise is still at its start point
+        pop.dispersal_distance_traveled[0] = 47.0  # below 95% of 50 cells
+        pop._disperse_step(pop.active_mask)
+        assert pop.is_dispersing[0], "Dispersal should continue below 95% path length"
+
+        pop.dispersal_distance_traveled[0] = 47.5  # 95% of 50 cells
+        pop._disperse_step(pop.active_mask)
 
         # Should complete dispersal
-        assert not pop.is_dispersing[0], "Dispersal should complete at 95% distance"
+        assert not pop.is_dispersing[0], "Dispersal should complete at 95% path length"
 
 
 class TestMovementStatistics:

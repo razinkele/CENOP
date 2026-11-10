@@ -3,8 +3,10 @@
 import numpy as np
 import pytest
 
+import cenop.agents.population as popmod
 from cenop.agents.population import PorpoisePopulation
 from cenop.landscape.cell_data import create_homogeneous_landscape
+from cenop.movement import DEPONSCRWMovementVectorized
 from cenop.parameters.simulation_params import SimulationParameters
 
 
@@ -155,3 +157,123 @@ class TestPsmTurn:
     def test_logistic_uses_path_length(self):
         delta = self._deltas(0.0, 0.95 * self.T)
         assert np.abs(delta).max() > 25
+
+
+class TestDisperseStep:
+    """DEPONS AbstractPSMDispersal.disperse() order inside Porpoise.move() (D9-D13)."""
+
+    T = 500.0
+
+    def _land_pop(self, path=None):
+        # psm_angle=0 makes the PSM heading equal _prev_step_heading
+        land = create_homogeneous_landscape(200, 200)
+        params = SimulationParameters(random_seed=1, communication_enabled=False, psm_angle=0.0)
+        module = DEPONSCRWMovementVectorized(params) if path == "module" else None
+        pop = PorpoisePopulation(4, params, land, movement_module=module)
+        # Look-ahead point (105.5, 100.5) -> cell [100, 105]
+        _disperser(pop, 0, 100.5, 100.5, 90.0, target_dist=self.T)
+        return pop, land
+
+    def test_stops_before_shallow_water(self):
+        pop, land = self._land_pop()
+        pop.dispersal_distance_traveled[0] = 10.0
+        pop.days_declining_energy[0] = 3
+        land._depth[100, 105] = 3.0
+        # Agent 1: PSM heading 90 but current heading 10, so a stop must restore 10
+        _disperser(pop, 1, 100.5, 50.5, 90.0, target_dist=self.T)
+        pop.heading[1] = 10.0
+        land._depth[50, 105] = np.nan
+        pop._disperse_step(pop.active_mask)
+        assert not pop.is_dispersing[0]
+        assert pop.heading[0] == 90.0
+        assert pop.dispersal_distance_traveled[0] == 0.0
+        assert pop.days_declining_energy[0] == 0
+        assert not pop.is_dispersing[1]
+        assert pop.heading[1] == 10.0
+
+        pop, land = self._land_pop()
+        assert land._depth[100, 105] == 30.0
+        pop._disperse_step(pop.active_mask)
+        assert pop.is_dispersing[0]
+        assert pop.heading[0] == 90.0
+
+    def test_stops_before_leaving_grid(self):
+        pop = _pop(psm_angle=0.0)
+        _disperser(pop, 0, 998.5, 500.5, 90.0)
+        _disperser(pop, 1, 500.5, 500.5, 90.0)
+        pop._disperse_step(pop.active_mask)
+        assert not pop.is_dispersing[0]
+        assert pop.is_dispersing[1]
+
+        # With a landscape, an off-grid look-ahead point stops before any depth lookup
+        pop, _ = self._land_pop()
+        _disperser(pop, 0, 100.5, 198.5, 0.0)
+        pop._disperse_step(pop.active_mask)
+        assert not pop.is_dispersing[0]
+
+    def test_completes_on_path_length(self):
+        pop = _pop(psm_angle=0.0)
+        _disperser(pop, 0, 100.0, 100.0, 90.0, target_dist=self.T, traveled=0.95 * self.T)
+        pop.heading[0] = 10.0
+        _disperser(pop, 1, 100.0, 100.0, 90.0, target_dist=self.T, traveled=0.0)
+        pop.x[1] = 100.0 + 0.95 * self.T
+        pop._disperse_step(pop.active_mask)
+        assert not pop.is_dispersing[0]
+        assert pop.heading[0] == 10.0  # completed before the PSM turn
+        assert pop.is_dispersing[1]
+        pop._update_dispersal(pop.active_mask)
+        assert pop.is_dispersing[1]
+
+    def test_zero_target_distance_completes_without_nan(self):
+        pop = _pop()
+        _disperser(pop, 0, 500.5, 500.5, 90.0, target_dist=0.0)
+        pop._disperse_step(pop.active_mask)
+        assert not pop.is_dispersing[0]
+        assert np.isfinite(pop.heading).all()
+
+    def test_inactive_slots_ignored(self):
+        pop = _pop(psm_angle=0.0)
+        _disperser(pop, 0, 500.5, 500.5, 90.0)
+        # Slot 1 would complete and slot 2 would turn to 90 if they were processed
+        _disperser(pop, 1, 500.5, 300.5, 90.0, target_dist=0.0)
+        _disperser(pop, 2, 500.5, 700.5, 90.0)
+        pop.heading[2] = 10.0
+        pop.active_mask[1:3] = False
+        pop._disperse_step(pop.active_mask)
+        assert pop.is_dispersing[1]
+        assert pop.is_dispersing[2]
+        assert pop.heading[2] == 10.0
+        assert pop.is_dispersing[0]
+
+    def _movement_pop(self, monkeypatch, path):
+        if path == "numba" and not popmod._HAS_KERNELS:
+            pytest.skip("Numba kernels unavailable")
+        monkeypatch.setattr(popmod, "_HAS_KERNELS", path == "numba")
+        pop, land = self._land_pop(path)
+        land._depth[100, 105] = 3.0  # agent 0 stops
+        _disperser(pop, 1, 100.5, 50.5, 90.0, target_dist=self.T)  # agent 1 continues
+        pop._recompute_cell_indices()
+        return pop
+
+    @pytest.mark.parametrize("path", ["numba", "numpy", "module"])
+    def test_stopped_disperser_takes_crw_step_same_tick(self, monkeypatch, path):
+        pop = self._movement_pop(monkeypatch, path)
+        pop._update_movement(pop.active_mask, None, None)
+        assert not pop.is_dispersing[0]
+        assert pop._step_dist[0] != pytest.approx(5.0)
+        assert pop.dispersal_distance_traveled[0] == 0.0
+        assert pop.is_dispersing[1]
+        assert pop._step_dist[1] == pytest.approx(5.0)
+        assert pop.dispersal_distance_traveled[1] == pytest.approx(5.0)
+
+    @pytest.mark.parametrize("path", ["numba", "numpy", "module"])
+    def test_crw_state_frozen_while_dispersing(self, monkeypatch, path):
+        pop = self._movement_pop(monkeypatch, path)
+        pop.prev_angle[:] = 17.0
+        pop.prev_log_mov[:] = 0.5
+        pop._update_movement(pop.active_mask, None, None)
+        assert pop.prev_angle[1] == 17.0
+        assert pop.prev_log_mov[1] == 0.5
+        # The stopped disperser took a CRW step, so its CRW state moved on
+        assert pop.prev_angle[0] != 17.0
+        assert pop.prev_log_mov[0] != 0.5

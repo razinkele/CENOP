@@ -916,8 +916,8 @@ class PorpoisePopulation:
         Update movement calculations for active agents.
 
         Handles:
+        - DEPONS dispersal step first (completion, PSM turn, look-ahead stops)
         - Correlated random walk (CRW) turning angles with environmental modulation
-        - Dispersal heading override for dispersing porpoises
         - Step length calculation with environmental modulation
         - Deterrence vector application
         - Social cohesion vectors
@@ -925,6 +925,14 @@ class PorpoisePopulation:
         if self._movement_module is not None:
             self._update_movement_jasmine(mask, deterrence_vectors, ambient_rl)
             return
+
+        # DEPONS Porpoise.move(): disperse() runs before stdMove(), so an animal that stops
+        # dispersing here takes its normal CRW step in the same tick (D12). Animals still
+        # dispersing skip stdMove(): their CRW state (prev_angle, prev_log_mov) stays frozen
+        # (D13), and they move by the heading kernel's fixed dispersal step.
+        self._disperse_step(mask)
+        crw_mask = mask & ~self.is_dispersing
+
         # === Get environmental variables from landscape ===
         # DEPONS CRW uses depth and salinity to modulate movement
         if self.landscape is not None:
@@ -964,7 +972,7 @@ class PorpoisePopulation:
                 self._salinity_vals,
                 self._rand_angle,
                 self._rand_len,
-                mask,
+                crw_mask,
                 self._pres_angle,
                 self._log_mov,
                 self.params.corr_angle_base,
@@ -988,7 +996,7 @@ class PorpoisePopulation:
                 self.prev_log_mov,
                 self._depths,
                 self._salinity_vals,
-                mask,
+                crw_mask,
                 self.params,
                 self._pres_angle,
                 self._log_mov,
@@ -996,16 +1004,14 @@ class PorpoisePopulation:
                 self._rand_angle,
                 self._rand_len,
             )
-            self.prev_log_mov[mask] = self._log_mov[mask]
+            self.prev_log_mov[crw_mask] = self._log_mov[crw_mask]
 
         # Capture pre-movement heading for prev_angle computation (Task 6)
         np.copyto(self._pre_heading, self.heading)
 
-        self.heading[mask] += self._pres_angle[mask]
-        self.heading[mask] %= 360.0
-
-        # Apply dispersal heading override for dispersing porpoises
-        self._apply_dispersal_heading(mask)
+        # CRW turn for non-dispersers; dispersers keep the PSM heading set by _disperse_step
+        self.heading[crw_mask] += self._pres_angle[crw_mask]
+        self.heading[crw_mask] %= 360.0
 
         # Update reference memory (stores food, computes veTotal and vt)
         self._update_reference_memory(mask)
@@ -1078,12 +1084,76 @@ class PorpoisePopulation:
         if dispersing.any():
             self.dispersal_distance_traveled[dispersing] += self._step_dist[dispersing]
 
-        # Store total turn for next step (Java Porpoise.java:583)
+        # Store total turn for next step (Java Porpoise.java:583); CRW movers only (D13)
         total_turn = (self.heading - self._pre_heading + 180) % 360 - 180
-        self.prev_angle[mask] = total_turn[mask]
+        self.prev_angle[crw_mask] = total_turn[crw_mask]
 
         # Update prev_log_mov (Numba kernel updates it inline, NumPy fallback needs this)
-        self.prev_log_mov[mask] = self._log_mov[mask]
+        self.prev_log_mov[crw_mask] = self._log_mov[crw_mask]
+
+    def _end_dispersal(self, sel: np.ndarray) -> None:
+        """DEPONS deactivate(): stop dispersing; reset path length and declining-energy days."""
+        self.is_dispersing[sel] = False
+        self.dispersal_distance_traveled[sel] = 0.0
+        self.days_declining_energy[sel] = 0
+
+    def _disperse_step(self, mask: np.ndarray) -> None:
+        """DEPONS AbstractPSMDispersal.disperse() for ``mask & is_dispersing`` (D9-D11).
+
+        In DEPONS order: path-length completion, PSM turn, then the look-ahead stops
+        (off-grid, then too shallow). A stopped animal gets its pre-turn heading back;
+        its ``_prev_step_heading`` keeps the PSM turn, as in DEPONS. The not-enough-water
+        filter (isEnoughWaterAhead) is not ported.
+
+        D11: the look-ahead point is where the fixed dispersal step lands (up to float32
+        rounding), so a disperser that continues moves to a cell with depth >
+        min_depth_dispersal (wdisp, default 4 m) >= min_depth (wmin, default 1 m), and land
+        avoidance never acts on it. Border reflection can still act in the strip between W - 1 (CENOP's
+        reflection edge) and W - 0.5 (DEPONS's off-grid threshold, kept as is), and
+        likewise for H.
+        """
+        d = mask & self.is_dispersing
+        if not d.any():
+            return
+
+        # 1. Completion on path length (DEPONS shouldStopDispersing: traveled >= 0.95 * target)
+        done = d & (self.dispersal_distance_traveled >= 0.95 * self.dispersal_target_distance)
+        if done.any():
+            self._end_dispersal(done)
+            d &= ~done
+            if not d.any():
+                return
+
+        # 2. PSM turn; also updates _prev_step_heading, even when a stop follows
+        idx = np.flatnonzero(d)
+        start_heading = self.heading[idx].copy()
+        self._apply_dispersal_heading(d)
+
+        # 3. Look-ahead point: one dispersal step (mean_disp_dist / 0.4 cells) along the heading
+        step = self.params.mean_disp_dist / 0.4
+        rad = np.radians(self.heading[idx].astype(np.float64))
+        px = self.x[idx] + step * np.sin(rad)
+        py = self.y[idx] + step * np.cos(rad)
+
+        # 4. Off-grid stop (DEPONS getPointAtHeadingAndDistNoBorder check)
+        land = self.landscape
+        w = land.width if land is not None else self.params.world_width
+        h = land.height if land is not None else self.params.world_height
+        stop = (px < 0) | (py < 0) | (px >= w - 0.5) | (py >= h - 0.5)
+
+        # 5. Depth stop: depth must exceed wdisp; NaN stops. Off-grid agents are already
+        #    stopped, so clipping only keeps their lookup in bounds.
+        depth_grid = getattr(land, "_depth", None) if land is not None else None
+        if depth_grid is not None:
+            xi = np.clip(px.astype(np.intp), 0, w - 1)
+            yi = np.clip(py.astype(np.intp), 0, h - 1)
+            stop |= ~(depth_grid[yi, xi] > self.params.min_depth_dispersal)
+
+        # 6. Stopped animals end dispersal and get their pre-turn heading back
+        if stop.any():
+            stopped = idx[stop]
+            self._end_dispersal(stopped)
+            self.heading[stopped] = start_heading[stop]
 
     def _apply_dispersal_heading(self, mask: np.ndarray) -> None:
         """Apply PSM-Type2 dispersal heading using the dispersal module formula.
@@ -1140,8 +1210,8 @@ class PorpoisePopulation:
         """JASMINE movement path — parity mirror of the inline NumPy CRW path.
 
         The injected module supplies only the DEPONS turning-angle + step-length draws
-        (via crw_core, off the population RNG); everything else (environment sampling,
-        reference-memory update, SSLogis dispersal override, deterrence/social heading
+        (via crw_core, off the population RNG); everything else (dispersal step,
+        environment sampling, reference-memory update, deterrence/social heading
         composition, prev_angle/prev_log_mov bookkeeping) is done here identically to
         _update_movement, so results match movement_module=None for a fixed seed.
         """
@@ -1155,6 +1225,11 @@ class PorpoisePopulation:
         if not isinstance(self._movement_module, DEPONSCRWMovement):
             self._update_movement_module_generic(mask, deterrence_vectors, ambient_rl)
             return
+
+        # 0. DEPONS disperse() before stdMove() (identical to inline, same RNG order): stopped
+        #    dispersers take a CRW step this tick (D12); continuing ones keep CRW state (D13).
+        self._disperse_step(mask)
+        crw_mask = mask & ~self.is_dispersing
 
         # 1. Environment at current cells (identical to inline, incl. Kattegat override)
         if self.landscape is not None:
@@ -1192,16 +1267,15 @@ class PorpoisePopulation:
 
         # 4. Module produces the CRW draws (angle + step). Deterrence is NOT passed here —
         #    it enters via the heading composition below (matches inline).
-        result = self._movement_module.compute_step(self.x, self.y, state, env, mask)
+        result = self._movement_module.compute_step(self.x, self.y, state, env, crw_mask)
         np.copyto(self._pres_angle, result.pres_angle)
         np.copyto(self._log_mov, result.log_mov)
-        self.prev_log_mov[mask] = self._log_mov[mask]
+        self.prev_log_mov[crw_mask] = self._log_mov[crw_mask]
 
-        # 5. Turn heading, then SSLogis dispersal override (identical order to inline)
+        # 5. CRW turn for non-dispersers (identical to inline); dispersers keep the PSM heading
         np.copyto(self._pre_heading, self.heading)
-        self.heading[mask] += self._pres_angle[mask]
-        self.heading[mask] %= 360.0
-        self._apply_dispersal_heading(mask)
+        self.heading[crw_mask] += self._pres_angle[crw_mask]
+        self.heading[crw_mask] %= 360.0
 
         # 6. Deterrence (+ memory avoidance + social) folded into the heading composition.
         #    NOTE: the inline reference path does NOT apply memory avoidance to movement;
@@ -1255,8 +1329,8 @@ class PorpoisePopulation:
         if dispersing.any():
             self.dispersal_distance_traveled[dispersing] += self._step_dist[dispersing]
         total_turn = (self.heading - self._pre_heading + 180) % 360 - 180
-        self.prev_angle[mask] = total_turn[mask]
-        self.prev_log_mov[mask] = self._log_mov[mask]
+        self.prev_angle[crw_mask] = total_turn[crw_mask]
+        self.prev_log_mov[crw_mask] = self._log_mov[crw_mask]
 
     def _update_movement_module_generic(
         self,
@@ -3277,22 +3351,18 @@ class PorpoisePopulation:
         return True
 
     def _update_dispersal(self, mask: np.ndarray) -> None:
-        """Update dispersal progress for dispersing porpoises."""
+        """End dispersal on turbine deterrence or energy recovery.
+
+        Path-length completion is checked at the start of the next tick by _disperse_step.
+        """
         dispersing = mask & self.is_dispersing
         if not dispersing.any():
             return
 
-        # Pre-compute distances once (shared across all checks)
-        dx = self.x - self.dispersal_start_x
-        dy = self.y - self.dispersal_start_y
-        distances = np.sqrt(dx * dx + dy * dy)
-
         # --- Deterrence deactivates dispersal (Java Porpoise.java:1277-1278) ---
         deterred = dispersing & (self._turbine_deter_strength > 0)
         if deterred.any():
-            self.is_dispersing[deterred] = False
-            self.dispersal_distance_traveled[deterred] = 0.0
-            self.days_declining_energy[deterred] = 0
+            self._end_dispersal(deterred)
             dispersing = mask & self.is_dispersing
 
         if not dispersing.any():
@@ -3306,21 +3376,7 @@ class PorpoisePopulation:
             recovering = today > past_min
             if recovering.any():
                 disp_indices = np.where(dispersing)[0]
-                stop_indices = disp_indices[recovering]
-                self.is_dispersing[stop_indices] = False
-                self.dispersal_distance_traveled[stop_indices] = 0.0
-                self.days_declining_energy[stop_indices] = 0
-                dispersing = mask & self.is_dispersing
-
-        if not dispersing.any():
-            return
-
-        # --- Distance completion check (reuse pre-computed distances) ---
-        completed = dispersing & (distances >= 0.95 * self.dispersal_target_distance)
-        if completed.any():
-            self.is_dispersing[completed] = False
-            self.dispersal_distance_traveled[completed] = 0.0
-            self.days_declining_energy[completed] = 0
+                self._end_dispersal(disp_indices[recovering])
 
     def get_psm(self, idx: int) -> PersistentSpatialMemory:
         """Get PSM instance for a specific porpoise."""

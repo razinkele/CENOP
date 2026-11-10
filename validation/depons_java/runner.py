@@ -68,7 +68,8 @@ def build_batch_command(
         build_classpath(layout),
         REPAST_BATCH_MAIN,
         "-params",
-        str(batch_params),
+        # Absolute: Java runs with cwd = model dir, where a relative path would resolve.
+        str(Path(batch_params).resolve()),
         str(layout.scenario_dir),
     ]
 

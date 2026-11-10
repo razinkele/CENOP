@@ -59,6 +59,13 @@ def test_build_batch_command_shape(tmp_path):
     assert REPAST_BATCH_MAIN == "repast.simphony.runtime.RepastBatchMain"
 
 
+def test_build_batch_command_resolves_relative_params(tmp_path, monkeypatch):
+    # Java runs with cwd = model dir, so a relative params path would resolve there.
+    monkeypatch.chdir(tmp_path)
+    cmd = build_batch_command(_layout(), Path("out/batch_params.xml"))
+    assert cmd[cmd.index("-params") + 1] == str(tmp_path / "out" / "batch_params.xml")
+
+
 def test_run_batch_captures_output_and_exit_code(tmp_path):
     log = tmp_path / "java.log"
     res = run_batch(

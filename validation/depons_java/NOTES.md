@@ -90,3 +90,23 @@
   `PorpoiseEnergyLevel` (a population sum) went 2008 → 1224. A first-year decline at this
   initial N/age structure. Not judged here.
 - The smoke outputs were moved to the scratchpad afterwards; the landing dir is clean.
+
+## Harness run + early determinism probe (Task 6, 2026-11-10)
+
+- `run --scenario …/kattegat-psm2-undisturbed-v1.json --seeds 42 --porpoise-count 200
+  --sim-years 1` → `status: ok`, 31.8 s. The landing dir was clean afterwards, and the
+  run dir holds `batch_params.xml`, `java.log`, `manifest.json`, `debug.log` and the 10
+  normalised outputs.
+- **Bug found by the probe and fixed (TDD):** the first repeat used a *relative*
+  `--out output/depons_java/repeat`. Java runs with cwd = model dir, so it looked for
+  `batch_params.xml` under `.depons-cache/install/DEPONS/output/...` and failed in 1.4 s
+  (`FileNotFoundException`). The harness correctly recorded `status: failed`, exit 1.
+  Fix: `build_batch_command` passes the params path absolute, and `inspect_install_dir`
+  returns absolute paths (guards a relative `--cache` too). Regression tests:
+  `test_build_batch_command_resolves_relative_params`,
+  `test_inspect_install_dir_returns_absolute_paths`.
+- **Determinism: CONFIRMED at smoke scale.** Two independent runs of seed 42 (N=200,
+  1 year) gave **byte-identical** outputs for every collected file: `Statistics`,
+  `YearlyMortality`, `PorpoisePerBlock`, `RandomPorpoise`, `Reproduction`, `Hydrophones`,
+  each `batch_param_map`, and `debug.log` (`compare` → `identical`). Same seed + same
+  release + same JVM → same trajectory, so replicates can be regenerated exactly.

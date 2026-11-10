@@ -1,5 +1,7 @@
 """Tests for A1 DEPONS install-layout inspection and landscape placement (offline)."""
 
+from pathlib import Path
+
 import pytest
 
 from validation.depons_java.install import (
@@ -34,6 +36,17 @@ def test_inspect_install_dir_complete(tmp_path):
     assert layout.model_dir == root / "DEPONS"
     assert layout.scenario_dir == root / "DEPONS" / "DEPONS.rs"
     assert layout.groovy_jar == root / "groovylib" / "groovy-3.0.17-indy.jar"
+
+
+def test_inspect_install_dir_returns_absolute_paths(tmp_path, monkeypatch):
+    # The runner uses cwd = model dir, so every layout path must be absolute.
+    _fake_install(tmp_path / "inst")
+    monkeypatch.chdir(tmp_path)
+    layout = inspect_install_dir(Path("inst"))
+    assert layout.root.is_absolute()
+    assert layout.runtime_dir.is_absolute()
+    assert layout.scenario_dir.is_absolute()
+    assert layout.groovy_jar.is_absolute()
 
 
 def test_inspect_install_dir_missing_runtime_names_it(tmp_path):

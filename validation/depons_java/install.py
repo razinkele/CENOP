@@ -40,7 +40,7 @@ class InstallLayout:
 
 
 def inspect_install_dir(root: Path) -> InstallLayout:
-    root = Path(root)
+    root = Path(root).resolve()  # absolute: runs use cwd = model dir
     if not root.is_dir():
         raise InstallError(f"install dir {root} does not exist")
     repast_root = root / "repast.simphony"

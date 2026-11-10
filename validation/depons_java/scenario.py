@@ -12,6 +12,7 @@ release's own ``parameters.xml`` and XML this module generates.
 from __future__ import annotations
 
 import json
+import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,6 +32,7 @@ class ParamSpec:
     name: str
     type: str
     default: str
+    allowed: tuple[str, ...] | None = None  # from parameters.xml `values`, if constrained
 
 
 @dataclass(frozen=True)
@@ -75,7 +77,13 @@ def parse_parameters_xml(path: Path) -> dict[str, ParamSpec]:
         name, ptype = elem.get("name"), elem.get("type")
         if ptype not in _CONSTANT_TYPE:
             raise ScenarioError(f"{path}: parameter {name!r} has unsupported type {ptype!r}")
-        specs[name] = ParamSpec(name=name, type=ptype, default=elem.get("defaultValue", ""))
+        values = elem.get("values")
+        specs[name] = ParamSpec(
+            name=name,
+            type=ptype,
+            default=elem.get("defaultValue", ""),
+            allowed=tuple(re.findall(r"'([^']*)'", values)) if values else None,
+        )
     return specs
 
 
@@ -87,6 +95,10 @@ def _check_value(spec: ParamSpec, value: str) -> None:
             raise ScenarioError(f"override {spec.name}={value!r} is not an integer") from None
     elif spec.type == "boolean" and value not in ("true", "false"):
         raise ScenarioError(f"override {spec.name}={value!r} must be 'true' or 'false'")
+    if spec.allowed is not None and value not in spec.allowed:
+        raise ScenarioError(
+            f"override {spec.name}={value!r} is not one of the allowed values {list(spec.allowed)}"
+        )
 
 
 def effective_parameters(

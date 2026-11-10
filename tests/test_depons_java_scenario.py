@@ -71,6 +71,47 @@ def test_bad_boolean_rejected(specs):
         effective_parameters(specs, {"ships": "yes"}, 1)
 
 
+VALUES_XML = """<?xml version="1.0" encoding="UTF-8" ?>
+<parameters>
+\t\t<parameter name="dispersal" displayName="Large-scale movement type" type="string"
+\t\t\t\t\t\tdefaultValue="PSM-Type2" isReadOnly="false"
+\t\t\t\t\t\tvalues="'off' 'PSM-Type2' 'Undirected' 'InnerDanishWaters'"
+\t\t/>
+\t\t<parameter name="PSM_dist" displayName="PSM_dist" type="string"
+\t\t\t\t\t\tdefaultValue="N(300;100)" isReadOnly="false"/>
+</parameters>
+"""
+
+
+@pytest.fixture
+def value_specs(tmp_path):
+    p = tmp_path / "values.xml"
+    p.write_text(VALUES_XML)
+    return parse_parameters_xml(p)
+
+
+def test_parse_parameters_xml_reads_allowed_values(value_specs):
+    assert value_specs["dispersal"].allowed == (
+        "off",
+        "PSM-Type2",
+        "Undirected",
+        "InnerDanishWaters",
+    )
+    assert value_specs["PSM_dist"].allowed is None
+
+
+def test_value_outside_allowed_list_rejected(value_specs):
+    # A typo in a constrained string parameter would make DEPONS fall back silently
+    # (DispersalFactory -> Off), so it must fail before Java starts.
+    with pytest.raises(ScenarioError, match="dispersal.*PSM-Typ2.*InnerDanishWaters"):
+        effective_parameters(value_specs, {"dispersal": "PSM-Typ2"}, 1)
+
+
+def test_value_inside_allowed_list_accepted(value_specs):
+    params = effective_parameters(value_specs, {"dispersal": "InnerDanishWaters"}, 1)
+    assert params["dispersal"] == "InnerDanishWaters"
+
+
 def test_render_batch_params_roundtrip(specs):
     params = effective_parameters(specs, {"PSM_dist": "A&B"}, 3)
     root = ET.fromstring(render_batch_params(specs, params))

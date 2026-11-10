@@ -1,7 +1,9 @@
 """Tests for the A1 headless Repast batch runner (offline; no DEPONS run)."""
 
+import os
 import shlex
 import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -86,6 +88,35 @@ def test_run_batch_timeout_kills(tmp_path):
     assert res.timed_out is True
     assert res.returncode == -9
     assert time.monotonic() - t0 < 5
+
+
+def test_run_batch_kills_child_on_interrupt(tmp_path, monkeypatch):
+    # Ctrl-C / SIGTERM on the harness must not orphan a JVM writing into the landing dir.
+    orig_wait = subprocess.Popen.wait
+    seen = {}
+
+    def interrupted_wait(self, timeout=None):
+        if "pid" not in seen:
+            seen["pid"] = self.pid
+            raise KeyboardInterrupt
+        return orig_wait(self, timeout=timeout)
+
+    monkeypatch.setattr(subprocess.Popen, "wait", interrupted_wait)
+    with pytest.raises(KeyboardInterrupt):
+        run_batch(
+            [sys.executable, "-c", "import time; time.sleep(30)"], tmp_path, tmp_path / "l", 60
+        )
+    with pytest.raises(ProcessLookupError):
+        os.kill(seen["pid"], 0)
+
+
+def test_run_batch_pins_c_locale(tmp_path, monkeypatch):
+    # DEPONS timestamps/number formats follow the JVM default locale: pin it.
+    monkeypatch.setenv("LANG", "de_DE.UTF-8")
+    log = tmp_path / "java.log"
+    code = "import os; print(os.environ['LC_ALL'], os.environ['LANG'])"
+    run_batch([sys.executable, "-c", code], tmp_path, log, 30)
+    assert log.read_text().split() == ["C.UTF-8", "C.UTF-8"]
 
 
 @pytest.mark.skipif(shutil.which("java") is None, reason="no java on PATH")

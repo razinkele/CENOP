@@ -15,14 +15,20 @@ from validation.depons_java.artifacts import (
     default_cache_dir,
     fetch_artifact,
     load_registry,
+    sha256_file,
     verify_artifact,
 )
 from validation.depons_java.collect import (
     CollectError,
+    assert_comparable,
     assert_landing_clean,
+    check_run_dirs,
     collect_run,
     compare_runs,
+    expected_last_tick,
     prepare_run_dir,
+    read_last_tick,
+    run_lock,
     run_status,
     write_manifest,
 )
@@ -31,9 +37,15 @@ from validation.depons_java.install import (
     InstallLayout,
     install_landscape,
     install_release,
+    verify_install,
 )
 from validation.depons_java.landscape import compare_dirs, extract_landscape, render_report
-from validation.depons_java.runner import build_batch_command, java_version, run_batch
+from validation.depons_java.runner import (
+    RUN_LOCALE,
+    build_batch_command,
+    java_version,
+    run_batch,
+)
 from validation.depons_java.scenario import (
     ScenarioError,
     effective_parameters,
@@ -46,72 +58,101 @@ DEPONS_VERSION = "3.2"
 DEPONS_COMMIT = "8f533f8ef59f3652056b4f23c6abecbe6cd80acb"
 
 
-def _git(*args: str) -> str:
-    proc = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), *args], capture_output=True, text=True, check=False
-    )
-    return proc.stdout.strip()
+def _git(*args: str) -> str | None:
+    """Run git in the harness repo; None (recorded as null) if git fails."""
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), *args], capture_output=True, text=True, check=False
+        )
+    except OSError:
+        return None
+    return proc.stdout.strip() if proc.returncode == 0 else None
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
     cache = Path(args.cache) if args.cache else default_cache_dir()
     try:
         scenario = load_scenario(Path(args.scenario))
-        layout = ensure_installed(cache)
-        registry = load_registry()
-        specs = parse_parameters_xml(layout.scenario_dir / "parameters.xml")
-        overrides = dict(scenario.overrides)
-        if args.porpoise_count is not None:
-            overrides["porpoiseCount"] = str(args.porpoise_count)
-        if args.sim_years is not None:
-            overrides["simYears"] = str(args.sim_years)
-        effective_parameters(specs, overrides, 0)  # validate before any run starts
-        count = overrides.get("porpoiseCount", specs["porpoiseCount"].default)
-        years = overrides.get("simYears", specs["simYears"].default)
         seeds = args.seeds or list(scenario.seeds)
-        jvm = java_version()
-        failed = 0
-        for seed in seeds:
-            seed_dir = Path(args.out) / scenario.id / f"N{count}-Y{years}" / f"seed-{seed}"
-            prepare_run_dir(seed_dir, overwrite=args.overwrite)
-            assert_landing_clean(layout.model_dir)
-            params = effective_parameters(specs, overrides, seed)
-            batch_params = seed_dir / "batch_params.xml"
-            batch_params.write_text(render_batch_params(specs, params))
-            cmd = build_batch_command(layout, batch_params)
-            started = datetime.now(timezone.utc).isoformat(timespec="seconds")
-            result = run_batch(cmd, layout.model_dir, seed_dir / "java.log", args.timeout_s)
-            collected = collect_run(layout.model_dir, seed_dir)
-            status = run_status(result.returncode, result.timed_out, collected)
-            failed += status != "ok"
-            write_manifest(
-                seed_dir,
-                {
-                    "scenario_id": scenario.id,
-                    "seed": seed,
-                    "parameters": params,
-                    "depons_version": DEPONS_VERSION,
-                    "depons_commit": DEPONS_COMMIT,
-                    "jar_sha256": registry["depons_jar"].sha256,
-                    "landscape_sha256": registry["kattegat_landscape"].sha256,
-                    "java_version": jvm,
-                    "repast_version": layout.repast_version,
-                    "harness_commit": _git("rev-parse", "HEAD"),
-                    "harness_dirty": bool(_git("status", "--porcelain")),
-                    "host": platform.node(),
-                    "started_utc": started,
-                    "wall_seconds": round(result.wall_seconds, 3),
-                    "returncode": result.returncode,
-                    "timed_out": result.timed_out,
-                    "status": status,
-                    "output_files": collected,
-                    "command": cmd,
-                },
-            )
-            print(f"seed {seed}: {status} in {result.wall_seconds:.1f} s -> {seed_dir}")
+        if len(set(seeds)) != len(seeds):
+            raise ScenarioError(f"duplicate seeds {seeds}")
+        with run_lock(cache):
+            return _run_locked(args, cache, scenario, seeds)
     except (ArtifactError, InstallError, ScenarioError, CollectError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+
+
+def _run_locked(args: argparse.Namespace, cache: Path, scenario, seeds: list[int]) -> int:
+    # 1. Validate everything before deleting or running anything.
+    layout = ensure_installed(cache)
+    jar_sha256 = verify_install(layout, load_registry()["depons_jar"].sha256)
+    specs = parse_parameters_xml(layout.scenario_dir / "parameters.xml")
+    overrides = dict(scenario.overrides)
+    if args.porpoise_count is not None:
+        overrides["porpoiseCount"] = str(args.porpoise_count)
+    if args.sim_years is not None:
+        overrides["simYears"] = str(args.sim_years)
+    base = effective_parameters(specs, overrides, 0)
+    count, years = base["porpoiseCount"], base["simYears"]
+    scale_dir = Path(args.out) / scenario.id / f"N{count}-Y{years}"
+    seed_dirs = {seed: scale_dir / f"seed-{seed}" for seed in seeds}
+    check_run_dirs(list(seed_dirs.values()), overwrite=args.overwrite)
+    assert_landing_clean(layout.model_dir)
+
+    # 2. Provenance shared by every seed, captured before any run starts.
+    harness_commit = _git("rev-parse", "HEAD")
+    porcelain = _git("status", "--porcelain")
+    harness_dirty = None if porcelain is None else bool(porcelain)
+    landscape_zip = layout.model_dir / "data" / f"{base['landscape']}.zip"
+    landscape_sha256 = sha256_file(landscape_zip) if landscape_zip.is_file() else None
+    jvm = java_version()
+    ticks_expected = expected_last_tick(int(years))
+
+    failed = 0
+    for seed, seed_dir in seed_dirs.items():
+        assert_landing_clean(layout.model_dir)
+        prepare_run_dir(seed_dir, overwrite=args.overwrite)  # delete only right before launch
+        params = effective_parameters(specs, overrides, seed)
+        batch_params = seed_dir / "batch_params.xml"
+        batch_params.write_text(render_batch_params(specs, params))
+        cmd = build_batch_command(layout, batch_params)
+        started = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        result = run_batch(cmd, layout.model_dir, seed_dir / "java.log", args.timeout_s)
+        collected = collect_run(layout.model_dir, seed_dir)
+        ticks_found = read_last_tick(seed_dir / "Statistics.csv")
+        status = run_status(
+            result.returncode, result.timed_out, collected, ticks_found, ticks_expected
+        )
+        failed += status != "ok"
+        write_manifest(
+            seed_dir,
+            {
+                "scenario_id": scenario.id,
+                "seed": seed,
+                "parameters": params,
+                "depons_version": DEPONS_VERSION,
+                "depons_commit": DEPONS_COMMIT,
+                "jar_sha256": jar_sha256,
+                "landscape_sha256": landscape_sha256,
+                "java_version": jvm,
+                "repast_version": layout.repast_version,
+                "harness_commit": harness_commit,
+                "harness_dirty": harness_dirty,
+                "host": platform.node(),
+                "started_utc": started,
+                "wall_seconds": round(result.wall_seconds, 3),
+                "returncode": result.returncode,
+                "timed_out": result.timed_out,
+                "ticks_expected": ticks_expected,
+                "ticks_found": ticks_found,
+                "status": status,
+                "locale": RUN_LOCALE,
+                "output_files": collected,
+                "command": cmd,
+            },
+        )
+        print(f"seed {seed}: {status} in {result.wall_seconds:.1f} s -> {seed_dir}")
     return 1 if failed else 0
 
 
@@ -130,6 +171,12 @@ def _cmd_compare_landscape(args: argparse.Namespace) -> int:
 
 
 def _cmd_compare(args: argparse.Namespace) -> int:
+    try:
+        assert_comparable(Path(args.run_a))
+        assert_comparable(Path(args.run_b))
+    except CollectError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     differing = compare_runs(Path(args.run_a), Path(args.run_b))
     for name in differing:
         print(name)
@@ -144,6 +191,7 @@ def ensure_installed(cache: Path) -> InstallLayout:
     jar = fetch_artifact(registry["depons_jar"], cache)
     landscape_zip = fetch_artifact(registry["kattegat_landscape"], cache)
     layout = install_release(jar, cache / "install")
+    verify_install(layout, registry["depons_jar"].sha256)
     install_landscape(landscape_zip, layout)
     return layout
 

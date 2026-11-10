@@ -74,8 +74,12 @@ def build_batch_command(
     ]
 
 
+RUN_LOCALE = "C.UTF-8"  # DEPONS timestamps and number formats follow the JVM default locale
+
+
 def run_batch(cmd: list[str], cwd: Path, log_path: Path, timeout_s: float) -> RunResult:
     env = {k: v for k, v in os.environ.items() if k != "DISPLAY"}
+    env["LC_ALL"] = env["LANG"] = RUN_LOCALE
     log_path = Path(log_path)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     start = time.monotonic()
@@ -85,9 +89,12 @@ def run_batch(cmd: list[str], cwd: Path, log_path: Path, timeout_s: float) -> Ru
             returncode = proc.wait(timeout=timeout_s)
             timed_out = False
         except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
             returncode, timed_out = -9, True
+        finally:
+            # Also on Ctrl-C/SIGTERM: never leave a JVM writing into the landing dir.
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
     return RunResult(returncode, timed_out, time.monotonic() - start, log_path)
 
 

@@ -7,11 +7,16 @@ import pytest
 from validation.depons_java.collect import (
     MANIFEST_FIELDS,
     CollectError,
+    assert_comparable,
     assert_landing_clean,
+    check_run_dirs,
     collect_run,
     compare_runs,
+    expected_last_tick,
     normalise_output_name,
     prepare_run_dir,
+    read_last_tick,
+    run_lock,
     run_status,
     write_manifest,
 )
@@ -41,6 +46,9 @@ TS_B = "2026.Nov.10.13_02_07"
         ("RandomPorpoise.2026.Nov.10.12_16_51.csv", "RandomPorpoise.csv"),
         ("Reproduction.2026.Nov.10.12_16_51.csv", "Reproduction.csv"),
         ("YearlyMortality.2026.Nov.10.12_16_52_230.csv", "YearlyMortality.csv"),
+        # Locales whose month abbreviations carry a trailing dot (de/fr/lt on modern JDKs):
+        ("Statistics.2026.Nov..10.12_16_51.csv", "Statistics.csv"),
+        ("YearlyMortality.2026.lapkr..10.12_00_01_42.csv", "YearlyMortality.csv"),
     ],
 )
 def test_normalise_names(name, expected):
@@ -123,10 +131,65 @@ def test_collect_moves_debug_log_and_tolerates_harness_files(tmp_path):
 
 def test_run_status():
     ok = {"Statistics.csv": "Statistics.x.csv"}
-    assert run_status(0, False, ok) == "ok"
-    assert run_status(1, False, ok) == "failed"
-    assert run_status(0, True, ok) == "failed"
-    assert run_status(0, False, {}) == "failed"
+    assert run_status(0, False, ok, 17279, 17279) == "ok"
+    assert run_status(1, False, ok, 17279, 17279) == "failed"
+    assert run_status(0, True, ok, 17279, 17279) == "failed"
+    assert run_status(0, False, {}, None, 17279) == "failed"
+    # exit 0 + Statistics.csv but the run stopped early: not a completed run
+    assert run_status(0, False, ok, 9000, 17279) == "failed"
+
+
+def test_expected_last_tick_matches_depons_calendar():
+    # 360-day years x 48 ticks; Statistics records ticks 1..N-1 (NOTES: 17,279 for 1 yr)
+    assert expected_last_tick(1) == 17279
+    assert expected_last_tick(5) == 86399
+
+
+def test_read_last_tick(tmp_path):
+    stats = tmp_path / "Statistics.csv"
+    stats.write_text(
+        '"run","tick","PorpoiseCount","FoodEnergyLevel","PorpoiseEnergyLevel"\n'
+        "1,1.0,200,1.0,2.0\n1,17279.0,107,1.0,2.0\n"
+    )
+    assert read_last_tick(stats) == 17279
+    assert read_last_tick(tmp_path / "missing.csv") is None
+    header_only = tmp_path / "h.csv"
+    header_only.write_text('"run","tick"\n')
+    assert read_last_tick(header_only) is None
+
+
+def test_check_run_dirs_refuses_any_nonempty_before_running(tmp_path):
+    a, b = tmp_path / "seed-42", tmp_path / "seed-43"
+    b.mkdir()
+    (b / "Statistics.csv").write_text("old")
+    with pytest.raises(CollectError, match="seed-43"):
+        check_run_dirs([a, b], overwrite=False)
+    check_run_dirs([a, b], overwrite=True)  # allowed; nothing deleted yet
+    assert (b / "Statistics.csv").exists()
+
+
+def test_run_lock_is_exclusive(tmp_path):
+    with run_lock(tmp_path):
+        with pytest.raises(CollectError, match="another harness"):
+            with run_lock(tmp_path):
+                pass
+    with run_lock(tmp_path):  # released after the block
+        pass
+
+
+def test_assert_comparable_rejects_empty_or_failed_runs(tmp_path):
+    good, empty, failed = tmp_path / "good", tmp_path / "empty", tmp_path / "failed"
+    for d in (good, empty, failed):
+        d.mkdir()
+    (good / "Statistics.csv").write_text("x")
+    (good / "manifest.json").write_text(json.dumps({"status": "ok"}))
+    (failed / "Statistics.csv").write_text("x")
+    (failed / "manifest.json").write_text(json.dumps({"status": "failed"}))
+    assert_comparable(good)
+    with pytest.raises(CollectError, match="Statistics.csv"):
+        assert_comparable(empty)
+    with pytest.raises(CollectError, match="failed"):
+        assert_comparable(failed)
 
 
 def test_write_manifest_requires_all_fields(tmp_path):

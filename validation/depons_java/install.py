@@ -8,6 +8,7 @@ model, which runs later on the system Java.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -15,6 +16,9 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from validation.depons_java.artifacts import sha256_file
+
+MARKER_NAME = ".cenop-install.json"
 _INSTALLER_JAVA_CANDIDATES = (
     "/usr/lib/jvm/java-11-openjdk-amd64/bin/java",
     "/usr/lib/jvm/java-11-openjdk/bin/java",
@@ -112,16 +116,44 @@ def install_release(
             timeout=timeout_s,
         )
     if proc.returncode != 0:
+        shutil.rmtree(partial, ignore_errors=True)
         tail = "\n".join((proc.stdout + proc.stderr).splitlines()[-15:])
         raise InstallError(f"installer exited {proc.returncode}:\n{tail}")
     inspect_install_dir(partial)
+    # Bind the install tree to the jar it came from, so every run can prove it.
+    (partial / MARKER_NAME).write_text(
+        json.dumps({"jar_sha256": sha256_file(jar), "jar_name": Path(jar).name}, indent=2) + "\n"
+    )
     os.rename(partial, dest)
     return inspect_install_dir(dest)
+
+
+def read_install_marker(root: Path) -> dict:
+    marker = Path(root) / MARKER_NAME
+    if not marker.is_file():
+        raise InstallError(f"install marker {marker} missing; delete {root} and reinstall")
+    return json.loads(marker.read_text())
+
+
+def verify_install(layout: InstallLayout, expected_jar_sha256: str) -> str:
+    """Return the installed jar's SHA-256 if it matches the pin, else raise."""
+    recorded = read_install_marker(layout.root).get("jar_sha256")
+    if recorded != expected_jar_sha256:
+        raise InstallError(
+            f"{layout.root} was installed from jar {recorded}, not the pinned "
+            f"{expected_jar_sha256}; delete it and reinstall"
+        )
+    return recorded
 
 
 def install_landscape(zip_path: Path, layout: InstallLayout, landscape: str = "Kattegat") -> Path:
     data_dir = layout.model_dir / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
     target = data_dir / f"{landscape}.zip"
-    shutil.copyfile(zip_path, target)
+    # Never rewrite in place: DEPONS re-opens the zip during a run.
+    if target.is_file() and sha256_file(target) == sha256_file(zip_path):
+        return target
+    tmp = data_dir / f".{landscape}.zip.tmp"
+    shutil.copyfile(zip_path, tmp)
+    os.replace(tmp, target)
     return target

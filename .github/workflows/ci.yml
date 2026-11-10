@@ -25,6 +25,7 @@ jobs:
           sparse-checkout: | # only the code needed to lint (root files incl. pyproject auto-included)
             src
             tests
+            validation
 
       - name: Set up micromamba environment
         uses: mamba-org/setup-micromamba@v2
@@ -33,10 +34,10 @@ jobs:
           cache-environment: true
 
       - name: black --check
-        run: black --check --line-length 100 src tests
+        run: black --check --line-length 100 src tests validation
 
       - name: ruff check
-        run: ruff check src tests
+        run: ruff check src tests validation
 
   test:
     name: Fast test suite (Python 3.13)

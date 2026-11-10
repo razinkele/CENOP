@@ -2,6 +2,36 @@
 
 All notable changes to CENOP-JASMINE are documented in this file.
 
+## [Unreleased]
+
+### Added
+- DEPONS 3.2 reference harness (`validation/depons_java/`, roadmap Track A1). It runs the
+  official, unmodified DEPONS 3.2 release headless on Linux from one command: it fetches the
+  release jar and Kattegat landscape (size + SHA-256 pinned), installs them unattended, runs
+  each scenario seed, and writes a provenance `manifest.json` per run. Stdlib only, 85 fast
+  tests; needs Java 21 for the model and Java 11 for the release's installer. See
+  `validation/depons_java/README.md` and
+  `docs/superpowers/specs/2026-11-10-track-a1-spike-report.md`
+
+### Known issues (found 2026-11-10, not yet fixed)
+- `data/Kattegat` is the DEPONS **v3.0** Kattegat landscape, not v3.2 (all 33 files
+  byte-identical to v3.0; prey, salinity, distance-to-coast and patch maps differ from
+  v3.2). CENOP's loader cannot read the v3.2 files as shipped
+- The simulation never reads the `dispersal` parameter: large-scale movement is always
+  PSM-Type2, so the UI dispersal selector has no effect and `InnerDanishWaters` (which
+  DEPONS TRACE 3.2 §3.2.4 specifies for Kattegat) cannot be run
+
+### CI & docs
+- The CI lint gate now also checks `validation/` (the harness package)
+- Pinned the lint tools in `environment.yml` (`black==26.1.0`, `ruff==0.15.21`) so new
+  formatter/linter releases can't fail the lint gate without a code change
+- GitHub default branch switched to `CENOP-JASMINE` (2026-11-10), so the nightly
+  slow-tier workflow (`slow.yml`) is now registered; it had never run while the default
+  was the stale `main`
+- Refreshed stale docs: `docs/backend-equivalence.md` (Cython repaired, not broken),
+  `docs/validation-suite-status.md` (CI exists; default-branch and 60-day caveats),
+  `CLAUDE.md` (CI and test counts)
+
 ## [2.2.0] - 2026-07-10
 
 ### Deep-Review Fix Cycle (29 tasks, 6 phases)

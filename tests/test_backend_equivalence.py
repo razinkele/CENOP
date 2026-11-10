@@ -92,9 +92,8 @@ def _build_cy(seed):
 
 @pytest.mark.skipif(not getattr(pop_mod, "_HAS_CYTHON", False), reason="Cython not built")
 def test_cython_gate_is_engaged():
-    """Non-vacuity guard (separate from the xfail below, which errors before its own
-    inline checks run): the Cython post-CRW gate must actually be satisfiable, else the
-    equivalence comparison would prove nothing."""
+    """Non-vacuity guard for the equivalence test below: the Cython post-CRW gate must
+    actually be satisfiable, else the equivalence comparison would prove nothing."""
     p = _build_cy(11)
     assert p._energy_module is None and p._skip_land_avoidance and not p._comm_enabled
 

@@ -4,17 +4,20 @@ This document records the status of CENOP's slow demographic-validation tier —
 multi-year population-dynamics tests that confirm the model reproduces DEPONS-documented
 demographic behavior (population stability, mortality, reproduction, energy, age structure).
 
-## ⚠️ No CI — the slow validation tier is MANUAL
+## CI coverage — nightly job, plus a local run before releases
 
-> ⚠️ **No CI — the slow validation tier is MANUAL.** Run `pytest tests/ -m slow` before every release/merge of model-behavior changes. If CI is ever added, it MUST include a slow-tier job, or these demographic-validation tests silently never run.
+The 11 slow tests are marked `@pytest.mark.slow` and are **deselected by default** so
+day-to-day iteration on the fast suite stays quick. They run automatically only in the
+dedicated GitHub Actions workflow `.github/workflows/slow.yml`: nightly at 03:00 UTC and
+on manual dispatch (Actions → "Slow validation tier" → Run workflow). The fast-suite
+workflow (`ci.yml`) does **not** run them.
 
-**Why this matters.** The 11 slow tests are marked `@pytest.mark.slow` and are
-**deselected by default** so day-to-day iteration on the fast test suite stays quick.
-That fast-iteration design is deliberate — but it means these demographic checks never
-run unless explicitly requested. The repository has **no `.github/` directory and no CI
-pipeline**, so there is no automated safety net. Running `pytest tests/ -m slow` by hand
-before each model-behavior release/merge is the **compensating control** for that gap.
-If CI is added later, a dedicated slow-tier job is mandatory.
+> ⚠️ **Caveats.** GitHub runs `schedule` and `workflow_dispatch` workflows only from the
+> repository's **default branch**. Until 2026-11-10 the default branch was a stale `main`,
+> so this workflow was never registered and never ran; the default is now `CENOP-JASMINE`.
+> GitHub also **disables scheduled workflows after ~60 days without repository activity**.
+> Check the Actions tab and re-enable the workflow if it has been paused. Run
+> `pytest tests/ -m slow` locally before every release/merge of model-behavior changes.
 
 ## The 11 slow tests
 
@@ -39,7 +42,12 @@ If CI is added later, a dedicated slow-tier job is mandatory.
 micromamba run -n shiny python3 -m pytest tests/ -m slow -q --durations=0
 ```
 
-## Last recorded run (2026-06-12)
+## Last recorded run (2026-11-10, local, at v2.2.0 `2db80ea`)
+
+- **Outcome:** 11 passed, 810 deselected
+- **Total runtime:** 289.04 s (~4 min 49 s); per-test durations not captured
+
+## Previous recorded run (2026-06-12)
 
 - **Outcome:** 11 passed, 724 deselected
 - **Total runtime:** 261.14 s (~4 min 21 s)

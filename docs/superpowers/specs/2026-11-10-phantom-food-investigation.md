@@ -309,7 +309,7 @@ that fixed each row on branch `fix/phantom-food-2026-11-10`.
 | D12 | Same-tick fallthrough | after a stop inside `disperse()`, `stdMove` runs in the same tick | stop evaluated after the dispersal step | minor | `5a8ae40` |
 | D13 | CRW state | `prevAngle` and `prevLogMov` frozen while dispersing (`stdMove` skipped) | updated every tick for dispersers | minor | `5a8ae40` |
 | D14 | JAX backend | — | the JAX backend (`jax_kernels.py`, `tick_jax.py`) now mirrors the fixed NumPy behaviour (Task 5, `b9659a1`, `eae0d3a`, `bd55bda`), so D1–D13 apply there too; every later change must be mirrored | fixed with D1–D13 | `b9659a1`, `eae0d3a`, `bd55bda` (+ `bb7c829`: new activations get the same-day stops) |
-| D15 | Foraging land check (outside dispersal) | `checkDepth()` samples every 0.1 cell along the heading out to `presMov` cells (4× the step) before turning; its result is also the not-enough-water state that D9 reads | land avoidance tests only the destination cell at the step distance | established as the main cause of the dispersal-off residual (Finding 4) | fixed: `75df4b9`, `b0c770d`, `14dc077`, `c6d4194` (NumPy/Numba), `480c7b7` (JAX); acceptance: see Step 5 (not fully met) |
+| D15 | Foraging land check (outside dispersal) | `checkDepth()` samples every 0.1 cell along the heading out to `presMov` cells (4× the step) before turning; its result is also the not-enough-water state that D9 reads | land avoidance tests only the destination cell at the step distance | established as the main cause of the dispersal-off residual (Finding 4) | fixed: `75df4b9`, `b0c770d`, `14dc077`, `c6d4194` (NumPy/Numba), `480c7b7` (JAX); acceptance: see Step 5 (accepted, one borderline bin) |
 | D16 | Reference-memory order | DEPONS `refMemTurn` runs after the dispersal `forward()`, so it sees the post-move position | CENOP's `_update_reference_memory` runs before the disperser moves | deferred with D15 (pre-existing, outside D1–D14) | open |
 | — | Logistic shape | `LogisticDecreaseSSLogis(1, 0, 0.6)` = 1/(1+e^(−x/0.6)), *increasing* despite the name | same | match | — |
 | — | Dispersal energy cost | `E_USE_PER_KM = 0` | 0 | match | — |
@@ -582,8 +582,11 @@ the historical prototype and applies only to code before commit `46e2a39`. Runs:
 DEPONS values are the dispersal-off tracked-200 runs (`depons_budget.py`); intake per animal-tick
 is the inferred column, at 7 d.p. for the ±3% test.
 
-**Result: acceptance NOT fully met.** One metric is outside its range: the dispersal-off intake of
-seed 43 in the day 45–60 bin (+3.27% against ±3%). Everything else is inside. No tuning was done.
+**Result: accepted with one borderline bin (controller ruling).** One metric is outside its range:
+the dispersal-off intake of seed 43 in the day 45–60 bin (+3.27% against ±3%). Everything else is
+inside. No tuning was done. Accepted because the same bin is +1.0% against seed 42 (DEPONS's
+seed-to-seed spread there is about 1%), the other 11 intake bins are within +2.3%, every
+population-level metric passes on both seeds, and the ±3% band was a judgement.
 
 | Metric (range) | DEPONS s42 / s43 | CENOP s42 | CENOP s43 | Result |
 |---|---|---|---|---|
@@ -622,9 +625,7 @@ Informational:
 - JAX is about 5x slower per tick on real landscapes after this change (about 70 ms against 13 ms
   at 2000 animals; Numba about 7 ms). It stays opt-in.
 
-**Next:** decide whether the +3.3% on one intake bin of one seed (all other bins and the whole
-population curve inside the ranges, N within +3.3%) is accepted as met, then regenerate the
-Kattegat baselines. The two remainders (energy undershoot, late deaths) are the next
+**Next:** regenerate the Kattegat baselines. The two remainders (energy undershoot, late deaths) are the next
 investigation.
 
 ## Unverified
@@ -713,7 +714,7 @@ investigation.
      Kattegat 600×1000 (final review, `target_success.py`; CHANGELOG).
    - Slow tier: 11 passed.
    - The dispersal-off N excess (non-dispersal residual) was D15; it is now ported (Finding 4,
-     Step 5: acceptance not fully met, one intake bin of seed 43 at +3.3%). Baselines are stale.
+     Step 5: accepted, one borderline intake bin of seed 43 at +3.3%). Baselines are stale.
 4. **Then regenerate the Kattegat baselines and record the behaviour change** in the CHANGELOG.
    Any paper text or figures built on CENOP real-landscape populations need re-running.
 

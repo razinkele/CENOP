@@ -29,6 +29,26 @@ All notable changes to CENOP-JASMINE are documented in this file.
     versions should be re-run.
 
 ### Changed
+- **Land avoidance on CRW movement follows DEPONS 3.2 (spec D15), plus the D9 first-call water
+  stop.** This is a behaviour change.
+  - Look-ahead of `presMov` cells (path sampled every 0.1 cell) before heading composition;
+    escape turns of 40/70/120 degrees; walk-back (beh 4) and deepest-neighbour (beh 5) fallbacks;
+    no post-composition land check; beh-6 turn-back after a post-move rollback.
+  - D9: a new disperser whose stored not-enough-water state is set stops at its first dispersal
+    call.
+  - Implemented on the NumPy/Numba and JAX paths. Homogeneous landscapes, the Cython fast path
+    and non-CRW movement modules are unchanged.
+  - Measured against DEPONS (two seeds, Kattegat): dispersal-off N within +3.3% to day 165,
+    activation 0.152 / 0.157, coast share 1.0-1.2%; one intake bin of seed 43 is +3.3%
+    (accepted, spec Finding 4 Step 5).
+  - **The committed Kattegat baselines are stale**, and seeded runs are not comparable with
+    seeded runs from earlier versions (the land check draws from a Numba RNG seeded from the
+    population RNG).
+  - **Default Lithuania landscape (60 days, 10000 animals, s42 / s43), against the code before
+    this change:** N 9856 / 9839 against 9989 / 9991; mean energy 15.51 / 15.50 against
+    14.06 / 14.05; time within 1 km of the coast 19.9% / 19.8% against 20.5% / 20.5%. The energy
+    rise is unexplained. There is no DEPONS reference for Lithuania, and the known 1 km cell-size
+    issue (km-to-cell conversions assume 400 m cells, see Known issues) applies there.
 - **`communication_enabled` now defaults to `False` in `SimulationParameters`.** This matches
   the UI checkbox, which was already off.
   - With realistic food the DEPONS random-walk weight is about 0.001, so the JASMINE
@@ -69,8 +89,21 @@ All notable changes to CENOP-JASMINE are documented in this file.
   hybrid modules (`_update_movement_module_generic`) still end dispersal on straight-line
   displacement from the start point, not on path length. DEPONS parity applies to the CRW paths
   only.
-- Not ported from DEPONS dispersal: the not-enough-water first-call filter, and the order of the
-  reference-memory turn relative to the dispersal move (spec rows D15, D16).
+- Not ported from DEPONS dispersal: the order of the reference-memory turn relative to the
+  dispersal move (spec row D16). The first-call water filter and D15 are now ported.
+- **Remainders after the D15 port (spec Finding 4, Step 5).**
+  - Energy undershoot: with dispersal off, mean energy at days 90 / 120 / 150 / 165 is
+    6.32 / 5.13 / 3.92 / 3.77 (s42) and 6.23 / 5.08 / 3.91 / 3.77 (s43), against DEPONS
+    6.36 / 5.24 / 4.09 / 3.79 and 6.33 / 5.31 / 4.17 / 3.88: 0.0-0.3 low, with N matching.
+  - Late deaths: days 165-180 show 169 / 160 CENOP deaths against 203 / 191 in DEPONS, while
+    the lactating share rises to 4-6%. Day 180 N with dispersal on is +13% / +8% above DEPONS.
+  - D15 is no longer a candidate cause of either.
+- **JAX backend is about 5x slower per tick on real landscapes after the land-avoidance port**
+  (about 70 ms against 13 ms before, at 2000 animals; Numba about 7 ms). JAX stays opt-in; a
+  follow-up can compact the still-needing agents in the land-check loop.
+- **Known deviations from DEPONS introduced by the land-avoidance port:** beh-5 depth ties use a
+  fixed neighbour order (DEPONS shuffles); look-ahead points are reflected at the grid edge as in
+  DEPONS's BouncyBorders, but beh-5 neighbours outside the grid read as land.
 - **Lithuania's 1 km cells conflict with CENOP's 400 m km-to-cell conversions.**
   `data/Lithuania/bathy.asc` has CELLSIZE 1000, but CENOP converts km to cells by dividing by
   0.4 (DEPONS's 400 m cells) for dispersal distances, the dispersal step and other movement

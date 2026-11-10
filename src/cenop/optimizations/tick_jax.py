@@ -21,6 +21,7 @@ from cenop.optimizations.jax_kernels import (
     jax_compute_ve_total,
     jax_crw_kernel,
     jax_dispersal_update,
+    jax_disperse_step,
     jax_eat_food,
     jax_energy_history_update,
     jax_heading_composition,
@@ -66,13 +67,9 @@ def jax_tick_movement(
     social_dy,
     # Dispersal state
     is_dispersing,
-    dispersal_target_x,
-    dispersal_target_y,
     dispersal_target_distance,
     dispersal_distance_traveled,
     prev_step_heading,
-    dispersal_start_x,
-    dispersal_start_y,
     # Environment (per-agent)
     depths,
     salinity,
@@ -97,28 +94,54 @@ def jax_tick_movement(
     psm_angle,
     psm_log,
     min_depth,
+    min_depth_dispersal,
     world_w,
     world_h,
     # RNG key
     key,
 ):
-    """Full movement tick: CRW + ref mem + heading + position + land avoidance.
+    """Full movement tick: dispersal step + CRW + ref mem + heading + position + land avoidance.
 
     Returns
     -------
     Tuple of:
         new_x, new_y, new_heading, new_prev_angle, new_prev_log_mov,
-        step_dist, deter_strength, dispersal_distance_delta,
-        new_prev_step_heading, key
+        step_dist, deter_strength, new_dispersal_distance_traveled,
+        new_prev_step_heading, new_is_dispersing, key
     """
-    # --- Phase 1: CRW angle + step ---
     key, crw_key = jax.random.split(key)
+    key, disp_key = jax.random.split(key)
+
+    # --- Phase 0: DEPONS disperse() before stdMove() ---
+    # Animals that stop dispersing here take their normal CRW step in the same tick (D12);
+    # animals still dispersing skip the CRW step, so their CRW state stays frozen (D13).
+    heading, prev_step_heading, is_dispersing, dispersal_distance_traveled = jax_disperse_step(
+        x,
+        y,
+        heading,
+        prev_step_heading,
+        is_dispersing,
+        dispersal_distance_traveled,
+        dispersal_target_distance,
+        active_mask,
+        psm_angle,
+        psm_log,
+        mean_disp_dist,
+        depth_grid,
+        min_depth_dispersal,
+        world_w,
+        world_h,
+        disp_key,
+    )
+    crw_mask = active_mask & ~is_dispersing
+
+    # --- Phase 1: CRW angle + step (keeps prev_log_mov outside crw_mask) ---
     pres_angle, log_mov = jax_crw_kernel(
         prev_angle,
         prev_log_mov,
         depths,
         salinity,
-        active_mask,
+        crw_mask,
         crw_key,
         corr_angle_base,
         corr_angle_bathy,
@@ -153,9 +176,6 @@ def jax_tick_movement(
     vt_x = jnp.where(has_history, vt_x, 0.0)
     vt_y = jnp.where(has_history, vt_y, 0.0)
 
-    # Dispersal random-turn key (PSM-Type2)
-    key, disp_key = jax.random.split(key)
-
     # --- Phase 3: Heading composition + position update ---
     (
         new_heading,
@@ -163,7 +183,6 @@ def jax_tick_movement(
         step_dist,
         dx,
         dy,
-        new_prev_step_heading,
         deter_strength,
         dispersal_distance_delta,
     ) = jax_heading_composition(
@@ -179,19 +198,9 @@ def jax_tick_movement(
         social_dy,
         active_mask,
         is_dispersing,
-        dispersal_target_x.astype(jnp.float64),
-        dispersal_target_y.astype(jnp.float64),
-        dispersal_target_distance.astype(jnp.float64),
-        prev_step_heading.astype(jnp.float64),
-        x.astype(jnp.float64),
-        y.astype(jnp.float64),
+        prev_angle,
         inertia_const,
         mean_disp_dist,
-        dispersal_start_x.astype(jnp.float64),
-        dispersal_start_y.astype(jnp.float64),
-        psm_angle,
-        psm_log,
-        disp_key,
     )
 
     # Position update with boundary reflection
@@ -241,8 +250,12 @@ def jax_tick_movement(
     new_y_f32 = jnp.where(unresolved, y, new_y_f32)
     new_heading_f32 = jnp.where(unresolved, (new_heading_f32 + 180.0) % 360.0, new_heading_f32)
 
-    # Update prev_log_mov for active agents
-    new_prev_log_mov = jnp.where(active_mask, log_mov, prev_log_mov)
+    # Update prev_log_mov for CRW movers only (dispersers keep theirs, D13)
+    new_prev_log_mov = jnp.where(crw_mask, log_mov, prev_log_mov)
+
+    # Path length: dispersers add the fixed dispersal step (float32, as NumPy's _step_dist)
+    disp_delta = dispersal_distance_delta.astype(jnp.float32)
+    new_dispersal_distance_traveled = (dispersal_distance_traveled + disp_delta).astype(jnp.float32)
 
     return (
         new_x_f32,
@@ -252,8 +265,9 @@ def jax_tick_movement(
         new_prev_log_mov,
         step_dist_f32,
         deter_strength.astype(jnp.float32),
-        dispersal_distance_delta.astype(jnp.float32),
-        new_prev_step_heading.astype(jnp.float32),
+        new_dispersal_distance_traveled,
+        prev_step_heading.astype(jnp.float32),
+        is_dispersing,
         key,
     )
 
@@ -263,8 +277,6 @@ def jax_tick_energy(
     # Agent state
     energy,
     active_mask,
-    x,
-    y,
     speed,
     is_lactating,
     is_disturbed,
@@ -281,9 +293,6 @@ def jax_tick_energy(
     tick_counter,
     # Dispersal state
     is_dispersing,
-    dispersal_start_x,
-    dispersal_start_y,
-    dispersal_target_distance,
     dispersal_distance_traveled,
     days_declining_energy,
     turbine_deter_strength,
@@ -362,13 +371,8 @@ def jax_tick_energy(
     new_is_dispersing, new_dispersal_distance_traveled, new_days_declining_energy = (
         jax_dispersal_update(
             is_dispersing,
-            dispersal_start_x,
-            dispersal_start_y,
-            dispersal_target_distance,
             dispersal_distance_traveled,
             days_declining_energy,
-            x,
-            y,
             turbine_deter_strength,
             new_energy_history,
             new_active_mask,

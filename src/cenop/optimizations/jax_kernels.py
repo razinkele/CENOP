@@ -266,6 +266,95 @@ def jax_compute_attraction(
 
 
 # ---------------------------------------------------------------------------
+# Dispersal step (DEPONS AbstractPSMDispersal.disperse())
+# ---------------------------------------------------------------------------
+
+
+def jax_disperse_step(
+    x,
+    y,
+    heading,
+    prev_step_heading,
+    is_dispersing,
+    dispersal_distance_traveled,
+    dispersal_target_distance,
+    mask,
+    psm_angle,
+    psm_log,
+    mean_disp_dist,
+    depth_grid,
+    min_depth_dispersal,
+    world_w,
+    world_h,
+    key,
+):
+    """PSM-Type2 dispersal step for ``mask & is_dispersing``; mirrors
+    PorpoisePopulation._disperse_step, which runs before the CRW step.
+
+    In DEPONS order:
+    1. completion: traveled >= 0.95 * target ends dispersal (no turn);
+    2. PSM turn: prev_step_heading + U(-psm_angle, psm_angle) * SSLogis(3p - 1.5), with
+       path length p = traveled / (0.95 * target) (0 where target <= 0); prev_step_heading
+       takes the turned heading, even when a stop follows;
+    3. look-ahead point one dispersal step (mean_disp_dist / 0.4 cells) along it;
+    4. stop if that point is off the grid (DEPONS getPointAtHeadingAndDistNoBorder);
+    5. stop unless the depth there exceeds min_depth_dispersal (NaN stops);
+    6. a stopped animal ends dispersal and keeps its pre-turn heading.
+
+    The caller ends dispersal for completed and stopped animals (traveled reset to 0
+    here) and must also reset days_declining_energy for them, as _end_dispersal does.
+
+    Returns
+    -------
+    (heading, prev_step_heading, is_dispersing, dispersal_distance_traveled)
+    """
+    d = mask & is_dispersing
+
+    # 1. Completion on path length (float32 compare, as NumPy)
+    done = d & (dispersal_distance_traveled >= 0.95 * dispersal_target_distance)
+    d = d & ~done
+
+    # 2. PSM turn (DispersalPSMType2.java:76, 91)
+    has_target = dispersal_target_distance > 0
+    safe_target = jnp.where(has_target, dispersal_target_distance, 1.0)
+    dist_percent = jnp.where(has_target, dispersal_distance_traveled / (0.95 * safe_target), 0.0)
+    dist_percent = jnp.nan_to_num(dist_percent, nan=0.0, posinf=1.0, neginf=0.0)
+    dist_percent = jnp.clip(dist_percent, 0.0, 10.0)
+    dist_log_x = jnp.clip(3 * dist_percent - 1.5, -100, 100)
+    logistic = 1.0 / (1.0 + jnp.exp((0.0 - dist_log_x) / psm_log))
+    delta = jax.random.uniform(
+        key, shape=heading.shape, dtype=jnp.float64, minval=-psm_angle, maxval=psm_angle
+    )
+    # Store in heading's dtype, then wrap, as NumPy assigns into the float32 heading array
+    turned = (prev_step_heading + delta * logistic).astype(heading.dtype) % 360.0
+    new_prev_step_heading = jnp.where(d, turned, prev_step_heading).astype(prev_step_heading.dtype)
+
+    # 3. Look-ahead point from the stored (rounded) heading, in float64
+    step = mean_disp_dist / 0.4
+    rad = jnp.radians(turned.astype(jnp.float64))
+    px = x + step * jnp.sin(rad)
+    py = y + step * jnp.cos(rad)
+
+    # 4. Off-grid stop
+    stop = (px < 0) | (py < 0) | (px >= world_w - 0.5) | (py >= world_h - 0.5)
+
+    # 5. Depth stop; off-grid points are already stopped, clipping keeps the lookup in bounds
+    xi = jnp.clip(px.astype(jnp.int32), 0, world_w - 1)
+    yi = jnp.clip(py.astype(jnp.int32), 0, world_h - 1)
+    stop = d & (stop | ~(depth_grid[yi, xi] > min_depth_dispersal))
+
+    # 6. End dispersal for completed and stopped animals; stopped keep the pre-turn heading
+    ended = done | stop
+    new_is_dispersing = jnp.where(ended, False, is_dispersing)
+    new_traveled = jnp.where(ended, 0.0, dispersal_distance_traveled).astype(
+        dispersal_distance_traveled.dtype
+    )
+    new_heading = jnp.where(d & ~stop, turned, heading)
+
+    return new_heading, new_prev_step_heading, new_is_dispersing, new_traveled
+
+
+# ---------------------------------------------------------------------------
 # Heading Composition + Position Update + Boundary Reflection (J3)
 # ---------------------------------------------------------------------------
 
@@ -283,30 +372,20 @@ def jax_heading_composition(
     social_dy,
     mask,
     is_dispersing,
-    dispersal_target_x,
-    dispersal_target_y,
-    dispersal_target_distance,
-    prev_step_heading,
-    x,
-    y,
+    prev_angle,
     inertia_const,
     mean_disp_dist,
-    dispersal_start_x,
-    dispersal_start_y,
-    psm_angle,
-    psm_log,
-    disp_key,
 ):
     """Heading composition: CRW + ref_mem + deterrence + social -> final heading/dx/dy.
 
-    Combines all movement influences into a final heading and displacement vector.
-    Dispersing agents get a PSM-Type2 heading override: a logistic-scaled
-    uniform-random turn from previousStepHeading (NOT steered toward the target),
-    matching the NumPy reference _apply_dispersal_heading / DispersalPSMType2.java.
+    Combines all movement influences into a final heading and displacement vector for
+    CRW movers (``mask & ~is_dispersing``). Dispersers (after jax_disperse_step) skip
+    the CRW turn and the composition: they keep the PSM heading, take the fixed
+    dispersal step, and keep prev_angle (DEPONS skips stdMove() while dispersing).
 
     Parameters
     ----------
-    heading : float64[n] — current heading (degrees)
+    heading : float64[n] — current heading (degrees), PSM heading for dispersers
     pres_angle : float64[n] — CRW turning angle from jax_crw_kernel
     log_mov : float64[n] — CRW log step length from jax_crw_kernel
     ve_total : float32[n] — expected food value from jax_compute_ve_total
@@ -315,73 +394,29 @@ def jax_heading_composition(
     social_dx, social_dy : float64[n] — social cohesion vectors
     mask : bool[n] — active agent mask
     is_dispersing : bool[n] — which agents are in dispersal mode
-    dispersal_target_x, dispersal_target_y : float64[n] — dispersal target positions
-    dispersal_target_distance : float64[n] — total dispersal distance (cells)
-    prev_step_heading : float64[n] — previous step heading for dispersing agents
-    x, y : float32[n] — current positions (for dispersal distance calc)
+    prev_angle : float64[n] — previous total turn; updated for CRW movers only
     inertia_const : float scalar — CRW inertia constant
     mean_disp_dist : float scalar — mean dispersal distance per step
-    dispersal_start_x, dispersal_start_y : float64[n] — dispersal start positions
-        (distance TRAVELLED from here drives the logistic scaling)
-    psm_angle : float scalar — half-range of the uniform random turn (degrees)
-    psm_log : float scalar — SSLogis phi3 (logistic scale) for the turn magnitude
-    disp_key : jax PRNGKey — RNG key for the uniform random dispersal turn
 
     Returns
     -------
-    (new_heading, new_prev_angle, step_dist, dx, dy,
-     new_prev_step_heading, deter_strength,
+    (new_heading, new_prev_angle, step_dist, dx, dy, deter_strength,
      dispersal_distance_delta) — tuple of float64[n] arrays
     """
     inertia_const = jnp.float64(inertia_const)
     mean_disp_dist = jnp.float64(mean_disp_dist)
-
-    # 1. Apply CRW turning angle to heading
-    new_heading = (heading + pres_angle) % 360.0
-
-    # 2. Dispersal heading override (PSM-Type2 random walk)
-    # Matches NumPy reference _apply_dispersal_heading (DispersalPSMType2.java):
-    #   distPercent = distance TRAVELLED from dispersal_start / dispersal_target_distance
-    #   distLogX    = 3 * distPercent - 1.5
-    #   logistic    = SSLogis(distLogX, phi1=1, phi2=0, phi3=psm_log)
-    #   angleDelta  = U(-psm_angle, +psm_angle) * logistic
-    #   newHeading  = previousStepHeading + angleDelta
-    dx_disp = x - dispersal_start_x
-    dy_disp = y - dispersal_start_y
-    dist_traveled = jnp.sqrt(dx_disp**2 + dy_disp**2)
-
-    dist_percent = jnp.where(
-        dispersal_target_distance > 0,
-        dist_traveled / dispersal_target_distance,
-        0.0,
-    )
-    dist_percent = jnp.clip(dist_percent, 0.0, 10.0)
-
-    dist_log_x = jnp.clip(3.0 * dist_percent - 1.5, -100.0, 100.0)
-    logistic = 1.0 / (1.0 + jnp.exp((0.0 - dist_log_x) / psm_log))
-
-    rand_delta = jax.random.uniform(
-        disp_key,
-        shape=prev_step_heading.shape,
-        dtype=prev_step_heading.dtype,
-        minval=-psm_angle,
-        maxval=psm_angle,
-    )
-    dispersal_heading = (prev_step_heading + rand_delta * logistic) % 360.0
-
-    # Apply dispersal override for dispersing agents
     disp_mask = mask & is_dispersing
-    new_heading = jnp.where(disp_mask, dispersal_heading, new_heading)
+    crw_mask = mask & ~is_dispersing
 
-    # Save dispersal heading before CRW composition
-    saved_disp_heading = new_heading  # will select back for dispersing agents
+    # 1. Apply CRW turning angle to heading (CRW movers only)
+    new_heading = jnp.where(crw_mask, (heading + pres_angle) % 360.0, heading)
 
-    # 3. CRW unit direction from heading
+    # 2. CRW unit direction from heading
     rads = jnp.radians(new_heading)
     dx_unit = jnp.sin(rads)
     dy_unit = jnp.cos(rads)
 
-    # 4. Heading composition
+    # 3. Heading composition
     step_pow = jnp.power(10.0, log_mov)
     crw_contrib = inertia_const + step_pow * ve_total
 
@@ -392,18 +427,15 @@ def jax_heading_composition(
     deter_strength = jnp.hypot(deter_dx, deter_dy)
     deter_strength = jnp.where(mask, deter_strength, 0.0)
 
-    # 5. New heading from composite vector
+    # 4. New heading from composite vector; dispersers keep their PSM heading
     composed_heading = jnp.degrees(jnp.arctan2(total_dx, total_dy)) % 360.0
-    final_heading = jnp.where(mask, composed_heading, new_heading)
+    final_heading = jnp.where(crw_mask, composed_heading, new_heading)
 
-    # 6. Restore dispersal heading for dispersing agents (they skip CRW composition)
-    final_heading = jnp.where(disp_mask, saved_disp_heading, final_heading)
+    # 5. Prev angle: total turn relative to the original heading (CRW movers only)
+    total_turn = (final_heading - heading + 180.0) % 360.0 - 180.0
+    new_prev_angle = jnp.where(crw_mask, total_turn, prev_angle)
 
-    # 7. Prev angle: total turn relative to original heading
-    original_heading = heading  # heading before pres_angle was applied
-    new_prev_angle = (final_heading - original_heading + 180.0) % 360.0 - 180.0
-
-    # 8. Step distance
+    # 6. Step distance
     step_dist = step_pow / 4.0
     disp_step = mean_disp_dist / 0.4
     step_dist = jnp.where(disp_mask, disp_step, step_dist)
@@ -411,7 +443,7 @@ def jax_heading_composition(
     # Dispersal distance traveled delta (only for dispersing agents)
     dispersal_distance_delta = jnp.where(disp_mask, disp_step, 0.0)
 
-    # 9. Final dx/dy from final heading and step distance
+    # 7. Final dx/dy from final heading and step distance
     final_rads = jnp.radians(final_heading)
     dx = jnp.sin(final_rads) * step_dist
     dy = jnp.cos(final_rads) * step_dist
@@ -420,10 +452,6 @@ def jax_heading_composition(
     dx = jnp.where(mask, dx, 0.0)
     dy = jnp.where(mask, dy, 0.0)
     step_dist = jnp.where(mask, step_dist, 0.0)
-    new_prev_angle = jnp.where(mask, new_prev_angle, 0.0)
-
-    # Update prev_step_heading for dispersing agents
-    new_prev_step_heading = jnp.where(disp_mask, final_heading, prev_step_heading)
 
     return (
         final_heading,
@@ -431,7 +459,6 @@ def jax_heading_composition(
         step_dist,
         dx,
         dy,
-        new_prev_step_heading,
         deter_strength,
         dispersal_distance_delta,
     )
@@ -810,7 +837,7 @@ def jax_energy_history_update(
 
     Every tick: energy_ticks_today[mask] += energy[mask]; tick_counter += 1
     At day boundary (tick_counter >= 48):
-        daily_avg = energy_ticks_today / 48
+        daily_avg = round(energy_ticks_today / 48, 3)  (DEPONS 3-d.p. daily mean)
         history[:, 1:] = history[:, :-1]  (shift right)
         history[:, 0] = daily_avg
         energy_ticks_today = 0; tick_counter = 0
@@ -836,7 +863,9 @@ def jax_energy_history_update(
 
     def do_shift(args):
         ett, eh, _tc = args
-        daily_avg = (ett / 48.0).astype(eh.dtype)
+        # float64: under jit, XLA turns float32 division by a constant into a reciprocal
+        # multiply, which misses NumPy's float32 result (5.0010004 instead of 5.001)
+        daily_avg = jnp.round(ett.astype(jnp.float64) / 48.0, 3).astype(eh.dtype)
         # Shift right: history[:, 1:] = history[:, :-1]
         new_hist = jnp.concatenate([daily_avg[:, None], eh[:, :-1]], axis=1).astype(eh.dtype)
         new_ett = jnp.zeros_like(ett)
@@ -859,33 +888,27 @@ def jax_energy_history_update(
 
 def jax_dispersal_update(
     is_dispersing,
-    dispersal_start_x,
-    dispersal_start_y,
-    dispersal_target_distance,
     dispersal_distance_traveled,
     days_declining_energy,
-    x,
-    y,
     turbine_deter_strength,
     energy_history,
     active_mask,
     is_day_boundary,
 ):
-    """Update dispersal: deterrence cancel, energy stop, distance check.
+    """Update dispersal: deterrence cancel, energy stop.
 
-    Three checks in order:
+    Two checks in order:
     1. Deterrence cancels dispersal (any tick)
     2. Energy recovery stops dispersal (day boundary only)
-    3. Distance completion check (any tick)
+
+    Path-length completion runs at the start of the next movement tick, in
+    jax_disperse_step (DEPONS shouldStopDispersing inside disperse()).
 
     Parameters
     ----------
     is_dispersing : bool[n]
-    dispersal_start_x, dispersal_start_y : float32[n]
-    dispersal_target_distance : float32[n]
     dispersal_distance_traveled : float32[n]
     days_declining_energy : int32[n]
-    x, y : float32[n] — current position
     turbine_deter_strength : float32[n]
     energy_history : float32[n, hist_len]
     active_mask : bool[n]
@@ -911,7 +934,6 @@ def jax_dispersal_update(
         today = eh[:, 0]
         past_min = jnp.min(eh[:, 1:8], axis=1)
         recovering = (today > past_min) & disp
-        new_disp = jnp.where(recovering, False, disp)  # stop is_dispersing for disp mask
         new_is_dispersing = jnp.where(recovering, False, is_dispersing)
         new_ddt = jnp.where(recovering, 0.0, ddt)
         new_dde = jnp.where(recovering, 0, dde)
@@ -927,16 +949,5 @@ def jax_dispersal_update(
         no_energy_stop,
         (dispersing, dispersal_distance_traveled, days_declining_energy, energy_history),
     )
-
-    dispersing = active_mask & is_dispersing
-
-    # 3. Distance completion check
-    dx = x - dispersal_start_x
-    dy = y - dispersal_start_y
-    distances = jnp.sqrt(dx * dx + dy * dy)
-    completed = dispersing & (distances >= 0.95 * dispersal_target_distance)
-    is_dispersing = jnp.where(completed, False, is_dispersing)
-    dispersal_distance_traveled = jnp.where(completed, 0.0, dispersal_distance_traveled)
-    days_declining_energy = jnp.where(completed, 0, days_declining_energy)
 
     return is_dispersing, dispersal_distance_traveled, days_declining_energy

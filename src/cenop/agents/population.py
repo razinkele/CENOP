@@ -2603,8 +2603,9 @@ class PorpoisePopulation:
             new_prev_log_mov,
             step_dist,
             jax_deter_strength,
-            dispersal_distance_delta,
+            new_dispersal_distance_traveled,
             new_prev_step_heading,
+            new_is_dispersing,
             _,
         ) = jax_tick_movement(
             jnp.asarray(self.x),
@@ -2624,13 +2625,9 @@ class PorpoisePopulation:
             jnp.asarray(soc_dx),
             jnp.asarray(soc_dy),
             jnp.asarray(self.is_dispersing),
-            jnp.asarray(self.dispersal_target_x),
-            jnp.asarray(self.dispersal_target_y),
             jnp.asarray(self.dispersal_target_distance),
             jnp.asarray(self.dispersal_distance_traveled),
             jnp.asarray(self._prev_step_heading),
-            jnp.asarray(self.dispersal_start_x),
-            jnp.asarray(self.dispersal_start_y),
             jnp.asarray(self._depths),
             jnp.asarray(self._salinity_vals),
             self._jax_depth_grid,
@@ -2650,8 +2647,9 @@ class PorpoisePopulation:
             float(self.params.inertia_const),
             float(self.params.mean_disp_dist),
             float(self.params.psm_angle),
-            float(getattr(self.params, "psm_log", 0.6)),
+            float(self.params.psm_log),
             float(min_depth),
+            float(self.params.min_depth_dispersal),
             int(world_w),
             int(world_h),
             movement_key,
@@ -2672,9 +2670,11 @@ class PorpoisePopulation:
         np.copyto(self.prev_log_mov, np.asarray(new_prev_log_mov))
         np.copyto(self._step_dist, np.asarray(step_dist))
         np.copyto(self._prev_step_heading, np.asarray(new_prev_step_heading))
-        # Update dispersal distance traveled
-        disp_delta_np = np.asarray(dispersal_distance_delta)
-        self.dispersal_distance_traveled += disp_delta_np
+        # Dispersal step results; animals that stopped get the rest of _end_dispersal
+        new_is_dispersing_np = np.asarray(new_is_dispersing)
+        self.days_declining_energy[self.is_dispersing & ~new_is_dispersing_np] = 0
+        np.copyto(self.is_dispersing, new_is_dispersing_np)
+        np.copyto(self.dispersal_distance_traveled, np.asarray(new_dispersal_distance_traveled))
 
         # Recompute cached cell indices
         self._recompute_cell_indices()
@@ -2736,8 +2736,6 @@ class PorpoisePopulation:
         ) = jax_tick_energy(
             jnp.asarray(self.energy),
             jnp.asarray(mask),
-            jnp.asarray(self.x),
-            jnp.asarray(self.y),
             jnp.asarray(speed_ms),
             jnp.asarray(self.with_calf),
             jnp.asarray(self.deter_strength > 0),
@@ -2751,9 +2749,6 @@ class PorpoisePopulation:
             jnp.asarray(self._energy_history),
             jnp.int32(self._tick_counter),
             jnp.asarray(self.is_dispersing),
-            jnp.asarray(self.dispersal_start_x),
-            jnp.asarray(self.dispersal_start_y),
-            jnp.asarray(self.dispersal_target_distance),
             jnp.asarray(self.dispersal_distance_traveled),
             jnp.asarray(self.days_declining_energy.astype(np.int32)),
             jnp.asarray(self._turbine_deter_strength),

@@ -700,24 +700,16 @@ class TestTurbineOnlyDispersalJax:
 
         n = 2
         is_dispersing = jnp.array([True, True])
-        zeros = jnp.zeros(n)
         ddt = jnp.zeros(n)
         dde = jnp.zeros(n, dtype=jnp.int32)
-        x = jnp.zeros(n)
-        y = jnp.zeros(n)
         eh = jnp.zeros((n, 8))
         active = jnp.array([True, True])
         # turbine strength nonzero only for agent 0
         turb = jnp.array([0.05, 0.0])
         new_disp, _, _ = jax_dispersal_update(
             is_dispersing,
-            zeros,
-            zeros,
-            jnp.full(n, 1e9),
             ddt,
             dde,
-            x,
-            y,
             turbine_deter_strength=turb,
             energy_history=eh,
             active_mask=active,
@@ -742,6 +734,10 @@ class TestTurbineOnlyDispersalJax:
 
             pytest.skip("JAX not active")
         pop.is_dispersing[0] = True
+        # Mid-grid, heading north over deep water, so the look-ahead stops (off-grid or
+        # shallow water one dispersal step ahead) cannot fire and mask the gate under test.
+        pop.x[0] = pop.y[0] = 25.0
+        pop._prev_step_heading[0] = 0.0
         pop.dispersal_start_x[0] = pop.x[0]
         pop.dispersal_start_y[0] = pop.y[0]
         pop.dispersal_target_distance[0] = 1e9

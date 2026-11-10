@@ -679,7 +679,7 @@ class TestJaxDisperseStep:
         """PSM turn = U(-psm_angle, psm_angle) * SSLogis(3p - 1.5), p = traveled / (0.95 T).
 
         traveled = 0.9 * 0.95 * T gives p = 0.9 and logistic ~0.881 (max turn ~35.2 deg at
-        psm_angle 40); without the 0.95 factor p = 0.855 and the max turn would be ~34.6.
+        psm_angle 40); without the 0.95 factor p = 0.855 and the max turn would be ~34.2.
         """
         from cenop.optimizations.jax_kernels import jax_disperse_step
 
@@ -2026,3 +2026,61 @@ class TestJaxStepDispersal:
         assert pop.is_dispersing[0]
         assert pop.dispersal_distance_traveled[0] == pytest.approx(5.0)
         assert not pop.is_dispersing[1]
+
+
+class TestJaxStepDailyDispersalOrder:
+    """A dispersal activated at a day boundary gets the same-day energy stop and the same-tick
+    turbine-deterrence cancel on both backends (DEPONS performDailyStep: activate(), then the
+    energy stop; deter() cancels dispersal). jax_tick_energy runs both checks before
+    _step_jax's trigger, so _step_jax must apply them to new activations itself."""
+
+    @staticmethod
+    def _day_boundary_step(use_jax, old_days, turbine_strength):
+        from cenop.agents.population import PorpoisePopulation
+        from cenop.parameters.simulation_params import SimulationParameters
+
+        params = SimulationParameters(
+            random_seed=1, communication_enabled=False, use_jax=use_jax, porpoise_count=4
+        )
+        pop = PorpoisePopulation(4, params, None)
+        assert pop._use_jax == use_jax, "backend not as requested; the comparison is vacuous"
+        pop.x[:] = 500.5
+        pop.y[:] = 500.5
+        for psm in pop._psm_instances[:4]:
+            psm.preferred_distance = 20.0  # a random target always fits on the 1000-cell grid
+        # The new daily mean (~5) < 6 < 7 < 8: three strict drops, so the trigger fires.
+        # The energy stop compares it with min(E[1..7]), which is min(6, old_days).
+        pop.energy[:] = 5.0
+        pop._energy_history[:, :] = old_days
+        pop._energy_history[:, :3] = [6.0, 7.0, 8.0]
+        pop._energy_ticks_today[:] = 5.0 * 47
+        pop._tick_counter = 47  # the next step completes a day on both backends
+        pop._global_tick = 47
+        pop._last_energy_update_tick = 47
+        assert not pop.is_dispersing.any()
+        assert (pop.dispersal_target_distance == 0.0).all()
+        turbine = (np.full(4, turbine_strength), np.zeros(4)) if turbine_strength else None
+
+        try:
+            pop.step(turbine_deterrence_vectors=turbine)
+        except Exception as e:  # noqa: BLE001 - classify GPU OOM as environmental
+            if any(k in str(e) for k in ("RESOURCE_EXHAUSTED", "OUT_OF_MEMORY")):
+                pytest.skip(f"JAX GPU OOM (environmental): {e}")
+            raise
+        return pop
+
+    @pytest.mark.parametrize(
+        "old_days, turbine_strength, expected",
+        [
+            pytest.param(1.0, 0.0, False, id="energy-stop"),  # min(E[1..7]) = 1 < new mean
+            pytest.param(100.0, 0.0, True, id="control"),  # min(E[1..7]) = 6 > new mean
+            pytest.param(100.0, 0.05, False, id="turbine-deterrence"),
+        ],
+    )
+    def test_new_activation_gets_same_day_stops(self, old_days, turbine_strength, expected):
+        pops = {b: self._day_boundary_step(b, old_days, turbine_strength) for b in (False, True)}
+        for use_jax, pop in pops.items():
+            # Non-vacuity: the trigger fired and found a target (_end_dispersal keeps it)
+            assert (pop.dispersal_target_distance > 0.0).all(), f"use_jax={use_jax}: no activation"
+            assert (pop.is_dispersing == expected).all(), (use_jax, pop.is_dispersing)
+        np.testing.assert_array_equal(pops[True].is_dispersing, pops[False].is_dispersing)

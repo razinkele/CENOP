@@ -1108,9 +1108,9 @@ class PorpoisePopulation:
         D11: the look-ahead point is where the fixed dispersal step lands (up to float32
         rounding), so a disperser that continues moves to a cell with depth >
         min_depth_dispersal (wdisp, default 4 m) >= min_depth (wmin, default 1 m), and land
-        avoidance never acts on it. Border reflection can still act in the strip between W - 1 (CENOP's
-        reflection edge) and W - 0.5 (DEPONS's off-grid threshold, kept as is), and
-        likewise for H.
+        avoidance never acts on it. Border reflection can still act in the strip between
+        W - 1 (CENOP's reflection edge) and W - 0.5 (DEPONS's off-grid threshold, kept as
+        is), and likewise for H.
         """
         d = mask & self.is_dispersing
         if not d.any():
@@ -2817,9 +2817,17 @@ class PorpoisePopulation:
         # PSM update
         self._update_psm(self.active_mask, food_eaten_np)
 
-        # Dispersal trigger check (day boundary)
+        # Dispersal trigger check (day boundary). jax_tick_energy has already run the
+        # deterrence cancel and the energy stop, so new activations get them here, as on the
+        # NumPy path, where _update_dispersal runs after the trigger (DEPONS
+        # performDailyStep: activate(), then the energy stop; deter() in the same tick).
         if is_day_boundary and self._global_tick > 0:
+            before = self.is_dispersing.copy()
             self._check_dispersal_trigger(self.active_mask)
+            new = self.is_dispersing & ~before
+            if new.any():
+                new = self._stop_dispersal_if_deterred(new)
+                self._stop_dispersal_if_energy_recovered(new)
 
         # Disturbance memory (JASMINE)
         if self._memory_module is not None:
@@ -3365,25 +3373,13 @@ class PorpoisePopulation:
         if not dispersing.any():
             return
 
-        # --- Deterrence deactivates dispersal (Java Porpoise.java:1277-1278) ---
-        deterred = dispersing & (self._turbine_deter_strength > 0)
-        if deterred.any():
-            self._end_dispersal(deterred)
-            dispersing = mask & self.is_dispersing
-
+        dispersing = self._stop_dispersal_if_deterred(dispersing)
         if not dispersing.any():
             return
 
-        # --- Energy-based stop (Java Porpoise.java:1105-1118) ---
-        # Check at day boundary (every 48 ticks)
+        # Energy-based stop at the day boundary (every 48 ticks)
         if self._tick_counter == 0 and self._global_tick > 0:
-            today = self._energy_history[dispersing, 0]
-            past_min = np.min(self._energy_history[dispersing, 1:8], axis=1)
-            recovering = today > past_min
-            if recovering.any():
-                disp_indices = np.where(dispersing)[0]
-                self._end_dispersal(disp_indices[recovering])
-                dispersing = mask & self.is_dispersing
+            dispersing = self._stop_dispersal_if_energy_recovered(dispersing)
 
         if not dispersing.any() or self._movement_module is None:
             return
@@ -3399,6 +3395,33 @@ class PorpoisePopulation:
         completed = dispersing & (distances >= 0.95 * self.dispersal_target_distance)
         if completed.any():
             self._end_dispersal(completed)
+
+    def _stop_dispersal_if_deterred(self, dispersing: np.ndarray) -> np.ndarray:
+        """DEPONS deter() (Porpoise.java:1277-1278): turbine deterrence ends dispersal.
+
+        Ends dispersal for the deterred animals in the ``dispersing`` mask; returns the rest.
+        """
+        deterred = dispersing & (self._turbine_deter_strength > 0)
+        if deterred.any():
+            self._end_dispersal(deterred)
+            dispersing = dispersing & ~deterred
+        return dispersing
+
+    def _stop_dispersal_if_energy_recovered(self, dispersing: np.ndarray) -> np.ndarray:
+        """DEPONS performDailyStep (Porpoise.java:1105-1118): dispersal ends when today's
+        mean energy exceeds the minimum of the previous 7 days. Callers run it on day
+        boundaries only.
+
+        Ends dispersal for the recovered animals in the ``dispersing`` mask; returns the rest.
+        """
+        idx = np.flatnonzero(dispersing)
+        hist = self._energy_history[idx]
+        recovered = idx[hist[:, 0] > np.min(hist[:, 1:8], axis=1)]
+        if recovered.size:
+            self._end_dispersal(recovered)
+            dispersing = dispersing.copy()
+            dispersing[recovered] = False
+        return dispersing
 
     def get_psm(self, idx: int) -> PersistentSpatialMemory:
         """Get PSM instance for a specific porpoise."""

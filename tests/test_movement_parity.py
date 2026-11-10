@@ -59,8 +59,9 @@ def test_module_path_matches_inline_reference_multi_tick(monkeypatch):
 
 
 def test_module_path_matches_inline_reference_dispersal(monkeypatch):
-    """Exercises the SSLogis dispersal override (module previously used a *0.3 shortcut
-    and skipped _apply_dispersal_heading)."""
+    """Dispersers take the same DEPONS dispersal step (_disperse_step: completion check, PSM
+    turn, look-ahead stops) on the module path as on the inline path. The module path
+    previously used a *0.3 shortcut and skipped _apply_dispersal_heading."""
     monkeypatch.setattr(popmod, "_HAS_KERNELS", False)
     a = _build(77, with_module=False)
     b = _build(77, with_module=True)
@@ -73,4 +74,7 @@ def test_module_path_matches_inline_reference_dispersal(monkeypatch):
         pm._prev_step_heading[:5] = 45.0
     a.step()
     b.step()
+    for sim in (a, b):
+        # Non-vacuity: a disperser that stopped takes a CRW step, so check one continued
+        assert sim.population_manager.is_dispersing[:5].any(), "all 5 dispersers stopped"
     _assert_parity(a.population_manager, b.population_manager, idx=slice(0, 5))

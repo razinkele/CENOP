@@ -1,0 +1,14 @@
+{
+  "id": "kattegat-psm2-undisturbed-v1",
+  "description": "Undisturbed Kattegat, PSM-Type2 large-scale movement: the like-for-like configuration CENOP can run today. Not the TRACE-recommended Kattegat setup (TRACE 3.2 s3.2.4 mandates InnerDanishWaters); see the A1 spec s7-8.",
+  "overrides": {
+    "landscape": "Kattegat",
+    "dispersal": "PSM-Type2",
+    "ships": "false",
+    "turbines": "off",
+    "porpoiseCount": "2000",
+    "simYears": "5"
+  },
+  "seeds": [42, 43],
+  "determinism_seed": 42
+}

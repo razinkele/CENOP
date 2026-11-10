@@ -1,0 +1,14 @@
+{
+  "id": "kattegat-idw-undisturbed-v1",
+  "description": "Undisturbed Kattegat, InnerDanishWaters large-scale movement: the TRACE-canonical Kattegat configuration (DEPONS 3.2 TRACE s3.2.4: Kattegat large-scale movements must use InnerDanishWaters). CENOP cannot run this yet; see the A1 spec s8.",
+  "overrides": {
+    "landscape": "Kattegat",
+    "dispersal": "InnerDanishWaters",
+    "ships": "false",
+    "turbines": "off",
+    "porpoiseCount": "2000",
+    "simYears": "5"
+  },
+  "seeds": [42, 43],
+  "determinism_seed": 42
+}

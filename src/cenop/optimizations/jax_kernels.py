@@ -9,6 +9,8 @@ Requires: jax, jaxlib
 Fallback: if JAX unavailable, these functions are never imported.
 """
 
+import math
+
 import jax
 
 jax.config.update("jax_enable_x64", True)
@@ -287,6 +289,7 @@ def jax_disperse_step(
     world_w,
     world_h,
     key,
+    enough_water_ahead=None,
 ):
     """PSM-Type2 dispersal step for ``mask & is_dispersing``; mirrors
     PorpoisePopulation._disperse_step, which runs before the CRW step.
@@ -296,6 +299,8 @@ def jax_disperse_step(
     2. PSM turn: prev_step_heading + U(-psm_angle, psm_angle) * SSLogis(3p - 1.5), with
        path length p = traveled / (0.95 * target) (0 where target <= 0); prev_step_heading
        takes the turned heading, even when a stop follows;
+    2b. stop where ``enough_water_ahead`` (the land check's stored result, frozen while
+       dispersing: DEPONS disperse()'s first-call filter, D9) is False; None means all True;
     3. look-ahead point one dispersal step (mean_disp_dist / 0.4 cells) along it;
     4. stop if that point is off the grid (DEPONS getPointAtHeadingAndDistNoBorder);
     5. stop unless the depth there exceeds min_depth_dispersal (NaN stops);
@@ -335,8 +340,9 @@ def jax_disperse_step(
     px = x + step * jnp.sin(rad)
     py = y + step * jnp.cos(rad)
 
-    # 4. Off-grid stop
-    stop = (px < 0) | (py < 0) | (px >= world_w - 0.5) | (py >= world_h - 0.5)
+    # 2b. Not-enough-water-ahead stop, then 4. off-grid stop
+    no_water = jnp.zeros_like(d) if enough_water_ahead is None else ~enough_water_ahead
+    stop = no_water | (px < 0) | (py < 0) | (px >= world_w - 0.5) | (py >= world_h - 0.5)
 
     # 5. Depth stop; off-grid points are already stopped, clipping keeps the lookup in bounds
     xi = jnp.clip(px.astype(jnp.int32), 0, world_w - 1)
@@ -375,6 +381,7 @@ def jax_heading_composition(
     prev_angle,
     inertia_const,
     mean_disp_dist,
+    crw_heading=None,
 ):
     """Heading composition: CRW + ref_mem + deterrence + social -> final heading/dx/dy.
 
@@ -397,6 +404,9 @@ def jax_heading_composition(
     prev_angle : float64[n] — previous total turn; updated for CRW movers only
     inertia_const : float scalar — CRW inertia constant
     mean_disp_dist : float scalar — mean dispersal distance per step
+    crw_heading : float64[n] or None — CRW movers' heading with the CRW turn (and the D15
+        land check) already applied; ``pres_angle`` is then not added again. prev_angle is
+        still measured from ``heading``.
 
     Returns
     -------
@@ -408,8 +418,11 @@ def jax_heading_composition(
     disp_mask = mask & is_dispersing
     crw_mask = mask & ~is_dispersing
 
-    # 1. Apply CRW turning angle to heading (CRW movers only)
-    new_heading = jnp.where(crw_mask, (heading + pres_angle) % 360.0, heading)
+    # 1. Apply CRW turning angle to heading (CRW movers only), unless the caller already did
+    if crw_heading is None:
+        new_heading = jnp.where(crw_mask, (heading + pres_angle) % 360.0, heading)
+    else:
+        new_heading = jnp.where(crw_mask, crw_heading, heading)
 
     # 2. CRW unit direction from heading
     rads = jnp.radians(new_heading)
@@ -591,10 +604,18 @@ def jax_land_avoidance(x, y, heading, step_dist, depth_grid, min_depth, on_land,
     return out_x, out_y, out_heading, resolved, key
 
 
-def jax_update_positions(x, y, dx, dy, heading, world_w, world_h, mask):
+def jax_update_positions(
+    x, y, dx, dy, heading, world_w, world_h, mask, depth_grid=None, start_x=None, start_y=None
+):
     """Compute new positions, reflect at boundaries, recalculate heading for reflected.
 
-    Combines position addition with boundary reflection and heading correction.
+    Combines position addition with boundary reflection and heading correction. With
+    ``depth_grid`` (the D15 land-check path) it also applies DEPONS beh 6 (stdMove 639-661),
+    as PorpoisePopulation._apply_positions does: an active agent whose new cell has depth <= 0
+    returns to its start-of-tick position (``start_x/_y``; DEPONS posList.get(0), even when
+    beh 4 moved the step base ``x/y``), facing it from the attempted position. Facing one's
+    own position is a no-op; NaN depth is not <= 0. The cell is read from the float32 position
+    _step_jax stores, clipped as _recompute_cell_indices does.
 
     Parameters
     ----------
@@ -603,6 +624,8 @@ def jax_update_positions(x, y, dx, dy, heading, world_w, world_h, mask):
     heading : float64[n] — current heading (degrees)
     world_w, world_h : int — world dimensions in cells
     mask : bool[n] — active agent mask
+    depth_grid : float32[rows, cols] or None — None keeps the plain update (no beh 6)
+    start_x, start_y : float32[n] — start-of-tick positions (with ``depth_grid``)
 
     Returns
     -------
@@ -627,7 +650,245 @@ def jax_update_positions(x, y, dx, dy, heading, world_w, world_h, mask):
     final_y = jnp.where(mask, ref_y, y)
     final_heading = jnp.where(mask, new_heading, heading)
 
+    if depth_grid is not None:
+        # beh 6: roll back from depth <= 0 to the start-of-tick position, facing it
+        tried_x = final_x.astype(jnp.float32)
+        tried_y = final_y.astype(jnp.float32)
+        xi = jnp.clip(tried_x.astype(jnp.int32), 0, world_w - 1)
+        yi = jnp.clip(tried_y.astype(jnp.int32), 0, world_h - 1)
+        back = mask & (depth_grid[yi, xi] <= 0)
+        sx = start_x.astype(jnp.float64)
+        sy = start_y.astype(jnp.float64)
+        fdx = sx - tried_x.astype(jnp.float64)
+        fdy = sy - tried_y.astype(jnp.float64)
+        face = back & ((fdx != 0.0) | (fdy != 0.0))
+        face_heading = jnp.degrees(jnp.arctan2(fdx, fdy)) % 360.0
+        final_heading = jnp.where(face, face_heading, final_heading)
+        final_x = jnp.where(back, sx, final_x)
+        final_y = jnp.where(back, sy, final_y)
+
     return final_x, final_y, final_heading
+
+
+# ---------------------------------------------------------------------------
+# DEPONS land avoidance before heading composition (D15)
+# ---------------------------------------------------------------------------
+
+_LC_NO_DEPTH = -9999.0
+_LC_DEG = math.pi / 180.0
+# Moore neighbours, in the order beh 5 scans them (first maximum wins), as in land_check.py
+_LC_NB_DX = (-1, 0, 1, -1, 1, -1, 0, 1)
+_LC_NB_DY = (-1, -1, -1, 0, 0, 1, 1, 1)
+
+
+def _lc_depth_at(depth_grid, x, y):
+    """Depth (float64) of the cell holding (x, y); -9999 off the grid or for NaN."""
+    rows, cols = depth_grid.shape
+    inside = (x >= 0.0) & (y >= 0.0) & (x < cols) & (y < rows)
+    xi = jnp.clip(jnp.floor(jnp.where(inside, x, 0.0)), 0, cols - 1).astype(jnp.int32)
+    yi = jnp.clip(jnp.floor(jnp.where(inside, y, 0.0)), 0, rows - 1).astype(jnp.int32)
+    v = depth_grid[yi, xi].astype(jnp.float64)
+    return jnp.where(inside & ~jnp.isnan(v), v, _LC_NO_DEPTH)
+
+
+def _lc_reflect(v, m):
+    """Bounce a coordinate into [0, m) (Repast BouncyBorders), as land_check._reflect:
+    v < 0 -> -v, v > m -> 2m - v, v == m -> the largest float below m. NaN passes through."""
+    v = jnp.where(v < 0.0, -v, jnp.where(v > m, 2.0 * m - v, v))
+    return jnp.where(v == m, math.nextafter(m, 0.0), v)
+
+
+def _lc_look_depth(depth_grid, x, y):
+    """Depth at a look-ahead point, reflected into the grid first."""
+    rows, cols = depth_grid.shape
+    return _lc_depth_at(depth_grid, _lc_reflect(x, float(cols)), _lc_reflect(y, float(rows)))
+
+
+def _lc_path_ok(depth_grid, px, py, h, pm, checking, n_samples_max):
+    """DEPONS checkDepth for the ``checking`` agents (other entries are meaningless): the point
+    presMov ahead has depth >= 0 and every 0.1-cell sample k = 1 .. ceil(presMov / 0.1)
+    depth > 0. The sample loop stops once every checking agent has failed or run out of
+    samples, and never passes ``n_samples_max``."""
+    rad = h * _LC_DEG
+    s = jnp.sin(rad)
+    c = jnp.cos(rad)
+    ok = _lc_look_depth(depth_grid, px + s * pm, py + c * pm) >= 0.0
+    vx = 0.1 * s
+    vy = 0.1 * c
+    n = jnp.ceil(pm / 0.1)
+    k_max = jnp.minimum(jnp.max(jnp.where(checking, n, 0.0)), float(n_samples_max))
+
+    def cond(carry):
+        k, ok = carry
+        return (k <= k_max) & jnp.any(checking & ok & (k <= n))
+
+    def body(carry):
+        k, ok = carry
+        d = _lc_look_depth(depth_grid, px + vx * k, py + vy * k)
+        return k + 1.0, ok & ~(checking & (k <= n) & ~(d > 0.0))
+
+    _, ok = lax.while_loop(cond, body, (jnp.float64(1.0), ok))
+    return ok
+
+
+def jax_depons_land_check(
+    x,
+    y,
+    heading,
+    log_mov,
+    mask,
+    depth_grid,
+    wmin,
+    pos_hist_x,
+    pos_hist_y,
+    mem_ptr,
+    mem_count,
+    key,
+    n_samples_max,
+):
+    """DEPONS 3.2 land avoidance (stdMove 467-533) for ``mask`` agents; the JAX twin of
+    cenop.movement.land_check.depons_land_check, with the same semantics.
+
+    Up to 100 rounds (``lax.while_loop``, ending early once no agent needs avoidance): the
+    path check (checkDepth) looks presMov = 10**log_mov cells ahead. An agent failing it draws
+    one U(0, 10) jitter r (one draw per agent per round, from a key split per round) and tries
+    +-(40 + r), +-(70 + r), +-(120 + r) at presMov ahead; a point is good if depth >= wmin; it
+    turns toward the good side (the deeper one if both, right on ties; right = +). If no tier
+    is good (beh 4) it walks back from the newest remembered position (ring index
+    ``(mem_ptr - 1) % mem_size``) through at most min(20, mem_count) entries, facing and
+    stepping onto each (a no-op for its own position), until the path check passes; 20 steps
+    end its rounds, a shorter history that runs out does not. Then a final path check gives
+    ``enough``; where it fails (beh 5) the agent faces the centre of the deepest of its 8
+    neighbours (first maximum in a fixed order) and log_mov becomes 0.
+
+    Look-ahead points are reflected into [0, W) x [0, H) before the floor lookup; off-grid
+    beh-5 neighbours and NaN cells read -9999. ``n_samples_max`` (static under jit) bounds the
+    path samples: ceil(10**max_mov / 0.1).
+
+    Returns
+    -------
+    (x, y, heading, log_mov, enough) — inputs' dtypes; only masked agents change; heading in
+    [0, 360) where turned; ``enough`` is the final path check, True outside ``mask``.
+    """
+    n = x.shape[0]
+    mem_size = pos_hist_x.shape[1]
+    rows = jnp.arange(n)
+    f64 = jnp.float64
+    pm = jnp.power(10.0, log_mov.astype(f64))
+    n_back = jnp.minimum(20, mem_count.astype(jnp.int32))
+    no = jnp.zeros(n, dtype=bool)
+
+    def walk_back(args):
+        px, py, h, moved, turned, walk = args
+
+        def cond(c):
+            return (c[0] < 20) & jnp.any(c[6])
+
+        def body(c):
+            j, px, py, h, moved, turned, walking, passed = c
+            b = jnp.mod(mem_ptr.astype(jnp.int32) - 1 - j, mem_size)
+            bx = pos_hist_x[rows, b].astype(f64)
+            by = pos_hist_y[rows, b].astype(f64)
+            face = walking & ((bx != px) | (by != py))
+            h = jnp.where(face, jnp.arctan2(bx - px, by - py) / _LC_DEG, h)
+            px = jnp.where(face, bx, px)
+            py = jnp.where(face, by, py)
+            ok = _lc_path_ok(depth_grid, px, py, h, pm, walking, n_samples_max)
+            passed = passed | (walking & ok)
+            walking = walking & ~ok & (j + 1 < n_back)
+            return j + 1, px, py, h, moved | face, turned | face, walking, passed
+
+        init = (jnp.int32(0), px, py, h, moved, turned, walk & (n_back > 0), no)
+        _, px, py, h, moved, turned, _, passed = lax.while_loop(cond, body, init)
+        return px, py, h, moved, turned, passed
+
+    def no_walk(args):
+        px, py, h, moved, turned, _ = args
+        return px, py, h, moved, turned, no
+
+    def round_cond(s):
+        return (s[0] < 100) & jnp.any(s[5])
+
+    def round_body(s):
+        rnd, key, px, py, h, need, moved, turned, known_ok = s
+        ok = _lc_path_ok(depth_grid, px, py, h, pm, need, n_samples_max)
+        known_ok = known_ok | (need & ok)
+        need = need & ~ok
+
+        # avoidLand: one jitter per agent per round, shared by the three tiers
+        key, sub = jax.random.split(key)
+        r = jax.random.uniform(sub, (n,), dtype=f64, minval=0.0, maxval=10.0)
+        found = no
+        turn = jnp.zeros(n, dtype=f64)
+        for base in (40.0, 70.0, 120.0):
+            a = base + r
+            rr = (h + a) * _LC_DEG
+            rl = (h - a) * _LC_DEG
+            dr = _lc_look_depth(depth_grid, px + jnp.sin(rr) * pm, py + jnp.cos(rr) * pm)
+            dl = _lc_look_depth(depth_grid, px + jnp.sin(rl) * pm, py + jnp.cos(rl) * pm)
+            good_r = dr >= wmin
+            good_l = dl >= wmin
+            t = jnp.where(good_r & good_l, jnp.where(dr >= dl, a, -a), jnp.where(good_r, a, -a))
+            take = ~found & (good_r | good_l)
+            turn = jnp.where(take, t, turn)
+            found = found | take
+        tier = need & found
+        h = jnp.where(tier, h + turn, h)
+        turned = turned | tier
+
+        # beh 4 for the agents no tier helped
+        walk = need & ~found
+        px, py, h, moved, turned, passed = lax.cond(
+            jnp.any(walk), walk_back, no_walk, (px, py, h, moved, turned, walk)
+        )
+        known_ok = known_ok | passed
+        need = need & ~(walk & (passed | (n_back == 20)))
+        return rnd + 1, key, px, py, h, need, moved, turned, known_ok
+
+    init = (
+        jnp.int32(0),
+        key,
+        x.astype(f64),
+        y.astype(f64),
+        heading.astype(f64),
+        mask,
+        no,
+        no,
+        no,
+    )
+    _, _, px, py, h, _, moved, turned, known_ok = lax.while_loop(round_cond, round_body, init)
+
+    # Final path check; an agent that left the rounds on a pass is unchanged since then
+    recheck = mask & ~known_ok
+    enough = jnp.where(
+        recheck, _lc_path_ok(depth_grid, px, py, h, pm, recheck, n_samples_max), True
+    )
+
+    # beh 5: face the centre of the deepest Moore neighbour, presMov = 1
+    beh5 = mask & ~enough
+    cx = jnp.floor(px)
+    cy = jnp.floor(py)
+    nb = jnp.stack(
+        [
+            _lc_depth_at(depth_grid, cx + ndx + 0.5, cy + ndy + 0.5)
+            for ndx, ndy in zip(_LC_NB_DX, _LC_NB_DY)
+        ]
+    )
+    best = jnp.argmax(nb, axis=0)
+    tx = cx + jnp.asarray(_LC_NB_DX, dtype=f64)[best] + 0.5
+    ty = cy + jnp.asarray(_LC_NB_DY, dtype=f64)[best] + 0.5
+    h = jnp.where(beh5, jnp.arctan2(tx - px, ty - py) / _LC_DEG, h)
+    turned = turned | beh5
+
+    h_out = jnp.mod(h, 360.0).astype(heading.dtype)
+    h_out = jnp.where(h_out >= 360.0, jnp.zeros_like(h_out), h_out)  # rounding just below 360
+    return (
+        jnp.where(moved, px.astype(x.dtype), x),
+        jnp.where(moved, py.astype(y.dtype), y),
+        jnp.where(turned, h_out, heading),
+        jnp.where(beh5, jnp.zeros_like(log_mov), log_mov),
+        enough,
+    )
 
 
 # ---------------------------------------------------------------------------

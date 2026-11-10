@@ -8,6 +8,7 @@ Both functions are pure — all state is passed in as flat arrays, all
 parameters as scalars, and new arrays are returned. No side effects.
 """
 
+import functools
 import logging
 
 import jax
@@ -20,6 +21,7 @@ from cenop.optimizations.jax_kernels import (
     jax_compute_attraction,
     jax_compute_ve_total,
     jax_crw_kernel,
+    jax_depons_land_check,
     jax_dispersal_update,
     jax_disperse_step,
     jax_eat_food,
@@ -44,7 +46,7 @@ def is_jax_available() -> bool:
         return False
 
 
-@jax.jit
+@functools.partial(jax.jit, static_argnames=("land_check", "n_samples_max"))
 def jax_tick_movement(
     # Agent state arrays
     x,
@@ -99,16 +101,32 @@ def jax_tick_movement(
     world_h,
     # RNG key
     key,
+    # D15 land avoidance (keyword; land_check and n_samples_max are static)
+    enough_water_ahead=None,
+    land_check=False,
+    n_samples_max=0,
 ):
     """Full movement tick: dispersal step + CRW + ref mem + heading + position + land avoidance.
+
+    ``land_check=True`` (real landscapes) runs DEPONS stdMove's land avoidance as on the NumPy
+    CRW path (D15): jax_depons_land_check after the CRW turn and before composition, for CRW
+    movers (``crw_mask``); after composition only border reflection, then beh 6 (a new cell
+    with depth <= 0 returns the agent to its start-of-tick position, facing it).
+    ``n_samples_max = ceil(10**max_mov / 0.1)`` bounds the path samples. ``land_check=False``
+    (homogeneous grid, no landscape) keeps the post-composition jax_land_avoidance.
+    ``enough_water_ahead`` is the stored DEPONS enoughWaterAhead state: it feeds the D9
+    dispersal stop on both paths (None: all True) and the land check rewrites it for
+    ``crw_mask`` agents.
 
     Returns
     -------
     Tuple of:
         new_x, new_y, new_heading, new_prev_angle, new_prev_log_mov,
         step_dist, deter_strength, new_dispersal_distance_traveled,
-        new_prev_step_heading, new_is_dispersing, key
+        new_prev_step_heading, new_is_dispersing, key, new_enough_water_ahead
     """
+    if enough_water_ahead is None:
+        enough_water_ahead = jnp.ones(x.shape, dtype=bool)
     key, crw_key = jax.random.split(key)
     key, disp_key = jax.random.split(key)
 
@@ -132,6 +150,7 @@ def jax_tick_movement(
         world_w,
         world_h,
         disp_key,
+        enough_water_ahead=enough_water_ahead,
     )
     crw_mask = active_mask & ~is_dispersing
 
@@ -176,6 +195,34 @@ def jax_tick_movement(
     vt_x = jnp.where(has_history, vt_x, 0.0)
     vt_y = jnp.where(has_history, vt_y, 0.0)
 
+    # --- Phase 2b: CRW turn, then DEPONS land avoidance (D15), before composition ---
+    # Python's _update_reference_memory stored the start-of-tick position before this tick,
+    # so beh 4 walks back from it (DEPONS posList.get(0)); the attraction above keeps using
+    # the start-of-tick x/y.
+    crw_heading = None
+    base_x, base_y = x, y
+    new_enough_water_ahead = enough_water_ahead
+    if land_check:
+        heading64 = heading.astype(jnp.float64)
+        turned = jnp.where(crw_mask, (heading64 + pres_angle) % 360.0, heading64)
+        key, lc_key = jax.random.split(key)
+        base_x, base_y, crw_heading, log_mov, lc_enough = jax_depons_land_check(
+            x,
+            y,
+            turned,
+            log_mov,
+            crw_mask,
+            depth_grid,
+            min_depth,
+            pos_hist_x,
+            pos_hist_y,
+            mem_ptr,
+            mem_count,
+            lc_key,
+            n_samples_max,
+        )
+        new_enough_water_ahead = jnp.where(crw_mask, lc_enough, enough_water_ahead)
+
     # --- Phase 3: Heading composition + position update ---
     (
         new_heading,
@@ -201,8 +248,85 @@ def jax_tick_movement(
         prev_angle,
         inertia_const,
         mean_disp_dist,
+        crw_heading=crw_heading,
+    )
+    step_dist_f32 = step_dist.astype(jnp.float32)
+
+    if land_check:
+        # Border reflection only (DEPONS forward()), then beh 6 from the start-of-tick x/y
+        new_x, new_y, new_heading = jax_update_positions(
+            base_x.astype(jnp.float64),
+            base_y.astype(jnp.float64),
+            dx,
+            dy,
+            new_heading,
+            world_w,
+            world_h,
+            active_mask,
+            depth_grid=depth_grid,
+            start_x=x,
+            start_y=y,
+        )
+        new_x_f32 = new_x.astype(jnp.float32)
+        new_y_f32 = new_y.astype(jnp.float32)
+        new_heading_f32 = new_heading.astype(jnp.float32)
+        new_heading_f32 = jnp.where(new_heading_f32 >= 360.0, 0.0, new_heading_f32)
+    else:
+        new_x_f32, new_y_f32, new_heading_f32, key = _legacy_land_avoidance(
+            x,
+            y,
+            dx,
+            dy,
+            new_heading,
+            step_dist_f32,
+            depth_grid,
+            min_depth,
+            world_w,
+            world_h,
+            active_mask,
+            key,
+        )
+
+    # Update prev_log_mov for CRW movers only (dispersers keep theirs, D13)
+    new_prev_log_mov = jnp.where(crw_mask, log_mov, prev_log_mov)
+
+    # Path length: dispersers add the fixed dispersal step (float32, as NumPy's _step_dist)
+    disp_delta = dispersal_distance_delta.astype(jnp.float32)
+    new_dispersal_distance_traveled = (dispersal_distance_traveled + disp_delta).astype(jnp.float32)
+
+    return (
+        new_x_f32,
+        new_y_f32,
+        new_heading_f32,
+        new_prev_angle.astype(jnp.float64),
+        new_prev_log_mov,
+        step_dist_f32,
+        deter_strength.astype(jnp.float32),
+        new_dispersal_distance_traveled,
+        prev_step_heading.astype(jnp.float32),
+        is_dispersing,
+        key,
+        new_enough_water_ahead,
     )
 
+
+def _legacy_land_avoidance(
+    x,
+    y,
+    dx,
+    dy,
+    new_heading,
+    step_dist_f32,
+    depth_grid,
+    min_depth,
+    world_w,
+    world_h,
+    active_mask,
+    key,
+):
+    """Today's post-composition land handling, kept for homogeneous grids and no landscape
+    (land_check=False): reflect, then turn away from a destination shallower than min_depth
+    (jax_land_avoidance), else stay in place and turn 180."""
     # Position update with boundary reflection
     new_x, new_y, new_heading = jax_update_positions(
         x.astype(jnp.float64),
@@ -219,7 +343,6 @@ def jax_tick_movement(
     new_x_f32 = new_x.astype(jnp.float32)
     new_y_f32 = new_y.astype(jnp.float32)
     new_heading_f32 = new_heading.astype(jnp.float32)
-    step_dist_f32 = step_dist.astype(jnp.float32)
 
     # Check which agents are on land
     xi_check = jnp.clip(new_x_f32.astype(jnp.int32), 0, world_w - 1)
@@ -250,26 +373,7 @@ def jax_tick_movement(
     new_y_f32 = jnp.where(unresolved, y, new_y_f32)
     new_heading_f32 = jnp.where(unresolved, (new_heading_f32 + 180.0) % 360.0, new_heading_f32)
 
-    # Update prev_log_mov for CRW movers only (dispersers keep theirs, D13)
-    new_prev_log_mov = jnp.where(crw_mask, log_mov, prev_log_mov)
-
-    # Path length: dispersers add the fixed dispersal step (float32, as NumPy's _step_dist)
-    disp_delta = dispersal_distance_delta.astype(jnp.float32)
-    new_dispersal_distance_traveled = (dispersal_distance_traveled + disp_delta).astype(jnp.float32)
-
-    return (
-        new_x_f32,
-        new_y_f32,
-        new_heading_f32,
-        new_prev_angle.astype(jnp.float64),
-        new_prev_log_mov,
-        step_dist_f32,
-        deter_strength.astype(jnp.float32),
-        new_dispersal_distance_traveled,
-        prev_step_heading.astype(jnp.float32),
-        is_dispersing,
-        key,
-    )
+    return new_x_f32, new_y_f32, new_heading_f32, key
 
 
 @jax.jit

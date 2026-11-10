@@ -2705,6 +2705,10 @@ class PorpoisePopulation:
             self.landscape is not None and getattr(self.landscape, "_depth", None) is not None
         )
         min_depth_dispersal = self.params.min_depth_dispersal if has_depth else -np.inf
+        # D15 land check inside the JAX tick, where the NumPy CRW paths run _depons_land_check
+        # (a no-op without a depth grid); homogeneous grids and landscape=None keep today's path
+        land_check = (not self._skip_land_avoidance) and has_depth
+        n_samples_max = int(np.ceil(10.0 ** float(self.params.max_mov) / 0.1))
 
         # Ref mem tables
         mem_size = self._stored_util.shape[1]
@@ -2728,6 +2732,7 @@ class PorpoisePopulation:
             new_prev_step_heading,
             new_is_dispersing,
             _,
+            new_enough_water_ahead,
         ) = jax_tick_movement(
             jnp.asarray(self.x),
             jnp.asarray(self.y),
@@ -2774,6 +2779,9 @@ class PorpoisePopulation:
             int(world_w),
             int(world_h),
             movement_key,
+            enough_water_ahead=jnp.asarray(self._enough_water_ahead),
+            land_check=land_check,
+            n_samples_max=n_samples_max,
         )
 
         # Save pre-move positions BEFORE write-back (for land rollback)
@@ -2796,12 +2804,15 @@ class PorpoisePopulation:
         self.days_declining_energy[self.is_dispersing & ~new_is_dispersing_np] = 0
         np.copyto(self.is_dispersing, new_is_dispersing_np)
         np.copyto(self.dispersal_distance_traveled, np.asarray(new_dispersal_distance_traveled))
+        # DEPONS enoughWaterAhead: the land check rewrote it for CRW movers (shared with NumPy)
+        np.copyto(self._enough_water_ahead, np.asarray(new_enough_water_ahead))
 
         # Recompute cached cell indices
         self._recompute_cell_indices()
 
-        # Post-move depth check (Java Porpoise.java:639-660)
-        if self.landscape is not None:
+        # Post-move depth check (Java Porpoise.java:639-660). With land_check the JAX tick has
+        # already rolled back from depth <= 0 to the start-of-tick position and applied beh 6.
+        if self.landscape is not None and not land_check:
             self._positions[:, 0] = self.x
             self._positions[:, 1] = self.y
             post_depths = self.landscape.get_depths_vectorized(

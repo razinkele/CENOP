@@ -1,0 +1,14 @@
+{
+  "depons_jar": {
+    "url": "https://github.com/jacobnabe/DEPONS/releases/download/v3.2/DEPONS-3.2-setup.jar",
+    "size": 287091000,
+    "sha256": null,
+    "filename": "DEPONS-3.2-setup.jar"
+  },
+  "kattegat_landscape": {
+    "url": "https://depons.eu/files/landscapes/v3.2/Kattegat-2614f56a.zip",
+    "size": 38927699,
+    "sha256": "2614f56a771bf9c486a3186779040b2426b6027cfa4bb50aa61f9cd60ff94913",
+    "filename": "Kattegat-2614f56a.zip"
+  }
+}

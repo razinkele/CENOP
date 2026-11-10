@@ -149,3 +149,44 @@ DEPONS tag `v3.0`'s `DownloadLandscapes.java`. Checked by a verified download.
    (`prey0000_MM_XX.asc`, `ships0000_XX_XX.json`; no `_XX` matches in
    `src/cenop/landscape/`), so it cannot read the v3.2 landscape as shipped. This needs a
    loader change or a renaming step before A2.
+
+## Final review + acceptance runs (Task 8, 2026-11-10)
+
+- A whole-branch review (8a70e7f..e4b267b) returned "with fixes": 1 Critical
+  (a mistyped constrained value, e.g. `dispersal`, silently ran a different model as
+  `ok`) and 9 Important. All were fixed TDD in `9b79cc7`; the ledger lists them. The
+  acceptance runs were then redone on `9b79cc7` from a clean tree.
+- Acceptance results (all `status: ok`, `harness_dirty: false`, `harness_commit 9b79cc7`,
+  `locale C.UTF-8`, jar `bfbe73ea…`, landscape `2614f56a…`):
+
+  | run | wall | ticks | final pop |
+  |---|---|---|---|
+  | psm2 N2000-Y5 seed 42 | 235.6 s | 86399/86399 | 51 |
+  | psm2 N2000-Y5 seed 43 | 254.6 s | 86399/86399 | 57 |
+  | psm2 N2000-Y5 seed 42 (repeat) | 232.2 s | 86399/86399 | 51 |
+  | idw N200-Y1 seed 42 | 31.7 s | 17279/17279 | 125 (psm2 smoke: 107) |
+
+- **Determinism: refined.** The full-scale repeat is *not* byte-identical. `compare`
+  lists `Statistics.csv` and `Reproduction.csv`. Characterisation:
+  - `Statistics.csv`: `tick`, `PorpoiseCount` and `FoodEnergyLevel` are identical in all
+    86,399 rows. `PorpoiseEnergyLevel` differs in 33,218 rows by at most 6.3e-16
+    relative (2–3 ULP). It is a Repast `SUM` aggregate over porpoises, iterated in an
+    order not fixed across JVM runs, so floating-point summation order varies.
+    `FoodEnergyLevel` sums over a fixed array and never differs.
+  - `Reproduction.csv`: the same multiset of rows; deaths in the same tick are written
+    in varying order.
+  - Across **four** independent seed-42 runs (2 pre-fix, 2 post-fix, spanning the locale
+    pin) the following are byte-identical: the dynamics columns, the death multiset,
+    `YearlyMortality.csv`, `PorpoisePerBlock.csv`, and `RandomPorpoise.csv` (one
+    tracked animal's full position + energy trajectory). The energy-sum column shows
+    three ULP-level variants. The earlier byte-identical pre-fix pair was a coincidence
+    of matching iteration order.
+  - Conclusion: **the simulated dynamics are seed-deterministic; two reporting outputs
+    are not byte-stable** (summation order, row order). For A2, compare population/food
+    exactly, `PorpoiseEnergyLevel` with ~1e-15 relative tolerance, and deaths as
+    multisets. `compare` stays byte-level (strict) by design.
+- Observation for A2 (not judged): under the like-for-like psm2 scenario on the v3.2
+  landscape, DEPONS's undisturbed Kattegat population fell **2000 → 51 / 57** in 5 years.
+  CENOP's committed baseline (v3.0 landscape, PSM-Type2) stays ≈ 1999. The difference is
+  confounded by landscape (v3.0 vs v3.2) and by PSM-Type2 being non-canonical for
+  Kattegat (TRACE §3.2.4). This is exactly what A2 must untangle.

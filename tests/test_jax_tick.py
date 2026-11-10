@@ -1959,3 +1959,39 @@ class TestJaxStepDispersal:
         assert (pop.x[1], pop.y[1]) == (pytest.approx(105.5), pytest.approx(50.5))
         assert pop.prev_angle[1] == 17.0
         assert pop.prev_log_mov[1] == 0.5
+
+    def test_step_jax_without_depth_grid_skips_depth_stop(self):
+        """With no landscape, NumPy skips the depth stop; _step_jax must not apply it to its
+        synthetic 30 m depth grid. The off-grid stop still applies."""
+        from cenop.agents.population import PorpoisePopulation
+        from cenop.parameters.simulation_params import SimulationParameters
+
+        params = SimulationParameters(
+            random_seed=1,
+            communication_enabled=False,
+            psm_angle=0.0,
+            min_depth_dispersal=50.0,
+            use_jax=True,
+        )
+        pop = PorpoisePopulation(4, params)
+        assert pop._use_jax, "JAX backend not active; the test would be vacuous"
+        # Agent 0 mid-grid continues; agent 1 would leave the 1000-cell grid and stops
+        for i, (x, y) in enumerate([(500.5, 500.5), (998.5, 500.5)]):
+            pop.x[i], pop.y[i] = x, y
+            pop.is_dispersing[i] = True
+            pop.dispersal_target_distance[i] = 500.0
+            pop.dispersal_distance_traveled[i] = 0.0
+            pop._prev_step_heading[i] = 90.0
+            pop.heading[i] = 90.0
+        pop.is_dispersing[2:] = False
+
+        try:
+            pop.step()
+        except Exception as e:  # noqa: BLE001 - classify GPU OOM as environmental
+            if any(k in str(e) for k in ("RESOURCE_EXHAUSTED", "OUT_OF_MEMORY")):
+                pytest.skip(f"JAX GPU OOM (environmental): {e}")
+            raise
+
+        assert pop.is_dispersing[0]
+        assert pop.dispersal_distance_traveled[0] == pytest.approx(5.0)
+        assert not pop.is_dispersing[1]

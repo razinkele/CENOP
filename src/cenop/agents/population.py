@@ -2584,6 +2584,12 @@ class PorpoisePopulation:
         world_w = self.landscape.width if self.landscape else self.params.world_width
         world_h = self.landscape.height if self.landscape else self.params.world_height
         min_depth = self.params.min_depth if self.params else 1.0
+        # Without a depth grid NumPy's _disperse_step skips the depth stop; _jax_depth_grid is
+        # then a synthetic 30 m grid, so -inf turns the stop off instead
+        has_depth = (
+            self.landscape is not None and getattr(self.landscape, "_depth", None) is not None
+        )
+        min_depth_dispersal = self.params.min_depth_dispersal if has_depth else -np.inf
 
         # Ref mem tables
         mem_size = self._stored_util.shape[1]
@@ -2649,7 +2655,7 @@ class PorpoisePopulation:
             float(self.params.psm_angle),
             float(self.params.psm_log),
             float(min_depth),
-            float(self.params.min_depth_dispersal),
+            float(min_depth_dispersal),
             int(world_w),
             int(world_h),
             movement_key,

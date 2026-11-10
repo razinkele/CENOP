@@ -783,7 +783,10 @@ class TestPopulationWiring:
         pop = PorpoisePopulation(50, params, create_homogeneous_landscape(200, 200), mod)
         assert pop._skip_land_avoidance
         calls = []
-        monkeypatch.setattr(popmod, "_depons_land_check_kernel", lambda *a: calls.append(a))
+        monkeypatch.setattr(popmod, "_depons_land_check_kernel", lambda *a: calls.append("kernel"))
+        monkeypatch.setattr(
+            PorpoisePopulation, "_depons_land_check", lambda self, m: calls.append("method")
+        )
 
         for _ in range(5):
             pop.step()

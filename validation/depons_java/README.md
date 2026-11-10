@@ -110,19 +110,21 @@ because GitHub publishes no digest for the release asset.
 
 ## Determinism
 
-Same seed + same release + same JVM → the **same simulated trajectory**. Across four
-independent seed-42 runs these were byte-identical:
+Same seed + same release + same JVM → the **same simulated trajectory**. Across five
+independent full-scale seed-42 runs these were byte-identical:
 - population and food at every tick;
 - the multiset of deaths;
 - `YearlyMortality.csv`, `PorpoisePerBlock.csv` and `RandomPorpoise.csv`.
 
-Two *reporting* outputs are not byte-stable, because DEPONS's data collector iterates
-agents in an order that is not fixed across JVM runs:
-- `Statistics.csv:PorpoiseEnergyLevel` is a floating-point sum and differs at ≤ 6.3e-16
-  relative (2–3 ULP);
+Two *reporting* outputs are not byte-stable from run to run:
+- `Statistics.csv:PorpoiseEnergyLevel` (a floating-point sum) took three variants
+  differing by ≤ 6.3e-16 relative (2–3 ULP);
 - `Reproduction.csv` lists deaths that share a tick in varying order.
 
-`compare` is deliberately byte-level, so a repeat run reports those two files as
+The cause is not established. It is consistent with the data collector iterating agents
+in an order the seed does not fix.
+
+`compare` is deliberately byte-level, so a repeat may report those two files as
 differing. Compare them as described in the spike report: the energy sum with a ~1e-15
 relative tolerance, deaths as a multiset.
 

@@ -26,7 +26,7 @@
 
 ## Install (Task 4, 2026-11-10)
 
-- **IzPack 5.1.3 does not run on Java 21.** Every mode (`-options-template`, `-options`)
+- **IzPack 5.1.3 does not run on Java 21.** Both unattended modes tried (`-options-template`, `-options`)
   fails before installing anything with `ArrayIndexOutOfBoundsException: Index 70131 out of
   bounds for length 22674`. Stack trace (`-DDEBUG=true -DSTACKTRACE=true`): inside
   `org.picocontainer.paranamer.BytecodeReadingParanamer$ClassReader`. This is IzPack's
@@ -190,3 +190,30 @@ DEPONS tag `v3.0`'s `DownloadLandscapes.java`. Checked by a verified download.
   CENOP's committed baseline (v3.0 landscape, PSM-Type2) stays ≈ 1999. The difference is
   confounded by landscape (v3.0 vs v3.2) and by PSM-Type2 being non-canonical for
   Kattegat (TRACE §3.2.4). This is exactly what A2 must untangle.
+
+## Correction: determinism cause (2026-11-10, after a fifth run)
+
+The earlier explanation ("the byte-identical pre-fix pair was a coincidence of matching
+iteration order") does not fit the data, so it is withdrawn. A fifth full-scale seed-42
+run (`output/depons_java/repeat2`, post-fix, clean tree) is **byte-identical** to the
+post-fix original (the first run after the reinstall) and differs from the post-fix
+repeat. Variants of the `PorpoiseEnergyLevel` column (sha256 of the column):
+
+- `60b1e95e…`: pre-fix original and pre-fix repeat
+- `acc672f6…`: post-fix original and repeat2
+- `66b7e170…`: post-fix repeat
+
+Each run dir is byte-identical to the others of its variant. The dynamics, death
+multiset, `YearlyMortality`, `PorpoisePerBlock` and `RandomPorpoise` are identical in all
+five. Install freshness is ruled out. The **cause is not established**: it is consistent
+with the data collector iterating agents for the `SUM` (and death rows within a tick) in
+an order the seed does not fix. 2 pre-pin vs 3 post-pin samples are too few to attribute
+anything to the `C.UTF-8` locale pin.
+
+Other verifications at this point:
+- CENOP's loader on the v3.2 landscape:
+  `CellData("Kattegat", ".depons-cache/landscape").load()` raises
+  `FileNotFoundError: Monthly file not found: …/prey01.asc or …/prey0000_01.asc`. It
+  fails loudly, with no silent fallback.
+- CENOP's committed baseline ends at population 1999 (`output/kattegat_ref/Population.txt`,
+  tick 86400).

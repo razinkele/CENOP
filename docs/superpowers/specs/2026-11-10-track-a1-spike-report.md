@@ -20,7 +20,7 @@ population difference that A2 must explain (§9).
 |---|---|
 | Fetch | Release jar `DEPONS-3.2-setup.jar` (287,091,000 B) pinned trust-on-first-use, SHA-256 `bfbe73ea…68bea` (GitHub publishes no digest). Kattegat v3.2 landscape verified against the pin in `DownloadLandscapes.java` (`2614f56a…94913`). |
 | Inspect | IzPack 5.1.3 installer. Payload in `resources/packs/pack-Model` (337 MB). The pack index lists the complete Repast Simphony **2.10.0** runtime incl. `RepastBatchMain` and the batch plugin; Groovy 3.0.17. |
-| Install | **Blocker → solved.** IzPack 5.1.3 crashes on Java 21 in every mode: `ArrayIndexOutOfBoundsException` in PicoContainer's `BytecodeReadingParanamer`, a 2018-era class-file parser. Running the *installer only* under Java 11 works unattended: `-options` with `INSTALL_PATH`, exit 0, ~3 s. The installer just unpacks files. |
+| Install | **Blocker → solved.** IzPack 5.1.3 crashes on Java 21 in both unattended modes tried (`-options-template`, `-options`): `ArrayIndexOutOfBoundsException` in PicoContainer's `BytecodeReadingParanamer`, a 2018-era class-file parser. Running the *installer only* under Java 11 works unattended: `-options` with `INSTALL_PATH`, exit 0, ~3 s. The installer just unpacks files. |
 | Run | `repast.simphony.runtime.RepastBatchMain -params <sweep.xml> DEPONS.rs`, with the release launcher's exact classpath and JVM flags, cwd = model dir, system **OpenJDK 21.0.12**. **Worked on the first attempt.** |
 
 Fallback rungs (a) xvfb, (b) source build and (c) published output: **not needed**.
@@ -45,22 +45,34 @@ by a test against the installed launcher. Parameters go only through a generated
 byte-stable.**
 
 - Smoke scale (N=200, 1 yr, seed 42): two runs gave byte-identical outputs for every file.
-- Full scale (N=2000, 5 yr, seed 42): four independent runs, two before and two after
-  the review fix pass, spanning the `C.UTF-8` locale pin.
-  - **Byte-identical in all four:** `tick`/`PorpoiseCount`/`FoodEnergyLevel` at all
+- Full scale (N=2000, 5 yr, seed 42): **five independent runs.** Two came before the
+  review fix pass (no locale pin); three came after it (`C.UTF-8`), including the first
+  run after a fresh reinstall.
+  - **Byte-identical in all five:** `tick`/`PorpoiseCount`/`FoodEnergyLevel` at all
     86,399 ticks; the multiset of deaths (`Reproduction.csv` rows); `YearlyMortality.csv`;
     `PorpoisePerBlock.csv` (counts per block per tick); and `RandomPorpoise.csv` (one
     animal's full position + energy trajectory).
-  - **`Statistics.csv:PorpoiseEnergyLevel`** differs in ~33 k rows by **≤ 6.3 × 10⁻¹⁶
-    relative** (2–3 ULP). It is a Repast `SUM` aggregate iterated in a per-JVM agent
-    order, so the summation order varies; three variants were seen in four runs.
-    `FoodEnergyLevel` sums over a fixed array and never varies.
-  - **`Reproduction.csv`:** deaths in the same tick are written in varying order.
-- Meaning for A2: any DEPONS reference run can be regenerated from its manifest. Compare
-  population/food exactly, `PorpoiseEnergyLevel` with ~1e-15 relative tolerance, and
-  deaths as multisets. The harness's `compare` is deliberately byte-level (strict), so it
-  flags these two files on a repeat. A dynamics-aware compare mode is a possible
-  follow-up.
+  - **`Statistics.csv:PorpoiseEnergyLevel`** took **three variants** across the five
+    runs, each differing from the others by **≤ 6.3 × 10⁻¹⁶ relative** (2–3 ULP) in
+    ~33 k rows:
+    - variant A: both pre-fix runs;
+    - variant B: the post-fix original and the fifth run;
+    - variant C: the post-fix repeat.
+
+    Each whole run directory is byte-identical to the others of its variant, and
+    `Reproduction.csv` row order co-varies with the variant.
+  - **Cause not established.** It is consistent with Repast's data collector iterating
+    the agents for the `SUM` (and the death rows within a tick) in an order not fixed by
+    the seed, e.g. identity-hash-ordered collections. `FoodEnergyLevel` sums over a fixed
+    array and never varies. It is **not** tied to install freshness: the first run after
+    the reinstall and a later run gave the same variant. Two pre-pin vs three post-pin
+    samples are too few to attribute anything to the locale pin.
+- Meaning for A2: any DEPONS reference run can be regenerated from its manifest. The
+  dynamics reproduce exactly; the energy-sum column reproduces to ~1e-15 relative.
+  Compare population/food exactly, `PorpoiseEnergyLevel` with a ~1e-15 relative
+  tolerance, and deaths as multisets. `compare` is deliberately byte-level (strict), so a
+  repeat may report `Statistics.csv`/`Reproduction.csv` as differing. A dynamics-aware
+  compare mode is a possible follow-up.
 
 ## 4. Outputs written by default (spec §3.5 / §9)
 
@@ -92,7 +104,7 @@ or food cells), not means.
 | Annual mortality by age | `YearlyMortality` (year, age, count, deaths) | `Mortality.txt` (one row per death: age, cause) | aggregate CENOP deaths by year × age class; the `count` denominator needs CENOP's population age structure (`PorpoiseStatistics.txt`, gitignored) |
 | Deaths by cause | **none** by default (`CauseOfDeath` exists internally but isn't written) | `Population.txt: deaths_*` / `Mortality.txt: cause` | **DEPONS gap**: compare totals only, or add a sink (would modify the DEPONS config, an anti-goal) |
 | Births | indirect: `Reproduction.CalvesBorn` per dead female (lifetime) | `Population.txt: births` (daily) | **different granularity**: compare lifetime reproductive output of dead females, or rates derived from population change |
-| Dispersal | `RandomPorpoise` DispersalMode/PSMActive/PSMTarget for `trackedPorpoiseCount` animals | `Dispersal.txt` (one row per dispersal event, all animals) | raise `trackedPorpoiseCount`, a supported parameter that changes no behaviour, to track more animals; output size grows ~linearly |
+| Dispersal | `RandomPorpoise` DispersalMode/PSMActive/PSMTarget for `trackedPorpoiseCount` animals | `Dispersal.txt` (one row per dispersal event, all animals) | raise `trackedPorpoiseCount` (a supported parameter) to track more animals; output size grows ~linearly. **Unverified:** whether selecting tracked animals consumes random draws and so perturbs the trajectory. Check this before relying on it. |
 
 ## 6. Cost and ensemble size (spec §3.6)
 
@@ -108,7 +120,12 @@ simulated day (≈ 6 min/yr). Runs get faster as the population falls; it reache
 here (§9). A scenario that keeps ~2000 animals alive costs up to **~30 min per 5-year
 run**.
 
-**Ensemble recommendation for A2:**
+**Scale: open.** A1 cannot recommend a final N. The 2000 → ~50 collapse (§9) may partly
+be a scale effect: the TRACE's Kattegat runs used N=200. Before fixing the scale, A2
+should run a short DEPONS probe at N=200 and N=2000 for both dispersal modes (e.g.
+5 seeds × 5 yr each, ≈ 1 h on one install) to see whether a stable regime exists.
+
+**Ensemble recommendation for A2 (once scale is fixed):**
 - **30 replicates per scenario per model.** For a two-sample KS test on per-run summary
   statistics this gives reasonable power; A2 must define its pass bands before running.
 - DEPONS cost per scenario: ≈ 2 h at the observed speed, ≤ 15 h worst case.
@@ -124,8 +141,11 @@ run**.
   `disttocoast.asc`, `patches.asc`, all 12 monthly prey maps and all 12 salinity maps
   differ in data, not formatting. The v3.2 release itself bundles the v3.2 Kattegat zip,
   byte-identical to the depons.eu download.
-- CENOP's landscape loader cannot read DEPONS 3.2's rolling-date names
-  (`prey0000_MM_XX.asc`, `ships0000_XX_XX.json`).
+- **CENOP's landscape loader cannot read the v3.2 landscape as shipped.** Verified:
+  `CellData("Kattegat", <extracted v3.2 dir>).load()` raises
+  `FileNotFoundError: Monthly file not found: …/prey01.asc or …/prey0000_01.asc`, so it
+  fails loudly rather than falling back silently. v3.2 uses the rolling-date names
+  `prey0000_MM_XX.asc` (also `salinity0000_MM_XX.asc`, `ships0000_XX_XX.json`).
 - CENOP ignores `params.dispersal` and always runs PSM-Type2 (spec §8), so the IDW
   scenario is DEPONS-only for now.
 
@@ -156,11 +176,14 @@ run**.
 
 Under the like-for-like psm2 scenario on the v3.2 landscape, DEPONS's undisturbed Kattegat
 population fell **2000 → 51 (seed 42) / 57 (seed 43)** within 5 years. In one-year smoke
-runs at N=200 it fell to 107 (psm2) and 125 (IDW). CENOP's committed baseline stays
-≈ 1999, but it uses the v3.0 landscape. The comparison is therefore confounded by:
+runs at N=200 it fell to 107 (psm2) and 125 (IDW). CENOP's committed baseline ends at
+**1999** (`output/kattegat_ref/Population.txt`, tick 86,400), but it uses the v3.0
+landscape. The comparison is therefore confounded by:
 1. landscape (v3.0 vs v3.2, §7);
 2. PSM-Type2 being non-canonical for Kattegat (TRACE §3.2.4);
-3. initial-condition differences.
+3. scale: N=2000 may exceed what the Kattegat landscape supports, since the TRACE's
+   Kattegat runs used 200;
+4. initial-condition differences.
 
 Separating these is A2's first job; it may be the most consequential finding for the
 paper.
@@ -171,5 +194,6 @@ paper.
   (overrides + seeds; A2 should generate the CENOP configuration from the same files).
 - Reference runs: `output/depons_java/kattegat-psm2-undisturbed-v1/N2000-Y5/seed-{42,43}/`
   (regenerable exactly from the manifests; not committed).
-- Recommended scale and replicates: see §6.
+- Scale: **open**; run the N=200 vs N=2000 probe first (§6). Replicates: 30 per scenario
+  per model once scale is fixed (§6).
 - Not yet compared: no statistics were computed; that is A2.

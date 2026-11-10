@@ -53,3 +53,40 @@
 - Launcher classpath note: `start_model.command` adds the relative entry `lib/*` and then
   `cd DEPONS`. The JVM expands it from its working directory, so the model jars come from
   `DEPONS/lib/*`.
+
+## Headless run (Task 5, 2026-11-10)
+
+- **Worked on the first attempt** (well within session 1, so the time-box gate passed).
+  Entry point: `repast.simphony.runtime.RepastBatchMain`, the batch twin of the
+  launcher's `RepastMain`, in `repast.simphony.runtime_2.10.0/bin`. Its options (from the
+  class constants): `-params <sweep file>`, `-opt <file>`, `-interactive`,
+  `-bootprops <file>`, `-help`. It boots `repast.simphony.batch.BatchInit` via the JPF
+  plugin system.
+- Exact command (cwd = `<install>/DEPONS`, `DISPLAY` unset, system OpenJDK 21.0.12):
+  `java -Djava.awt.headless=true -Xmx3072M <start_model.command JVM flags> -cp
+  "<rt>/bin:<rt>/lib/*:<install>/groovylib/groovy-3.0.17-indy.jar:lib/*"
+  repast.simphony.runtime.RepastBatchMain -params <abs batch_params.xml> ./DEPONS.rs`.
+  Here `<rt>` = `<install>/repast.simphony/repast.simphony.runtime_2.10.0`. This is the
+  same classpath as `start_model.command`; no extra entries were needed.
+- Smoke (psm2 scenario, N=200, simYears=1, seed 42): **exit 0, wall 31.8 s**
+  (~0.10 s per simulated day). The log confirms `Loading landscape files from
+  …/DEPONS/data/Kattegat.zip` and monthly prey files. The only stderr noise is
+  `WARNING: Using incubator modules: jdk.incubator.vector`.
+- **Landing directory = the model dir `<install>/DEPONS/`** (the working directory).
+  Files written, with timestamp `yyyy.MMM.dd.HH_mm_ss` (YearlyMortality adds `_SSS`):
+  - `Statistics.<ts>.csv`: `"run","tick","PorpoiseCount","FoodEnergyLevel","PorpoiseEnergyLevel"`,
+    one row per tick (17,279 rows for 1 year = 360 days × 48 ticks)
+  - `YearlyMortality.<ts_ms>.csv`: `"run","year","age","count","deaths"`
+  - `PorpoisePerBlock.<ts>.csv`, `RandomPorpoise.<ts>.csv`, `Reproduction.<ts>.csv`,
+    `Hydrophones.<ts>.csv`. **All `DEPONS.rs` file sinks write by default in batch mode.**
+  - a `<Sink>.<ts>.batch_param_map.csv` for each Repast sink. It is the full effective
+    parameter row (`run` plus all 70 parameters) and confirms the sweep was applied:
+    `randomSeed=42`, `simYears=1`, `porpoiseCount=200`, `dispersal=PSM-Type2`,
+    `PSM_dist=N(350;100)`.
+  - `debug.log` (not timestamped; empty in this run)
+  - `ReproductiveLog*` / `PersistentSpatialMemory*` were **not** written. They are not
+    default outputs.
+- Observation for A2: in the smoke run the population fell 200 → 107 within year 1, and
+  `PorpoiseEnergyLevel` (a population sum) went 2008 → 1224. A first-year decline at this
+  initial N/age structure. Not judged here.
+- The smoke outputs were moved to the scratchpad afterwards; the landing dir is clean.

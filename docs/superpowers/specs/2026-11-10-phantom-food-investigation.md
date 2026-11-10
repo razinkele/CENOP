@@ -305,7 +305,7 @@ Sources compared:
 | D11 | Land while dispersing | `forward()` has no land test; the stops keep the animal off land | land avoidance turns `heading`; the next tick rebuilds it from `_prev_step_heading`, so the turn is lost | new |
 | D12 | Same-tick fallthrough | after a stop inside `disperse()`, `stdMove` runs in the same tick | stop evaluated after the dispersal step | minor |
 | D13 | CRW state | `prevAngle` and `prevLogMov` frozen while dispersing (`stdMove` skipped) | updated every tick for dispersers | minor |
-| D14 | JAX backend | — | `new_prev_step_heading` takes the final post-composition heading, unlike NumPy; `jax_dispersal_update` has the same completion and stop gaps as NumPy | backend divergence |
+| D14 | JAX backend | — | mirrors NumPy, including its gaps: `jax_heading_composition` restores the PSM heading for dispersers before `new_prev_step_heading` is taken (an earlier version of this row said otherwise), and `jax_dispersal_update` has the same completion and stop gaps; every fix must be mirrored | same gaps, no extra divergence |
 | D15 | Foraging land check (outside dispersal) | `checkDepth()` samples every 0.1 cell along the heading out to `presMov` cells (4× the step) before turning; its result is also the not-enough-water state that D9 reads | land avoidance tests only the destination cell at the step distance | new, untested; candidate for the dispersal-off energy residual |
 | — | Logistic shape | `LogisticDecreaseSSLogis(1, 0, 0.6)` = 1/(1+e^(−x/0.6)), *increasing* despite the name | same | match |
 | — | Dispersal energy cost | `E_USE_PER_KM = 0` | 0 | match |

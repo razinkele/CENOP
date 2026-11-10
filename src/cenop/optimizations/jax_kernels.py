@@ -608,7 +608,7 @@ def jax_update_positions(x, y, dx, dy, heading, world_w, world_h, mask):
 # ---------------------------------------------------------------------------
 
 
-def jax_eat_food(food_grid, xi, yi, energy, min_food):
+def jax_eat_food(food_grid, xi, yi, energy, min_food, active_mask=None):
     """Two-pass proportional food sharing.
 
     Pass 1: fraction = clip((20 - energy) / 10, 0, 0.99)
@@ -617,20 +617,27 @@ def jax_eat_food(food_grid, xi, yi, energy, min_food):
     Pass 2: if total_demand <= available: eat full demand
             else: eat proportional share (demand / total_demand * available)
 
+    The min_food floor is applied only to cells that had food and were visited by a live
+    agent (DEPONS CellData.eatFood acts only if food > 0). Empty cells stay at 0.
+
     Parameters
     ----------
     food_grid : float32[rows, cols]
     xi, yi : int32[n] — cell indices (x=col, y=row)
     energy : float32[n] — current energy
     min_food : float — minimum food floor (0.01)
+    active_mask : bool[n] or None — live agents; inactive slots neither eat nor floor
+        (None = all active)
 
     Returns
     -------
     (food_eaten, new_food_grid) — float32[n], float32[rows, cols]
     """
+    if active_mask is None:
+        active_mask = jnp.ones(energy.shape, dtype=bool)
     frac = jnp.clip((20.0 - energy) / 10.0, 0.0, 0.99)
     cell_food = food_grid[yi, xi]
-    agent_demand = cell_food * frac
+    agent_demand = jnp.where(active_mask, cell_food * frac, 0.0)
 
     # Scatter-add demands per cell
     demand_grid = jnp.zeros_like(food_grid)
@@ -643,11 +650,16 @@ def jax_eat_food(food_grid, xi, yi, energy, min_food):
     eaten_comp = available * share
     eaten_noncomp = agent_demand
     eaten = jnp.where(total_demand <= available, eaten_noncomp, eaten_comp)
+    eaten = jnp.where(active_mask, eaten, 0.0)
 
-    # Update food grid
+    # Update food grid; floor only visited cells that had food (no phantom food)
     eaten_total_grid = jnp.zeros_like(food_grid)
     eaten_total_grid = eaten_total_grid.at[yi, xi].add(eaten)
-    new_food = jnp.maximum(food_grid - eaten_total_grid, min_food)
+    visits = (
+        jnp.zeros(food_grid.shape, dtype=jnp.int32).at[yi, xi].add(active_mask.astype(jnp.int32))
+    )
+    eat_here = (visits > 0) & (food_grid > 0.0)
+    new_food = jnp.where(eat_here, jnp.maximum(food_grid - eaten_total_grid, min_food), food_grid)
 
     return eaten, new_food
 

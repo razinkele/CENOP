@@ -172,10 +172,15 @@ def cython_depons_post_crw(
         if fract > 0.99:
             fract = 0.99
         food_available = food_grid[yi_c, xi_c]
-        eaten = food_available * fract
-        food_grid[yi_c, xi_c] = food_available - eaten
-        if food_grid[yi_c, xi_c] < 0.01:
-            food_grid[yi_c, xi_c] = 0.01
+        # DEPONS CellData.eatFood acts only if food > 0: an empty cell stays at 0
+        # (flooring it would create 0.01 "phantom" food).
+        if food_available > 0.0:
+            eaten = food_available * fract
+            food_grid[yi_c, xi_c] = food_available - eaten
+            if food_grid[yi_c, xi_c] < 0.01:
+                food_grid[yi_c, xi_c] = 0.01
+        else:
+            eaten = 0.0
         energy[i] += <f32>eaten
         if energy[i] > 20.0:
             energy[i] = 20.0

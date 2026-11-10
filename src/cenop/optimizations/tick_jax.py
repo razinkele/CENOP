@@ -312,7 +312,7 @@ def jax_tick_energy(
         new_days_declining_energy, key
     """
     # --- Phase 4: Food intake ---
-    food_eaten, new_food_grid = jax_eat_food(food_grid, xi, yi, energy, min_food)
+    food_eaten, new_food_grid = jax_eat_food(food_grid, xi, yi, energy, min_food, active_mask)
     # Only active agents eat
     food_eaten = jnp.where(active_mask, food_eaten, 0.0)
     energy_after_food = jnp.where(active_mask, energy + food_eaten, energy)

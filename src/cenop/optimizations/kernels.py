@@ -339,18 +339,16 @@ def eat_food_kernel(
             share = agent_demand[i] / total_demand
             food_eaten[i] = available * share
 
-    # --- Update grid: subtract actual total eaten per cell ---
+    # --- Update grid and enforce the floor, only on cells that have food ---
+    # DEPONS CellData.eatFood acts only if food > 0: an empty cell (outside the food
+    # patches) stays at exactly 0. Flooring it would create 0.01 "phantom" food.
     for i in range(n):
         row = y_indices[i]
         col = x_indices[i]
-        food_grid[row, col] -= food_eaten[i]
-
-    # --- Enforce minimum food floor (only touched cells) ---
-    for i in range(n):
-        row = y_indices[i]
-        col = x_indices[i]
-        if food_grid[row, col] < min_food:
-            food_grid[row, col] = min_food
+        if food_grid[row, col] > 0.0:
+            food_grid[row, col] -= food_eaten[i]
+            if food_grid[row, col] < min_food:
+                food_grid[row, col] = min_food
 
 
 @njit(cache=True)
@@ -396,13 +394,15 @@ def eat_food_kernel_v2(
             share = agent_demand[i] / total_demand
             food_eaten[i] = available * share
 
-    # Pass 3: update grid and enforce floor
+    # Pass 3: update grid and enforce floor, only on cells that have food
+    # (DEPONS CellData.eatFood acts only if food > 0; see eat_food_kernel).
     for i in range(n):
         row = y_indices[i]
         col = x_indices[i]
-        food_grid[row, col] -= food_eaten[i]
-        if food_grid[row, col] < min_food:
-            food_grid[row, col] = min_food
+        if food_grid[row, col] > 0.0:
+            food_grid[row, col] -= food_eaten[i]
+            if food_grid[row, col] < min_food:
+                food_grid[row, col] = min_food
 
 
 @njit(cache=True)

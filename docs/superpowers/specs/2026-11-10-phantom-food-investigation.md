@@ -1,8 +1,15 @@
 # Phantom food in CENOP's vectorised eating — investigation (2026-11-10)
 
-**Status:** root cause of the main discrepancy confirmed; **not fixed**. A second, smaller
-discrepancy remains open. The fix changes released (v2.2.0) model behaviour and invalidates the
-committed Kattegat baselines, so it needs a decision first (see "Decision needed").
+**Status (updated the same day):** three CENOP-vs-DEPONS differences found on undisturbed
+Kattegat. Each is confirmed by a controlled experiment.
+
+1. **Phantom food.** Fixed (TDD) in `eba75f9` on branch `fix/phantom-food-2026-11-10`; not merged.
+2. **JASMINE social-communication vector overrides the DEPONS random walk.** Confirmed; needs a
+   design decision.
+3. **Dispersal over-triggering.** Located; root cause still open.
+
+The fix and the decisions change released (v2.2.0) model behaviour and invalidate the committed
+Kattegat baselines. See "Findings 2 and 3" and "Decision needed".
 
 ## Question
 
@@ -116,50 +123,109 @@ Consequences:
   so the floor never creates food. They therefore validate demography only under food in every
   cell, not foraging on a patchy landscape.
 
-## Second discrepancy (open)
+## Findings 2 and 3
 
-With phantom food removed, CENOP still collapses much faster than DEPONS:
-- N=450 against 1,953 at day 60;
-- patch intake of 0.0020 against 0.0039 per animal per tick on day 0.
+With phantom food removed, CENOP still collapsed much faster than DEPONS: N=450 against 1,953
+at day 60. A DEPONS probe run gave population-level movement data: 1 year, N=2000, seed 42,
+`trackedPorpoiseCount=200`, run through the harness.
 
-What `occupancy_probe.py` and `movement_compare.py` show:
-- **Step length and cell changes match.** DEPONS tracked animal: mean 852 m, median 782 m,
-  changes cell on 99.1% of steps. CENOP: 829 m, 774 m, 99.4%.
-- **CENOP animals are on patch cells at about chance rate** (1.2–1.9% of animal-ticks; patch
-  cells are 1.6% of water), with or without the fix.
-- **With the fix, the patches CENOP animals occupy hold only 0.011–0.015 food**, essentially
-  the floor. Total patch food stays near full (about 1,700). So animals keep returning to
-  emptied patches while most patches go unvisited.
-- DEPONS's intake implies about 0.24 food per on-patch step, if its on-patch rate is similar.
-  This is **inferred**: DEPONS writes no occupancy output.
+> **Correction.** An earlier version of this note said the patches CENOP animals occupy hold
+> only 0.011–0.015 food. That number was measured *after* the tick's eating at the same cell,
+> so it was an artefact. Measured before eating (`onpatch_rate.py`), CENOP finds 0.16 food per
+> on-patch step on day 1, falling to 0.04 by day 30.
 
-Suspects, in order (none tested yet):
-1. food-directed movement: reference memory, stored utility and the `veTotal` attraction term;
-2. regrowth recovery of cells floored at 0.01. With Umin=0.001, a cell at exactly 0.01 does not
-   trigger the 47 extra iterations, so recovery depends on K;
-3. the timing of eating relative to the move.
+### Finding 2: the JASMINE social vector overrides the DEPONS random walk (confirmed)
+
+| days 1–30 (`turning_angles.py`, `revisit_compare.py`) | DEPONS (200 tracked) | CENOP default | CENOP, communication off |
+|---|---|---|---|
+| step length (mean) | 852 m | 829 m | ≈ (unchanged) |
+| median / p90 \|turn\| | 50° / 123° | **162° / 178°** | 51° / 122° |
+| turns > 120° | 10.9% | **68.6%** | 10.7% |
+| mean cos(turn) | +0.43 | **−0.48** | +0.42 |
+| self-revisit of a cell within 48 ticks | 5.1% | **67%** | — |
+| net displacement, 1 day | 10.5 km | **1.9 km** | 9.1 km |
+
+What rules things out:
+- **On-patch rate is not the cause.** It is at chance level in DEPONS: 1.59–1.69% across all 200
+  tracked animals for the whole year, against a patch share of 1.59%.
+- **Coarse spatial spread is not the cause.** It matches across the 51 blocks
+  (`block_distribution.py`).
+- **The CRW generator is not the cause.** The turning angles CENOP generates are DEPONS-like
+  (median 61°), but the applied heading changes by a median of 155°
+  (`crw_generated_vs_realized.py`).
+- **The memory attraction is not the cause.** With `vt` zeroed, the reversals remain.
+- **Land is not the cause.** No animal ends a step on land.
+
+The mechanism:
+- `population.py:1024-1027` adds the social communication / cohesion vector into `d_dx`/`d_dy`
+  when `communication_enabled` is on, which is the default.
+- `heading_position_reflect_kernel` then computes
+  `total = (sin h, cos h)·crwContrib + vt + d`.
+- With DEPONS's `crwContrib = k + presMov·veTotal ≈ 0.001` (k = 0.001; veTotal is 0 for most
+  animals), any non-zero social vector decides the heading completely. Animals reverse and
+  stay local.
+- **Effect:** CENOP animals forage a small area, empty the patches in it, and starve once
+  phantom food is gone. With phantom food, the reversals were harmless because food was
+  everywhere.
+
+### Finding 3: dispersal over-triggering (located, cause open)
+
+With phantom food fixed and communication off, CENOP tracks DEPONS closely to about day 105,
+then dies off faster (`population_check.py`):
+
+| day | 30 | 60 | 105 | 135 | 180 |
+|---|---|---|---|---|---|
+| CENOP N / mean E | 1996 / 8.65 | 1968 / 7.33 | 1414 / 4.78 | 445 / 4.24 | 65 / 4.19 |
+| DEPONS N / mean E | 1998 / 8.49 | 1953 / 6.63 | 1418 / 5.39 | 981 / 4.83 | 528 / 4.54 |
+| CENOP share dispersing | 0 | 3.5% | **75%** | **77%** | — |
+| DEPONS share dispersing (tracked, PSM active) | 1.1% | 1.1% | 1.2% | 0.7% | 0.4% |
+
+DEPONS seed 43 gives 992 at day 135, so the gap is not seed noise.
+
+In CENOP, most animals enter PSM-Type2 dispersal and stay there. Dispersing animals take fixed
+directed steps instead of foraging. Suspects: the dispersal trigger (declining-energy days,
+`tdisp=3`) and termination (reaching the PSM target, `PSM_tol`) in CENOP's PSM-Type2 path.
+**Not yet investigated.**
+
+Two other things checked:
+- **Calendar ruled out.** DEPONS `OFFSET_MONTH` shifts the month by only one tick.
+- **Tracking perturbs DEPONS's trajectory slightly** (day 90: 1,633 untracked against 1,619 with
+  200 tracked), but not its statistics. This answers an open item in the A1 report.
 
 ## Unverified
 
-- JAX path runtime behaviour (inferred from code only).
-- DEPONS on-patch rate (not output by DEPONS).
-- DEPONS run on the v3.0 landscape (not done). Not needed for the landscape-versus-model
-  verdict, because v3.2 has more food, but it would complete the 2×2 comparison.
-- The second discrepancy's cause.
-- Whether the effect differs at N=200 (TRACE scale). DEPONS 1-yr N=200 smoke runs also halved.
+- **Now verified:**
+  - JAX phantom food at runtime: before the fix, one visit floored all 15 empty cells of a 4×4
+    grid.
+  - DEPONS population on-patch rate (200 tracked animals).
+- DEPONS run on the v3.0 landscape (not done). Not needed for the verdicts, because v3.2 has
+  more food.
+- Finding 3's root cause.
+- Single seed (42) for CENOP comparisons. DEPONS seeds 42 and 43 agree closely.
+- N=200 (TRACE scale) not re-checked after the fixes.
+- Whether `communication_enabled=True` also distorts movement on homogeneous landscapes and in
+  JASMINE scenarios. Likely, since the same composition applies, but not measured.
 
 ## Decision needed
 
-1. **Fix the floor** in Numba v1/v2, JAX and Cython, to match DEPONS (floor only cells that had
-   food).
-   - Failing test first: after stepping on a landscape with empty cells, food on every
-     `food_prob == 0` cell is exactly 0, for each backend.
-   - This changes v2.2.0 behaviour. CENOP Kattegat populations will collapse, faster than DEPONS
-     until the second gap is resolved.
-2. **Investigate the second discrepancy** before regenerating baselines or making any parity
+1. **Phantom-food fix: done on branch `fix/phantom-food-2026-11-10` (`eba75f9`).** Floors only
+   cells that had food, in Numba v1/v2, JAX (plus an active mask, so dead slots no longer eat)
+   and Cython.
+   - 6 tests went RED → GREEN (`tests/test_food_floor_parity.py`).
+   - Fast suite 901 passed; slow tier 11 passed (homogeneous landscapes, unchanged).
+   - Not merged.
+2. **Communication default** (finding 2). This is a design question, not a mechanical fix. The
+   options:
+   - (a) set `communication_enabled=False` for DEPONS-parity runs (baselines, A2) only;
+   - (b) make False the default;
+   - (c) rescale the social vector relative to DEPONS's `crwContrib` (about 0.001), so that
+     JASMINE social behaviour stops dominating movement.
+
+   The scientific intent of the JASMINE social term decides which.
+3. **Investigate finding 3** (dispersal) before regenerating baselines or making any parity
    claim.
-3. **Regenerate the Kattegat baselines and record the change** in CHANGELOG Known issues. Any
-   paper text or figures built on CENOP real-landscape populations need re-running.
+4. **Then regenerate the Kattegat baselines and record the behaviour change** in the CHANGELOG.
+   Any paper text or figures built on CENOP real-landscape populations need re-running.
 
 ## Reproduce
 
@@ -180,4 +246,13 @@ python3 scripts/investigations/2026-11-10-phantom-food/cenop_ledger.py <dir>
 python3 scripts/investigations/2026-11-10-phantom-food/hypothesis_test.py <dir> stock|patched
 python3 scripts/investigations/2026-11-10-phantom-food/occupancy_probe.py <dir> stock|patched 63
 python3 scripts/investigations/2026-11-10-phantom-food/movement_compare.py <dir> stock|patched
+# findings 2-3 (run on the fixed code; <rp> = RandomPorpoise.csv of a DEPONS run with
+# trackedPorpoiseCount=200, simYears=1, seed 42, made via a scenario override)
+python3 scripts/investigations/2026-11-10-phantom-food/depons_onpatch_tracked.py <rp> <patches.asc> [<untracked Statistics.csv>]
+python3 scripts/investigations/2026-11-10-phantom-food/onpatch_rate.py <rp> <dir> 30
+python3 scripts/investigations/2026-11-10-phantom-food/block_distribution.py <PorpoisePerBlock.csv> <dir>
+python3 scripts/investigations/2026-11-10-phantom-food/revisit_compare.py <rp> <dir>
+python3 scripts/investigations/2026-11-10-phantom-food/turning_angles.py <rp> <dir> stock|novt|nocomm
+python3 scripts/investigations/2026-11-10-phantom-food/crw_generated_vs_realized.py <dir>
+python3 scripts/investigations/2026-11-10-phantom-food/population_check.py <dir> on|off 180 <Statistics.csv>
 ```

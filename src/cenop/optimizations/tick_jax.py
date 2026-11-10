@@ -125,6 +125,11 @@ def jax_tick_movement(
         step_dist, deter_strength, new_dispersal_distance_traveled,
         new_prev_step_heading, new_is_dispersing, key, new_enough_water_ahead
     """
+    if land_check and n_samples_max <= 0:  # both static: checked once, at trace time
+        raise ValueError(
+            "jax_tick_movement: land_check=True needs n_samples_max > 0 "
+            f"(ceil(10**max_mov / 0.1)), got {n_samples_max}"
+        )
     if enough_water_ahead is None:
         enough_water_ahead = jnp.ones(x.shape, dtype=bool)
     key, crw_key = jax.random.split(key)

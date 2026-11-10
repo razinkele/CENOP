@@ -13,6 +13,7 @@ are (30, 31..36). First-tier escape points (+-40..50 deg, 6 cells) fall in x in 
 These cell sets do not depend on the jitter.
 """
 
+import functools
 import math
 
 import numpy as np
@@ -567,6 +568,284 @@ def test_python_and_numba_agree(monkeypatch):
     assert (a["mask"] & a["out_enough"] & (a["heading"] != h_before)).any()  # tier turns
 
 
+# --- The final path check runs only after an exit without a pass -------------------------------
+
+# How an agent left the rounds (recorded by the reference)
+EXIT_PASS0, EXIT_TIER, EXIT_BEH4_PASS, EXIT_BEH4_FORCED, EXIT_EXHAUSTED = 1, 2, 3, 4, 5
+
+
+def _reference_always_rechecks(
+    x,
+    y,
+    heading,
+    log_mov,
+    mask,
+    depth,
+    wmin,
+    pos_hist_x,
+    pos_hist_y,
+    mem_ptr,
+    mem_count,
+    out_enough,
+    out_exit,
+):
+    """The kernel as of 67cc7cd, whose final path check always re-ran, even right after a pass.
+    Also records each agent's exit from the rounds in `out_exit` (EXIT_*; 0 outside the mask)."""
+    mem_size = pos_hist_x.shape[1]
+    for i in range(x.shape[0]):
+        if not mask[i]:
+            continue
+        px = float(x[i])
+        py = float(y[i])
+        h = float(heading[i])
+        pm = 10.0 ** float(log_mov[i])
+        moved = False
+        turned = False
+        out_exit[i] = EXIT_EXHAUSTED
+
+        for rnd in range(100):
+            if land_check._path_ok(depth, px, py, h, pm):
+                out_exit[i] = EXIT_PASS0 if rnd == 0 else EXIT_TIER
+                break
+            r = np.random.uniform(0.0, 10.0)
+            found = False
+            turn = 0.0
+            for tier in range(3):
+                if tier == 0:
+                    a = 40.0 + r
+                elif tier == 1:
+                    a = 70.0 + r
+                else:
+                    a = 120.0 + r
+                rr = (h + a) * land_check._DEG
+                rl = (h - a) * land_check._DEG
+                dr = land_check._look_depth(depth, px + math.sin(rr) * pm, py + math.cos(rr) * pm)
+                dl = land_check._look_depth(depth, px + math.sin(rl) * pm, py + math.cos(rl) * pm)
+                good_r = dr >= wmin
+                good_l = dl >= wmin
+                if good_r or good_l:
+                    if good_r and good_l:
+                        turn = a if dr >= dl else -a
+                    elif good_r:
+                        turn = a
+                    else:
+                        turn = -a
+                    found = True
+                    break
+            if found:
+                h += turn
+                turned = True
+                continue
+
+            n_back = min(20, int(mem_count[i]))
+            ptr = int(mem_ptr[i])
+            passed = False
+            for back in range(n_back):
+                b = (ptr - 1 - back) % mem_size
+                bx = float(pos_hist_x[i, b])
+                by = float(pos_hist_y[i, b])
+                if bx != px or by != py:
+                    h = math.atan2(bx - px, by - py) / land_check._DEG
+                    px = bx
+                    py = by
+                    moved = True
+                    turned = True
+                if land_check._path_ok(depth, px, py, h, pm):
+                    passed = True
+                    break
+            if passed:
+                out_exit[i] = EXIT_BEH4_PASS
+                break
+            if n_back == 20:
+                out_exit[i] = EXIT_BEH4_FORCED
+                break
+
+        enough = land_check._path_ok(depth, px, py, h, pm)
+        out_enough[i] = enough
+        if not enough:
+            cx = int(math.floor(px))
+            cy = int(math.floor(py))
+            best = 0
+            best_d = land_check._depth_at(
+                depth, cx + land_check._NB_DX[0] + 0.5, cy + land_check._NB_DY[0] + 0.5
+            )
+            for k in range(1, 8):
+                d = land_check._depth_at(
+                    depth, cx + land_check._NB_DX[k] + 0.5, cy + land_check._NB_DY[k] + 0.5
+                )
+                if d > best_d:
+                    best_d = d
+                    best = k
+            tx = cx + land_check._NB_DX[best] + 0.5
+            ty = cy + land_check._NB_DY[best] + 0.5
+            h = math.atan2(tx - px, ty - py) / land_check._DEG
+            turned = True
+            log_mov[i] = 0.0
+
+        if turned:
+            heading[i] = h % 360.0
+            if heading[i] >= 360.0:
+                heading[i] = 0.0
+        if moved:
+            x[i] = px
+            y[i] = py
+
+
+@functools.cache
+def _compiled_reference():
+    """The reference and a follow-up uniform draw, both on Numba's RNG stream."""
+    from numba import njit
+
+    @njit
+    def draw():
+        return np.random.uniform(0.0, 1.0)
+
+    return njit(_reference_always_rechecks), draw
+
+
+@pytest.fixture(params=["py", "numba"])
+def kernel_and_reference(request, monkeypatch):
+    """(kernel, reference, seed_rng, draw) for one execution mode: both implementations built the
+    same way, the seeder of the RNG stream they share, and a draw from that stream."""
+    if request.param == "numba":
+        if not land_check.HAS_NUMBA:
+            pytest.skip("Numba not installed")
+        from cenop.optimizations.kernels import seed_numba_rng
+
+        reference, draw = _compiled_reference()
+        return land_check.depons_land_check, reference, seed_numba_rng, draw
+
+    _interpret_helpers(monkeypatch)
+    return (
+        land_check._py,
+        _reference_always_rechecks,
+        np.random.seed,
+        lambda: np.random.uniform(0.0, 1.0),
+    )
+
+
+def _moat():
+    """Land on the ring of cells at Chebyshev distance 2 around the agent cell (30, 30), water
+    elsewhere. With presMov = 6 every path crosses the ring and every escape point is water, so
+    each round turns at the first tier and the next round fails again: 100 rounds, then beh 5."""
+    depth = _grid()
+    depth[28:33, 28:33] = -5.0
+    depth[29:32, 29:32] = 30.0
+    return depth
+
+
+def _tile_cases():
+    """(depth, agent, expected exit, expected final path check) per tile; agent at (30.5, 30.5)."""
+    tier = _grid()
+    tier[33, 30] = -5.0
+    open_water = _one(mem_size=30)
+    tiered = _one(mem_size=30)
+    beh4_pass = _one(mem_size=30)
+    _remember(beh4_pass, 0, [(40.5, 40.5), (10.5, 30.5)], mem_ptr=2)
+    beh4_forced = _one(mem_size=30)
+    _remember(beh4_forced, 0, [(5.5 + k, 30.5) for k in range(25)], mem_ptr=25)
+    short_walk = _one(mem_size=30)  # beh 4 runs out without a pass, then a tier turn passes
+    _remember(short_walk, 0, [(10.5, 30.5)], mem_ptr=1)
+    return [
+        (_grid(), open_water, EXIT_PASS0, True),
+        (tier, tiered, EXIT_TIER, True),
+        (_pocket(), beh4_pass, EXIT_BEH4_PASS, True),
+        (_corridor(), beh4_forced, EXIT_BEH4_FORCED, False),
+        (_moat(), _one(mem_size=30), EXIT_EXHAUSTED, False),
+        (_corridor(), short_walk, EXIT_TIER, True),
+    ]
+
+
+def _mixed_batch():
+    """One grid of 60 x 60 tiles side by side: a random tile with 60 random agents, then one
+    tile per case of _tile_cases (shifted by 60 cells in x per tile)."""
+    rng = np.random.default_rng(5)
+    cases = _tile_cases()
+    rand = rng.uniform(-3.0, 12.0, size=(60, 60))
+    rand[rng.random((60, 60)) < 0.05] = np.nan
+    depth = np.concatenate([rand] + [c[0] for c in cases], axis=1)
+    n = 60
+    a = _agents(
+        rng.uniform(0.0, 60.0, n),
+        rng.uniform(0.0, 60.0, n),
+        rng.uniform(0.0, 360.0, n),
+        rng.uniform(-0.5, 1.2, n),
+        mask=rng.random(n) < 0.9,
+        mem_size=30,
+    )
+    a["pos_hist_x"][:] = rng.uniform(0.0, 60.0, (n, 30)).astype(np.float32)
+    a["pos_hist_y"][:] = rng.uniform(0.0, 60.0, (n, 30)).astype(np.float32)
+    a["mem_ptr"][:] = rng.integers(0, 30, n)
+    a["mem_count"][:] = rng.integers(0, 31, n)
+    for t, (_, c, _, _) in enumerate(cases, start=1):
+        c["x"] += np.float32(60.0 * t)
+        c["pos_hist_x"] += np.float32(60.0 * t)
+        a = {k: np.concatenate([a[k], c[k]]) for k in a}
+    expected = [(n + t, c[2], c[3]) for t, c in enumerate(cases)]
+    return depth, a, expected
+
+
+def test_final_check_skip_after_pass_changes_nothing(kernel_and_reference):
+    """The final path check is skipped for agents that left the rounds on a pass (nothing has
+    changed since it passed). Outputs and the RNG stream position match the always-re-checking
+    reference for a batch with every exit: pass at round 0, a pass after tier turns, a beh-4
+    pass, the forced j == 20 exit and 100 exhausted rounds (both then beh 5)."""
+    kernel, reference, seed_rng, draw = kernel_and_reference
+    depth, batch, expected = _mixed_batch()
+    exits = np.zeros(len(batch["x"]), dtype=np.int64)
+    for seed in SEEDS:
+        a = {k: v.copy() for k, v in batch.items()}
+        b = {k: v.copy() for k, v in batch.items()}
+        seed_rng(seed)
+        kernel(*_args(a, depth, 1.0))
+        next_after_kernel = draw()
+        seed_rng(seed)
+        reference(*_args(b, depth, 1.0), exits)
+        next_after_reference = draw()
+
+        for key in ("x", "y", "heading", "log_mov", "out_enough"):
+            np.testing.assert_array_equal(a[key], b[key], err_msg=f"{key}, seed {seed}")
+        assert next_after_kernel == next_after_reference
+        for i, kind, enough in expected:
+            assert exits[i] == kind and b["out_enough"][i] == enough
+        # the random tile adds breadth: passes at round 0, tier turns and exhausted rounds
+        rand = exits[: len(batch["x"]) - len(expected)]
+        assert {EXIT_PASS0, EXIT_TIER, EXIT_EXHAUSTED} <= set(rand.tolist())
+    assert (batch["mask"] & ~a["out_enough"]).any()  # beh 5
+
+
+def test_path_check_not_repeated_after_a_pass(monkeypatch):
+    """Interpreted kernel, counting path checks: an agent that leaves the rounds on a pass is not
+    checked again; exits without a pass still end with the final check."""
+    _interpret_helpers(monkeypatch)
+    inner = land_check._path_ok
+    calls = []
+
+    def counting(*args):
+        calls.append(1)
+        return inner(*args)
+
+    monkeypatch.setattr(land_check, "_path_ok", counting)
+
+    def checks(a, depth):
+        calls.clear()
+        np.random.seed(0)
+        land_check._py(*_args(a, depth, 1.0))
+        return len(calls)
+
+    assert checks(_one(), _grid()) == 1  # passes at round 0
+    beh4 = _one()
+    _remember(beh4, 0, [(40.5, 40.5), (10.5, 30.5)], mem_ptr=2)
+    assert checks(beh4, _pocket()) == 2  # round 0 fails, the first walk-back step passes
+    forced = _one(mem_size=30)
+    _remember(forced, 0, [(5.5 + k, 30.5) for k in range(25)], mem_ptr=25)
+    assert checks(forced, _corridor()) == 1 + 20 + 1  # round 0, 20 walk-back steps, final
+    assert not forced["out_enough"][0]
+    moat = _one()
+    assert checks(moat, _moat()) == 100 + 1  # 100 failed rounds, then the final check
+    assert not moat["out_enough"][0]
+
+
 # --- Population wiring (D15 Task 2) -------------------------------------------------------------
 
 
@@ -741,6 +1020,24 @@ class TestPopulationWiring:
         food_before = land._food_value.copy()
         pop._eat_food_vectorized(mask, np.full(1, 0.5, dtype=np.float32))
         assert np.argwhere(land._food_value != food_before).tolist() == [[50, 50]]
+
+    @pytest.mark.parametrize("with_module", [False, True], ids=["inline", "crw_module"])
+    def test_movement_clears_a_stale_pre_move_record(self, with_module):
+        """A start-of-tick record left by a movement call that never reached _apply_positions
+        does not leak into the next tick: both CRW paths clear it before the land check, which
+        sets it again only when it runs."""
+        from cenop.movement import DEPONSCRWMovementVectorized
+
+        params = SimulationParameters(random_seed=7)
+        mod = DEPONSCRWMovementVectorized(params) if with_module else None
+        pop = _coast_pop(4, movement_module=mod)
+        pop._recompute_cell_indices()
+        pop._update_movement(pop.active_mask, None, None)
+        assert pop._pre_move_recorded  # the land check ran and recorded the start of tick
+
+        pop._skip_land_avoidance = True  # the next movement call runs no land check
+        pop._update_movement(pop.active_mask, None, None)
+        assert not pop._pre_move_recorded
 
     @pytest.mark.skipif(not land_check.HAS_NUMBA, reason="Numba not installed")
     def test_python_fallback_seeds_numpy_rng(self, monkeypatch):

@@ -434,7 +434,8 @@ class PorpoisePopulation:
         # where the check does not run (dispersers, _skip_land_avoidance)
         self._enough_water_ahead = np.ones(count, dtype=bool)
         # Set by _depons_land_check when it records the start-of-tick position in
-        # _pre_move_x/_y; consumed (and cleared) by _apply_positions
+        # _pre_move_x/_y; consumed (and cleared) by _apply_positions, and cleared at the top of
+        # both CRW movement paths so a record never outlives its tick
         self._pre_move_recorded = False
 
         # --- Glue-tax optimization: skip land avoidance on all-water landscapes ---
@@ -935,6 +936,9 @@ class PorpoisePopulation:
             self._update_movement_jasmine(mask, deterrence_vectors, ambient_rl)
             return
 
+        # A start-of-tick record is this tick's only: the land check sets it again when it runs
+        self._pre_move_recorded = False
+
         # DEPONS Porpoise.move(): disperse() runs before stdMove(), so an animal that stops
         # dispersing here takes its normal CRW step in the same tick (D12). Animals still
         # dispersing skip stdMove(): their CRW state (prev_angle, prev_log_mov) stays frozen
@@ -1300,6 +1304,9 @@ class PorpoisePopulation:
         if not isinstance(self._movement_module, DEPONSCRWMovement):
             self._update_movement_module_generic(mask, deterrence_vectors, ambient_rl)
             return
+
+        # A start-of-tick record is this tick's only: the land check sets it again when it runs
+        self._pre_move_recorded = False
 
         # 0. DEPONS disperse() before stdMove() (identical to inline, same RNG order): stopped
         #    dispersers take a CRW step this tick (D12); continuing ones keep CRW state (D13).

@@ -1624,6 +1624,66 @@ class TestJaxTickComposition:
         assert np.all(new_y >= 0) and np.all(new_y < world_h)
         assert np.all(np.isfinite(new_x)) and np.all(np.isfinite(new_y))
 
+    def test_tick_movement_land_check_needs_a_sample_bound(self):
+        """land_check=True with n_samples_max <= 0 would check no path samples; both are static,
+        so this fails at trace time with a clear error."""
+        from cenop.optimizations.tick_jax import jax_tick_movement
+
+        n, mem, w = 4, 20, 50
+        f32, f64 = jnp.float32, jnp.float64
+        z32, z64 = jnp.zeros(n, dtype=f32), jnp.zeros(n, dtype=f64)
+        hist = jnp.zeros((n, mem), dtype=f32)
+        args = (
+            jnp.full(n, 25.5, dtype=f32),  # x
+            jnp.full(n, 25.5, dtype=f32),  # y
+            z32,  # heading
+            z64,  # prev_angle
+            z64,  # prev_log_mov
+            jnp.ones(n, dtype=bool),  # active_mask
+            hist,  # stored_util
+            hist,  # pos_hist_x
+            hist,  # pos_hist_y
+            jnp.zeros(n, dtype=jnp.int32),  # mem_ptr
+            jnp.zeros(n, dtype=jnp.int32),  # mem_count
+            jnp.ones(mem, dtype=f64),  # work_mem_table
+            z64,  # deter_dx
+            z64,  # deter_dy
+            z32,  # social_dx
+            z32,  # social_dy
+            jnp.zeros(n, dtype=bool),  # is_dispersing
+            z32,  # dispersal_target_distance
+            z32,  # dispersal_distance_traveled
+            z32,  # prev_step_heading
+            jnp.full(n, 30.0, dtype=f64),  # depths
+            jnp.full(n, 30.0, dtype=f64),  # salinity
+            jnp.full((w, w), 30.0, dtype=f32),  # depth_grid
+            -0.024,
+            -0.008,
+            0.93,
+            -14.0,
+            0.35,
+            0.0005,
+            -0.02,
+            1.73,
+            0.0,
+            4.0,
+            0.0,
+            0.15,
+            0.00001,
+            0.001,
+            2.0,
+            20.0,
+            0.6,
+            1.0,
+            4.0,
+            w,
+            w,
+            jax.random.PRNGKey(0),
+        )
+        for bound in (0, -1):
+            with pytest.raises(ValueError, match="n_samples_max"):
+                jax_tick_movement(*args, land_check=True, n_samples_max=bound)
+
     def test_tick_movement_threads_dispersal_params(self):
         """jax_tick_movement runs jax_disperse_step first: dispersers turn by
         psm_angle * SSLogis(path length), keep CRW state, and take the 5-cell step;

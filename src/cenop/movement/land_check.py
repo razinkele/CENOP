@@ -11,10 +11,12 @@ and avoidLand (918-985), run after the CRW turn and before heading composition:
    If no tier is good (beh 4), walk back through the newest <= 20 remembered positions, facing
    and stepping onto each, until the path check passes. 20 steps end the rounds; a shorter
    history that runs out without a pass does not.
-2. A final path check; its result goes to `out_enough`. If it fails (beh 5), face the centre of
-   the deepest of the 8 neighbouring cells and set log_mov = 0 (presMov = 1). Depth ties go to
-   the first maximum in a fixed neighbour order; DEPONS shuffles getNeighbors (Agent.java 118),
-   a documented deviation that saves an RNG draw.
+2. A final path check; its result goes to `out_enough`. An agent that left the rounds on a pass
+   is unchanged since, so its check is not repeated: only the j == 20 and 100-round exits re-run
+   it (RNG-free, so results and draws are as DEPONS's unconditional re-check). If it fails
+   (beh 5), face the centre of the deepest of the 8 neighbouring cells and set log_mov = 0
+   (presMov = 1). Depth ties go to the first maximum in a fixed neighbour order; DEPONS shuffles
+   getNeighbors (Agent.java 118), a documented deviation that saves an RNG draw.
 
 Cells use CENOP's lookup: floor of the position, depth indexed [y, x]; NaN reads as -9999
 (DEPONS getDepth). Look-ahead points (the ahead point, every path sample, every escape point)
@@ -115,9 +117,11 @@ def _py(
         pm = 10.0 ** float(log_mov[i])
         moved = False
         turned = False
+        ok = False  # left the rounds on a passing path check, with nothing changed since
 
         for _round in range(100):
             if _path_ok(depth, px, py, h, pm):
+                ok = True
                 break
             # avoidLand: one jitter per call, shared by the three tiers
             r = np.random.uniform(0.0, 10.0)
@@ -168,9 +172,11 @@ def _py(
                     passed = True
                     break
             if passed or n_back == 20:  # DEPONS: j == 20 forces enoughWaterAhead
+                ok = passed
                 break
 
-        enough = _path_ok(depth, px, py, h, pm)
+        # The final check repeats only for exits without a pass (j == 20, 100 rounds)
+        enough = ok or _path_ok(depth, px, py, h, pm)
         out_enough[i] = enough
         if not enough:
             # beh 5: face the centre of the deepest Moore neighbour, presMov = 1

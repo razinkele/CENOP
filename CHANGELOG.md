@@ -40,7 +40,8 @@ All notable changes to CENOP-JASMINE are documented in this file.
     fast path.
 
 - **PSM-Type2 dispersal now follows DEPONS 3.2. This is a model behaviour change.** On
-  Kattegat about 75% of porpoises ended up dispersing against about 1% in DEPONS. Now:
+  Kattegat, 20.3% of animal-ticks were dispersing in stock CENOP against 1.34% in DEPONS
+  (days 0-120). Now:
   - the trigger fires after `t_disp` strict drops of the 3-d.p. daily mean energy;
   - targets are validated, and an animal with no valid target does not disperse;
   - a new disperser starts heading for its target;
@@ -51,6 +52,14 @@ All notable changes to CENOP-JASMINE are documented in this file.
   - Measured against DEPONS 3.2 (Kattegat, seeds 42 and 43, days 0-120): activation 0.126 /
     0.134 (DEPONS 0.133), episode median 5 moves, mean 11.0 / 10.8 (12.1), tick share dispersing
     1.09% / 1.15% (1.34%), N with/without dispersal at day 150 0.85 / 0.82 (0.80 / 0.81).
+  - **Dispersal is now rare on small grids.** Targets are drawn at N(350,100) km and rarely fit
+    on Lithuania (the default landscape), Homogeneous or the 400x400 landscapes (DanTysk,
+    Gemini). Share of activations that find a random target (empty memory, initial positions;
+    `target_success.py` from the final review): Lithuania 329x381 0.5%, Homogeneous 400x400
+    2.6%, Kattegat 600x1000 31.9%. Before this change every activation found a target.
+  - Seeded runs are still deterministic but are not comparable with seeded runs from earlier
+    versions: the PSM-turn draw now precedes the CRW draws, and an activation with no memory
+    target draws 2x1000 random numbers for its random-target tries.
   - **The committed Kattegat baselines are stale** until regenerated.
 
 ### Known issues (found 2026-11-10, not yet fixed)
@@ -62,6 +71,11 @@ All notable changes to CENOP-JASMINE are documented in this file.
   only.
 - Not ported from DEPONS dispersal: the not-enough-water first-call filter, and the order of the
   reference-memory turn relative to the dispersal move (spec rows D15, D16).
+- **Lithuania's 1 km cells conflict with CENOP's 400 m km-to-cell conversions.**
+  `data/Lithuania/bathy.asc` has CELLSIZE 1000, but CENOP converts km to cells by dividing by
+  0.4 (DEPONS's 400 m cells) for dispersal distances, the dispersal step and other movement
+  scales, so on Lithuania these cover 2.5 times the intended distance. Pre-existing, and outside
+  the dispersal port.
 - `data/Kattegat` is the DEPONS **v3.0** Kattegat landscape, not v3.2 (all 33 files
   byte-identical to v3.0; prey, salinity, distance-to-coast and patch maps differ from
   v3.2). CENOP's loader cannot read the v3.2 files as shipped

@@ -290,28 +290,31 @@ Sources compared:
 - Runtime values from `DEPONS.rs/parameters.xml`: tdisp 3, PSM_angle 40, PSM_dist N(350;100),
   PSM_tol 5, PSM_log 0.6, ddisp 2, wdisp 4.
 
-| # | Stage | DEPONS 3.2 | CENOP | Status |
-|---|---|---|---|---|
-| D1 | Trigger | `i < tDisp`: three strict drops | `range(t_disp - 1)`: two drops | known |
-| D2 | Trigger | daily mean rounded to 3 d.p., so ties break the chain | not rounded | minor |
-| D3 | Trigger gate | no gate; with fewer than 50 memory cells, uses a random target | no trigger with fewer than 50 visited PSM cells | new |
-| D4 | Memory target | fitness = food/ticks over candidates in [pref ± tol]/0.4 (inclusive); a zero-fitness candidate still wins | multiplies by the PSM-**Type3** `exp(-q1·d)`; strict `<`; random fallback if the best expectation over *all* cells is ≤ 0 | new, minor |
-| D5 | Random target | up to 1000 tries at (pref + U(−tol, tol))/0.4; cell must be in the grid, depth > 0, prey > 0 this month; otherwise **no dispersal** | one try at pref/0.4, reflected into the box, no water or prey check, always disperses; target distance stays pref/0.4 after reflection | new |
-| D6 | Heading at activation | `previousStepHeading = targetHeading` | `_prev_step_heading` captured *before* target selection (3148/3236 vs 3150/3238); the target heading written to `heading` is overwritten next tick, so the animal disperses along its last foraging heading | **new, bug** |
-| D7 | Turn angle | ±`PSM_angle` = 40° | reads `psm_type2_random_angle`, which `SimulationParameters` lacks, so falls back to 20°; the same at the JAX call (2580); the UI `psm_angle` is ignored | **new, bug** |
-| D8 | Logistic input | path length / (0.95 × start-to-target) | straight-line displacement / target distance | known |
-| D9 | Per-step stops | stops on any of: the point 5 cells ahead is off the grid, or its depth ≤ wdisp; also on the not-enough-water state, but that is written only by `stdMove`/`avoidLand` and is frozen while dispersing, so it can fire only on the first `disperse()` call, before any move (an activation filter, not an episode end) | none | known |
-| D10 | Completion | path length ≥ 0.95 × start-to-target, checked *before* the step | displacement ≥ 0.95 × target distance, checked *after* the step | known |
-| D11 | Land while dispersing | `forward()` has no land test; the stops keep the animal off land | land avoidance turns `heading`; the next tick rebuilds it from `_prev_step_heading`, so the turn is lost | new |
-| D12 | Same-tick fallthrough | after a stop inside `disperse()`, `stdMove` runs in the same tick | stop evaluated after the dispersal step | minor |
-| D13 | CRW state | `prevAngle` and `prevLogMov` frozen while dispersing (`stdMove` skipped) | updated every tick for dispersers | minor |
-| D14 | JAX backend | — | the JAX backend (`jax_kernels.py`, `tick_jax.py`) now mirrors the fixed NumPy behaviour (Task 5, `b9659a1`, `eae0d3a`, `bd55bda`), so D1–D13 apply there too; every later change must be mirrored | fixed with D1–D13 |
-| D15 | Foraging land check (outside dispersal) | `checkDepth()` samples every 0.1 cell along the heading out to `presMov` cells (4× the step) before turning; its result is also the not-enough-water state that D9 reads | land avoidance tests only the destination cell at the step distance | new, untested; candidate for the dispersal-off energy residual |
-| D16 | Reference-memory order | DEPONS `refMemTurn` runs after the dispersal `forward()`, so it sees the post-move position | CENOP's `_update_reference_memory` runs before the disperser moves | deferred with D15 (pre-existing, outside D1–D14) |
-| — | Logistic shape | `LogisticDecreaseSSLogis(1, 0, 0.6)` = 1/(1+e^(−x/0.6)), *increasing* despite the name | same | match |
-| — | Dispersal energy cost | `E_USE_PER_KM = 0` | 0 | match |
-| — | Daily energy stop | 10-day buffer; stop if E[0] > min(E[1..7]), in the same daily step as the trigger | 10 columns; same rule, same tick | match |
-| — | Memory cell | 5 cells, centre +2 (integer division) | 5 cells, centre +2.5 | negligible |
+The CENOP column describes the code before the dispersal port; "Fixed in" gives the commit(s)
+that fixed each row on branch `fix/phantom-food-2026-11-10`.
+
+| # | Stage | DEPONS 3.2 | CENOP before the fix | Status | Fixed in |
+|---|---|---|---|---|---|
+| D1 | Trigger | `i < tDisp`: three strict drops | `range(t_disp - 1)`: two drops | known | `a255bbe` |
+| D2 | Trigger | daily mean rounded to 3 d.p., so ties break the chain | not rounded | minor | `a255bbe` |
+| D3 | Trigger gate | no gate; with fewer than 50 memory cells, uses a random target | no trigger with fewer than 50 visited PSM cells | new | `8e17aa7` |
+| D4 | Memory target | fitness = food/ticks over candidates in [pref ± tol]/0.4 (inclusive); a zero-fitness candidate still wins | multiplies by the PSM-**Type3** `exp(-q1·d)`; strict `<`; random fallback if the best expectation over *all* cells is ≤ 0 | new, minor | `8e17aa7` |
+| D5 | Random target | up to 1000 tries at (pref + U(−tol, tol))/0.4; cell must be in the grid, depth > 0, prey > 0 this month; otherwise **no dispersal** | one try at pref/0.4, reflected into the box, no water or prey check, always disperses; target distance stays pref/0.4 after reflection | new | `8e17aa7` |
+| D6 | Heading at activation | `previousStepHeading = targetHeading` | `_prev_step_heading` captured *before* target selection (3148/3236 vs 3150/3238); the target heading written to `heading` is overwritten next tick, so the animal disperses along its last foraging heading | **new, bug** | `8e17aa7` |
+| D7 | Turn angle | ±`PSM_angle` = 40° | reads `psm_type2_random_angle`, which `SimulationParameters` lacks, so falls back to 20°; the same at the JAX call (2580); the UI `psm_angle` is ignored | **new, bug** | `d75636c` |
+| D8 | Logistic input | path length / (0.95 × start-to-target) | straight-line displacement / target distance | known | `d75636c` |
+| D9 | Per-step stops | stops on any of: the point 5 cells ahead is off the grid, or its depth ≤ wdisp; also on the not-enough-water state, but that is written only by `stdMove`/`avoidLand` and is frozen while dispersing, so it can fire only on the first `disperse()` call, before any move (an activation filter, not an episode end) | none | known | `5a8ae40` |
+| D10 | Completion | path length ≥ 0.95 × start-to-target, checked *before* the step | displacement ≥ 0.95 × target distance, checked *after* the step | known | `5a8ae40` (+ `0b72289`: non-CRW modules keep displacement completion) |
+| D11 | Land while dispersing | `forward()` has no land test; the stops keep the animal off land | land avoidance turns `heading`; the next tick rebuilds it from `_prev_step_heading`, so the turn is lost | new | `5a8ae40` |
+| D12 | Same-tick fallthrough | after a stop inside `disperse()`, `stdMove` runs in the same tick | stop evaluated after the dispersal step | minor | `5a8ae40` |
+| D13 | CRW state | `prevAngle` and `prevLogMov` frozen while dispersing (`stdMove` skipped) | updated every tick for dispersers | minor | `5a8ae40` |
+| D14 | JAX backend | — | the JAX backend (`jax_kernels.py`, `tick_jax.py`) now mirrors the fixed NumPy behaviour (Task 5, `b9659a1`, `eae0d3a`, `bd55bda`), so D1–D13 apply there too; every later change must be mirrored | fixed with D1–D13 | `b9659a1`, `eae0d3a`, `bd55bda` (+ `bb7c829`: new activations get the same-day stops) |
+| D15 | Foraging land check (outside dispersal) | `checkDepth()` samples every 0.1 cell along the heading out to `presMov` cells (4× the step) before turning; its result is also the not-enough-water state that D9 reads | land avoidance tests only the destination cell at the step distance | new, untested; candidate for the dispersal-off energy residual | open |
+| D16 | Reference-memory order | DEPONS `refMemTurn` runs after the dispersal `forward()`, so it sees the post-move position | CENOP's `_update_reference_memory` runs before the disperser moves | deferred with D15 (pre-existing, outside D1–D14) | open |
+| — | Logistic shape | `LogisticDecreaseSSLogis(1, 0, 0.6)` = 1/(1+e^(−x/0.6)), *increasing* despite the name | same | match | — |
+| — | Dispersal energy cost | `E_USE_PER_KM = 0` | 0 | match | — |
+| — | Daily energy stop | 10-day buffer; stop if E[0] > min(E[1..7]), in the same daily step as the trigger | 10 columns; same rule, same tick | match | JAX new activations: `bb7c829` |
+| — | Memory cell | 5 cells, centre +2 (integer division) | 5 cells, centre +2.5 | negligible | — |
 
 The earlier "three code differences" are D1, D9 and D10.
 
@@ -467,6 +470,8 @@ Two other things checked:
      - `b9659a1` JAX backend mirrors the per-tick dispersal
      - `eae0d3a` JAX skips the depth stop when there is no depth grid
      - `bd55bda` JAX rounds the daily energy mean exactly as NumPy
+     - `bb7c829` JAX: a new activation gets the same-day energy stop and the same-tick turbine
+       deterrence cancel, as on NumPy
    - Controller ruling: the non-CRW modules (JASMINE physics, hybrid;
      `_update_movement_module_generic`) keep the pre-existing straight-line displacement
      completion. DEPONS parity applies to the CRW paths only.
@@ -489,6 +494,23 @@ Two other things checked:
      s43).
    - 96–97% of episodes end on the off-grid/shallow look-ahead stop, 2% on the energy rule, 1–2%
      on path completion.
+   - JAX population-level acceptance was not measured: the probe wraps `_disperse_step`, which
+     the JAX path bypasses. JAX parity is asserted by unit tests in `tests/test_jax_tick.py`:
+     `TestJaxDisperseStep::test_jax_disperse_step_matches_numpy`,
+     `TestJaxDisperseStep::test_dispersal_heading_matches_reference`,
+     `TestJaxHeadingAndPosition::test_dispersers_keep_psm_heading_and_crw_state`,
+     `TestJaxEnergyHistory::test_jax_energy_history_rounded_to_3dp`,
+     `TestJaxEnergyHistory::test_jax_energy_history_rounding_matches_numpy_at_boundaries`,
+     `TestJaxDispersalUpdate::test_deterrence_cancels_dispersal`,
+     `TestJaxDispersalUpdate::test_no_distance_completion`,
+     `TestJaxTickComposition::test_tick_movement_threads_dispersal_params`,
+     `TestJaxStepDispersal::test_step_jax_disperse_step`,
+     `TestJaxStepDispersal::test_step_jax_without_depth_grid_skips_depth_stop` and
+     `TestJaxStepDailyDispersalOrder::test_new_activation_gets_same_day_stops`.
+   - Targets at N(350,100) km rarely fit on small grids, so dispersal is now rare on Lithuania
+     (the default landscape), Homogeneous and the 400×400 landscapes: random-target success
+     (empty memory) is 0.5% on Lithuania 329×381, 2.6% on Homogeneous 400×400 and 31.9% on
+     Kattegat 600×1000 (final review, `target_success.py`; CHANGELOG).
    - Slow tier: 11 passed.
    - Open: the dispersal-off N excess (non-dispersal residual, D15) remains; baselines are stale.
 4. **Then regenerate the Kattegat baselines and record the behaviour change** in the CHANGELOG.
@@ -501,9 +523,11 @@ records: some paths are absolute to the author's workstation, so adjust them bef
 them with the `shiny` env from the repo root.
 
 **Which code produced which numbers:**
-- Evidence §1–6, including every "stock" column, ran on the **pre-fix code** (`42ebd7f`,
-  `CENOP-JASMINE`). On the fix branch the stock kernel is the fixed one; `hypothesis_test.py`
-  and `turning_angles.py … prefix` reinstate the pre-fix kernel in memory.
+- Evidence §1–6, including every "stock" column in those sections, ran on the **pre-fix code**
+  (`42ebd7f`, `CENOP-JASMINE`). The "CENOP stock" entries in the like-for-like and "Corrections
+  combined" tables ran at `057d391` instead (phantom-food fix in, dispersal port not; see the
+  item on those rows below). On the fix branch the stock kernel is the fixed one;
+  `hypothesis_test.py` and `turning_angles.py … prefix` reinstate the pre-fix kernel in memory.
 - Findings 2–3 ran on the fixed code (`eba75f9`).
 - The like-for-like CENOP rows and the "Corrections combined" rows (including every
   `water+tdisp4[+target][+heading][+angle40][+pathlen]` mode) were produced at commit `057d391`, the

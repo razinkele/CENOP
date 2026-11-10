@@ -1171,10 +1171,11 @@ class PorpoisePopulation:
     def _disperse_step(self, mask: np.ndarray) -> None:
         """DEPONS AbstractPSMDispersal.disperse() for ``mask & is_dispersing`` (D9-D11).
 
-        In DEPONS order: path-length completion, PSM turn, then the look-ahead stops
-        (off-grid, then too shallow). A stopped animal gets its pre-turn heading back;
+        In DEPONS order: path-length completion, PSM turn, then the stops (not enough water
+        ahead, off-grid, then too shallow). A stopped animal gets its pre-turn heading back;
         its ``_prev_step_heading`` keeps the PSM turn, as in DEPONS. The not-enough-water
-        filter (isEnoughWaterAhead) is not ported.
+        stop reads ``_enough_water_ahead``, written by the land check of the last tick the
+        animal was not dispersing (frozen while dispersing, like DEPONS's isEnoughWaterAhead).
 
         D11: the look-ahead point is where the fixed dispersal step lands (up to float32
         rounding), so a disperser that continues moves to a cell with depth >
@@ -1200,6 +1201,9 @@ class PorpoisePopulation:
         start_heading = self.heading[idx].copy()
         self._apply_dispersal_heading(d)
 
+        # 2b. Not-enough-water-ahead stop (DEPONS disperse(): first-call water filter)
+        no_water = ~self._enough_water_ahead[idx]
+
         # 3. Look-ahead point: one dispersal step (mean_disp_dist / 0.4 cells) along the heading
         step = self.params.mean_disp_dist / 0.4
         rad = np.radians(self.heading[idx].astype(np.float64))
@@ -1210,7 +1214,7 @@ class PorpoisePopulation:
         land = self.landscape
         w = land.width if land is not None else self.params.world_width
         h = land.height if land is not None else self.params.world_height
-        stop = (px < 0) | (py < 0) | (px >= w - 0.5) | (py >= h - 0.5)
+        stop = no_water | (px < 0) | (py < 0) | (px >= w - 0.5) | (py >= h - 0.5)
 
         # 5. Depth stop: depth must exceed wdisp; NaN stops. Off-grid agents are already
         #    stopped, so clipping only keeps their lookup in bounds.
@@ -2522,6 +2526,7 @@ class PorpoisePopulation:
         self.prev_log_mov[slots] = 0.8
         self.prev_angle[slots] = 10.0
         self._prev_step_heading[slots] = 0.0
+        self._enough_water_ahead[slots] = True
 
         # Reference memory circular buffers (__init__ lines 155-162)
         self._stored_util[slots, :] = 0.0

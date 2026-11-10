@@ -294,3 +294,41 @@ class TestDisperseStep:
         # The stopped disperser took a CRW step, so its CRW state moved on
         assert pop.prev_angle[0] != 17.0
         assert pop.prev_log_mov[0] != 0.5
+
+
+class TestWaterFilter:
+    """DEPONS disperse() first-call not-enough-water stop (D9)."""
+
+    def _setup(self, water):
+        land = create_homogeneous_landscape(200, 200)
+        pop = _pop(landscape=land, psm_angle=0.0)
+        _disperser(pop, 0, 100.5, 100.5, 90.0)
+        pop.heading[0] = 10.0
+        pop._enough_water_ahead[0] = water
+        return pop
+
+    def test_new_disperser_with_no_water_ahead_stops_first_step(self):
+        pop = self._setup(False)
+        pop.dispersal_distance_traveled[0] = 0.0
+        pop._disperse_step(pop.active_mask)
+        assert not pop.is_dispersing[0]
+        assert pop.heading[0] == 10.0
+        assert pop.dispersal_distance_traveled[0] == 0.0
+
+    def test_water_state_true_does_not_stop(self):
+        pop = self._setup(True)
+        pop._disperse_step(pop.active_mask)
+        assert pop.is_dispersing[0]
+        assert pop.heading[0] == 90.0
+
+    def test_water_state_frozen_while_dispersing(self):
+        pop = self._setup(False)
+        pop._recompute_cell_indices()
+        pop._update_movement(pop.active_mask, None, None)
+        assert not pop._enough_water_ahead[0]
+
+    def test_recycled_slot_resets_water_state(self):
+        pop = _pop(landscape=create_homogeneous_landscape(200, 200))
+        pop._enough_water_ahead[2] = False
+        pop._reset_recycled_slots(np.array([2]))
+        assert pop._enough_water_ahead[2]

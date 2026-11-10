@@ -654,6 +654,23 @@ class TestPopulationWiring:
         np.testing.assert_array_equal(seen["exit"][open_], seen["entry"][open_])
         assert pop._enough_water_ahead[open_].all()
 
+    def test_boxed_in_agent_records_no_water_and_sets_presmov_one(self):
+        """beh 5 (boxed in by land, empty memory): _enough_water_ahead False, presMov = 1."""
+        land = _coast_landscape()
+        land._depth[:] = -10.0
+        land._depth[50, 50] = 30.0  # a single water cell: every look-ahead point is land
+        pop = _coast_pop(1, landscape=land)
+        pop.x[0], pop.y[0], pop.heading[0] = 50.5, 50.5, 0.0
+        pop._mem_count[0] = 0
+        pop._mem_ptr[0] = 0
+
+        pop._recompute_cell_indices()
+        pop._update_movement(pop.active_mask, None, None)
+
+        assert not pop._enough_water_ahead[0]
+        assert pop._log_mov[0] == 0.0
+        assert pop.prev_log_mov[0] == 0.0
+
     def test_no_post_composition_land_check_on_crw_path(self):
         """A destination at 0.5 m (0 < depth < wmin) is accepted: DEPONS forward() has no land
         check, and beh 6 only rolls back from depth <= 0."""

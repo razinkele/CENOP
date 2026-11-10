@@ -392,6 +392,8 @@ class TestDispersalBatchInit:
         # Give enough PSM memory cells (50+ visited)
         pop.psm_buffer[:5, :10, :10, 0] = 1.0
         pop.psm_buffer[:5, :10, :10, 1] = 5.0
+        for i in range(5):
+            pop._psm_instances[i].preferred_distance = 20.0
 
         pop._check_dispersal_trigger(mask)
 

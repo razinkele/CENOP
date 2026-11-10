@@ -3108,11 +3108,9 @@ class PorpoisePopulation:
 
         DEPONS Pattern:
         - If energy has declined for t_disp consecutive days (default 5)
-        - And porpoise has sufficient memory (50+ cells visited)
-        - Then trigger dispersal to remembered high-food area
+        - Then try to activate dispersal (memory target, else random target)
         """
         t_disp = getattr(self.params, "t_disp", 5)  # Days before dispersal triggers
-        min_memory_cells = 50  # Minimum PSM cells for dispersal
 
         # Vectorized check for declining energy
         # history shape: (count, t_disp)
@@ -3133,22 +3131,8 @@ class PorpoisePopulation:
         candidates = mask & is_declining & (~self.is_dispersing)
         candidate_indices = np.where(candidates)[0]
 
-        if len(candidate_indices) > 0:
-            # Vectorized memory count check: count cells with ticks > 0
-            visited_counts = np.count_nonzero(
-                self.psm_buffer[candidate_indices, :, :, 0], axis=(1, 2)
-            )
-            qualified = candidate_indices[visited_counts >= min_memory_cells]
-            if len(qualified) > 0:
-                # Batch-initialize dispersal state
-                self.is_dispersing[qualified] = True
-                self.dispersal_start_x[qualified] = self.x[qualified]
-                self.dispersal_start_y[qualified] = self.y[qualified]
-                self.dispersal_distance_traveled[qualified] = 0.0
-                self._prev_step_heading[qualified] = self.heading[qualified]
-                # Per-agent PSM target selection (cannot vectorize)
-                for idx in qualified:
-                    self._select_dispersal_target(idx)
+        for idx in candidate_indices:
+            self._start_dispersal(int(idx))
 
     def _update_neighbor_recompute_interval(self, mean_disp_m: float) -> None:
         """Update the current recompute interval based on mean displacement EMA.
@@ -3222,139 +3206,83 @@ class PorpoisePopulation:
         # Record this tick as updated
         self._last_energy_update_tick = self._global_tick
 
-    def _start_dispersal(self, idx: int) -> None:
-        """
-        Start dispersal behavior for a single porpoise.
+    def _memory_dispersal_target(self, idx: int) -> tuple[float, float] | None:
+        """DEPONS findMostAttractiveMemCell: best food/tick cell in the preferred-distance band."""
+        mem = self.psm_buffer[idx]
+        ticks = mem[:, :, 0]
+        rows, cols = np.nonzero(ticks > 0)
+        if len(rows) < 50:
+            return None
 
-        Uses PSM to find target cell at approximately preferred distance.
-        Initializes dispersal state then selects a target.
-        """
+        pref_km = self._psm_instances[idx].preferred_distance
+        tol_km = self.params.psm_tol
+        lo = (pref_km - tol_km) / 0.4
+        hi = (pref_km + tol_km) / 0.4
+
+        cx = cols * self.psm_cell_size + self.psm_cell_size / 2
+        cy = rows * self.psm_cell_size + self.psm_cell_size / 2
+        dists = np.hypot(cx - self.x[idx], cy - self.y[idx])
+        in_band = (dists >= lo) & (dists <= hi)
+        if not in_band.any():
+            return None
+
+        fitness = mem[rows, cols, 1] / ticks[rows, cols]
+        fitness = np.where(in_band, fitness, -np.inf)
+        best = int(np.argmax(fitness))
+        return float(cx[best]), float(cy[best])
+
+    def _random_dispersal_target(self, idx: int) -> tuple[float, float] | None:
+        """DEPONS random target: first of 1000 tries that lands on water with prey."""
+        pref_km = self._psm_instances[idx].preferred_distance
+        tol_km = self.params.psm_tol
+        n_tries = 1000
+        heading = np.radians(self.rng.random(n_tries) * 360.0)
+        dist = (pref_km + (self.rng.random(n_tries) * 2.0 - 1.0) * tol_km) / 0.4
+        tx = self.x[idx] + dist * np.sin(heading)
+        ty = self.y[idx] + dist * np.cos(heading)
+
+        land = self.landscape
+        w = land.width if land is not None else self.params.world_width
+        h = land.height if land is not None else self.params.world_height
+        valid = (tx >= 0) & (tx < w) & (ty >= 0) & (ty < h)
+
+        if land is not None and valid.any():
+            xi = np.where(valid, tx, 0).astype(np.intp)
+            yi = np.where(valid, ty, 0).astype(np.intp)
+            if land._depth is not None:
+                valid &= land._depth[yi, xi] > 0
+            if land._entropy is not None:
+                valid &= land._entropy[self._get_current_month() - 1][yi, xi] > 0
+
+        if not valid.any():
+            return None
+        first = int(np.argmax(valid))
+        return float(tx[first]), float(ty[first])
+
+    def _select_dispersal_target(self, idx: int) -> tuple[float, float] | None:
+        target = self._memory_dispersal_target(idx)
+        if target is None:
+            target = self._random_dispersal_target(idx)
+        return target
+
+    def _start_dispersal(self, idx: int) -> bool:
+        """DEPONS activate(): pick a target and start dispersing; False if none is found."""
+        target = self._select_dispersal_target(idx)
+        if target is None:
+            return False
+
+        tx, ty = target
+        dx = tx - self.x[idx]
+        dy = ty - self.y[idx]
         self.is_dispersing[idx] = True
         self.dispersal_start_x[idx] = self.x[idx]
         self.dispersal_start_y[idx] = self.y[idx]
-        self.dispersal_distance_traveled[idx] = 0.0
-        self._prev_step_heading[idx] = self.heading[idx]
-
-        self._select_dispersal_target(idx)
-
-    def _select_dispersal_target(self, idx: int) -> None:
-        """
-        Select a dispersal target for a single porpoise using PSM data.
-
-        Finds the highest-food cell at approximately the preferred distance.
-        Falls back to a random target if no suitable cell is found.
-        """
-        # Use vectorized PSM buffer scan
-        mem_slice = self.psm_buffer[idx]  # (rows, cols, 2)
-        ticks = mem_slice[:, :, 0]
-        food = mem_slice[:, :, 1]
-
-        # Get visited cells
-        visited_y, visited_x = np.nonzero(ticks)
-
-        if len(visited_x) == 0:
-            self._set_random_dispersal_target(idx)
-            return
-
-        # Calculate expectations efficiently
-        # food / ticks where ticks > 0
-        visited_ticks = np.maximum(ticks[visited_y, visited_x], 1.0)
-        visited_food = food[visited_y, visited_x]
-        expectations = visited_food / visited_ticks
-
-        max_exp = np.max(expectations)
-        if max_exp <= 0:
-            self._set_random_dispersal_target(idx)
-            return
-
-        # Get preferred distance (stored in object list or default)
-        pref_dist_km = self._psm_instances[idx].preferred_distance
-        pref_dist_cells = pref_dist_km * 1000 / 400.0
-
-        # Get world coordinates of visited cells (center of PSM cell)
-        # psm_cell_size in world units = 5 * 400 = 2000m = 5 cells
-        world_x = visited_x * self.psm_cell_size + (self.psm_cell_size / 2)
-        world_y = visited_y * self.psm_cell_size + (self.psm_cell_size / 2)
-
-        # Calculate distances to current position
-        dx = world_x - self.x[idx]
-        dy = world_y - self.y[idx]
-        dists = np.sqrt(dx * dx + dy * dy)
-
-        # PSM-Type3 distance-cost: fitness = energy * exp(-dist * q1)
-        # (DispersalPSMType3.findMostAttractiveMemCell in Java)
-        q1 = getattr(self.params, "q1", 0.02)
-        if q1 > 0:
-            fitness = expectations * np.exp(-dists * q1)
-        else:
-            fitness = expectations
-
-        # Filter for tolerance (5km approx 12.5 cells)
-        tolerance_cells = 12.5
-        valid_mask = np.abs(dists - pref_dist_cells) < tolerance_cells
-
-        if valid_mask.any():
-            # Pick highest fitness among valid distance cells
-            valid_fitness = fitness[valid_mask]
-
-            # Find best
-            best_local_idx = np.argmax(valid_fitness)
-
-            # Map back to original indices
-            valid_indices_in_visited = np.where(valid_mask)[0]
-            best_index = valid_indices_in_visited[best_local_idx]
-
-            target_x = world_x[best_index]
-            target_y = world_y[best_index]
-            target_dist = dists[best_index]
-
-            self.dispersal_target_x[idx] = target_x
-            self.dispersal_target_y[idx] = target_y
-            self.dispersal_target_distance[idx] = target_dist
-        else:
-            self._set_random_dispersal_target(idx)
-
-        # Set heading toward target
-        dx = self.dispersal_target_x[idx] - self.x[idx]
-        dy = self.dispersal_target_y[idx] - self.y[idx]
-        self.heading[idx] = np.degrees(np.arctan2(dx, dy)) % 360.0
-
-    def _set_random_dispersal_target(self, idx: int) -> None:
-        """Set a random dispersal target at preferred distance.
-
-        Uses reflection to keep targets inside the map instead of
-        clamping (which biased targets toward edges/corners).
-        """
-        pref_dist_km = self._psm_instances[idx].preferred_distance
-        angle_rad = self.rng.uniform(0, 2 * np.pi)
-        dist_cells = pref_dist_km * 1000 / 400.0
-
-        tx = self.x[idx] + np.sin(angle_rad) * dist_cells
-        ty = self.y[idx] + np.cos(angle_rad) * dist_cells
-
-        # Reflect into world (DEPONS bouncy-border style)
-        w = self.landscape.width if self.landscape else self.params.world_width
-        h = self.landscape.height if self.landscape else self.params.world_height
-        max_x = float(w - 1)
-        max_y = float(h - 1)
-
-        # Reflect X
-        if tx < 0:
-            tx = -tx
-        elif tx > max_x:
-            tx = 2.0 * max_x - tx
-        tx = float(np.clip(tx, 0, max_x))
-
-        # Reflect Y
-        if ty < 0:
-            ty = -ty
-        elif ty > max_y:
-            ty = 2.0 * max_y - ty
-        ty = float(np.clip(ty, 0, max_y))
-
         self.dispersal_target_x[idx] = tx
         self.dispersal_target_y[idx] = ty
-        self.dispersal_target_distance[idx] = dist_cells
+        self.dispersal_target_distance[idx] = np.hypot(dx, dy)
+        self.dispersal_distance_traveled[idx] = 0.0
+        self._prev_step_heading[idx] = np.degrees(np.arctan2(dx, dy)) % 360.0
+        return True
 
     def _update_dispersal(self, mask: np.ndarray) -> None:
         """Update dispersal progress for dispersing porpoises."""

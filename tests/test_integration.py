@@ -616,6 +616,7 @@ class TestDispersalBehavior:
         pop = PorpoisePopulation(count=10, params=params)
 
         # Manually trigger dispersal for first porpoise
+        pop._psm_instances[0].preferred_distance = 20.0
         pop._start_dispersal(0)
 
         assert pop.is_dispersing[0], "Porpoise 0 should be dispersing"
@@ -642,6 +643,7 @@ class TestDispersalBehavior:
             pop.step()
 
         # Manually trigger dispersal
+        pop._psm_instances[0].preferred_distance = 20.0
         pop._start_dispersal(0)
 
         assert pop.is_dispersing[0]

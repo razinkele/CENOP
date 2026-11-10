@@ -46,9 +46,40 @@ All notable changes to CENOP-JASMINE are documented in this file.
     population RNG).
   - **Default Lithuania landscape (60 days, 10000 animals, s42 / s43), against the code before
     this change:** N 9856 / 9839 against 9989 / 9991; mean energy 15.51 / 15.50 against
-    14.06 / 14.05; time within 1 km of the coast 19.9% / 19.8% against 20.5% / 20.5%. The energy
-    rise is unexplained. There is no DEPONS reference for Lithuania, and the known 1 km cell-size
-    issue (km-to-cell conversions assume 400 m cells, see Known issues) applies there.
+    14.06 / 14.05. There is no DEPONS reference for Lithuania, and the known 1 km cell-size issue
+    (km-to-cell conversions assume 400 m cells, see Known issues) applies there. Diagnostics below
+    are from seed 42.
+    - **The N drop is the Curonian Lagoon.** At 1 km resolution the lagoon (1,422 water cells,
+      mean depth about 2.9 m, food per cell about a third of the sea's) is a separate water body,
+      at least 2 land cells from the sea. The old destination-only check let animals hop the spit
+      (133,118 crossings, 0.46% of animal-ticks). With the DEPONS path check, the 1.5% of animals
+      placed in the lagoon at the start are trapped (1 crossing) and starve within about 60 days:
+      134 of the 144 deaths are in the lagoon, which accounts for the whole N drop
+      (9989 → 9856). The new behaviour is the faithful one; the trap is a data/resolution
+      artefact (the real Klaipėda Strait is narrower than one cell). Whether to connect the
+      lagoon or to restrict initial placement to the sea is an open decision.
+    - **The energy rise is in the sea population:** day-60 sea energy 15.54 against 14.06 (the
+      lagoon deaths shift the mean by less than 0.03). Intake per animal-tick is +7.4% over the
+      60 days (+11%, +9%, +8.6% and +6.6% in the 5 days before days 15, 30, 45 and 60), and time
+      in 1-5 m water falls from 1.31% to 0.90%. It does not appear when food is not limiting
+      (2000 animals, 15 days: sea energy at the cap, 19.835 in both). Ruled out: lagoon trapping,
+      stuck animals (zero-displacement ticks under 0.005% of animal-ticks in both 10000-animal
+      runs) and the start-of-tick eat cell. The mechanism is open; a plausible, untested
+      contributor is the look-ahead, which on 1 km cells covers 2.5 times its intended distance
+      (see Known issues). The sign is opposite to Kattegat, where the port brought intake down
+      to DEPONS's level.
+    - Time within 1 km of the coast (19.9% / 19.8% against 20.5% / 20.5%) says little at this
+      resolution: 27% of Lithuania's water cells have `disttocoast` under 1 km.
+  - **Slower on real landscapes (NumPy/Numba default path).** Without the fix described next,
+    the land check took about 46-47% of tick time on Lithuania and 15% on Kattegat (2000
+    animals); an instrumented Lithuania 60-day run (10000 animals, seed 42) took about 289 s
+    against 161 s before this change, and Kattegat runs took about 30% longer (10 days, 2000
+    animals). Fix: the final path check is no longer repeated for an agent that left the rounds
+    on a pass (91% of checked agents on Lithuania and 95% on Kattegat pass at round 0), with
+    identical results and RNG draws. Timed over 96 ticks after a one-day warm-up (2000 animals,
+    three runs each): land check 9.2 → 5.5 ms per tick on Lithuania (46% → 34% of tick time;
+    tick 19.9 → 16.2 ms) and 1.8 → 1.0 ms on Kattegat (15% → 9%; tick 12.2 → 11.4 ms). A 60-day
+    wall time after the fix was not measured.
 - **`communication_enabled` now defaults to `False` in `SimulationParameters`.** This matches
   the UI checkbox, which was already off.
   - With realistic food the DEPONS random-walk weight is about 0.001, so the JASMINE
@@ -90,11 +121,12 @@ All notable changes to CENOP-JASMINE are documented in this file.
   displacement from the start point, not on path length. DEPONS parity applies to the CRW paths
   only.
 - Not ported from DEPONS dispersal: the order of the reference-memory turn relative to the
-  dispersal move (spec row D16). The first-call water filter and D15 are now ported.
+  dispersal move (spec row D16).
 - **Remainders after the D15 port (spec Finding 4, Step 5).**
   - Energy undershoot: with dispersal off, mean energy at days 90 / 120 / 150 / 165 is
     6.32 / 5.13 / 3.92 / 3.77 (s42) and 6.23 / 5.08 / 3.91 / 3.77 (s43), against DEPONS
-    6.36 / 5.24 / 4.09 / 3.79 and 6.33 / 5.31 / 4.17 / 3.88: 0.0-0.3 low, with N matching.
+    6.36 / 5.24 / 4.09 / 3.79 and 6.33 / 5.31 / 4.17 / 3.88: about 0.0-0.3 low (max 0.31, at
+    s43 day 135), with N matching.
   - Late deaths: days 165-180 show 169 / 160 CENOP deaths against 203 / 191 in DEPONS, while
     the lactating share rises to 4-6%. Day 180 N with dispersal on is +13% / +8% above DEPONS.
   - D15 is no longer a candidate cause of either.

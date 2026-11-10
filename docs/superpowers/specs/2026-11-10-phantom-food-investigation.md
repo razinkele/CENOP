@@ -432,6 +432,11 @@ Two other things checked:
 Runs: dispersal off in both models, communication off.
 - DEPONS: `scenarios/dispoff_tracked200.json`, 200 tracked animals.
 - CENOP: the fixed code at `e016fe4`, run with the trigger disabled in memory.
+- Provenance of the Step 3–4 port runs: they used the in-memory prototype switches, `port` in
+  `cenop_budget.py` and `spatial_fingerprint.py` and `--d15-port` in `cenop_disp_rates.py`
+  (each applies `d15_land_port.py`), on the model code of `e016fe4`. The switches were added in
+  `46e2a39`, which changes no model code, and removed by `98aa4cb`. Retrieve a probe as it was
+  with `git show 46e2a39:scripts/investigations/2026-11-10-phantom-food/<probe>`.
 
 **Step 1: the gap is in intake** (`cenop_budget.py`, `depons_budget.py`; intake per animal-tick
 inferred from landscape food drops, the same way in both models):
@@ -584,9 +589,15 @@ is the inferred column, at 7 d.p. for the ±3% test.
 
 **Result: accepted with one borderline bin (controller ruling).** One metric is outside its range:
 the dispersal-off intake of seed 43 in the day 45–60 bin (+3.27% against ±3%). Everything else is
-inside. No tuning was done. Accepted because the same bin is +1.0% against seed 42 (DEPONS's
-seed-to-seed spread there is about 1%), the other 11 intake bins are within +2.3%, every
-population-level metric passes on both seeds, and the ±3% band was a judgement.
+inside. No tuning was done. Accepted because the failing value (CENOP s43, 0.0033325) is +2.37%
+against DEPONS seed 42 (0.0032553), DEPONS's own seed-to-seed spread in that bin is 0.88%, the
+other 11 intake bins are within +2.31% of the same-seed DEPONS run, every population-level metric
+passes on both seeds, and the ±3% band was a judgement.
+
+Percentages in the table compare each CENOP seed with the DEPONS run of the same seed. **All 12
+dispersal-off intake bins are positive** (+0.06% to +3.27%, mean +1.39%): a small one-sided
+intake excess. It is worth keeping next to the energy undershoot (Informational, below), which
+runs the other way: CENOP eats slightly more than DEPONS, yet ends slightly lower in energy.
 
 | Metric (range) | DEPONS s42 / s43 | CENOP s42 | CENOP s43 | Result |
 |---|---|---|---|---|
@@ -613,12 +624,37 @@ Informational:
 - Remainders unchanged: mean energy (dispersal off, days 90 / 120 / 135 / 150 / 165) s42
   6.32 / 5.13 / 4.41 / 3.92 / 3.77, s43 6.23 / 5.08 / 4.36 / 3.91 / 3.77, against DEPONS
   6.36 / 5.24 / 4.59 / 4.09 / 3.79 (s42) and 6.33 / 5.31 / 4.67 / 4.17 / 3.88 (s43): an undershoot
-  of 0.0–0.3. Deaths days 165–180: 169 / 160 against DEPONS 203 / 191, lactating share 4.3% /
-  6.3%. Both remainders stay open.
+  of about 0.0–0.3 (max 0.31, s43 day 135). Deaths days 165–180: 169 / 160 against DEPONS
+  203 / 191, lactating share 4.3% / 6.3%. Both remainders stay open.
 - Lithuania (default landscape, 60 days, 10000 animals, defaults), this code against `46e2a39`:
-  N 9856 / 9839 against 9989 / 9991 (s42 / s43); mean energy 15.51 / 15.50 against 14.06 / 14.05;
-  share of time within 1 km of the coast (disttocoast in km) 19.9% / 19.8% against 20.5% / 20.5%.
-  No DEPONS reference exists for Lithuania.
+  N 9856 / 9839 against 9989 / 9991 (s42 / s43); mean energy 15.51 / 15.50 against 14.06 / 14.05.
+  No DEPONS reference exists for Lithuania. The final review's diagnostics explain the N drop
+  and locate the energy rise (seed 42; uncommitted scripts `lith_comp.py`, `lith_diag.py` and
+  `lith_diag2.py`: connected components of `depth > 0`, and per-tick counts during the run):
+  - **The N drop is the Curonian Lagoon.** At 1 km resolution the lagoon (1,422 water cells,
+    mean depth 2.88 m, food per cell 0.11 against the sea's 0.32, about a third) is a separate
+    water body, also with diagonal neighbours counted; its nearest sea cell is 3 cells away, so
+    at least 2 land cells lie between. The old destination-only check let animals hop the spit:
+    133,118 crossings between water bodies, 0.46% of animal-ticks. With the DEPONS path check,
+    the 151 animals (1.5%) placed in the lagoon at the start are trapped (1 crossing in the whole
+    run) and starve within about 60 days (lagoon N 151 → 18, energy 1.6 at day 60). 134 of the
+    144 deaths are in the lagoon, which accounts for the whole N drop (9989 → 9856; the old run
+    had 11 deaths, all at sea). The new behaviour is the faithful one; the trap is a
+    data/resolution artefact (the real Klaipėda Strait is narrower than one cell). Whether to
+    connect the lagoon or to restrict initial placement to the sea is an open user decision.
+  - **The energy rise is in the sea population:** day-60 sea energy 15.54 against 14.06; the
+    lagoon deaths shift the mean by less than 0.03. Intake per animal-tick is +7.4% over the 60
+    days (0.00635 against 0.00591), and +11%, +9%, +8.6% and +6.6% in the 5 days before days 15,
+    30, 45 and 60. Time in 1–5 m water falls from 1.31% to 0.90% of animal-ticks. The rise does
+    not appear when food is not limiting (2000 animals, 15 days: sea energy at the cap, 19.835
+    in both). Ruled out: lagoon trapping; stuck animals (zero-displacement ticks under 0.005% of
+    animal-ticks in both 10000-animal runs); the start-of-tick eat cell. The mechanism is open;
+    a plausible, untested contributor is the look-ahead, which on 1 km cells covers 2.5 times
+    its intended distance (CENOP's km-to-cell conversions assume 400 m cells). The sign is
+    opposite to Kattegat, where the port brought intake down to DEPONS's level.
+  - Share of time within 1 km of the coast (disttocoast in km): 19.9% / 19.8% against 20.5% /
+    20.5%. This says little at 1 km resolution, where 27% of the water cells have
+    `disttocoast` under 1 km.
 - Known deviations introduced: beh-5 depth ties use a fixed neighbour order (DEPONS shuffles);
   look-ahead points are reflected at the grid edge as in DEPONS's BouncyBorders, but beh-5
   neighbours outside the grid read as land.

@@ -334,7 +334,8 @@ inflated, so the "quarter vs 1%" residual is not yet like-for-like. N at day 180
 
 **Like-for-like rates (tick resolution, days 0–120).** Scripts: `depons_disp_rates.py` (DEPONS,
 tracked-200 CSV, end reasons classified from the last step) and `cenop_disp_rates.py` (CENOP, all
-2000 animals, reasons attributed in code). Definitions:
+2000 animals, reasons attributed in code; the CENOP rows below come from the `057d391` version of
+the probe). Definitions:
 - predicate: three strict drops in the 3-d.p. daily mean, regardless of dispersal state;
 - activation: visible starts per eligible predicate-day.
 
@@ -364,7 +365,8 @@ What this shows:
   DEPONS targets cluster at the grid's N/S ends, so dispersal relocates animals, while CENOP
   disperses along the last foraging heading.
 
-**Corrections combined, in memory** (`cenop_disp_rates.py <mode> 180 120 <seed>`; rates over days
+**Corrections combined, in memory** (pre-fix probe from `057d391`, see "Which code produced which
+numbers": `cenop_disp_rates.py <mode> 180 120 <seed>`; rates over days
 0–120; seed 42 unless marked):
 
 | Variant | tick share | activation | moves median / mean | N at days 120 / 150 / 180 |
@@ -503,6 +505,12 @@ them with the `shiny` env from the repo root.
   `CENOP-JASMINE`). On the fix branch the stock kernel is the fixed one; `hypothesis_test.py`
   and `turning_angles.py … prefix` reinstate the pre-fix kernel in memory.
 - Findings 2–3 ran on the fixed code (`eba75f9`).
+- The like-for-like CENOP rows and the "Corrections combined" rows (including every
+  `water+tdisp4[+target][+heading][+angle40][+pathlen]` mode) were produced at commit `057d391`, the
+  fix branch before the dispersal port (it has the phantom-food fix `eba75f9` and communication off
+  `864d0c9`, but not the dispersal fixes). Reproduce them with that version of the probe:
+  `git show 057d391:scripts/investigations/2026-11-10-phantom-food/cenop_disp_rates.py`. On HEAD
+  the probe supports only `stock` and `nodisp`, and both run the fixed code.
 - The DEPONS probe scenarios (200 tracked animals; dispersal off) are in `scenarios/`. Run them
   with `python3 -m validation.depons_java run --scenario <file> --out <dir>`. Their outputs are
   not committed.
@@ -534,6 +542,6 @@ python3 scripts/investigations/2026-11-10-phantom-food/dispersal_waterstop.py <d
 # line-by-line follow-up: like-for-like rates (tick resolution) and corrections combined
 python3 scripts/investigations/2026-11-10-phantom-food/depons_disp_targets.py <rp> 120
 python3 scripts/investigations/2026-11-10-phantom-food/depons_disp_rates.py <rp> .depons-cache/landscape/Kattegat/bathy.asc 120
-python3 scripts/investigations/2026-11-10-phantom-food/cenop_disp_rates.py <dir> stock|nodisp|water+tdisp4[+target][+heading][+angle40][+pathlen] 180 120 [seed]
+python3 scripts/investigations/2026-11-10-phantom-food/cenop_disp_rates.py <dir> stock|nodisp 180 120 [seed]   # HEAD: fixed code; the old modes need the 057d391 probe, see "Which code produced which numbers"
 python3 -m validation.depons_java run --scenario scripts/investigations/2026-11-10-phantom-food/scenarios/dispoff.json --seeds 43 --out <dir>
 ```

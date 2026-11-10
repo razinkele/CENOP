@@ -2,7 +2,7 @@
   "depons_jar": {
     "url": "https://github.com/jacobnabe/DEPONS/releases/download/v3.2/DEPONS-3.2-setup.jar",
     "size": 287091000,
-    "sha256": null,
+    "sha256": "bfbe73ea977902708cbc41182e82a23a61cda3cfa496bfdc02df8a621cc68bea",
     "filename": "DEPONS-3.2-setup.jar"
   },
   "kattegat_landscape": {

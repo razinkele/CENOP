@@ -49,7 +49,7 @@ def run(request, monkeypatch):
 
 def _interpret_helpers(monkeypatch):
     """Swap the compiled helpers for their Python functions so `_py` runs fully interpreted."""
-    for name in ("_depth_at", "_path_ok"):
+    for name in ("_depth_at", "_reflect", "_look_depth", "_path_ok"):
         f = getattr(land_check, name)
         monkeypatch.setattr(land_check, name, getattr(f, "py_func", f))
 
@@ -388,20 +388,63 @@ def test_jitter_one_draw_per_round_shared_by_tiers(run):
         assert abs(_dh(a["heading"][0], 270.0 + 40.0 + r2)) < 1e-3
 
 
-def test_offgrid_lookahead_is_land(run):
-    for seed in SEEDS:
-        a = _one(x=58.5, y=30.5, h=90.0)
-        run(a, _grid(), seed=seed)
-        assert abs(_dh(a["heading"][0], 90.0)) >= 40.0
-        assert a["out_enough"][0]
-        assert a["x"][0] == np.float32(58.5)
+# Agent 1.5 cells from an edge, heading off the 60x60 grid. With presMov = 6 the look-ahead
+# overshoots by 4.5 cells; DEPONS's BouncyBorders reflects it back, so the reflected samples
+# cover the 4.5 cells behind the edge-side position. `land` is a cell reached only that way.
+EDGES = [
+    pytest.param(58.5, 30.5, 90.0, (30, 56), id="east"),
+    pytest.param(1.5, 30.5, 270.0, (30, 3), id="west"),
+    pytest.param(30.5, 58.5, 0.0, (56, 30), id="north"),
+    pytest.param(30.5, 1.5, 180.0, (3, 30), id="south"),
+]
 
 
-def test_offgrid_near_origin_is_land(run):
-    a = _one(x=1.5, y=1.5, h=225.0)
+@pytest.mark.parametrize("x0, y0, h0, land", EDGES)
+def test_offgrid_lookahead_reflects_into_water(run, x0, y0, h0, land):
+    a = _one(x=x0, y=y0, h=h0)
     run(a, _grid())
-    assert abs(_dh(a["heading"][0], 225.0)) >= 40.0
+    assert a["heading"][0] == np.float32(h0)  # open-water edge: no turn
     assert a["out_enough"][0]
+
+
+@pytest.mark.parametrize("x0, y0, h0, land", EDGES)
+def test_offgrid_lookahead_reflects_onto_land(run, x0, y0, h0, land):
+    depth = _grid()
+    depth[land] = -5.0
+    for seed in SEEDS:
+        a = _one(x=x0, y=y0, h=h0)
+        run(a, depth, seed=seed)
+        assert 40.0 <= _dh(a["heading"][0], h0) < 50.0  # tie: first tier, right
+        assert a["out_enough"][0]
+        assert a["x"][0] == np.float32(x0) and a["y"][0] == np.float32(y0)
+
+
+def test_lookahead_point_exactly_on_edge_reads_last_column(run):
+    # presMov = 10 from x = 50 heading east: the ahead point and the last sample are exactly
+    # x = 60.0 = W. BouncyBorders nudges that just below W (column 59), not off the grid.
+    assert 50.0 + 0.1 * 100 == 60.0 and math.ceil(10.0 / 0.1) == 100
+    a = _one(x=50.0, y=30.5, h=90.0, log_mov=1.0)
+    run(a, _grid())
+    assert a["heading"][0] == np.float32(90.0)
+    assert a["out_enough"][0]
+
+    depth = _grid()
+    depth[30, 59] = -5.0
+    a = _one(x=50.0, y=30.5, h=90.0, log_mov=1.0)
+    run(a, depth)
+    assert abs(_dh(a["heading"][0], 90.0)) >= 40.0
+
+
+def test_beh5_offgrid_neighbour_is_land(run):
+    # Agent in the corner cell (0, 0), boxed in. Off-grid neighbours read -9999 (no bounce):
+    # the deepest in-grid neighbour wins even though it is shallow.
+    depth = _grid(depth=-1.0)
+    depth[0:2, 0:2] = 0.5
+    depth[1, 0] = 0.8  # (0, +1): deepest in-grid neighbour
+    a = _one(x=0.5, y=0.5)
+    run(a, depth)
+    assert a["log_mov"][0] == 0.0
+    assert abs(_dh(a["heading"][0], 0.0)) < 1e-3
 
 
 def test_nan_depth_is_land(run):

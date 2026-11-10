@@ -12,10 +12,16 @@ and avoidLand (918-985), run after the CRW turn and before heading composition:
    and stepping onto each, until the path check passes. 20 steps end the rounds; a shorter
    history that runs out without a pass does not.
 2. A final path check; its result goes to `out_enough`. If it fails (beh 5), face the centre of
-   the deepest of the 8 neighbouring cells and set log_mov = 0 (presMov = 1).
+   the deepest of the 8 neighbouring cells and set log_mov = 0 (presMov = 1). Depth ties go to
+   the first maximum in a fixed neighbour order; DEPONS shuffles getNeighbors (Agent.java 118),
+   a documented deviation that saves an RNG draw.
 
-Cells use CENOP's lookup: floor of the position, depth indexed [y, x]; out of grid or NaN reads
-as -9999 (DEPONS getDepth). Heading 0 is north (+y), 90 east (+x).
+Cells use CENOP's lookup: floor of the position, depth indexed [y, x]; NaN reads as -9999
+(DEPONS getDepth). Look-ahead points (the ahead point, every path sample, every escape point)
+are first reflected into [0, W) x [0, H), as DEPONS's BouncyBorders translate does on every
+non-homogeneous landscape (PorpoiseSimBuilder 214-220), so an open-water grid edge does not read
+as land. Only beh-5 neighbour cells outside the grid read as -9999.
+Heading 0 is north (+y), 90 east (+x).
 
 The kernel loops over agents sequentially: the jitter comes from np.random.uniform inside it, so
 the caller seeds Numba's RNG (or NumPy's global RNG for the Python path) once per call.
@@ -51,18 +57,36 @@ def _depth_at(depth, x, y):
     return v
 
 
+def _reflect(v, m):
+    """Bounce a coordinate into [0, m) (Repast BouncyBorders): v < 0 -> -v, v > m -> 2m - v,
+    v == m -> the largest float below m. One reflection suffices: look-ahead distances
+    (presMov <= 10**1.73 ~ 54 cells) are far below the grid size. NaN passes through."""
+    if v < 0.0:
+        v = -v
+    elif v > m:
+        v = 2.0 * m - v
+    if v == m:
+        v = math.nextafter(m, 0.0)
+    return v
+
+
+def _look_depth(depth, x, y):
+    """Depth at a look-ahead point, reflected into the grid first."""
+    return _depth_at(depth, _reflect(x, float(depth.shape[1])), _reflect(y, float(depth.shape[0])))
+
+
 def _path_ok(depth, x, y, h, pm):
     """DEPONS checkDepth: True if there is enough water presMov cells ahead along heading h."""
     rad = h * _DEG
     s = math.sin(rad)
     c = math.cos(rad)
-    if _depth_at(depth, x + s * pm, y + c * pm) < 0.0:
+    if _look_depth(depth, x + s * pm, y + c * pm) < 0.0:
         return False
     vx = 0.1 * s
     vy = 0.1 * c
     n = int(math.ceil(pm / 0.1))
     for k in range(1, n + 1):
-        if not (_depth_at(depth, x + vx * k, y + vy * k) > 0.0):
+        if not (_look_depth(depth, x + vx * k, y + vy * k) > 0.0):
             return False
     return True
 
@@ -108,8 +132,8 @@ def _py(
                     a = 120.0 + r
                 rr = (h + a) * _DEG
                 rl = (h - a) * _DEG
-                dr = _depth_at(depth, px + math.sin(rr) * pm, py + math.cos(rr) * pm)
-                dl = _depth_at(depth, px + math.sin(rl) * pm, py + math.cos(rl) * pm)
+                dr = _look_depth(depth, px + math.sin(rr) * pm, py + math.cos(rr) * pm)
+                dl = _look_depth(depth, px + math.sin(rl) * pm, py + math.cos(rl) * pm)
                 good_r = dr >= wmin
                 good_l = dl >= wmin
                 if good_r or good_l:
@@ -176,6 +200,8 @@ def _py(
 
 if HAS_NUMBA:
     _depth_at = njit(cache=True)(_depth_at)
+    _reflect = njit(cache=True)(_reflect)
+    _look_depth = njit(cache=True)(_look_depth)
     _path_ok = njit(cache=True)(_path_ok)
     _impl = njit(cache=True)(_py)
 else:  # pragma: no cover

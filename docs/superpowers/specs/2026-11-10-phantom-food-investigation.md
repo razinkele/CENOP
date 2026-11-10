@@ -180,7 +180,14 @@ The mechanism:
 - **Effect after the food fix (communication on):** CENOP animals forage a small area, empty the
   patches in it, and starve.
 
-### Finding 3: dispersal over-triggering (located, cause open)
+### Finding 3: dispersal over-triggering (root cause established)
+
+> **Superseded in part.** The CENOP "share dispersing" figures in this first half (75%, 68%,
+> 33%, …) are day-boundary snapshots taken just after the daily trigger. They are not
+> comparable with DEPONS's tick averages: the stock all-tick share is 20.3%. On the same
+> grounds, the "4.5×" start ratio, "termination is the larger driver" and "Still open" are
+> superseded. See **Line-by-line PSM-Type2 comparison** and **Like-for-like rates** below for
+> the current numbers and conclusion.
 
 With phantom food fixed and communication off, CENOP tracks DEPONS closely to about day 105,
 then dies off faster (`population_check.py`):
@@ -271,9 +278,143 @@ A DEPONS run with `debug=7` (`scenarios/debug7.json`) logged no stop reasons for
 1. Either all their stops were the unlogged distance rule, or they did not disperse; this is
 inconclusive.
 
-Recommended next step: a line-by-line comparison of CENOP's PSM-Type2 path against DEPONS
-`AbstractPSMDispersal.activate`/`disperse`, `DispersalPSMType2` and `Porpoise.performDailyStep`.
-Then fix each difference test-first.
+**Line-by-line PSM-Type2 comparison (done).**
+
+Sources compared:
+- DEPONS: `Porpoise.move()` (209–313), `performDailyStep()` (1073–1120), `AbstractPSMDispersal`
+  (`activate` 69–124, `disperse` 148–223, `findMostAttractiveMemCell` 296–331) and
+  `DispersalPSMType2.calculateNewHeading` (68–87).
+- CENOP `population.py`: `_check_dispersal_trigger`, `_select_dispersal_target`,
+  `_set_random_dispersal_target`, `_apply_dispersal_heading`, `_update_dispersal`,
+  `_handle_land_avoidance`; plus `heading_position_reflect_kernel` in `kernels.py`.
+- Runtime values from `DEPONS.rs/parameters.xml`: tdisp 3, PSM_angle 40, PSM_dist N(350;100),
+  PSM_tol 5, PSM_log 0.6, ddisp 2, wdisp 4.
+
+| # | Stage | DEPONS 3.2 | CENOP | Status |
+|---|---|---|---|---|
+| D1 | Trigger | `i < tDisp`: three strict drops | `range(t_disp - 1)`: two drops | known |
+| D2 | Trigger | daily mean rounded to 3 d.p., so ties break the chain | not rounded | minor |
+| D3 | Trigger gate | no gate; with fewer than 50 memory cells, uses a random target | no trigger with fewer than 50 visited PSM cells | new |
+| D4 | Memory target | fitness = food/ticks over candidates in [pref ± tol]/0.4 (inclusive); a zero-fitness candidate still wins | multiplies by the PSM-**Type3** `exp(-q1·d)`; strict `<`; random fallback if the best expectation over *all* cells is ≤ 0 | new, minor |
+| D5 | Random target | up to 1000 tries at (pref + U(−tol, tol))/0.4; cell must be in the grid, depth > 0, prey > 0 this month; otherwise **no dispersal** | one try at pref/0.4, reflected into the box, no water or prey check, always disperses; target distance stays pref/0.4 after reflection | new |
+| D6 | Heading at activation | `previousStepHeading = targetHeading` | `_prev_step_heading` captured *before* target selection (3148/3236 vs 3150/3238); the target heading written to `heading` is overwritten next tick, so the animal disperses along its last foraging heading | **new, bug** |
+| D7 | Turn angle | ±`PSM_angle` = 40° | reads `psm_type2_random_angle`, which `SimulationParameters` lacks, so falls back to 20°; the same at the JAX call (2580); the UI `psm_angle` is ignored | **new, bug** |
+| D8 | Logistic input | path length / (0.95 × start-to-target) | straight-line displacement / target distance | known |
+| D9 | Per-step stops | stops on any of: the point 5 cells ahead is off the grid, or its depth ≤ wdisp; also on the not-enough-water state, but that is written only by `stdMove`/`avoidLand` and is frozen while dispersing, so it can fire only on the first `disperse()` call, before any move (an activation filter, not an episode end) | none | known |
+| D10 | Completion | path length ≥ 0.95 × start-to-target, checked *before* the step | displacement ≥ 0.95 × target distance, checked *after* the step | known |
+| D11 | Land while dispersing | `forward()` has no land test; the stops keep the animal off land | land avoidance turns `heading`; the next tick rebuilds it from `_prev_step_heading`, so the turn is lost | new |
+| D12 | Same-tick fallthrough | after a stop inside `disperse()`, `stdMove` runs in the same tick | stop evaluated after the dispersal step | minor |
+| D13 | CRW state | `prevAngle` and `prevLogMov` frozen while dispersing (`stdMove` skipped) | updated every tick for dispersers | minor |
+| D14 | JAX backend | — | `new_prev_step_heading` takes the final post-composition heading, unlike NumPy; `jax_dispersal_update` has the same completion and stop gaps as NumPy | backend divergence |
+| D15 | Foraging land check (outside dispersal) | `checkDepth()` samples every 0.1 cell along the heading out to `presMov` cells (4× the step) before turning; its result is also the not-enough-water state that D9 reads | land avoidance tests only the destination cell at the step distance | new, untested; candidate for the dispersal-off energy residual |
+| — | Logistic shape | `LogisticDecreaseSSLogis(1, 0, 0.6)` = 1/(1+e^(−x/0.6)), *increasing* despite the name | same | match |
+| — | Dispersal energy cost | `E_USE_PER_KM = 0` | 0 | match |
+| — | Daily energy stop | 10-day buffer; stop if E[0] > min(E[1..7]), in the same daily step as the trigger | 10 columns; same rule, same tick | match |
+| — | Memory cell | 5 cells, centre +2 (integer division) | 5 cells, centre +2.5 | negligible |
+
+The earlier "three code differences" are D1, D9 and D10.
+
+**DEPONS dispersal from the tracked-200 run (days 0–120, `depons_disp_targets.py`):**
+- 98 of 200 animals dispersed at least once, with 1,151 starts.
+- Starts are spread through the middle of the grid: only 8% have grid-y < 150 or > 850.
+- Targets: median 550 cells (220 km; p10 380, p90 737), piled up at the N/S ends.
+- Episodes: median 5 ticks (p90 36); median displacement 21 cells, i.e. a short straight run.
+
+Interpretation:
+- Successful targets come from the lower tail of N(350,100) km, which fits D5: activation fails
+  for many animals.
+- The 51% that never dispersed still need sizing against how often the trigger condition held.
+
+**Measurement caveat.** The CENOP "share dispersing" figures in the table above were sampled at
+`tick % 720 == 0`. That is a day-boundary tick, immediately after the daily trigger, whereas the
+DEPONS share averages every tick of a 15-day window. With short episodes, the CENOP figure is
+inflated, so the "quarter vs 1%" residual is not yet like-for-like. N at day 180 with the stops
+(520–610) already brackets DEPONS (528).
+
+**Like-for-like rates (tick resolution, days 0–120).** Scripts: `depons_disp_rates.py` (DEPONS,
+tracked-200 CSV, end reasons classified from the last step) and `cenop_disp_rates.py` (CENOP, all
+2000 animals, reasons attributed in code). Definitions:
+- predicate: three strict drops in the 3-d.p. daily mean, regardless of dispersal state;
+- activation: visible starts per eligible predicate-day.
+
+| | DEPONS | CENOP stock | CENOP + D1 + D9 (`water+tdisp4`) |
+|---|---|---|---|
+| predicate rate / animal-day | 0.405 | 0.443 | 0.359 |
+| activation rate | **0.133** | 0.070 | **0.242** |
+| episode moves, median / mean / p90 | **5 / 12.1 / 36** | 48 / 235 / 720 | **10 / 18.2 / 48** |
+| end reasons | depth ahead 86%, other 9%, energy stop 3%, complete 2% | energy stop 95% | water/off-grid ahead 96% |
+| **tick share dispersing** | **1.34%** | 20.3% | **3.2%** |
+| N at day 120 (DEPONS seed 42: 1,210) | 1,210 | 890 | 1,455 |
+
+What this shows:
+- **The "quarter vs 1%" residual was mostly the sampling artifact.** Over all ticks, the trigger
+  fix plus the stops leaves CENOP at 2.4× DEPONS's share, not 25×.
+- **The upstream energy dynamics agree:** the predicate rates are close.
+- **The remaining 2.4× has two factors:**
+  - activation 1.8× higher, since CENOP always finds a target (D5);
+  - episodes 1.5× longer (D6, D7 or D11 candidates).
+- **DEPONS's activation loss splits** as follows: 89.5% of eligible days survive the same-day
+  energy stop, but only 15% of those become a visible episode. A median of 5 moves implies a
+  per-step stop hazard of roughly 13%, so target failure (D5) most likely accounts for the
+  larger part of the loss.
+- **Population is a separate gap.** DEPONS dispersal costs about 13% of N by day 105 compared
+  with dispersal off (1,418 vs 1,624). CENOP + D1 + D9 barely changes N (1,455 vs 1,472 with
+  dispersal off at day 120), even though its share dispersing is higher. A candidate is D6:
+  DEPONS targets cluster at the grid's N/S ends, so dispersal relocates animals, while CENOP
+  disperses along the last foraging heading.
+
+**Corrections combined, in memory** (`cenop_disp_rates.py <mode> 180 120 <seed>`; rates over days
+0–120; seed 42 unless marked):
+
+| Variant | tick share | activation | moves median / mean | N at days 120 / 150 / 180 |
+|---|---|---|---|---|
+| **DEPONS** s42 / s43 | **1.34%** (s42) | **0.133** (s42) | **5 / 12.1** (s42) | **1,210 / 792 / 528** · 1,203 / 824 / 546 |
+| CENOP stock | 20.3% | 0.070 | 48 / 235 | 890 / — / — |
+| + D1 + D9 | 3.2% | 0.242 | 10 / 18.2 | 1,455 / — / — |
+| + D1 + D9 + D6 | 3.2% | 0.256 | 8 / 16.5 | 1,388 / 868 / 487 |
+| + D1 + D9 + D6, s43 | 3.1% | 0.255 | 7 / 15.9 | 1,384 / 875 / 485 |
+| + D1 + D9 + D3–D5 | 2.45% | 0.188 | 10 / 17.5 | 1,445 / 1,035 / 641 |
+| + D1 + D9 + D3–D6 | 1.13% | 0.125 | 5 / 11.3 | 1,299 / 888 / 589 |
+| **+ all (D1, D3–D10)** | **1.07%** | **0.128** | **5 / 10.6** | **1,282 / 910 / 627** |
+| **+ all, s43** | **1.13%** | **0.134** | **5 / 10.6** | **1,291 / 893 / 573** |
+| dispersal off: DEPONS s42 / s43 | — | — | — | 1,452 / 992 / 568 · 1,458 / 1,014 / 592 |
+| dispersal off: CENOP s42 / s43 | — | — | — | 1,472 / 1,107 / 694 · 1,478 / 1,088 / 728 |
+
+- In the full variant, 97% of episodes end on the water/off-grid stop. DEPONS: depth 86% plus
+  "other" 9%, which is classifier error from heading jitter and grid rounding; the
+  not-enough-water state cannot end a visible episode (see D9).
+- Target failures: about 66k activation attempts per run.
+- CENOP seed-to-seed spread is about ±10 animals at day 120 and ±50 at day 180.
+- The CENOP dispersal-off s42 run reproduces the earlier controlled-test numbers exactly (same
+  landscape, communication off).
+
+**Dispersal's population cost** (N with dispersal on ÷ N with it off, same model and seed):
+
+| | day 120 | day 150 | day 180 |
+|---|---|---|---|
+| DEPONS s42 / s43 | 0.833 / 0.825 | 0.798 / 0.813 | 0.930 / 0.922 |
+| CENOP, all corrections, s42 / s43 | 0.871 / 0.873 | 0.822 / 0.821 | 0.904 / 0.787 |
+
+**Root cause of finding 3: established** (two seeds for the rates; mechanism partly inferred):
+- **D1 and D9 set how often and how long.** The trigger needed one drop too few, and nothing
+  ended an episode except the daily energy rule.
+- **D5 is the activation filter.** In Kattegat, most targets at N(350,100) km are off the grid or
+  on land, so DEPONS usually does not disperse at all.
+- **D6 changes N while leaving frequency unchanged.** Adding it lowers N at day 120 by 67–146
+  animals (well above the ±10 seed spread). The proposed mechanism is relocation: DEPONS heads
+  for targets at the grid's ends, while CENOP walked along its last foraging heading. That
+  mechanism is not measured.
+- **D7, D8 and D10:** differences are within seed noise on this landscape (one seed).
+
+With all corrections:
+- CENOP's dispersal statistics match DEPONS on both seeds: activation 0.128–0.134 vs 0.133,
+  median 5 moves in both.
+- Dispersal's population cost matches at day 150 (about 18% vs 19–20%). It is about 4 points
+  smaller at day 120 on both seeds, a possible small remaining dispersal difference (unmodelled
+  in the probes: D2, D11–D13, the first-call water filter). Day 180 is noisy.
+- Most of the remaining N excess is the **non-dispersal residual**, which replicates with
+  dispersal off in both models: +1% / +7–12% / +22–23% at days 120 / 150 / 180. D15 is a
+  candidate (untested).
 
 Two other things checked:
 - **Calendar ruled out.** DEPONS `OFFSET_MONTH` shifts the month by only one tick.
@@ -288,7 +429,9 @@ Two other things checked:
   - DEPONS population on-patch rate (200 tracked animals).
 - DEPONS run on the v3.0 landscape (not done). Not needed for the verdicts, because v3.2 has
   more food.
-- Finding 3's root cause.
+- Finding 3's root cause: **now established** with in-memory probes. The fixed code itself is not
+  yet verified.
+- The non-dispersal residual (CENOP N +12–22% from day 150, with dispersal off in both models).
 - Single seed (42) for CENOP comparisons. DEPONS seeds 42 and 43 agree closely.
 - N=200 (TRACE scale) not re-checked after the fixes.
 - Whether `communication_enabled=True` also distorts movement on homogeneous landscapes and in
@@ -308,11 +451,18 @@ Two other things checked:
    - Rescaling the social vector relative to DEPONS's `crwContrib` (option c) remains an open
      JASMINE issue (CHANGELOG Known issues).
    - Side effect: with communication off, homogeneous landscapes now take the Cython fast path.
-3. **Finish finding 3** before regenerating baselines or making any parity claim:
-   - do a line-by-line port comparison of PSM-Type2 dispersal;
-   - fix the trigger off-by-one, the missing per-step stops and the completion criterion
-     (TDD), plus whatever the comparison finds;
-   - then re-check the late residual.
+3. **Finding 3: root cause established; fixes not started.** Needs its own plan, because
+   it changes model behaviour in the NumPy, Numba and JAX paths.
+   - Port D1, D3–D10 test-first, plus D2 and D13 (cheap): trigger, target selection, target
+     heading, `psm_angle`, path-length logistic and completion, and the per-step stops checked
+     *before* the move, with a stopped animal taking its normal CRW step in the same tick
+     (fixes D11/D12).
+   - The not-enough-water stop acts only on the first dispersal call (an activation filter); it needs D15's look-ahead state, so it may come with D15.
+   - Mirror the changes in `jax_kernels.py`/`tick_jax.py` (D14) or mark JAX as non-parity.
+   - Acceptance: DEPONS's rates (activation ≈ 0.13, median 5 moves, tick share ≈ 1.3%, on/off
+     N ratio), not the probe's "+ all" row. The probe stops *after* the move and wraps
+     `_update_dispersal`, which the fix restructures; its attribution needs adapting.
+   - Then investigate the non-dispersal residual (D15 first).
 4. **Then regenerate the Kattegat baselines and record the behaviour change** in the CHANGELOG.
    Any paper text or figures built on CENOP real-landscape populations need re-running.
 
@@ -355,4 +505,9 @@ python3 scripts/investigations/2026-11-10-phantom-food/crw_generated_vs_realized
 python3 scripts/investigations/2026-11-10-phantom-food/population_check.py <dir> on|off 180 <Statistics.csv> [nodisp]
 python3 scripts/investigations/2026-11-10-phantom-food/dispersal_episodes.py <rp> <dir>
 python3 scripts/investigations/2026-11-10-phantom-food/dispersal_waterstop.py <dir> water[+tdisp4][+psmheading][+pathlen] 180 <Statistics.csv> <rp>
+# line-by-line follow-up: like-for-like rates (tick resolution) and corrections combined
+python3 scripts/investigations/2026-11-10-phantom-food/depons_disp_targets.py <rp> 120
+python3 scripts/investigations/2026-11-10-phantom-food/depons_disp_rates.py <rp> .depons-cache/landscape/Kattegat/bathy.asc 120
+python3 scripts/investigations/2026-11-10-phantom-food/cenop_disp_rates.py <dir> stock|nodisp|water+tdisp4[+target][+heading][+angle40][+pathlen] 180 120 [seed]
+python3 -m validation.depons_java run --scenario scripts/investigations/2026-11-10-phantom-food/scenarios/dispoff.json --seeds 43 --out <dir>
 ```

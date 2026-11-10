@@ -13,6 +13,41 @@ from validation.depons_java.artifacts import (
     load_registry,
     verify_artifact,
 )
+from validation.depons_java.install import (
+    InstallError,
+    InstallLayout,
+    install_landscape,
+    install_release,
+)
+
+
+def ensure_installed(cache: Path) -> InstallLayout:
+    """Fetch + verify the pinned artifacts, install the release, place the landscape."""
+    registry = load_registry()
+    jar = fetch_artifact(registry["depons_jar"], cache)
+    landscape_zip = fetch_artifact(registry["kattegat_landscape"], cache)
+    layout = install_release(jar, cache / "install")
+    install_landscape(landscape_zip, layout)
+    return layout
+
+
+def _cmd_install(args: argparse.Namespace) -> int:
+    cache = Path(args.cache) if args.cache else default_cache_dir()
+    try:
+        layout = ensure_installed(cache)
+    except (ArtifactError, InstallError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    for field in (
+        "root",
+        "repast_version",
+        "runtime_dir",
+        "model_dir",
+        "scenario_dir",
+        "groovy_jar",
+    ):
+        print(f"{field}: {getattr(layout, field)}")
+    return 0
 
 
 def _cmd_fetch(args: argparse.Namespace) -> int:
@@ -36,6 +71,10 @@ def build_parser() -> argparse.ArgumentParser:
     fetch.add_argument("--allow-unpinned", action="store_true")
     fetch.add_argument("--cache", help="artifact cache dir (default $CENOP_DEPONS_CACHE)")
     fetch.set_defaults(func=_cmd_fetch)
+
+    install = sub.add_parser("install", help="install the DEPONS release + Kattegat landscape")
+    install.add_argument("--cache", help="artifact cache dir (default $CENOP_DEPONS_CACHE)")
+    install.set_defaults(func=_cmd_install)
     return parser
 
 

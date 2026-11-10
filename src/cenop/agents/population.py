@@ -3107,24 +3107,18 @@ class PorpoisePopulation:
         Check if dispersal should trigger based on energy decline.
 
         DEPONS Pattern:
-        - If energy has declined for t_disp consecutive days (default 5)
+        - If daily mean energy has strictly dropped t_disp days in a row (default 3), i.e.
+          history[i] < history[i + 1] for all i in range(t_disp)
         - Then try to activate dispersal (memory target, else random target)
         """
-        t_disp = getattr(self.params, "t_disp", 5)  # Days before dispersal triggers
+        t_disp = getattr(self.params, "t_disp", 3)
 
-        # Vectorized check for declining energy
-        # history shape: (count, t_disp)
+        # The check reads history[:, t_disp], so t_disp is at most history_len - 1
         max_hist = self._energy_history.shape[1]
-        # Clamp t_disp to available history length
-        t_disp = max(1, min(t_disp, max_hist))
+        t_disp = max(1, min(t_disp, max_hist - 1))
 
-        # If t_disp == 1, declining means today's < yesterday doesn't apply; skip
-        if t_disp <= 1:
-            return
-
-        # Check all consecutive pairs: history[:, i] < history[:, i+1]
         is_declining = np.ones(self.count, dtype=bool)
-        for i in range(t_disp - 1):
+        for i in range(t_disp):
             is_declining &= self._energy_history[:, i] < self._energy_history[:, i + 1]
 
         # Add to mask
@@ -3191,7 +3185,7 @@ class PorpoisePopulation:
             self._tick_counter = 0
 
             # Calculate daily average
-            daily_avg = self._energy_ticks_today / 48.0
+            daily_avg = np.round(self._energy_ticks_today / 48.0, 3)
 
             # Shift history and add new day (newest at index 0)
             self._energy_history[:, 1:] = self._energy_history[:, :-1]

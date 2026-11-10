@@ -1,6 +1,7 @@
 """DEPONS PSM-Type2 dispersal parity tests."""
 
 import numpy as np
+import pytest
 
 from cenop.agents.population import PorpoisePopulation
 from cenop.landscape.cell_data import create_homogeneous_landscape
@@ -100,3 +101,36 @@ class TestTargetSelection:
         pop._energy_history[0, :4] = [4, 5, 6, 7]
         pop._check_dispersal_trigger(pop.active_mask)
         assert pop.is_dispersing[0]
+
+
+class TestTrigger:
+    def _setup(self):
+        pop = _pop()
+        pop.x[0] = pop.y[0] = 500.0
+        pop._psm_instances[0].preferred_distance = 20.0
+        return pop
+
+    @pytest.mark.parametrize(
+        "days, expected",
+        [
+            ([4, 5, 6, 7], True),
+            ([4, 5, 6, 6], False),
+            ([4, 5, 5, 6], False),
+        ],
+    )
+    def test_trigger_requires_three_strict_drops(self, days, expected):
+        pop = self._setup()
+        pop._energy_history[0, :] = 100.0
+        pop._energy_history[0, :4] = days
+        pop._check_dispersal_trigger(pop.active_mask)
+        assert bool(pop.is_dispersing[0]) is expected
+
+    @pytest.mark.parametrize("energy, expected", [(5.0004, 5.0), (5.0006, 5.001)])
+    def test_daily_mean_rounded_to_3dp(self, energy, expected):
+        pop = self._setup()
+        pop.energy[0] = energy
+        mask = pop.active_mask
+        for _ in range(48):
+            pop._global_tick += 1
+            pop._update_energy_history(mask)
+        assert pop._energy_history[0, 0] == np.float32(expected)

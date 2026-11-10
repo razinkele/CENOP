@@ -559,9 +559,19 @@ What this shows:
   both arms ported.
 - **Activation rises** to 0.151 / 0.162; seed 43 is just above the accepted 0.10–0.16. With
   DEPONS's spatial distribution, more animals pass the activation filter.
-- **The missing first-call water filter** (D9: a new disperser is stopped if its last foraging step
-  left not enough water ahead) is the candidate to bring it back towards 0.133. The port now
-  computes that state, so the filter belongs in the D15 fix.
+- **The first-call water filter is not the answer.** It (D9: a new disperser is stopped if its last
+  foraging step left not enough water ahead) was first proposed as the candidate. In the port, the
+  stored state is False only when the final path check fails, i.e. when beh 5 fires (about 0.03%
+  of animal-ticks). So the filter barely changes activation. It is still ported, for fidelity.
+- **No activation gap.** DEPONS's 0.133 came from one seed's 200 tracked animals. A seed-43 DEPONS
+  run (`tracked200.json --seeds 43`) gives:
+  - activation 0.173;
+  - episode moves median 5 / mean 10.1;
+  - tick share 1.36%;
+  - end reasons: depth 86%, other 9%, complete 3%, energy stop 2%.
+
+  DEPONS's activation therefore spans 0.133–0.173 across seeds, and CENOP + port's 0.151 / 0.162
+  lies inside that span.
 
 **Next:** port D15 into the source, test-first and in all backends, in its own plan, with these
 numbers as acceptance. Then check the combined dispersal-on configuration against DEPONS.

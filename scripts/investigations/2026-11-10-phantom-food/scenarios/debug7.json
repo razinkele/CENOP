@@ -1,0 +1,17 @@
+{
+  "id": "kattegat-psm2-debug7-probe",
+  "description": "Investigation probe: psm2 undisturbed, debug=7 (dispersal stop reasons for porpoises 0 and 1).",
+  "overrides": {
+    "landscape": "Kattegat",
+    "dispersal": "PSM-Type2",
+    "ships": "false",
+    "turbines": "off",
+    "porpoiseCount": "2000",
+    "simYears": "1",
+    "debug": "7"
+  },
+  "seeds": [
+    42
+  ],
+  "determinism_seed": 42
+}

@@ -45,7 +45,10 @@ All notable changes to CENOP-JASMINE are documented in this file.
 - **Dispersal over-triggers.** On Kattegat, about 75% of CENOP porpoises end up dispersing,
   against about 1% in DEPONS, and the population collapses faster.
   - The trigger checks two days of declining energy where DEPONS checks three.
-  - Dispersal episodes also persist much longer than in DEPONS; the cause is not yet known.
+  - DEPONS's per-step stops (shallow water ahead, leaving the landscape) are missing.
+  - Completion uses straight-line displacement instead of path length travelled.
+  - Even with these corrected, episodes persist far longer than DEPONS's (median 5 ticks); the
+    full cause is not yet known.
 - `data/Kattegat` is the DEPONS **v3.0** Kattegat landscape, not v3.2 (all 33 files
   byte-identical to v3.0; prey, salinity, distance-to-coast and patch maps differ from
   v3.2). CENOP's loader cannot read the v3.2 files as shipped

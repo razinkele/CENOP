@@ -7,8 +7,10 @@ Kattegat. Each is confirmed by a controlled single-variable experiment.
 2. **JASMINE social-communication vector overrides the DEPONS random walk once food is
    realistic.** Needs a design decision. The fix in (1) must not merge without it.
 3. **Dispersal over-triggering.** Confirmed: with dispersal off in both models, the trajectories
-   agree to day 120. A trigger off-by-one has been found, but persistent episodes are the larger
-   driver, and their cause is still open. A smaller late residual also remains.
+   agree to day 120. Three code differences have been found: a trigger off-by-one, missing
+   per-step stop rules, and a straight-line rather than path-length completion criterion.
+   Together they leave about 25% of CENOP animals dispersing, against about 1% in DEPONS, so the
+   main termination mechanism is still open. A smaller late residual also remains.
 
 The fix and the decisions change released (v2.2.0) model behaviour and invalidate the committed
 Kattegat baselines. See "Findings 2 and 3" and "Decision needed".
@@ -222,11 +224,56 @@ What this shows:
   4.5×.
 - **Correcting it alone is not enough.** With CENOP `t_disp=4`, which reproduces DEPONS's three
   drops, 68% of CENOP animals are still dispersing at day 105, and N=117 at day 180.
-- **Termination is the larger driver.** The stop rule is the same in both: today above the
-  minimum of the previous 7 days, and the branch is reached daily. But CENOP episodes persist.
-  The cause is open. Suspects: intake and movement while dispersing (CENOP uses a fixed step of
-  `mean_disp_dist / 0.4` = 4 cells per tick), and the definition and update order of the daily
-  energy history.
+- **Termination is the larger driver.** The daily energy-stop rule is the same in both, and the
+  branch is reached daily. But CENOP episodes persist.
+
+**What ends DEPONS episodes.** Measured at tick resolution from the 200 tracked animals, days
+0–120:
+- 0.0535 starts per animal-day, all at tick 0 of the day (the daily trigger);
+- episode length median **5 ticks**, mean 12, p90 36;
+- 1.3% of animal-ticks dispersing.
+
+So DEPONS triggers dispersal often, and episodes end within hours through the per-step stop
+rules in `AbstractPSMDispersal.disperse()`.
+
+**Three further code differences, each measured in memory with `dispersal_waterstop.py`:**
+
+| CENOP change, cumulative (communication off) | share dispersing, day 105 / 180 | N at day 180 (DEPONS 528) |
+|---|---|---|
+| none | 75% / — | 65 |
+| trigger needs 3 drops (`t_disp=4`) | 68% / 62% | 117 |
+| per-step stops only (no trigger fix) | 40% / 34% | 520 |
+| + trigger fix | 33% / 29% | 562 |
+| + stops checked on the dispersal (PSM) heading | 31% / 29% | 610 |
+| + completion on path length | 33% / 26% | 588 |
+
+1. **Missing per-step stop rules.** DEPONS ends dispersal when the point one dispersal step ahead
+   (`ddisp/0.4` = 5 cells) is outside the landscape or at depth ≤ `wdisp` (4 m), or when
+   `isEnoughWaterAhead()` is false. CENOP has none of these. Only the first two were modelled
+   in the probe.
+2. **Completion criterion.** DEPONS compares *path length travelled* with 0.95 × the target
+   distance; CENOP compares *straight-line displacement* from the start. Targets are about 872
+   cells (350 km / 0.4), which cannot be reached in straight-line terms inside Kattegat.
+   CENOP dispersers at day 90 had a median path of 2,400 cells but only 115 cells of
+   displacement.
+3. **The trigger off-by-one**, as above.
+
+**Still open.** Even with all three corrections, about a quarter of CENOP animals are dispersing,
+against about 1% in DEPONS. CENOP episodes still last days where DEPONS's last a median of 5
+ticks, so the mechanism that ends DEPONS episodes so fast has not yet been reproduced.
+Remaining candidates:
+- the `isEnoughWaterAhead()` stop (not modelled);
+- the ordering of the dispersal step relative to the CRW and land avoidance;
+- differences in the PSM-Type2 heading update;
+- target selection (`findMostAttractiveMemCell` against the random fallback).
+
+A DEPONS run with `debug=7` (`scenarios/debug7.json`) logged no stop reasons for porpoises 0 and
+1. Either all their stops were the unlogged distance rule, or they did not disperse; this is
+inconclusive.
+
+Recommended next step: a line-by-line comparison of CENOP's PSM-Type2 path against DEPONS
+`AbstractPSMDispersal.activate`/`disperse`, `DispersalPSMType2` and `Porpoise.performDailyStep`.
+Then fix each difference test-first.
 
 Two other things checked:
 - **Calendar ruled out.** DEPONS `OFFSET_MONTH` shifts the month by only one tick.
@@ -262,8 +309,9 @@ Two other things checked:
      JASMINE issue (CHANGELOG Known issues).
    - Side effect: with communication off, homogeneous landscapes now take the Cython fast path.
 3. **Finish finding 3** before regenerating baselines or making any parity claim:
-   - fix the trigger off-by-one (TDD);
-   - find why CENOP dispersal episodes persist;
+   - do a line-by-line port comparison of PSM-Type2 dispersal;
+   - fix the trigger off-by-one, the missing per-step stops and the completion criterion
+     (TDD), plus whatever the comparison finds;
    - then re-check the late residual.
 4. **Then regenerate the Kattegat baselines and record the behaviour change** in the CHANGELOG.
    Any paper text or figures built on CENOP real-landscape populations need re-running.
@@ -306,4 +354,5 @@ python3 scripts/investigations/2026-11-10-phantom-food/turning_angles.py <rp> <d
 python3 scripts/investigations/2026-11-10-phantom-food/crw_generated_vs_realized.py <dir>
 python3 scripts/investigations/2026-11-10-phantom-food/population_check.py <dir> on|off 180 <Statistics.csv> [nodisp]
 python3 scripts/investigations/2026-11-10-phantom-food/dispersal_episodes.py <rp> <dir>
+python3 scripts/investigations/2026-11-10-phantom-food/dispersal_waterstop.py <dir> water[+tdisp4][+psmheading][+pathlen] 180 <Statistics.csv> <rp>
 ```

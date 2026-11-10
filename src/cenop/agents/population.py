@@ -1099,20 +1099,18 @@ class PorpoisePopulation:
             return
 
         n = int(np.sum(dispersing))
-        psm_angle = getattr(self.params, "psm_type2_random_angle", 20.0)
-        psm_log = getattr(self.params, "psm_log", 0.6)
+        psm_angle = self.params.psm_angle
+        psm_log = self.params.psm_log
 
         # Random angle delta: U(-psm_angle, +psm_angle)
         delta = self.rng.uniform(-psm_angle, psm_angle, n)
 
-        # Distance-based logistic scaling (DispersalPSMType2.java:77)
+        # Path length over 95% of the target distance (DispersalPSMType2.java:76, 91)
         target_dist = self.dispersal_target_distance[dispersing]
-        dx_disp = self.x[dispersing] - self.dispersal_start_x[dispersing]
-        dy_disp = self.y[dispersing] - self.dispersal_start_y[dispersing]
-        dist_traveled = np.sqrt(dx_disp**2 + dy_disp**2)
+        dist_traveled = self.dispersal_distance_traveled[dispersing]
 
         with np.errstate(divide="ignore", invalid="ignore"):
-            dist_percent = np.where(target_dist > 0, dist_traveled / target_dist, 0.0)
+            dist_percent = np.where(target_dist > 0, dist_traveled / (0.95 * target_dist), 0.0)
         dist_percent = np.nan_to_num(dist_percent, nan=0.0, posinf=1.0, neginf=0.0)
         dist_percent = np.clip(dist_percent, 0.0, 10.0)
 
@@ -2577,7 +2575,7 @@ class PorpoisePopulation:
             float(self.params.m),
             float(self.params.inertia_const),
             float(self.params.mean_disp_dist),
-            float(getattr(self.params, "psm_type2_random_angle", 20.0)),
+            float(self.params.psm_angle),
             float(getattr(self.params, "psm_log", 0.6)),
             float(min_depth),
             int(world_w),

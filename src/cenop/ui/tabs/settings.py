@@ -33,7 +33,7 @@ TOOLTIPS = {
     "psm_log": "Logistic increase rate for PSM memory cells. Controls how fast food memories strengthen. DEPONS default: 0.6",
     "psm_dist": "Preferred dispersal distance distribution. Format: N(mean;std) in km. DEPONS default: N(350;100) = mean 350km, std 100km.",
     "psm_tol": "Tolerance distance (km) for reaching dispersal target. Dispersal ends when within this distance. DEPONS default: 5km.",
-    "psm_angle": "Maximum turning angle (degrees) during PSM dispersal. Limits heading changes per step. DEPONS default: 20°.",
+    "psm_angle": "Maximum turning angle (degrees) during PSM dispersal. Limits heading changes per step. DEPONS default: 40°.",
     # Energy parameters
     "param_rS": "Satiation memory decay rate. Higher = faster forgetting of food satisfaction. DEPONS default: 0.03",
     "param_rR": "Reference memory decay rate. Higher = faster forgetting of remembered food locations. DEPONS default: 0.03",
@@ -425,7 +425,7 @@ def _dispersal_settings_panel():
                         ),
                         **{"for": "psm_angle"},
                     ),
-                    ui.input_numeric("psm_angle", None, value=20.0, step=1.0),
+                    ui.input_numeric("psm_angle", None, value=40.0, step=1.0),
                     class_="mb-3",
                 ),
             ),

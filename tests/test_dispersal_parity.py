@@ -134,3 +134,24 @@ class TestTrigger:
             pop._global_tick += 1
             pop._update_energy_history(mask)
         assert pop._energy_history[0, 0] == np.float32(expected)
+
+
+class TestPsmTurn:
+    T = 500.0
+
+    def _deltas(self, displacement, traveled):
+        pop = _pop(count=2000)
+        for i in range(2000):
+            _disperser(pop, i, 100.0, 100.0, 90.0, target_dist=self.T, traveled=traveled)
+            pop.x[i] = 100.0 + displacement
+        prev_before = pop._prev_step_heading.copy()
+        pop._apply_dispersal_heading(np.ones(2000, dtype=bool))
+        return (pop.heading - prev_before + 180) % 360 - 180
+
+    def test_turn_uses_psm_angle(self):
+        delta = self._deltas(0.95 * self.T, 0.95 * self.T)
+        assert 25 < np.abs(delta).max() <= 40 * 0.925
+
+    def test_logistic_uses_path_length(self):
+        delta = self._deltas(0.0, 0.95 * self.T)
+        assert np.abs(delta).max() > 25

@@ -129,3 +129,14 @@ class TestCommunicationDefault:
         assert (
             'ui.input_checkbox("communication_enabled", "Enable Social Calls", value=False)' in src
         )
+
+
+class TestPsmAngleDefault:
+    def test_ui_psm_angle_default_is_40(self):
+        import inspect
+
+        import cenop.ui.tabs.settings as settings_mod
+
+        src = inspect.getsource(settings_mod)
+        assert 'ui.input_numeric("psm_angle", None, value=40.0, step=1.0)' in src
+        assert "DEPONS default: 40°" in src

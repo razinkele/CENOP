@@ -58,6 +58,31 @@ if mode == "novt":  # experiment: memory attraction vector forced to zero
         vx, vy = _orig(*a, **k)
         return np.zeros_like(vx), np.zeros_like(vy)
     RM.compute_attraction_vector = _zero_vt
+if mode == "prefix":  # pre-fix (v2.2.0) eat kernel: floors every visited cell (phantom food)
+    import cenop.optimizations.kernels as _K
+    from numba import njit
+    @njit(cache=False)
+    def _stock_v2(food_grid, x_indices, y_indices, energy, food_eaten, min_food, demand_grid):
+        n = x_indices.shape[0]
+        agent_demand = np.empty(n, dtype=np.float32)
+        demand_grid[:, :] = 0.0
+        for i in range(n):
+            frac = min(max((20.0 - energy[i]) / 10.0, 0.0), 0.99)
+            d = food_grid[y_indices[i], x_indices[i]] * frac
+            agent_demand[i] = d
+            demand_grid[y_indices[i], x_indices[i]] += d
+        for i in range(n):
+            td = demand_grid[y_indices[i], x_indices[i]]
+            if td <= 0.0:
+                food_eaten[i] = 0.0
+                continue
+            av = max(food_grid[y_indices[i], x_indices[i]], 0.0)
+            food_eaten[i] = agent_demand[i] if td <= av else av * agent_demand[i] / td
+        for i in range(n):
+            food_grid[y_indices[i], x_indices[i]] -= food_eaten[i]
+            if food_grid[y_indices[i], x_indices[i]] < min_food:
+                food_grid[y_indices[i], x_indices[i]] = min_food
+    _K.eat_food_kernel_v2 = _stock_v2
 from cenop.landscape.cell_data import CellData  # noqa: E402
 from cenop.parameters.simulation_params import SimulationParameters  # noqa: E402
 

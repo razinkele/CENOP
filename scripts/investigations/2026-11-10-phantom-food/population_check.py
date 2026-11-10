@@ -16,6 +16,10 @@ from cenop.landscape.cell_data import CellData  # noqa: E402
 from cenop.parameters.simulation_params import SimulationParameters  # noqa: E402
 
 data_dir, comm = sys.argv[1], sys.argv[2] == "on"
+nodisp = len(sys.argv) > 5 and sys.argv[5] == "nodisp"
+if nodisp:  # controlled test: dispersal trigger disabled (DEPONS counterpart: dispersal=off)
+    import cenop.agents.population as _P
+    _P.PorpoisePopulation._check_dispersal_trigger = lambda self, mask: None
 days = int(sys.argv[3]) if len(sys.argv) > 3 else 63
 dep = {}
 if len(sys.argv) > 4:

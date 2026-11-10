@@ -1,0 +1,16 @@
+{
+  "id": "kattegat-dispoff-probe",
+  "description": "Investigation probe: undisturbed Kattegat, dispersal off (controlled test of finding 3).",
+  "overrides": {
+    "landscape": "Kattegat",
+    "dispersal": "off",
+    "ships": "false",
+    "turbines": "off",
+    "porpoiseCount": "2000",
+    "simYears": "1"
+  },
+  "seeds": [
+    42
+  ],
+  "determinism_seed": 42
+}

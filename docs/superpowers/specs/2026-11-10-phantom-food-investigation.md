@@ -1,12 +1,14 @@
 # Phantom food in CENOP's vectorised eating — investigation (2026-11-10)
 
 **Status (updated the same day):** three CENOP-vs-DEPONS differences found on undisturbed
-Kattegat. Each is confirmed by a controlled experiment.
+Kattegat. Each is confirmed by a controlled single-variable experiment.
 
 1. **Phantom food.** Fixed (TDD) in `eba75f9` on branch `fix/phantom-food-2026-11-10`; not merged.
-2. **JASMINE social-communication vector overrides the DEPONS random walk.** Confirmed; needs a
-   design decision.
-3. **Dispersal over-triggering.** Located; root cause still open.
+2. **JASMINE social-communication vector overrides the DEPONS random walk once food is
+   realistic.** Needs a design decision. The fix in (1) must not merge without it.
+3. **Dispersal over-triggering.** Confirmed: with dispersal off in both models, the trajectories
+   agree to day 120. A trigger off-by-one has been found, but persistent episodes are the larger
+   driver, and their cause is still open. A smaller late residual also remains.
 
 The fix and the decisions change released (v2.2.0) model behaviour and invalidate the committed
 Kattegat baselines. See "Findings 2 and 3" and "Decision needed".
@@ -111,7 +113,7 @@ On v3.0 (`data/`, the baseline configuration), the corrected kernel gives N=236 
 | Numba `eat_food_kernel` (v1) | **yes**: same pass 3 | `7ee50f9` (2026-03-12) | `eat_food_vectorized` when `energy` is not passed |
 | pre-Numba NumPy path | **yes**: floored the **whole grid** (`np.maximum(new_food, 0.01)`) | `7c634f4` (2026-01-26) | until 2026-03-12 |
 | NumPy fallback (current) | no: floors only cells with demand | fixed in `dc4f95d` (2026-04-05) | only without Numba |
-| JAX `jax_eat_food` | **yes**: `jnp.maximum(food_grid - eaten, min_food)` over the whole grid | `22eadee` (2026-03-20) | opt-in JAX backend (**unverified** at runtime) |
+| JAX `jax_eat_food` | **yes**: `jnp.maximum(food_grid - eaten, min_food)` over the whole grid (runtime-verified: 15/15 empty cells floored after one visit) | `22eadee` (2026-03-20) | opt-in JAX backend |
 | Cython post-CRW | yes (unconditional floor) | — | gated to homogeneous landscapes, where every cell has food, so it has no effect there |
 | scalar `CellData.eat_food` | no (returns early for empty cells) | — | legacy scalar path |
 
@@ -136,7 +138,7 @@ at day 60. A DEPONS probe run gave population-level movement data: 1 year, N=200
 
 ### Finding 2: the JASMINE social vector overrides the DEPONS random walk (confirmed)
 
-| days 1–30 (`turning_angles.py`, `revisit_compare.py`) | DEPONS (200 tracked) | CENOP default | CENOP, communication off |
+| days 1–30 (`turning_angles.py`, `revisit_compare.py`) | DEPONS (200 tracked) | CENOP after the food fix, communication on (default) | CENOP after the food fix, communication off |
 |---|---|---|---|
 | step length (mean) | 852 m | 829 m | ≈ (unchanged) |
 | median / p90 \|turn\| | 50° / 123° | **162° / 178°** | 51° / 122° |
@@ -164,9 +166,17 @@ The mechanism:
 - With DEPONS's `crwContrib = k + presMov·veTotal ≈ 0.001` (k = 0.001; veTotal is 0 for most
   animals), any non-zero social vector decides the heading completely. Animals reverse and
   stay local.
-- **Effect:** CENOP animals forage a small area, empty the patches in it, and starve once
-  phantom food is gone. With phantom food, the reversals were harmless because food was
-  everywhere.
+- **The mechanism is inferred from code.** Only the effect of switching communication on or off
+  was measured; the social vector's magnitude was not printed.
+- **The food fix exposes the problem.** With the **pre-fix (v2.2.0) kernel and communication on**,
+  CENOP's turning angles match DEPONS: median 51°, 10.7% reversals, mean cos +0.42
+  (`turning_angles.py … prefix`). Phantom food kept `veTotal` high, so `crwContrib` outweighed
+  the social vector. Under realistic food `veTotal` is about 0, `crwContrib` is about 0.001, and
+  the social vector takes over.
+- **Consequence:** the phantom-food fix must not be merged on its own. With communication on,
+  it turns released movement into reversing movement.
+- **Effect after the food fix (communication on):** CENOP animals forage a small area, empty the
+  patches in it, and starve.
 
 ### Finding 3: dispersal over-triggering (located, cause open)
 
@@ -182,10 +192,41 @@ then dies off faster (`population_check.py`):
 
 DEPONS seed 43 gives 992 at day 135, so the gap is not seed noise.
 
-In CENOP, most animals enter PSM-Type2 dispersal and stay there. Dispersing animals take fixed
-directed steps instead of foraging. Suspects: the dispersal trigger (declining-energy days,
-`tdisp=3`) and termination (reaching the PSM target, `PSM_tol`) in CENOP's PSM-Type2 path.
-**Not yet investigated.**
+In CENOP, most animals enter PSM-Type2 dispersal and stay there; dispersing animals take fixed
+directed steps instead of foraging.
+
+**Controlled test (confirmed).** Dispersal was switched off in both models: DEPONS
+`dispersal=off` (`scenarios/dispoff.json`); CENOP `_check_dispersal_trigger` disabled in memory
+(`population_check.py … nodisp`). The two then agree to day 120 (N 1,452 against 1,472).
+
+| day | 60 | 105 | 120 | 150 | 180 |
+|---|---|---|---|---|---|
+| DEPONS, dispersal off: N / E | 1965 / 7.16 | 1624 / 5.63 | 1452 / 5.11 | 992 / 3.97 | 568 / 3.56 |
+| CENOP, dispersal off: N / E | 1974 / 7.32 | 1626 / 6.15 | 1472 / 5.70 | 1107 / 4.28 | 694 / 3.87 |
+
+A **smaller residual remains**: from day 75, CENOP's mean energy is 0.3–0.6 higher, and N is 22%
+higher at day 180. DEPONS seeds differ by about 3%. Open.
+
+**Trigger against termination** (`dispersal_episodes.py`, days 0–120, communication off):
+
+| | episode starts / animal-day | episode length (median / mean) |
+|---|---|---|
+| DEPONS (200 tracked) | 0.0040 | 1.0 / 1.1 days |
+| CENOP (200 sampled) | **0.0179** (4.5×) | 1.0 / **4.3 days**, and many never end |
+
+What this shows:
+- **The trigger differs by one comparison.** DEPONS `Porpoise.performDailyStep` loops
+  `i < tDisp`: three consecutive drops, `E[0] < E[1] < E[2] < E[3]`, where `CircularBuffer.get(0)`
+  is the newest day. CENOP `_check_dispersal_trigger` loops `range(t_disp - 1)`: two drops. That
+  predicts about 4× as many starts (1/6 against 1/24 under random noise), close to the observed
+  4.5×.
+- **Correcting it alone is not enough.** With CENOP `t_disp=4`, which reproduces DEPONS's three
+  drops, 68% of CENOP animals are still dispersing at day 105, and N=117 at day 180.
+- **Termination is the larger driver.** The stop rule is the same in both: today above the
+  minimum of the previous 7 days, and the branch is reached daily. But CENOP episodes persist.
+  The cause is open. Suspects: intake and movement while dispersing (CENOP uses a fixed step of
+  `mean_disp_dist / 0.4` = 4 cells per tick), and the definition and update order of the daily
+  energy history.
 
 Two other things checked:
 - **Calendar ruled out.** DEPONS `OFFSET_MONTH` shifts the month by only one tick.
@@ -222,16 +263,27 @@ Two other things checked:
      JASMINE social behaviour stops dominating movement.
 
    The scientific intent of the JASMINE social term decides which.
-3. **Investigate finding 3** (dispersal) before regenerating baselines or making any parity
-   claim.
+3. **Finish finding 3** before regenerating baselines or making any parity claim:
+   - fix the trigger off-by-one (TDD);
+   - find why CENOP dispersal episodes persist;
+   - then re-check the late residual.
 4. **Then regenerate the Kattegat baselines and record the behaviour change** in the CHANGELOG.
    Any paper text or figures built on CENOP real-landscape populations need re-running.
 
 ## Reproduce
 
 Probe scripts are in `scripts/investigations/2026-11-10-phantom-food/`. They are investigation
-records: paths are absolute to the author's workstation, so adjust them before reuse. Run them
-with the `shiny` env from the repo root.
+records: some paths are absolute to the author's workstation, so adjust them before reuse. Run
+them with the `shiny` env from the repo root.
+
+**Which code produced which numbers:**
+- Evidence §1–6, including every "stock" column, ran on the **pre-fix code** (`42ebd7f`,
+  `CENOP-JASMINE`). On the fix branch the stock kernel is the fixed one; `hypothesis_test.py`
+  and `turning_angles.py … prefix` reinstate the pre-fix kernel in memory.
+- Findings 2–3 ran on the fixed code (`eba75f9`).
+- The DEPONS probe scenarios (200 tracked animals; dispersal off) are in `scenarios/`. Run them
+  with `python3 -m validation.depons_java run --scenario <file> --out <dir>`. Their outputs are
+  not committed.
 
 The v3.2 copy under v3.0 names is the harness's extracted landscape
 (`.depons-cache/landscape/Kattegat`), with `prey0000_MM_XX.asc` → `prey0000_MM.asc` and
@@ -254,5 +306,6 @@ python3 scripts/investigations/2026-11-10-phantom-food/block_distribution.py <Po
 python3 scripts/investigations/2026-11-10-phantom-food/revisit_compare.py <rp> <dir>
 python3 scripts/investigations/2026-11-10-phantom-food/turning_angles.py <rp> <dir> stock|novt|nocomm
 python3 scripts/investigations/2026-11-10-phantom-food/crw_generated_vs_realized.py <dir>
-python3 scripts/investigations/2026-11-10-phantom-food/population_check.py <dir> on|off 180 <Statistics.csv>
+python3 scripts/investigations/2026-11-10-phantom-food/population_check.py <dir> on|off 180 <Statistics.csv> [nodisp]
+python3 scripts/investigations/2026-11-10-phantom-food/dispersal_episodes.py <rp> <dir>
 ```

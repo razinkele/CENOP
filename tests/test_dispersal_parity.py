@@ -321,11 +321,32 @@ class TestWaterFilter:
         assert pop.is_dispersing[0]
         assert pop.heading[0] == 90.0
 
-    def test_water_state_frozen_while_dispersing(self):
-        pop = self._setup(False)
+    def test_water_state_frozen_while_dispersing(self, monkeypatch):
+        land = create_homogeneous_landscape(200, 200)
+        land._depth[:] = 30.0
+        land._depth[100:, :] = -10.0
+        land.landscape_name = "TestCoast"  # non-homogeneous: the land check runs
+        pop = _pop(landscape=land, psm_angle=0.0)
+        pop._skip_land_avoidance = False
+        pop.is_dispersing[:] = False
+        _disperser(pop, 0, 100.5, 50.5, 180.0)
+        pop.x[1], pop.y[1], pop.heading[1] = 60.5, 40.5, 180.0
+        pop._enough_water_ahead[0] = True
+        pop._enough_water_ahead[1] = False
+        seen = {}
+        orig = PorpoisePopulation._depons_land_check
+
+        def spy(self, mask):
+            seen["mask"] = mask.copy()
+            orig(self, mask)
+
+        monkeypatch.setattr(PorpoisePopulation, "_depons_land_check", spy)
         pop._recompute_cell_indices()
         pop._update_movement(pop.active_mask, None, None)
-        assert not pop._enough_water_ahead[0]
+        assert pop.is_dispersing[0]  # kept dispersing (state True, open water)
+        assert seen["mask"][1] and not seen["mask"][0]  # crw_mask excludes the disperser
+        assert pop._enough_water_ahead[1]  # land check ran and wrote for the non-disperser
+        assert pop._enough_water_ahead[0]  # disperser's state untouched
 
     def test_recycled_slot_resets_water_state(self):
         pop = _pop(landscape=create_homogeneous_landscape(200, 200))

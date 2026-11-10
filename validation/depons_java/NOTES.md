@@ -110,3 +110,42 @@
   `YearlyMortality`, `PorpoisePerBlock`, `RandomPorpoise`, `Reproduction`, `Hydrophones`,
   each `batch_param_map`, and `debug.log` (`compare` → `identical`). Same seed + same
   release + same JVM → same trajectory, so replicates can be regenerated exactly.
+
+## Landscape identity (Task 7, 2026-11-10)
+
+`compare-landscape`: the verified DEPONS **v3.2** Kattegat zip (`2614f56a…`) vs CENOP's
+`data/Kattegat`:
+
+| category | files |
+|---|---|
+| identical | 5 (`bathy.asc`, `blocks.asc`, `mean_maxent_values.txt`, `sediment.asc`, `suntimes.csv`) |
+| differing | 2 (`disttocoast.asc`, `patches.asc`) |
+| renamed (identical content) | 0 |
+| missing in candidate | 25 (v3.2 `prey0000_MM_XX.asc` ×12, `salinity0000_MM_XX.asc` ×12, `ships0000_XX_XX.json`) |
+| extra in candidate | 26 (CENOP `prey0000_MM.asc` ×12, `salinity0000_MM.asc` ×12, `salinity0000_XX.asc`, `ships.json`) |
+
+These are real data differences, not formatting. Headers match apart from decimal
+formatting (`400.000000000000` vs `400`).
+- `disttocoast.asc`: 534,934 of 600,000 cells differ (water-cell mean 10,289 in v3.2 vs
+  5,043).
+- `patches.asc`: 17 cells differ.
+- prey (months 1/6/12): all 287,598 water cells differ. The v3.2 prey mean is the same
+  (0.385925) in all three months; CENOP's varies (0.199 / 0.325 / 0.199).
+- salinity: all water cells differ.
+
+**Provenance resolved:** CENOP's `data/Kattegat` (added in CENOP commit `c8e38b8`,
+2026-02-09) is **byte-identical (33/33 files) to the DEPONS v3.0 Kattegat landscape**.
+That is `https://depons.eu/files/landscapes/v3.0/Kattegat-51c36e01.zip`, 43,167,404 bytes,
+SHA-256 `51c36e012a134120c28e681fdbd0e6b552ba6e790994d3522de86f6b57319c84`, as pinned by
+DEPONS tag `v3.0`'s `DownloadLandscapes.java`. Checked by a verified download.
+
+**A2 implications (recorded, not fixed in A1):**
+1. Every CENOP Kattegat run so far, including the committed baselines, used the v3.0
+   landscape, while CENOP's code is synced to DEPONS 3.2, which ships a revised v3.2
+   landscape. A like-for-like comparison must feed both models the same landscape:
+   CENOP on v3.2 (canonical for DEPONS 3.2), or DEPONS on v3.0 via a `UserDefined`/data
+   swap.
+2. CENOP's loader has no handling for DEPONS 3.2's rolling-date file names
+   (`prey0000_MM_XX.asc`, `ships0000_XX_XX.json`; no `_XX` matches in
+   `src/cenop/landscape/`), so it cannot read the v3.2 landscape as shipped. This needs a
+   loader change or a renaming step before A2.

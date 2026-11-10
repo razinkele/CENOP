@@ -32,6 +32,7 @@ from validation.depons_java.install import (
     install_landscape,
     install_release,
 )
+from validation.depons_java.landscape import compare_dirs, extract_landscape, render_report
 from validation.depons_java.runner import build_batch_command, java_version, run_batch
 from validation.depons_java.scenario import (
     ScenarioError,
@@ -114,6 +115,20 @@ def _cmd_run(args: argparse.Namespace) -> int:
     return 1 if failed else 0
 
 
+def _cmd_compare_landscape(args: argparse.Namespace) -> int:
+    cache = Path(args.cache) if args.cache else default_cache_dir()
+    try:
+        zip_path = fetch_artifact(load_registry()["kattegat_landscape"], cache)
+    except ArtifactError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    reference = extract_landscape(zip_path, cache / "landscape" / "Kattegat")
+    print(f"reference: {zip_path} (extracted to {reference})")
+    print(f"candidate: {Path(args.candidate).resolve()}\n")
+    print(render_report(compare_dirs(reference, Path(args.candidate))))
+    return 0
+
+
 def _cmd_compare(args: argparse.Namespace) -> int:
     differing = compare_runs(Path(args.run_a), Path(args.run_b))
     for name in differing:
@@ -193,6 +208,13 @@ def build_parser() -> argparse.ArgumentParser:
     compare.add_argument("run_a")
     compare.add_argument("run_b")
     compare.set_defaults(func=_cmd_compare)
+
+    land = sub.add_parser(
+        "compare-landscape", help="hash-compare the DEPONS v3.2 Kattegat landscape to CENOP's"
+    )
+    land.add_argument("--candidate", default=str(REPO_ROOT / "data" / "Kattegat"))
+    land.add_argument("--cache", help="artifact cache dir (default $CENOP_DEPONS_CACHE)")
+    land.set_defaults(func=_cmd_compare_landscape)
     return parser
 
 

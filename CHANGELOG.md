@@ -2,6 +2,18 @@
 
 All notable changes to CENOP-JASMINE are documented in this file.
 
+## [Unreleased]
+
+### CI & docs
+- Pinned the lint tools in `environment.yml` (`black==26.1.0`, `ruff==0.15.21`) so new
+  formatter/linter releases can't fail the lint gate without a code change
+- GitHub default branch switched to `CENOP-JASMINE` (2026-11-10), so the nightly
+  slow-tier workflow (`slow.yml`) is now registered; it had never run while the default
+  was the stale `main`
+- Refreshed stale docs: `docs/backend-equivalence.md` (Cython repaired, not broken),
+  `docs/validation-suite-status.md` (CI exists; default-branch and 60-day caveats),
+  `CLAUDE.md` (CI and test counts)
+
 ## [2.2.0] - 2026-07-10
 
 ### Deep-Review Fix Cycle (29 tasks, 6 phases)

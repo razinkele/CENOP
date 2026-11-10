@@ -24,8 +24,11 @@ dependencies:
   # Test + lint tooling
   - pytest>=7.4.0
   - pytest-asyncio>=0.21.0
-  - black>=23.0.0
-  - ruff>=0.1.0
+  # Lint tools are pinned EXACTLY: new black/ruff releases change formatting and add rules,
+  # which would fail the lint gate with no code change. Bump deliberately (re-run
+  # `black --check --line-length 100 src tests` + `ruff check src tests` locally first).
+  - black==26.1.0
+  - ruff==0.15.21
   - pip
   - pip:
       # Shiny UI stack + remaining pure-Python deps (not all on conda-forge)

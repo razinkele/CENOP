@@ -213,3 +213,7 @@ __marimo__/
 # ignore heavy per-individual / per-event files (reproducible via scripts/run_kattegat_reference.py)
 output/**/PorpoiseStatistics.txt
 output/**/Dispersal.txt
+
+# Track A1 DEPONS-Java harness: artifact cache and run outputs (never commit)
+.depons-cache/
+output/depons_java/

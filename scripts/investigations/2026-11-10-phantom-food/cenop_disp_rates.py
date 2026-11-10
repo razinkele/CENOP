@@ -88,6 +88,12 @@ def _upd(self, mask):
 P.PorpoisePopulation._check_dispersal_trigger = _trig
 P.PorpoisePopulation._update_dispersal = _upd
 P.PorpoisePopulation._disperse_step = _step
+if "--d15-port" in sys.argv:  # D15 investigation: DEPONS land-avoidance port, in memory
+    sys.argv.remove("--d15-port")
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import d15_land_port  # noqa: E402
+
+    d15_land_port.apply(P)
 
 params = SimulationParameters(
     porpoise_count=2000,

@@ -427,6 +427,145 @@ Two other things checked:
 - **Tracking perturbs DEPONS's trajectory slightly** (day 90: 1,633 untracked against 1,619 with
   200 tracked), but not its statistics. This answers an open item in the A1 report.
 
+### Finding 4: the dispersal-off residual (D15 investigation, in progress)
+
+Runs: dispersal off in both models, communication off.
+- DEPONS: `scenarios/dispoff_tracked200.json`, 200 tracked animals.
+- CENOP: the fixed code at `e016fe4`, run with the trigger disabled in memory.
+
+**Step 1: the gap is in intake** (`cenop_budget.py`, `depons_budget.py`; intake per animal-tick
+inferred from landscape food drops, the same way in both models):
+
+| days | 0–15 | 15–30 | 30–45 | 45–60 | 60–75 | 75–90 |
+|---|---|---|---|---|---|---|
+| DEPONS s42 | 0.00352 | 0.00329 | 0.00333 | 0.00326 | 0.00326 | 0.00336 |
+| CENOP s42 | 0.00360 | 0.00343 | 0.00346 | 0.00340 | 0.00344 | 0.00353 |
+| CENOP s43 | 0.00362 | 0.00343 | 0.00345 | 0.00341 | 0.00344 | 0.00352 |
+
+CENOP eats 2–5% more per animal-tick from the first fortnight, while N and deaths are still equal.
+The other budget terms do not explain the gap:
+- Energy use is deterministic and has the same formula in both models (DEPONS `updEnergeticStatus`
+  715–787: `0.001·scaling·EUse`, ×`eLact` when lactating, `E_USE_PER_KM = 0`).
+- The lactating share is 0 before about day 120.
+- Mortality is a fixed function of energy.
+
+So the residual is an intake residual. CENOP's exact intake is about 0.0001 above its inferred
+value, an inference bias that applies to both models equally.
+
+**Step 2: spatial fingerprint** (`spatial_fingerprint.py`; days 0–30, seed 42; cells are share of
+animal-ticks / intake per animal-tick; each model uses its own cell lookup; intake is attributed
+to the cell where it was eaten):
+
+| distance to coast | <1 km | 1–2 | 2–5 | 5–10 | >10 |
+|---|---|---|---|---|---|
+| DEPONS | 0.009 / 0.00248 | 0.034 / 0.00380 | 0.231 / 0.00311 | 0.271 / 0.00361 | 0.455 / 0.00369 |
+| CENOP | 0.079 / 0.00260 | 0.073 / 0.00288 | 0.204 / 0.00324 | 0.226 / 0.00392 | 0.418 / 0.00393 |
+
+| depth | 1–5 m | 5–10 | 10–20 | 20–30 | >30 |
+|---|---|---|---|---|---|
+| DEPONS | 0.035 / 0.00246 | 0.133 / 0.00266 | 0.407 / 0.00357 | 0.297 / 0.00382 | 0.126 / 0.00393 |
+| CENOP | 0.084 / 0.00229 | 0.172 / 0.00277 | 0.377 / 0.00375 | 0.243 / 0.00402 | 0.124 / 0.00441 |
+
+DEPONS has 0.16% of positions on cells under 1 m (it never checks the composed step); CENOP has 0.
+
+What this shows:
+- **D15's fingerprint is real and large.** CENOP spends 9× as much time within 1 km of the coast and
+  2.4× as much in 1–5 m water. This fits DEPONS's look-ahead of `presMov` cells (4× the step),
+  sampled every 0.1 cell, which turns animals away from the coast earlier.
+- **Band intakes are too noisy to carry a mechanism.** On seed 42, the coastal bands are the
+  poorer places to eat in both models, and CENOP's excess appears offshore (+5% at 10–30 m, +12%
+  beyond 30 m). But DEPONS's band intakes come from only 200 tracked animals:
+  - seed 43's reconstructed DEPONS mean is 0.00369, above CENOP's 0.00360;
+  - its 10–20 m band is 0.00388 against CENOP's 0.00375.
+  The occupancy difference replicates on both seeds; the band intakes do not.
+- **Proposed mechanism (not measured): competition and depletion.** With more animals on the coast,
+  offshore patches are shared among fewer foragers, and CENOP also harvests coastal regrowth that
+  DEPONS leaves. A distribution comparison cannot settle this.
+- **The decisive test is an in-memory port of DEPONS's land sequence**, accepted on DEPONS's
+  dispersal-off intake, energy and N, seeds 42 and 43. If the gap stays, the cause lies in eating
+  or regrowth, not movement.
+
+**Step 3: the in-memory port closes the gap.** The port is `d15_land_port.py`, applied with
+`cenop_budget.py <dir> <seed> 180 port`. It does three things, as in DEPONS:
+- **Before composition:** after the CRW turn, run `checkDepth` (look-ahead of `presMov` cells,
+  sampled every 0.1 cell, depth > 0) and `avoidLand` (±40/70/120° + U(0,10), escape points at
+  depth ≥ 1 m), with beh 4/5.
+- **After composition:** no land check, only border reflection.
+- **After the move:** the existing beh-6 rollback, plus its heading flip.
+
+N with dispersal off (seed 42 / seed 43):
+
+| day | 90 | 120 | 150 | 165 | 180 |
+|---|---|---|---|---|---|
+| DEPONS | 1737 / 1722 | 1442 / 1417 | 989 / 994 | 780 / 784 | ≈577 / ≈593 |
+| CENOP before | 1765 / 1761 | 1472 / 1478 | 1107 / 1088 | 911 / 903 | ≈694 / ≈728 |
+| **CENOP + port** | **1746 / 1764** | **1420 / 1449** | **987 / 1002** | **774 / 769** | **≈622 / ≈608** |
+
+- **Intake:** with the port, intake per animal-tick is within ±2% of DEPONS, and the sign varies by
+  bin. Examples:
+  - days 0–15: 0.00352 / 0.00357 against 0.00352 / 0.00352;
+  - days 60–75: 0.00329 (s43) against 0.00322 (s43);
+  - days 90–105: 0.00347 against 0.00354;
+  - days 120–135: 0.00376 against 0.00381.
+  Before the port it was +2–5% in every early bin.
+- **Coastal occupancy:** time within 1 km of the coast falls from 7.9% to 0.8–1.2% (DEPONS
+  0.9% / 1.8%), and time at depth < 1 m is 0.1% (DEPONS 0.16% / 0.6%).
+- **Energy now undershoots.** Mean energy with the port is 0.1–0.4 below DEPONS over days 90–150
+  on both seeds:
+
+  | day | 90 | 120 | 135 | 150 | 165 |
+  |---|---|---|---|---|---|
+  | DEPONS | 6.36 / 6.33 | 5.24 / 5.31 | 4.59 / 4.67 | 4.09 / 4.17 | 3.79 / 3.88 |
+  | CENOP + port | 6.22 / 6.16 | 5.10 / 4.99 | 4.31 / 4.30 | 3.88 / 3.78 | 3.71 / 3.75 |
+
+**Root cause of most of the dispersal-off residual: D15, established on two seeds.** Porting
+DEPONS's land sequence moves CENOP from +12–17% N at days 150–165 to within about 2% of DEPONS, and
+removes the early intake excess. The mechanism (crowding at the coast, then competition) is
+proposed, not measured.
+
+**Remainders (open):**
+- **Energy undershoot:** mean energy 0.1–0.4 below DEPONS at days 90–150 with the port, with N
+  matching. **It is not spatial.** With the port, occupancy matches DEPONS in every band (days
+  0–30, seed 42; DEPONS s42 / s43 in brackets):
+  - distance to coast: <1 km 0.011 (0.009/0.018), 1–2 km 0.040 (0.034/0.043), 2–5 km 0.234
+    (0.231/0.253), 5–10 km 0.264 (0.271/0.268), >10 km 0.452 (0.455/0.418);
+  - depth: 1–5 m 0.031 (0.035/0.032), 5–10 m 0.137 (0.133/0.139), 10–20 m 0.409 (0.407/0.407),
+    20–30 m 0.283 (0.297/0.272), >30 m 0.140 (0.126/0.144).
+  So the floor-vs-round cell lookup does not matter at this resolution.
+- **Port branch counts** (seed 42, days 0–90, per animal-tick): `avoidLand` 6.6%, beh 4 (walk back
+  along the position list) 0.036%, beh 5 (deepest neighbour) 0.032%, beh 6 (post-move rollback)
+  0.002%. At that rate, CENOP's reference-memory position buffer is an adequate stand-in for
+  DEPONS's position list.
+- **Late deaths:** days 165–180 show fewer CENOP deaths (152 / 161 against 203 / 191) at mean
+  energy 3.7 against 3.8. This coincides with CENOP's lactating share rising to 4–5%, and
+  lactating females abandon the calf instead of dying. DEPONS outputs no lactating share, and the
+  death hazard by energy band has not been measured. Candidates: reproduction timing and the
+  mortality implementation.
+- Accept the fix through day 165; treat day 180 as informational.
+
+**Step 4: combined check, dispersal on (fixed code `e016fe4`) + port, against DEPONS PSM-Type2**
+(`cenop_disp_rates.py <dir> stock 180 120 <seed> --d15-port`; seed 42 / seed 43):
+
+| | DEPONS | CENOP fixed, no port | CENOP fixed + port |
+|---|---|---|---|
+| N at day 120 / 150 / 180 | 1210 / 792 / 528 · 1203 / 824 / 546 | 150: 941 / 893 | 1194 / 815 / 568 · 1212 / 845 / 598 |
+| on/off ratio at days 120 / 150 / 180 | 0.839 / 0.801 / 0.915 · 0.849 / 0.829 / 0.921 | 0.872 / 0.850 / 0.867 · 0.873 / 0.821 / 0.787 | 0.841 / 0.826 / 0.913 · 0.836 / 0.843 / 0.984 |
+| activation rate | 0.133 | 0.126 / 0.134 | **0.151 / 0.162** |
+| episode moves, median / mean | 5 / 12.1 | 5 / 11.0 · 5 / 10.8 | 5 / 10.5 · 5 / 10.8 |
+| tick share dispersing | 1.34% | 1.09% / 1.15% | 1.28% / 1.38% |
+
+What this shows:
+- **Population and dispersal's cost now track DEPONS** to day 150 on both seeds (within +3%), with
+  both arms ported.
+- **Activation rises** to 0.151 / 0.162; seed 43 is just above the accepted 0.10–0.16. With
+  DEPONS's spatial distribution, more animals pass the activation filter.
+- **The missing first-call water filter** (D9: a new disperser is stopped if its last foraging step
+  left not enough water ahead) is the candidate to bring it back towards 0.133. The port now
+  computes that state, so the filter belongs in the D15 fix.
+
+**Next:** port D15 into the source, test-first and in all backends, in its own plan, with these
+numbers as acceptance. Then check the combined dispersal-on configuration against DEPONS.
+
 ## Unverified
 
 - **Now verified:**

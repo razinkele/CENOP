@@ -863,9 +863,14 @@ def jax_energy_history_update(
 
     def do_shift(args):
         ett, eh, _tc = args
-        # float64: under jit, XLA turns float32 division by a constant into a reciprocal
-        # multiply, which misses NumPy's float32 result (5.0010004 instead of 5.001)
-        daily_avg = jnp.round(ett.astype(jnp.float64) / 48.0, 3).astype(eh.dtype)
+        # NumPy: np.round(f32 / 48.0, 3) in float32, i.e. a correctly rounded f32 quotient,
+        # then f32 multiply by 1000, rint, and a correctly rounded f32 divide by 1000. XLA
+        # turns float32 division by a constant into a reciprocal multiply (5.0010004, not
+        # 5.001), so both divisions are done in float64 and rounded once to float32, which
+        # gives the correctly rounded float32 result. The multiply and rint stay in float32.
+        q = (ett.astype(jnp.float64) / 48.0).astype(jnp.float32)
+        r = jnp.rint(q * jnp.float32(1000.0))
+        daily_avg = (r.astype(jnp.float64) / 1000.0).astype(eh.dtype)
         # Shift right: history[:, 1:] = history[:, :-1]
         new_hist = jnp.concatenate([daily_avg[:, None], eh[:, :-1]], axis=1).astype(eh.dtype)
         new_ett = jnp.zeros_like(ett)

@@ -1451,6 +1451,37 @@ class TestJaxEnergyHistory:
             )
         np.testing.assert_array_equal(np.asarray(history)[:, 0], np.float32(expected))
 
+    def test_jax_energy_history_rounding_matches_numpy_at_boundaries(self):
+        """Daily means next to a 3-d.p. rounding boundary: the kernel, called directly and
+        under jit, must give NumPy's float32 np.round result bit for bit."""
+        from cenop.agents.population import PorpoisePopulation
+        from cenop.optimizations.jax_kernels import jax_energy_history_update
+        from cenop.parameters.simulation_params import SimulationParameters
+
+        totals = np.array([247.03201, 699.24, 904.44006], dtype=np.float32)
+        n = len(totals)
+        # NumPy reference: the real _update_energy_history on the last tick of a day
+        pop = PorpoisePopulation(n, SimulationParameters(random_seed=1))
+        pop.energy[:] = 0.0
+        pop._energy_ticks_today[:] = totals
+        pop._tick_counter = 47
+        pop._global_tick += 1
+        pop._update_energy_history(pop.active_mask)
+        expected = pop._energy_history[:, 0].copy()
+        np.testing.assert_array_equal(expected, np.float32([5.146, 14.568, 18.842]))
+
+        args = (
+            jnp.zeros(n, dtype=jnp.float32),
+            jnp.ones(n, dtype=bool),
+            jnp.asarray(totals),
+            jnp.zeros((n, 10), dtype=jnp.float32),
+            jnp.int32(47),
+            jnp.bool_(True),
+        )
+        for fn in (jax_energy_history_update, jax.jit(jax_energy_history_update)):
+            _, history, _ = fn(*args)
+            np.testing.assert_array_equal(np.asarray(history)[:, 0], expected)
+
 
 # ---------------------------------------------------------------------------
 # Dispersal Update (J5)

@@ -110,11 +110,17 @@ class TestLandAvoidanceSkipBehavior:
 
 
 class TestLandAvoidanceKernelIntegration:
-    """Test that the fused kernel is wired into _handle_land_avoidance."""
+    """Test that the fused kernel is wired into _handle_land_avoidance.
+
+    Since D15 the destination check runs only for non-CRW movement modules (the CRW paths
+    use the DEPONS land check before composition, tests/test_land_check.py), so these tests
+    drive a JASMINE physics population."""
 
     def test_real_landscape_with_land_resolves_agents(self):
         """Agents on land should find water via kernel path."""
         from unittest.mock import MagicMock
+
+        from cenop.movement import JASMINEPhysicsMovement
 
         params = SimulationParameters()
         landscape = MagicMock()
@@ -127,7 +133,12 @@ class TestLandAvoidanceKernelIntegration:
         landscape.metadata = MagicMock()
         landscape.metadata.cellsize = 400.0
 
-        pop = PorpoisePopulation(count=5, params=params, landscape=landscape)
+        pop = PorpoisePopulation(
+            count=5,
+            params=params,
+            landscape=landscape,
+            movement_module=JASMINEPhysicsMovement(params),
+        )
         assert pop._skip_land_avoidance is False
 
         pop.x[:] = np.array([50, 60, 70, 80, 90], dtype=np.float32)
@@ -173,8 +184,11 @@ class TestLandAvoidanceBufferPreallocation:
         assert pop._la_resolved.dtype == np.bool_
 
     def test_land_avoidance_still_works_with_buffers(self):
-        """Agents on land should find water using pre-allocated buffers."""
+        """Agents on land should find water using pre-allocated buffers (non-CRW module path:
+        since D15 the CRW paths have no post-composition destination check)."""
         from unittest.mock import MagicMock
+
+        from cenop.movement import JASMINEPhysicsMovement
 
         params = SimulationParameters()
         landscape = MagicMock()
@@ -188,7 +202,12 @@ class TestLandAvoidanceBufferPreallocation:
         landscape.metadata = MagicMock()
         landscape.metadata.cellsize = 400.0
 
-        pop = PorpoisePopulation(count=10, params=params, landscape=landscape)
+        pop = PorpoisePopulation(
+            count=10,
+            params=params,
+            landscape=landscape,
+            movement_module=JASMINEPhysicsMovement(params),
+        )
 
         # Place agents heading into land strip
         pop.x[:] = np.array([20, 30, 40, 50, 60, 70, 80, 90, 15, 25], dtype=np.float32)

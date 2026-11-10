@@ -18,7 +18,11 @@ import math
 import numpy as np
 import pytest
 
+import cenop.agents.population as popmod
+from cenop.agents.population import PorpoisePopulation
+from cenop.landscape.cell_data import create_homogeneous_landscape
 from cenop.movement import land_check
+from cenop.parameters.simulation_params import SimulationParameters
 
 LOG6 = math.log10(6.0)
 SEEDS = (0, 1, 2, 3)
@@ -561,3 +565,237 @@ def test_python_and_numba_agree(monkeypatch):
     assert (a["mask"] & ~a["out_enough"]).any()  # beh 5
     assert (a["mask"] & (a["x"] != x_before)).any()  # beh 4 moves
     assert (a["mask"] & a["out_enough"] & (a["heading"] != h_before)).any()  # tier turns
+
+
+# --- Population wiring (D15 Task 2) -------------------------------------------------------------
+
+
+def _coast_landscape():
+    """200 x 200, all water (30 m) except land (-10 m) at y >= 100. Renamed, so land avoidance
+    is not skipped; the Homogeneous border land is overwritten so open water stays open."""
+    land = create_homogeneous_landscape(200, 200)
+    land._depth[:] = 30.0
+    land._depth[100:, :] = -10.0
+    land.landscape_name = "TestCoast"
+    return land
+
+
+def _coast_pop(count, landscape=None, movement_module=None, seed=7):
+    params = SimulationParameters(random_seed=seed)
+    land = _coast_landscape() if landscape is None else landscape
+    pop = PorpoisePopulation(count, params, land, movement_module=movement_module)
+    pop._skip_land_avoidance = False
+    pop.is_dispersing[:] = False
+    return pop
+
+
+def _recorder(calls, label, fn):
+    def wrapped(*args, **kwargs):
+        calls.append(label)
+        return fn(*args, **kwargs)
+
+    return wrapped
+
+
+class TestPopulationWiring:
+    """`PorpoisePopulation._depons_land_check` on the CRW paths: after reference memory and the
+    CRW turn, before heading composition; reflection-only after composition; beh 6 flip."""
+
+    def test_land_check_runs_before_composition(self, monkeypatch):
+        pop = _coast_pop(72)
+        coast, open_, disp = np.arange(60), np.arange(60, 70), np.arange(70, 72)
+        pop.x[coast] = np.linspace(20.5, 179.5, 60)
+        pop.y[coast] = 98.5
+        pop.heading[coast] = np.linspace(0.0, 360.0, 60, endpoint=False)
+        pop.x[open_] = np.linspace(30.5, 170.5, 10)
+        pop.y[open_] = 40.5
+        pop.heading[open_] = np.linspace(0.0, 360.0, 10, endpoint=False)
+        # Two dispersers in deep open water heading south: their look-ahead keeps them going
+        pop.x[disp] = [60.5, 140.5]
+        pop.y[disp] = 60.5
+        pop.heading[disp] = 180.0
+        pop._prev_step_heading[disp] = 180.0
+        pop.is_dispersing[disp] = True
+        pop.dispersal_target_distance[disp] = 50.0
+        pop.dispersal_distance_traveled[disp] = 0.0
+
+        calls, seen = [], {}
+        orig_check = PorpoisePopulation._depons_land_check
+        orig_refmem = PorpoisePopulation._update_reference_memory
+
+        def check(self, mask):
+            calls.append("land_check")
+            seen["mask"] = mask.copy()
+            seen["entry"] = self.heading.copy()
+            orig_check(self, mask)
+            seen["exit"] = self.heading.copy()
+
+        monkeypatch.setattr(PorpoisePopulation, "_depons_land_check", check)
+        monkeypatch.setattr(
+            PorpoisePopulation,
+            "_update_reference_memory",
+            _recorder(calls, "ref_mem", orig_refmem),
+        )
+        for name in ("_heading_kernel", "compose_movement"):
+            if hasattr(popmod, name):
+                monkeypatch.setattr(
+                    popmod, name, _recorder(calls, "compose", getattr(popmod, name))
+                )
+
+        pop._recompute_cell_indices()
+        pop._update_movement(pop.active_mask, None, None)
+
+        assert calls == ["ref_mem", "land_check", "compose"]
+        assert pop.is_dispersing[disp].all()  # non-vacuous: the dispersers kept dispersing
+        assert not seen["mask"][disp].any()
+        assert seen["mask"][coast].all() and seen["mask"][open_].all()
+        turn = np.abs((seen["exit"] - seen["entry"] + 180.0) % 360.0 - 180.0)
+        assert turn[coast].max() >= 40.0
+        np.testing.assert_array_equal(seen["exit"][open_], seen["entry"][open_])
+        assert pop._enough_water_ahead[open_].all()
+
+    def test_no_post_composition_land_check_on_crw_path(self):
+        """A destination at 0.5 m (0 < depth < wmin) is accepted: DEPONS forward() has no land
+        check, and beh 6 only rolls back from depth <= 0."""
+        land = _coast_landscape()
+        land._depth[52, 50] = 0.5
+        pop = _coast_pop(1, landscape=land)
+        pop.x[0], pop.y[0], pop.heading[0] = 50.5, 50.5, 0.0
+        pop._dx[0], pop._dy[0] = 0.0, 2.0
+        mask = pop.active_mask.copy()
+
+        pop._handle_land_avoidance(mask)
+        pop._apply_positions(mask)
+
+        assert (float(pop.x[0]), float(pop.y[0])) == (50.5, 52.5)
+        assert float(pop.heading[0]) == 0.0
+
+    def test_rollback_faces_back(self):
+        """beh 6: a destination on depth <= 0 returns the agent to its pre-move position, facing
+        back along the attempted move."""
+        land = _coast_landscape()
+        land._depth[:, 52:] = -10.0  # land east of x = 52
+        pop = _coast_pop(1, landscape=land)
+        pop.x[0], pop.y[0], pop.heading[0] = 50.5, 50.5, 180.0
+        pop._log_mov[0] = math.log10(2.0)
+        mask = pop.active_mask.copy()
+
+        pop._depons_land_check(mask)  # open water to the south: nothing to avoid
+        assert float(pop.heading[0]) == 180.0 and pop._enough_water_ahead[0]
+        pop._dx[0], pop._dy[0] = 2.5, 0.0  # composition turned it east, onto land
+        pop._handle_land_avoidance(mask)
+        pop._apply_positions(mask)
+
+        assert (float(pop.x[0]), float(pop.y[0])) == (50.5, 50.5)
+        assert float(pop.heading[0]) == pytest.approx(270.0)
+
+    def test_beh4_moved_agent_rolls_back_to_start_of_tick(self):
+        """beh 4 moves the agent during the land check, but beh 6 returns it to the start-of-tick
+        position (DEPONS posList.get(0)) and food is eaten there (posList.get(1))."""
+        land = _coast_landscape()
+        land._depth[:] = -10.0
+        land._depth[:51, 49:52] = 30.0  # dead-end corridor: x in 49..51, y <= 50
+        pop = _coast_pop(1, landscape=land)
+        start, back = (50.5, 50.5), (50.5, 47.5)
+        pop.x[0], pop.y[0], pop.heading[0] = start[0], start[1], 0.0
+        pop._log_mov[0] = math.log10(2.0)
+        # Ring buffer: an older position, then the start-of-tick one (stored by reference memory)
+        pop._pos_history_x[0, :2] = [back[0], start[0]]
+        pop._pos_history_y[0, :2] = [back[1], start[1]]
+        pop._mem_ptr[0], pop._mem_count[0] = 2, 2
+        mask = pop.active_mask.copy()
+
+        pop._depons_land_check(mask)
+        # Every escape point is land: beh 4 walked back onto the older position, facing it
+        assert (float(pop.x[0]), float(pop.y[0])) == back
+        assert float(pop.heading[0]) == pytest.approx(180.0)
+        assert pop._enough_water_ahead[0]
+
+        pop._dx[0], pop._dy[0] = 2.5, 0.0  # composition sends it east, onto land at (53, 47.5)
+        pop._handle_land_avoidance(mask)
+        pop._apply_positions(mask)
+
+        assert (float(pop.x[0]), float(pop.y[0])) == start
+        expected = math.degrees(math.atan2(start[0] - 53.0, start[1] - 47.5)) % 360.0
+        assert float(pop.heading[0]) == pytest.approx(expected, abs=1e-4)
+        # Eat cell: the start-of-tick cell, not the walked-back one
+        assert (float(pop._pre_move_x[0]), float(pop._pre_move_y[0])) == start
+        assert (int(pop._pre_cell_xi[0]), int(pop._pre_cell_yi[0])) == (50, 50)
+        food_before = land._food_value.copy()
+        pop._eat_food_vectorized(mask, np.full(1, 0.5, dtype=np.float32))
+        assert np.argwhere(land._food_value != food_before).tolist() == [[50, 50]]
+
+    @pytest.mark.skipif(not land_check.HAS_NUMBA, reason="Numba not installed")
+    def test_python_fallback_seeds_numpy_rng(self, monkeypatch):
+        """Without Numba the interpreted kernel draws its jitter from NumPy's global RNG,
+        seeded from self.rng the same way, so both modes agree."""
+
+        def run():
+            pop = _coast_pop(60, seed=5)
+            pop.x[:] = np.linspace(20.5, 179.5, 60)
+            pop.y[:] = 98.5
+            pop.heading[:] = np.linspace(0.0, 360.0, 60, endpoint=False)
+            pop._log_mov[:] = np.linspace(0.2, 1.2, 60)
+            h0 = pop.heading.copy()
+            pop._depons_land_check(pop.active_mask.copy())
+            return pop, h0
+
+        a, h0 = run()
+        _interpret_helpers(monkeypatch)
+        monkeypatch.setattr(popmod, "_LAND_CHECK_NUMBA", False)
+        monkeypatch.setattr(popmod, "_depons_land_check_kernel", land_check._py)
+        b, _ = run()
+
+        assert np.array_equal(a.x, b.x) and np.array_equal(a.y, b.y)
+        assert np.allclose(a.heading, b.heading, atol=1e-4)
+        assert np.array_equal(a._log_mov, b._log_mov)
+        assert np.array_equal(a._enough_water_ahead, b._enough_water_ahead)
+        turn = np.abs((a.heading - h0 + 180.0) % 360.0 - 180.0)
+        assert (turn >= 40.0).any()  # non-vacuous: jittered tier turns happened
+
+    def test_generic_module_path_keeps_old_land_avoidance(self):
+        """Non-CRW modules keep the post-composition destination check (turn away from < wmin)."""
+        from cenop.movement import JASMINEPhysicsMovement
+
+        land = _coast_landscape()
+        land._depth[52, 50] = 0.5
+        params = SimulationParameters(random_seed=7)
+        pop = _coast_pop(1, landscape=land, movement_module=JASMINEPhysicsMovement(params))
+        pop.x[0], pop.y[0], pop.heading[0] = 50.5, 50.5, 0.0
+        pop._step_dist[0] = 2.0
+        pop._dx[0], pop._dy[0] = 0.0, 2.0
+        mask = pop.active_mask.copy()
+
+        pop._handle_land_avoidance(mask)
+
+        xi, yi = int(pop._new_x[0]), int(pop._new_y[0])
+        assert (xi, yi) != (50, 52)
+        assert land._depth[yi, xi] >= 1.0
+
+    @pytest.mark.parametrize("with_module", [False, True], ids=["inline", "crw_module"])
+    def test_homogeneous_unchanged(self, monkeypatch, with_module):
+        """Homogeneous grid (_skip_land_avoidance): no land check runs, the water state stays
+        True, and a rollback onto the border land keeps the heading (no beh-6 flip)."""
+        from cenop.movement import DEPONSCRWMovementVectorized
+
+        params = SimulationParameters(random_seed=3)
+        mod = DEPONSCRWMovementVectorized(params) if with_module else None
+        pop = PorpoisePopulation(50, params, create_homogeneous_landscape(200, 200), mod)
+        assert pop._skip_land_avoidance
+        calls = []
+        monkeypatch.setattr(popmod, "_depons_land_check_kernel", lambda *a: calls.append(a))
+
+        for _ in range(5):
+            pop.step()
+
+        assert calls == []
+        assert pop._enough_water_ahead.all()
+
+        mask = np.zeros(pop.count, dtype=bool)
+        mask[0] = True
+        pop.x[0], pop.y[0], pop.heading[0] = 100.5, 10.5, 123.0
+        pop._dx[0], pop._dy[0] = 0.0, -1.0  # onto the southern border land (y < 10)
+        pop._handle_land_avoidance(mask)
+        pop._apply_positions(mask)
+        assert (float(pop.x[0]), float(pop.y[0])) == (100.5, 10.5)
+        assert float(pop.heading[0]) == 123.0

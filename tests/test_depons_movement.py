@@ -195,10 +195,30 @@ class TestLandAvoidance:
         assert water_fraction > 0.95, f"Only {water_fraction:.1%} of porpoises in water"
 
     def test_land_avoidance_turn_angles(self):
-        """Land avoidance should use correct turn angles (40, 70, 120 degrees)."""
-        # This is tested implicitly by checking porpoises stay in water
-        # The implementation uses [40, 70, 120] degree turns (verified by code inspection)
-        pass
+        """DEPONS avoidLand on the CRW path (D15): an agent with land presMov cells ahead
+        turns 40 + r (first tier) or 70 + r (second tier), r ~ U(0, 10), to the right on
+        equal depths, before heading composition."""
+        params = SimulationParameters(porpoise_count=2, random_seed=42)
+        landscape = create_homogeneous_landscape(200, 200)
+        landscape._depth[:] = 30.0
+        landscape._depth[100:, :] = -10.0  # coast: land at y >= 100
+        landscape.landscape_name = "TestCoast"
+        pop = PorpoisePopulation(2, params, landscape)
+        assert not pop._skip_land_avoidance
+
+        # Both face the coast (north) with presMov = 6 cells. First-tier points
+        # (+-40..50 deg, 6 cells ahead) reach y = 99.6..98.9 from y = 95 (water) but
+        # y = 102.1..101.4 from y = 97.5 (land); second-tier points (+-70..80 deg) reach
+        # y = 99.6..98.5 from y = 97.5 (water).
+        pop.x[:] = [60.5, 140.5]
+        pop.y[:] = [95.0, 97.5]
+        pop.heading[:] = 0.0
+        pop._log_mov[:] = np.log10(6.0)
+        pop._depons_land_check(pop.active_mask.copy())
+
+        assert 40.0 <= pop.heading[0] < 50.0
+        assert 70.0 <= pop.heading[1] < 80.0
+        assert pop._enough_water_ahead.all()
 
 
 class TestDispersalMovement:

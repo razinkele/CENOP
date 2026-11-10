@@ -16,6 +16,8 @@ from cenop.behavior.psm import PersistentSpatialMemory
 from cenop.behavior.sound import calculate_received_level, response_probability_from_rl
 from cenop.landscape.cell_data import CellData
 from cenop.movement.crw_core import compose_movement, generate_crw_angle_step
+from cenop.movement.land_check import HAS_NUMBA as _LAND_CHECK_NUMBA
+from cenop.movement.land_check import depons_land_check as _depons_land_check_kernel
 from cenop.parameters.demography import AGE_DISTRIBUTION_FREQUENCY
 from cenop.parameters.simulation_params import SimulationParameters
 
@@ -427,6 +429,13 @@ class PorpoisePopulation:
         self._left_yi = np.zeros(count, dtype=np.int32)
         self._right_depths = np.zeros(count, dtype=np.float32)
         self._left_depths = np.zeros(count, dtype=np.float32)
+
+        # DEPONS enoughWaterAhead: the land check's final path-check result (D15); stays True
+        # where the check does not run (dispersers, _skip_land_avoidance)
+        self._enough_water_ahead = np.ones(count, dtype=bool)
+        # Set by _depons_land_check when it records the start-of-tick position in
+        # _pre_move_x/_y; consumed (and cleared) by _apply_positions
+        self._pre_move_recorded = False
 
         # --- Glue-tax optimization: skip land avoidance on all-water landscapes ---
         self._skip_land_avoidance = False
@@ -1016,6 +1025,12 @@ class PorpoisePopulation:
         # Update reference memory (stores food, computes veTotal and vt)
         self._update_reference_memory(mask)
 
+        # DEPONS land avoidance (D15) after the CRW turn, before composition. Keep it directly
+        # after _update_reference_memory with x/y untouched in between: beh 4 treats the newest
+        # remembered position (stored just now) as a no-op only when it equals x/y exactly.
+        if not self._skip_land_avoidance:
+            self._depons_land_check(crw_mask)
+
         # Prepare deterrence vectors (track strength before kernel)
         if deterrence_vectors is not None:
             d_dx, d_dy = deterrence_vectors
@@ -1090,6 +1105,62 @@ class PorpoisePopulation:
 
         # Update prev_log_mov (Numba kernel updates it inline, NumPy fallback needs this)
         self.prev_log_mov[crw_mask] = self._log_mov[crw_mask]
+
+    def _on_crw_path(self) -> bool:
+        """True on the DEPONS CRW movement paths: inline, or a DEPONSCRWMovement module."""
+        from cenop.movement.depons_crw import DEPONSCRWMovement
+
+        module = self._movement_module
+        return module is None or isinstance(module, DEPONSCRWMovement)
+
+    def _depons_land_check(self, mask: np.ndarray) -> None:
+        """DEPONS stdMove land avoidance (467-533) for ``mask`` agents, in place (D15).
+
+        Runs on both CRW paths after reference memory and the CRW turn, before heading
+        composition: turns away from land ahead (avoidLand tiers), walks back through
+        remembered positions (beh 4) or faces the deepest neighbour with presMov = 1 (beh 5).
+        Edits x, y, heading and _log_mov; writes _enough_water_ahead[mask]. A no-op when
+        _skip_land_avoidance or the landscape has no depth grid.
+
+        First records the start-of-tick position in _pre_move_x/_y for _apply_positions:
+        DEPONS's beh 6 returns to posList.get(0) and eats at posList.get(1), both the
+        start-of-tick position, even when beh 4 has since moved the animal.
+        """
+        land = self.landscape
+        depth = getattr(land, "_depth", None) if land is not None else None
+        if self._skip_land_avoidance or depth is None:
+            return
+
+        np.copyto(self._pre_move_x, self.x)
+        np.copyto(self._pre_move_y, self.y)
+        self._pre_move_recorded = True
+
+        # One seed per call from self.rng, drawn even for an empty mask so both CRW paths
+        # leave self.rng at the same point. The kernel draws its jitter from Numba's RNG, or
+        # from NumPy's global RNG when Numba is missing (the interpreted kernel).
+        seed = self.rng.integers(0, 2**31)
+        if _LAND_CHECK_NUMBA:
+            from cenop.optimizations.kernels import seed_numba_rng
+
+            seed_numba_rng(seed)
+        else:
+            np.random.seed(seed)
+
+        min_depth = self.params.min_depth if self.params else 1.0
+        _depons_land_check_kernel(
+            self.x,
+            self.y,
+            self.heading,
+            self._log_mov,
+            mask,
+            depth,
+            float(min_depth),
+            self._pos_history_x,
+            self._pos_history_y,
+            self._mem_ptr,
+            self._mem_count,
+            self._enough_water_ahead,
+        )
 
     def _end_dispersal(self, sel: np.ndarray) -> None:
         """DEPONS deactivate(): stop dispersing; reset path length and declining-energy days."""
@@ -1277,6 +1348,12 @@ class PorpoisePopulation:
         self.heading[crw_mask] += self._pres_angle[crw_mask]
         self.heading[crw_mask] %= 360.0
 
+        # 5b. DEPONS land avoidance (D15), as inline: after the CRW turn, before composition,
+        #     with the same RNG seeding point. x/y are untouched since step 2 stored them, so
+        #     beh 4 sees the newest remembered position as equal to x/y (a no-op).
+        if not self._skip_land_avoidance:
+            self._depons_land_check(crw_mask)
+
         # 6. Deterrence (+ memory avoidance + social) folded into the heading composition.
         #    NOTE: the inline reference path does NOT apply memory avoidance to movement;
         #    _avoidance_result is None unless a memory_module is injected, so this block is
@@ -1426,6 +1503,10 @@ class PorpoisePopulation:
         Boundary handling uses DEPONS-style reflection (BouncyBorders):
         when an agent would move past an edge, the overshot component
         is negated (reflected) and the heading is recalculated.
+
+        On the CRW paths only the reflection runs (D15: _depons_land_check
+        handles land before composition); the depth check is for non-CRW
+        movement modules.
         """
         # Calculate proposed new positions
         np.add(self.x, self._dx, out=self._new_x)
@@ -1450,6 +1531,13 @@ class PorpoisePopulation:
             self.heading[reflected] = (
                 np.degrees(np.arctan2(self._dx[reflected], self._dy[reflected])) % 360.0
             )
+
+        # CRW paths (inline, or a DEPONSCRWMovement module): DEPONS forward() has no land check
+        # after composition, only border reflection. Land was handled before composition by
+        # _depons_land_check, and _apply_positions applies beh 6 (D15). Non-CRW modules keep
+        # the destination check below.
+        if self._on_crw_path():
+            return
 
         # Early exit: skip depth-check loop on all-water landscapes
         if self._skip_land_avoidance:
@@ -1640,6 +1728,21 @@ class PorpoisePopulation:
         self._new_y[self._on_land] = self.y[self._on_land]
         self.heading[self._on_land] = (self.heading[self._on_land] + 180) % 360
 
+    def _face_back_beh6(self, sel: np.ndarray) -> None:
+        """DEPONS beh 6 (stdMove 639-661): an animal whose new cell has depth <= 0 faces the
+        start-of-tick position (posList.get(0)) before returning to it. Call before the
+        rollback, while x/y hold the tried position; as DEPONS facePoint, facing the current
+        position is a no-op."""
+        idx = np.flatnonzero(sel)
+        dx = self._pre_move_x[idx].astype(np.float64) - self.x[idx]
+        dy = self._pre_move_y[idx].astype(np.float64) - self.y[idx]
+        moved = (dx != 0.0) | (dy != 0.0)
+        if not moved.any():
+            return
+        h = (np.degrees(np.arctan2(dx[moved], dy[moved])) % 360.0).astype(np.float32)
+        h[h >= 360.0] = 0.0  # float32 rounding of a value just below 360
+        self.heading[idx[moved]] = h
+
     @staticmethod
     def _reflect_boundaries(
         new_x: np.ndarray,
@@ -1691,9 +1794,14 @@ class PorpoisePopulation:
 
     def _apply_positions(self, mask: np.ndarray) -> None:
         """Apply final positions and update adaptive neighbor recompute."""
-        # Save pre-move positions for post-move depth check (reuse pre-allocated buffers)
-        np.copyto(self._pre_move_x, self.x)
-        np.copyto(self._pre_move_y, self.y)
+        # Pre-move positions for the post-move depth check and eating. When the D15 land check
+        # ran this tick it already recorded the start-of-tick position (DEPONS posList.get(0)),
+        # which beh 4 may since have moved the animal away from; otherwise record x/y now.
+        land_checked = self._pre_move_recorded
+        self._pre_move_recorded = False
+        if not land_checked:
+            np.copyto(self._pre_move_x, self.x)
+            np.copyto(self._pre_move_y, self.y)
         # Capture the pre-move cell — food is eaten where the porpoise just was
         # (DEPONS posList.get(1)), not at the post-move cell.
         self._snapshot_pre_move_cells(self._pre_move_x, self._pre_move_y)
@@ -1713,6 +1821,8 @@ class PorpoisePopulation:
             )
             on_land = mask & (post_depths <= 0)
             if on_land.any():
+                if land_checked:
+                    self._face_back_beh6(on_land)
                 self.x[on_land] = self._pre_move_x[on_land]
                 self.y[on_land] = self._pre_move_y[on_land]
                 # Re-recompute after land rollback

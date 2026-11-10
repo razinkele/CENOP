@@ -6,7 +6,7 @@ import pytest
 import cenop.agents.population as popmod
 from cenop.agents.population import PorpoisePopulation
 from cenop.landscape.cell_data import create_homogeneous_landscape
-from cenop.movement import DEPONSCRWMovementVectorized
+from cenop.movement import DEPONSCRWMovementVectorized, JASMINEPhysicsMovement
 from cenop.parameters.simulation_params import SimulationParameters
 
 
@@ -222,6 +222,23 @@ class TestDisperseStep:
         assert pop.heading[0] == 10.0  # completed before the PSM turn
         assert pop.is_dispersing[1]
         pop._update_dispersal(pop.active_mask)
+        assert pop.is_dispersing[1]
+
+    @pytest.mark.parametrize(
+        "module_cls, generic",
+        [(JASMINEPhysicsMovement, True), (DEPONSCRWMovementVectorized, False)],
+    )
+    def test_displacement_completion_only_on_generic_module_path(self, module_cls, generic):
+        # Non-CRW modules skip _disperse_step and track no path length, so they keep the
+        # straight-line rule; the CRW-module path completes on path length only.
+        params = SimulationParameters(random_seed=1, communication_enabled=False)
+        pop = PorpoisePopulation(4, params, movement_module=module_cls(params))
+        _disperser(pop, 0, 100.0, 100.0, 90.0, target_dist=self.T)
+        pop.x[0] = 100.0 + 0.95 * self.T
+        _disperser(pop, 1, 100.0, 300.0, 90.0, target_dist=self.T)
+        pop.x[1] = 100.0 + 0.9 * self.T
+        pop._update_dispersal(pop.active_mask)
+        assert bool(pop.is_dispersing[0]) is not generic
         assert pop.is_dispersing[1]
 
     def test_zero_target_distance_completes_without_nan(self):

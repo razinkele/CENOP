@@ -3351,9 +3351,14 @@ class PorpoisePopulation:
         return True
 
     def _update_dispersal(self, mask: np.ndarray) -> None:
-        """End dispersal on turbine deterrence or energy recovery.
+        """End dispersal on turbine deterrence, energy recovery or (generic path) displacement.
 
-        Path-length completion is checked at the start of the next tick by _disperse_step.
+        Completion rule depends on the movement path:
+        - CRW paths (inline, or a DEPONSCRWMovement module): path-length completion only,
+          checked at the start of the next tick by _disperse_step (DEPONS parity).
+        - Non-CRW module path (_update_movement_module_generic: JASMINE physics, hybrid): it
+          runs no _disperse_step and tracks no path length, so dispersal ends here once the
+          straight-line distance from the start point reaches 0.95 * target distance.
         """
         dispersing = mask & self.is_dispersing
         if not dispersing.any():
@@ -3377,6 +3382,22 @@ class PorpoisePopulation:
             if recovering.any():
                 disp_indices = np.where(dispersing)[0]
                 self._end_dispersal(disp_indices[recovering])
+                dispersing = mask & self.is_dispersing
+
+        if not dispersing.any() or self._movement_module is None:
+            return
+
+        # --- Straight-line completion, non-CRW module path only (see docstring) ---
+        from cenop.movement.depons_crw import DEPONSCRWMovement
+
+        if isinstance(self._movement_module, DEPONSCRWMovement):
+            return
+        dx = self.x - self.dispersal_start_x
+        dy = self.y - self.dispersal_start_y
+        distances = np.sqrt(dx * dx + dy * dy)
+        completed = dispersing & (distances >= 0.95 * self.dispersal_target_distance)
+        if completed.any():
+            self._end_dispersal(completed)
 
     def get_psm(self, idx: int) -> PersistentSpatialMemory:
         """Get PSM instance for a specific porpoise."""

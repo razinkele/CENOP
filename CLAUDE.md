@@ -11,7 +11,8 @@
 - Everything: `python3 -m pytest tests/ -m "slow or not slow" -q`
 - NOTE: a default `addopts = -m "not slow"` is active. To run a single SLOW test you must add a selector, e.g. `pytest tests/test_validation.py::Cls::test_x -m "slow or not slow"` — a bare nodeid (or bare `-k`) silently reports it as `deselected`, not run.
 - CI (GitHub Actions): `ci.yml` runs lint (black + ruff) + the fast suite on push to `CENOP-JASMINE` and on PRs; `slow.yml` runs the slow tier nightly (03:00 UTC) and on manual dispatch. Still run `pytest tests/ -m slow` locally before releasing/merging model-behavior changes — GitHub disables scheduled workflows after ~60 days without repo activity. Any older `--ignore=...test_validation.py --ignore=...test_depons_physiology.py` alias is obsolete — it re-hides fast tests; drop it.
-- ~820 tests (810 fast + 11 slow) across 41 test files; naming convention: `test_<module>.py` matches `src/cenop/<module>.py`
+- ~906 tests (895 fast + 11 slow) across 48 test files; naming convention: `test_<module>.py` matches `src/cenop/<module>.py` (harness tests: `test_depons_java_<module>.py` matches `validation/depons_java/<module>.py`)
+- DEPONS 3.2 reference harness (Track A1): `python3 -m validation.depons_java run --scenario validation/depons_java/scenarios/<file>.json` runs the official Java release headless (needs Java 21, plus Java 11 for its installer; ~4 min per N=2000 5-yr seed). Cache `.depons-cache/` and outputs `output/depons_java/` are gitignored. See `validation/depons_java/README.md`
 - Numba/coverage compatibility: `tests/conftest.py` patches `coverage.types`
 
 ## Git

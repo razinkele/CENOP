@@ -26,7 +26,8 @@ dependencies:
   - pytest-asyncio>=0.21.0
   # Lint tools are pinned EXACTLY: new black/ruff releases change formatting and add rules,
   # which would fail the lint gate with no code change. Bump deliberately (re-run
-  # `black --check --line-length 100 src tests` + `ruff check src tests` locally first).
+  # `black --check --line-length 100 src tests validation` + `ruff check src tests validation`
+  # locally first).
   - black==26.1.0
   - ruff==0.15.21
   - pip

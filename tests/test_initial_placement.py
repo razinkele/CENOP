@@ -1,8 +1,9 @@
 """Initial placement: Lithuania starts animals only in its main connected water body.
 
-The Curonian Lagoon is a separate water body on the 1 km Lithuania grid; animals placed there are
-trapped by the DEPONS land check and starve. Placement for Lithuania is therefore restricted to
-the largest connected water body. Every other landscape (Kattegat included) keeps DEPONS's rule:
+The Curonian Lagoon is a separate water body on the 1 km Lithuania grid (the real Klaipeda Strait
+is narrower than one cell), so animals placed there are trapped by the DEPONS land check and form
+an isolated group that never rejoins the sea population. Placement for Lithuania is therefore
+restricted to the largest connected water body. Every other landscape (Kattegat included) keeps DEPONS's rule:
 any water cell, isolated pockets included.
 """
 

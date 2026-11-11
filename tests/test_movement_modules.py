@@ -8,6 +8,8 @@ Tests the modular movement system including:
 - Movement state management
 """
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -235,6 +237,37 @@ class TestDEPONSCRWMovementVectorized:
 
         assert not np.any(np.abs(res.turning_angle) == 180.0)
         assert np.all(np.abs(res.turning_angle) <= 180.0)
+
+    @staticmethod
+    def _half_masked_step(unmasked_salinity):
+        params = SimulationParameters(porpoise_count=8)
+        mod = DEPONSCRWMovementVectorized(params, rng=np.random.default_rng(5))
+        state = MovementState.create(8, rng=np.random.default_rng(5))
+        env = EnvironmentContext.create_homogeneous(8)
+        env.salinity[4:] = unmasked_salinity
+        x = np.full(8, 150.0, np.float32)
+        y = np.full(8, 150.0, np.float32)
+        mask = np.zeros(8, dtype=bool)
+        mask[:4] = True
+        return mod.compute_step(x, y, state, env, mask), mask
+
+    def test_agents_outside_the_mask_raise_no_overflow(self):
+        """An unmasked agent on a salinity-NODATA cell (-9999) gets log_mov ~200; the module's
+        step calculation must not raise 10**log_mov for it (it overflowed the float32 step
+        buffer: the live-app 'overflow encountered in power' at crw_core.py:131)."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            res, mask = self._half_masked_step(-9999.0)
+        assert np.all(res.dx[~mask] == 0) and np.all(res.dy[~mask] == 0)
+        assert np.all(res.log_mov[~mask] > 100)  # raw log_mov still returned unchanged
+
+    def test_unmasked_agents_do_not_change_masked_results(self):
+        normal, mask = self._half_masked_step(30.0)
+        nodata, _ = self._half_masked_step(-9999.0)
+        for field in ("dx", "dy", "new_heading", "step_distance", "pres_angle", "log_mov"):
+            np.testing.assert_array_equal(
+                getattr(nodata, field)[mask], getattr(normal, field)[mask], err_msg=field
+            )
 
 
 class TestJASMINEPhysicsMovement:

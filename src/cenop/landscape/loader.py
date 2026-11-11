@@ -28,6 +28,25 @@ PREY_FILE_PREFIX = "prey"
 SALINITY_FILE_PREFIX = "salinity"
 
 
+def nodata_on_water_counts(
+    depth: np.ndarray, layers: dict[str, np.ndarray], nodata: float
+) -> dict[str, int]:
+    """Count water cells (depth > 0) that have no value in each layer.
+
+    A value is missing when it equals ``nodata`` or is non-finite. A monthly layer of shape
+    (12, H, W) counts a cell once if any month is missing there.
+    """
+    water = depth > 0
+    counts = {}
+    for name, arr in layers.items():
+        a = np.asarray(arr, dtype=np.float64)
+        missing = np.isclose(a, nodata) | ~np.isfinite(a)
+        if missing.ndim == 3:
+            missing = missing.any(axis=0)
+        counts[name] = int((missing & water).sum())
+    return counts
+
+
 class LandscapeLoader:
     """
     Loads landscape data from files.
@@ -71,6 +90,29 @@ class LandscapeLoader:
         # Load monthly files
         entropy = self._load_monthly(PREY_FILE_PREFIX)
         salinity = self._load_monthly(SALINITY_FILE_PREFIX)
+
+        # NODATA on a water cell silently breaks the model there (salinity -9999 forces every
+        # CRW step to max_mov; patches/prey -9999 mean no food), so report it loudly.
+        gaps = nodata_on_water_counts(
+            depth,
+            {
+                "disttocoast": dist_to_coast,
+                "sediment": sediment,
+                "patches": food_prob,
+                "blocks": blocks,
+                "prey": entropy,
+                "salinity": salinity,
+            },
+            metadata.nodata_value,
+        )
+        gaps = {name: n for name, n in gaps.items() if n}
+        if gaps:
+            logger.warning(
+                "Landscape %s: water cells with NODATA (of %d water cells): %s",
+                self.landscape_name,
+                int((depth > 0).sum()),
+                ", ".join(f"{name} {n}" for name, n in gaps.items()),
+            )
 
         return {
             "metadata": metadata,

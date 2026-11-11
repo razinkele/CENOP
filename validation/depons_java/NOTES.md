@@ -216,4 +216,8 @@ Other verifications at this point:
   `FileNotFoundError: Monthly file not found: …/prey01.asc or …/prey0000_01.asc`. It
   fails loudly, with no silent fallback.
 - CENOP's committed baseline ends at population 1999 (`output/kattegat_ref/Population.txt`,
-  tick 86400).
+  tick 86400). *Superseded 2026-11-11:* the baselines were regenerated after the
+  phantom-food, dispersal and land-avoidance parity fixes; the undisturbed baseline now ends
+  at 55. It is not directly comparable with DEPONS's own 5-year runs (51 / 57, seeds 42 / 43):
+  those used the v3.2 landscape, while `data/Kattegat` is the v3.0 landscape, which has less
+  food, so CENOP's baseline falls much faster early (994 at day 63, against about 1,950 on v3.2).

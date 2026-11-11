@@ -1,47 +1,41 @@
 Kattegat ship-scenario reference baseline — PROVENANCE
 =======================================================
 
-Date generated:   2026-07-09
-Producing code:   branch review-fixes-2026-07-06, commit 5e11846
-                  (2026-07-06 deep-review fixes, ALL 29 tasks / Phases 1-6 complete;
-                   see docs/superpowers/plans/2026-07-06-review-fixes.md
-                   and docs/superpowers/specs/2026-07-06-deep-codebase-review.md)
+Date generated:   2026-11-11
+Producing code:   CENOP-JASMINE, commit 99d4c60 (merge of fix/phantom-food-2026-11-10)
 Command:          python3 scripts/run_kattegat_reference.py --count 2000 --years 2 \
                     --seed 42 --ships --out output/kattegat_ref_ships
-Landscape:        data/Kattegat (600x1000 cells), 637 real ship routes from data/Kattegat/ships.json
+Landscape:        data/Kattegat (600x1000 cells; DEPONS v3.0 Kattegat landscape),
+                  637 real ship routes from data/Kattegat/ships.json
 Seed:             42 (deterministic; DEPONS parameters.xml randomSeed is __NULL__)
 
-SUPERSEDES the prior baseline (commit 8fce1ac, Phases 1-3 + recycled-slot follow-up).
-The only production-NumPy-path behaviour change since 8fce1ac is Task 20 (Phase 4):
-AGE_DISTRIBUTION_FREQUENCY gains the dropped age-1 weight (311/54 -> 312/55 ones,
-now bit-identical to DEPONS PorpoiseSimBuilder.java), which shifts initial ages and
-therefore the entire seeded RNG stream. Phases 5-6 (JAX + Cython backend parity)
-do NOT touch the production NumPy/Numba ship path used for this baseline. The
-Phase 1-3 DEPONS-parity changes below remain in force from the 8fce1ac regeneration:
+SUPERSEDES the prior baseline (commit 3a87975, 2026-07-09, code 5e11846). Behaviour
+changes since then, all aimed at DEPONS 3.2 parity (details in CHANGELOG [Unreleased]
+and docs/superpowers/specs/2026-11-10-phantom-food-investigation.md):
 
-  - Paused / no-buoy ships are now excluded from the deterrence candidate set
-    (DEPONS Ship.deterPorpoise gate: current_buoy_idx >= 0 and ticks_paused <= 0).
-    A paused ship previously kept deterring (its 30 interpolated sub-positions
-    collapse to a stationary point) for the whole pause — the direct cause of the
-    small reduction in deterrence events below.
-  - Food regrows once per day (was twice) on the vectorized path.
-  - PersistentSpatialMemory uses the population's seeded RNG and centres
-    preferred_distance on params.psm_dist_mean (350, DEPONS 3.2) — this inserts
-    per-agent normal draws into the stream and shifts ALL downstream seeded
-    outputs (positions, headings, mating days, dispersal targets).
-  - Weaned calves that recycle a dead agent's slot are fully reset to newborn
-    state (SoA fields + PSM preferred_distance/memory + behaviour/energy rows + id),
-    no longer inheriting the dead occupant's state.
-  - Per-tick birth/death and per-cause mortality (deaths_starvation/old_age/bycatch)
-    are now true counts written to Population.txt (previously the per-cause columns
-    were always 0); they reset monthly in step with births/deaths.
+  - Phantom food removed: the eat kernels no longer top up empty cells to 0.01
+    (eba75f9). This was what kept the old baselines' population near 2000.
+  - communication_enabled now defaults to False (864d0c9).
+  - PSM-Type2 dispersal ported to DEPONS (D1-D14): validated targets and target
+    heading, three-drop trigger on 3-d.p. daily means, psm_angle turn on path length,
+    per-step look-ahead stops, path-length completion.
+  - Land avoidance ported to DEPONS (D15): checkDepth look-ahead of presMov cells
+    and avoidLand before heading composition, reflection only after, beh-6 turn-back;
+    plus the D9 first-call not-enough-water dispersal stop.
+
+These change the seeded RNG stream and the population trajectory; outputs are not
+comparable with the previous baseline.
 
 Run summary:
-  - 2 yr (34,560 ticks), N=2000, population stable (2000 -> 1998; final tick pop 1998)
-  - 183,932 nonzero deter_strength records, max 0.3163
-    (compare: prior 8fce1ac baseline had 183,039 nonzero, max 0.3163 -> +0.5% events
-     from the Task 20 age-init RNG shift moving porpoise positions; peak unchanged)
-  - Population stability confirms the changes are not pathological over/under-deterrence.
+  - 2 yr (34,560 ticks), N=2000; population 2000 -> 314 (day 180) -> 154 (day 360)
+    -> 135 (day 540) -> 114 (day 720). The previous baseline stayed near 2000 (1998).
+  - 37,091 nonzero deter_strength records, max 0.3168 (previous: 183,932, max 0.3163).
+    The record count falls with the population; the peak is unchanged.
+  - The decline matches the other regenerated variants (undisturbed 5 yr: 2000 -> 55;
+    turbines Kattegat-test 2 yr: 2000 -> 104). data/Kattegat is the v3.0 landscape,
+    which has less food than the v3.2 landscape used for the DEPONS Java comparisons,
+    so CENOP's baselines fall faster early (undisturbed: 994 at day 63) than the
+    v3.2 runs reported in the investigation spec.
 
 Committed files are the compact DEPONS-format outputs (Population.txt, Energy.txt,
 Mortality.txt) plus this PROVENANCE.txt. The heavy per-individual / per-event files

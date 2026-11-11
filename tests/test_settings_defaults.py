@@ -107,3 +107,36 @@ class TestEnergyPanelDecayDefaults:
         sim = create_simulation_from_inputs(_make_mock_input(ui_rS, ui_rR))
         assert sim.params.r_s == pytest.approx(0.03)
         assert sim.params.r_r == pytest.approx(0.03)
+
+
+class TestCommunicationDefault:
+    """JASMINE social communication is opt-in. With realistic (non-phantom) food, DEPONS's CRW
+    weight is ~0.001, so the social vector would dictate headings (reversing movement); off by
+    default keeps headless runs DEPONS-faithful and consistent with the UI checkbox.
+    See docs/superpowers/specs/2026-11-10-phantom-food-investigation.md (finding 2)."""
+
+    def test_headless_default_is_off(self):
+        from cenop.parameters.simulation_params import SimulationParameters
+
+        assert SimulationParameters().communication_enabled is False
+
+    def test_ui_checkbox_default_is_off(self):
+        import inspect
+
+        from cenop.ui import sidebar
+
+        src = inspect.getsource(sidebar)
+        assert (
+            'ui.input_checkbox("communication_enabled", "Enable Social Calls", value=False)' in src
+        )
+
+
+class TestPsmAngleDefault:
+    def test_ui_psm_angle_default_is_40(self):
+        import inspect
+
+        import cenop.ui.tabs.settings as settings_mod
+
+        src = inspect.getsource(settings_mod)
+        assert 'ui.input_numeric("psm_angle", None, value=40.0, step=1.0)' in src
+        assert "DEPONS default: 40°" in src

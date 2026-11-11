@@ -195,10 +195,30 @@ class TestLandAvoidance:
         assert water_fraction > 0.95, f"Only {water_fraction:.1%} of porpoises in water"
 
     def test_land_avoidance_turn_angles(self):
-        """Land avoidance should use correct turn angles (40, 70, 120 degrees)."""
-        # This is tested implicitly by checking porpoises stay in water
-        # The implementation uses [40, 70, 120] degree turns (verified by code inspection)
-        pass
+        """DEPONS avoidLand on the CRW path (D15): an agent with land presMov cells ahead
+        turns 40 + r (first tier) or 70 + r (second tier), r ~ U(0, 10), to the right on
+        equal depths, before heading composition."""
+        params = SimulationParameters(porpoise_count=2, random_seed=42)
+        landscape = create_homogeneous_landscape(200, 200)
+        landscape._depth[:] = 30.0
+        landscape._depth[100:, :] = -10.0  # coast: land at y >= 100
+        landscape.landscape_name = "TestCoast"
+        pop = PorpoisePopulation(2, params, landscape)
+        assert not pop._skip_land_avoidance
+
+        # Both face the coast (north) with presMov = 6 cells. First-tier points
+        # (+-40..50 deg, 6 cells ahead) reach y = 99.6..98.9 from y = 95 (water) but
+        # y = 102.1..101.4 from y = 97.5 (land); second-tier points (+-70..80 deg) reach
+        # y = 99.6..98.5 from y = 97.5 (water).
+        pop.x[:] = [60.5, 140.5]
+        pop.y[:] = [95.0, 97.5]
+        pop.heading[:] = 0.0
+        pop._log_mov[:] = np.log10(6.0)
+        pop._depons_land_check(pop.active_mask.copy())
+
+        assert 40.0 <= pop.heading[0] < 50.0
+        assert 70.0 <= pop.heading[1] < 80.0
+        assert pop._enough_water_ahead.all()
 
 
 class TestDispersalMovement:
@@ -236,7 +256,7 @@ class TestDispersalMovement:
         print(f"Normal mean change: {np.mean(change_norm):.1f}")
 
     def test_dispersal_completion(self):
-        """Dispersal should complete at 95% of target distance."""
+        """Dispersal should complete once the path travelled reaches 95% of target distance."""
         params = SimulationParameters(porpoise_count=10, random_seed=42)
         landscape = create_homogeneous_landscape(width=500, height=500)
         pop = PorpoisePopulation(10, params, landscape)
@@ -251,13 +271,18 @@ class TestDispersalMovement:
         pop.dispersal_target_x[0] = 150.0
         pop.dispersal_target_y[0] = 100.0
         pop.heading[0] = 90.0  # East
+        pop._prev_step_heading[0] = 90.0
 
-        # Move towards target manually
-        pop.x[0] = 147.5  # 95% of distance
-        pop._update_dispersal(pop.active_mask)
+        # Path length (not displacement) decides; the porpoise is still at its start point
+        pop.dispersal_distance_traveled[0] = 47.0  # below 95% of 50 cells
+        pop._disperse_step(pop.active_mask)
+        assert pop.is_dispersing[0], "Dispersal should continue below 95% path length"
+
+        pop.dispersal_distance_traveled[0] = 47.5  # 95% of 50 cells
+        pop._disperse_step(pop.active_mask)
 
         # Should complete dispersal
-        assert not pop.is_dispersing[0], "Dispersal should complete at 95% distance"
+        assert not pop.is_dispersing[0], "Dispersal should complete at 95% path length"
 
 
 class TestMovementStatistics:

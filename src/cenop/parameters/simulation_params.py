@@ -145,7 +145,9 @@ class SimulationParameters:
     deter_response_slope: float = 0.2  # Steepness (per dB) of logistic turbine response
 
     # === Social communication (new feature) ===
-    communication_enabled: bool = True  # Enable social calling and cohesion
+    # Opt-in (JASMINE): with realistic food the DEPONS CRW weight is ~0.001, so the social vector
+    # would dictate headings. Off matches the UI checkbox default and DEPONS behaviour.
+    communication_enabled: bool = False  # Enable social calling and cohesion
     communication_range_km: float = 10.0  # Communication detection range (km)
     communication_source_level: float = 160.0  # Source level (dB re 1 µPa) of porpoise calls
     communication_threshold: float = 120.0  # RL for 50% detection probability (dB)

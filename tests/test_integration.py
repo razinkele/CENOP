@@ -616,6 +616,7 @@ class TestDispersalBehavior:
         pop = PorpoisePopulation(count=10, params=params)
 
         # Manually trigger dispersal for first porpoise
+        pop._psm_instances[0].preferred_distance = 20.0
         pop._start_dispersal(0)
 
         assert pop.is_dispersing[0], "Porpoise 0 should be dispersing"
@@ -642,13 +643,14 @@ class TestDispersalBehavior:
             pop.step()
 
         # Manually trigger dispersal
+        pop._psm_instances[0].preferred_distance = 20.0
         pop._start_dispersal(0)
 
         assert pop.is_dispersing[0]
         assert pop.dispersal_target_distance[0] > 0, "Target distance should be set"
 
     def test_dispersal_completion(self):
-        """Verify dispersal ends when target distance reached."""
+        """Verify dispersal ends when the path travelled reaches the target distance."""
         from cenop.agents.population import PorpoisePopulation
         from cenop.parameters import SimulationParameters
 
@@ -656,19 +658,24 @@ class TestDispersalBehavior:
         pop = PorpoisePopulation(count=1, params=params)
 
         # Manually trigger dispersal
-        pop._start_dispersal(0)
+        pop.x[0] = pop.y[0] = 500.0
+        pop._psm_instances[0].preferred_distance = 20.0
+        assert pop._start_dispersal(0)
 
         # Set a short target distance for testing
         pop.dispersal_target_distance[0] = 5.0  # 5 cells
 
-        # Move the porpoise past the target distance
+        # Displacement past the target no longer ends dispersal
         pop.x[0] = pop.dispersal_start_x[0] + 6.0
         pop.y[0] = pop.dispersal_start_y[0]
-
-        # Update dispersal should detect completion
         pop._update_dispersal(pop.active_mask)
+        assert pop.is_dispersing[0]
 
-        assert not pop.is_dispersing[0], "Dispersal should end when target reached"
+        # The path travelled does, at the start of the next dispersal step
+        pop.dispersal_distance_traveled[0] = 6.0
+        pop._disperse_step(pop.active_mask)
+
+        assert not pop.is_dispersing[0], "Dispersal should end when target path length reached"
 
 
 class TestEnhancedEnergetics:

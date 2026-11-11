@@ -1,0 +1,17 @@
+{
+  "id": "kattegat-psm2-tracked200-probe",
+  "description": "Investigation probe: psm2 undisturbed, 200 tracked porpoises (on-patch rate).",
+  "overrides": {
+    "landscape": "Kattegat",
+    "dispersal": "PSM-Type2",
+    "ships": "false",
+    "turbines": "off",
+    "porpoiseCount": "2000",
+    "simYears": "1",
+    "trackedPorpoiseCount": "200"
+  },
+  "seeds": [
+    42
+  ],
+  "determinism_seed": 42
+}

@@ -13,7 +13,134 @@ All notable changes to CENOP-JASMINE are documented in this file.
   `validation/depons_java/README.md` and
   `docs/superpowers/specs/2026-11-10-track-a1-spike-report.md`
 
+### Fixed — model behaviour changes (see `docs/superpowers/specs/2026-11-10-phantom-food-investigation.md`)
+- **Phantom food.** The vectorised eating code raised every cell an animal visited to the
+  0.01 "artificial food" floor, including empty cells outside the food patches. DEPONS floors
+  only cells that had food. Within a month almost the whole sea held 0.01 food that porpoises
+  ate at nearly every step (more than twice their basal energy use), so populations on
+  patchy real landscapes (e.g. Kattegat) were artificially stable.
+  - Fixed in the Numba (v1/v2), JAX and Cython eat paths. The JAX path also no longer lets dead
+    agent slots remove food.
+  - Present in every release since the vectorised eat path was introduced (2026-01-26),
+    including v2.2.0.
+  - Homogeneous landscapes (food in every cell), including the slow validation tier, are
+    unaffected.
+  - **Committed Kattegat baselines are stale.** Real-landscape population results from earlier
+    versions should be re-run.
+
+### Changed
+- **Land avoidance on CRW movement follows DEPONS 3.2 (spec D15), plus the D9 first-call water
+  stop.** This is a behaviour change.
+  - Look-ahead of `presMov` cells (path sampled every 0.1 cell) before heading composition;
+    escape turns of 40/70/120 degrees; walk-back (beh 4) and deepest-neighbour (beh 5) fallbacks;
+    no post-composition land check; beh-6 turn-back after a post-move rollback.
+  - D9: a new disperser whose stored not-enough-water state is set stops at its first dispersal
+    call.
+  - Implemented on the NumPy/Numba and JAX paths. Homogeneous landscapes, the Cython fast path
+    and non-CRW movement modules are unchanged.
+  - Measured against DEPONS (two seeds, Kattegat): dispersal-off N within +3.3% to day 165,
+    activation 0.152 / 0.157, coast share 1.0-1.2%; one intake bin of seed 43 is +3.3%
+    (accepted, spec Finding 4 Step 5).
+  - **The committed Kattegat baselines are stale**, and seeded runs are not comparable with
+    seeded runs from earlier versions (the land check draws from a Numba RNG seeded from the
+    population RNG).
+  - **Default Lithuania landscape (60 days, 10000 animals, s42 / s43), against the code before
+    this change:** N 9856 / 9839 against 9989 / 9991; mean energy 15.51 / 15.50 against
+    14.06 / 14.05. There is no DEPONS reference for Lithuania, and the known 1 km cell-size issue
+    (km-to-cell conversions assume 400 m cells, see Known issues) applies there. Diagnostics below
+    are from seed 42.
+    - **The N drop is the Curonian Lagoon.** At 1 km resolution the lagoon (1,422 water cells,
+      mean depth about 2.9 m, food per cell about a third of the sea's) is a separate water body,
+      at least 2 land cells from the sea. The old destination-only check let animals hop the spit
+      (133,118 crossings, 0.46% of animal-ticks). With the DEPONS path check, the 1.5% of animals
+      placed in the lagoon at the start are trapped (1 crossing) and starve within about 60 days:
+      134 of the 144 deaths are in the lagoon, which accounts for the whole N drop
+      (9989 → 9856). The new behaviour is the faithful one; the trap is a data/resolution
+      artefact (the real Klaipėda Strait is narrower than one cell). Whether to connect the
+      lagoon or to restrict initial placement to the sea is an open decision.
+    - **The energy rise is in the sea population:** day-60 sea energy 15.54 against 14.06 (the
+      lagoon deaths shift the mean by less than 0.03). Intake per animal-tick is +7.4% over the
+      60 days (+11%, +9%, +8.6% and +6.6% in the 5 days before days 15, 30, 45 and 60), and time
+      in 1-5 m water falls from 1.31% to 0.90%. It does not appear when food is not limiting
+      (2000 animals, 15 days: sea energy at the cap, 19.835 in both). Ruled out: lagoon trapping,
+      stuck animals (zero-displacement ticks under 0.005% of animal-ticks in both 10000-animal
+      runs) and the start-of-tick eat cell. The mechanism is open; a plausible, untested
+      contributor is the look-ahead, which on 1 km cells covers 2.5 times its intended distance
+      (see Known issues). The sign is opposite to Kattegat, where the port brought intake down
+      to DEPONS's level.
+    - Time within 1 km of the coast (19.9% / 19.8% against 20.5% / 20.5%) says little at this
+      resolution: 27% of Lithuania's water cells have `disttocoast` under 1 km.
+  - **Slower on real landscapes (NumPy/Numba default path).** Without the fix described next,
+    the land check took about 46-47% of tick time on Lithuania and 15% on Kattegat (2000
+    animals); an instrumented Lithuania 60-day run (10000 animals, seed 42) took about 289 s
+    against 161 s before this change, and Kattegat runs took about 30% longer (10 days, 2000
+    animals). Fix: the final path check is no longer repeated for an agent that left the rounds
+    on a pass (91% of checked agents on Lithuania and 95% on Kattegat pass at round 0), with
+    identical results and RNG draws. Timed over 96 ticks after a one-day warm-up (2000 animals,
+    three runs each): land check 9.2 → 5.5 ms per tick on Lithuania (46% → 34% of tick time;
+    tick 19.9 → 16.2 ms) and 1.8 → 1.0 ms on Kattegat (15% → 9%; tick 12.2 → 11.4 ms). A 60-day
+    wall time after the fix was not measured.
+- **`communication_enabled` now defaults to `False` in `SimulationParameters`.** This matches
+  the UI checkbox, which was already off.
+  - With realistic food the DEPONS random-walk weight is about 0.001, so the JASMINE
+    social/cohesion vector took over the heading: 69% of steps reversed direction, and net
+    movement was 1.9 km a day against DEPONS's 10.5 km.
+  - JASMINE social behaviour is now opt-in. Headless runs (scripts, baselines, tests) were the
+    only ones affected.
+  - With communication off, homogeneous landscapes now use the (equivalence-tested) Cython
+    fast path.
+
+- **PSM-Type2 dispersal now follows DEPONS 3.2. This is a model behaviour change.** On
+  Kattegat, 20.3% of animal-ticks were dispersing in stock CENOP against 1.34% in DEPONS
+  (days 0-120). Now:
+  - the trigger fires after `t_disp` strict drops of the 3-d.p. daily mean energy;
+  - targets are validated, and an animal with no valid target does not disperse;
+  - a new disperser starts heading for its target;
+  - the dispersal turn is +/-`psm_angle` (40 degrees), weighted by path length travelled;
+  - dispersal stops when the point 5 cells ahead is off the grid or no deeper than `wdisp` (4 m);
+  - completion is on path length travelled (95% of the target distance).
+  - The JAX backend mirrors all of this.
+  - Measured against DEPONS 3.2 (Kattegat, seeds 42 and 43, days 0-120): activation 0.126 /
+    0.134 (DEPONS 0.133), episode median 5 moves, mean 11.0 / 10.8 (12.1), tick share dispersing
+    1.09% / 1.15% (1.34%), N with/without dispersal at day 150 0.85 / 0.82 (0.80 / 0.81).
+  - **Dispersal is now rare on small grids.** Targets are drawn at N(350,100) km and rarely fit
+    on Lithuania (the default landscape), Homogeneous or the 400x400 landscapes (DanTysk,
+    Gemini). Share of activations that find a random target (empty memory, initial positions;
+    `target_success.py` from the final review): Lithuania 329x381 0.5%, Homogeneous 400x400
+    2.6%, Kattegat 600x1000 31.9%. Before this change every activation found a target.
+  - Seeded runs are still deterministic but are not comparable with seeded runs from earlier
+    versions: the PSM-turn draw now precedes the CRW draws, and an activation with no memory
+    target draws 2x1000 random numbers for its random-target tries.
+  - **The committed Kattegat baselines are stale** until regenerated.
+
 ### Known issues (found 2026-11-10, not yet fixed)
+- **JASMINE social vector scaling.** When enabled, the social vector overrides the DEPONS random
+  walk under realistic food. It needs rescaling before social behaviour is used in science runs.
+- **Non-CRW movement modules keep the old dispersal completion.** The JASMINE physics and
+  hybrid modules (`_update_movement_module_generic`) still end dispersal on straight-line
+  displacement from the start point, not on path length. DEPONS parity applies to the CRW paths
+  only.
+- Not ported from DEPONS dispersal: the order of the reference-memory turn relative to the
+  dispersal move (spec row D16).
+- **Remainders after the D15 port (spec Finding 4, Step 5).**
+  - Energy undershoot: with dispersal off, mean energy at days 90 / 120 / 150 / 165 is
+    6.32 / 5.13 / 3.92 / 3.77 (s42) and 6.23 / 5.08 / 3.91 / 3.77 (s43), against DEPONS
+    6.36 / 5.24 / 4.09 / 3.79 and 6.33 / 5.31 / 4.17 / 3.88: about 0.0-0.3 low (max 0.31, at
+    s43 day 135), with N matching.
+  - Late deaths: days 165-180 show 169 / 160 CENOP deaths against 203 / 191 in DEPONS, while
+    the lactating share rises to 4-6%. Day 180 N with dispersal on is +13% / +8% above DEPONS.
+  - D15 is no longer a candidate cause of either.
+- **JAX backend is about 5x slower per tick on real landscapes after the land-avoidance port**
+  (about 70 ms against 13 ms before, at 2000 animals; Numba about 7 ms). JAX stays opt-in; a
+  follow-up can compact the still-needing agents in the land-check loop.
+- **Known deviations from DEPONS introduced by the land-avoidance port:** beh-5 depth ties use a
+  fixed neighbour order (DEPONS shuffles); look-ahead points are reflected at the grid edge as in
+  DEPONS's BouncyBorders, but beh-5 neighbours outside the grid read as land.
+- **Lithuania's 1 km cells conflict with CENOP's 400 m km-to-cell conversions.**
+  `data/Lithuania/bathy.asc` has CELLSIZE 1000, but CENOP converts km to cells by dividing by
+  0.4 (DEPONS's 400 m cells) for dispersal distances, the dispersal step and other movement
+  scales, so on Lithuania these cover 2.5 times the intended distance. Pre-existing, and outside
+  the dispersal port.
 - `data/Kattegat` is the DEPONS **v3.0** Kattegat landscape, not v3.2 (all 33 files
   byte-identical to v3.0; prey, salinity, distance-to-coast and patch maps differ from
   v3.2). CENOP's loader cannot read the v3.2 files as shipped

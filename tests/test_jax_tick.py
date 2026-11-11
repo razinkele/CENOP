@@ -1,5 +1,7 @@
 """Tests for JAX JIT tick implementation."""
 
+import functools
+
 import numpy as np
 import pytest
 
@@ -578,75 +580,134 @@ def _make_heading_inputs(n=100, seed=42):
         social_dy=jnp.zeros(n, dtype=jnp.float64),
         mask=jnp.ones(n, dtype=bool),
         is_dispersing=jnp.zeros(n, dtype=bool),
-        dispersal_target_x=jnp.zeros(n, dtype=jnp.float64),
-        dispersal_target_y=jnp.zeros(n, dtype=jnp.float64),
-        dispersal_target_distance=jnp.zeros(n, dtype=jnp.float64),
-        prev_step_heading=jnp.array(rng.uniform(0, 360, n), dtype=jnp.float64),
-        x=jnp.array(rng.uniform(10, 490, n), dtype=jnp.float32),
-        y=jnp.array(rng.uniform(10, 490, n), dtype=jnp.float32),
+        prev_angle=jnp.array(rng.uniform(-90, 90, n), dtype=jnp.float64),
         inertia_const=0.001,
         mean_disp_dist=2.0,
-        dispersal_start_x=jnp.zeros(n, dtype=jnp.float64),
-        dispersal_start_y=jnp.zeros(n, dtype=jnp.float64),
-        psm_angle=20.0,
-        psm_log=0.6,
-        disp_key=jax.random.PRNGKey(seed),
     )
+
+
+def _disperse_step_inputs(n, seed=0):
+    """jax_disperse_step inputs: n dispersers mid-grid over deep water, heading 0."""
+    world = 200
+    return dict(
+        x=jnp.full(n, 100.5, dtype=jnp.float32),
+        y=jnp.full(n, 100.5, dtype=jnp.float32),
+        heading=jnp.zeros(n, dtype=jnp.float32),
+        prev_step_heading=jnp.zeros(n, dtype=jnp.float32),
+        is_dispersing=jnp.ones(n, dtype=bool),
+        dispersal_distance_traveled=jnp.zeros(n, dtype=jnp.float32),
+        dispersal_target_distance=jnp.full(n, 500.0, dtype=jnp.float32),
+        mask=jnp.ones(n, dtype=bool),
+        psm_angle=40.0,
+        psm_log=0.6,
+        mean_disp_dist=2.0,
+        depth_grid=jnp.full((world, world), 30.0, dtype=jnp.float32),
+        min_depth_dispersal=4.0,
+        world_w=world,
+        world_h=world,
+        key=jax.random.PRNGKey(seed),
+    )
+
+
+class TestJaxDisperseStep:
+    """jax_disperse_step mirrors PorpoisePopulation._disperse_step (DEPONS disperse())."""
+
+    def test_jax_disperse_step_matches_numpy(self):
+        from cenop.agents.population import PorpoisePopulation
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        from cenop.optimizations.jax_kernels import jax_disperse_step
+        from cenop.parameters.simulation_params import SimulationParameters
+
+        T = 500.0
+        land = create_homogeneous_landscape(200, 200)
+        params = SimulationParameters(random_seed=1, communication_enabled=False, psm_angle=0.0)
+        pop = PorpoisePopulation(10, params, land)
+
+        def disperser(i, x, y, psh, heading, traveled=0.0, target=T):
+            pop.x[i], pop.y[i] = x, y
+            pop.is_dispersing[i] = True
+            pop.dispersal_target_distance[i] = target
+            pop.dispersal_distance_traveled[i] = traveled
+            pop._prev_step_heading[i] = psh
+            pop.heading[i] = heading
+
+        disperser(0, 100.5, 100.5, 90.0, 5.0, traveled=10.0)  # deep water: continues, turns
+        disperser(1, 100.5, 50.5, 90.0, 10.0)  # shallow ahead: stops, heading back to 10
+        land._depth[50, 105] = 3.0
+        disperser(2, 100.5, 150.5, 90.0, 20.0)  # NaN depth ahead: stops
+        land._depth[150, 105] = np.nan
+        disperser(3, 100.5, 198.5, 0.0, 30.0)  # off the top edge ahead: stops
+        disperser(4, 2.5, 30.5, 270.0, 40.0)  # off the left edge ahead: stops
+        disperser(5, 60.5, 60.5, 90.0, 50.0, traveled=0.96 * T)  # path complete: no turn
+        disperser(6, 60.5, 140.5, 90.0, 60.0, target=0.0)  # zero target: completes, no NaN
+        disperser(7, 140.5, 60.5, 90.0, 70.0, target=0.0)  # inactive slot: untouched
+        pop.active_mask[7] = False
+        disperser(8, 140.5, 140.5, 45.0, 45.0, traveled=0.5 * T)  # deep water: continues
+        pop.x[9], pop.y[9], pop.heading[9] = 120.5, 120.5, 80.0  # not dispersing: untouched
+        pop.is_dispersing[9] = False
+
+        out = jax_disperse_step(
+            jnp.asarray(pop.x),
+            jnp.asarray(pop.y),
+            jnp.asarray(pop.heading),
+            jnp.asarray(pop._prev_step_heading),
+            jnp.asarray(pop.is_dispersing),
+            jnp.asarray(pop.dispersal_distance_traveled),
+            jnp.asarray(pop.dispersal_target_distance),
+            jnp.asarray(pop.active_mask),
+            float(params.psm_angle),
+            float(params.psm_log),
+            float(params.mean_disp_dist),
+            jnp.asarray(land._depth.astype(np.float32)),
+            float(params.min_depth_dispersal),
+            land.width,
+            land.height,
+            jax.random.PRNGKey(3),
+        )
+        heading, prev_step_heading, is_dispersing, traveled = (np.asarray(a) for a in out)
+
+        pop._disperse_step(pop.active_mask)
+
+        np.testing.assert_array_equal(
+            is_dispersing, [True, False, False, False, False, False, False, True, True, False]
+        )
+        np.testing.assert_array_equal(is_dispersing, pop.is_dispersing)
+        np.testing.assert_array_equal(heading, pop.heading)
+        np.testing.assert_array_equal(prev_step_heading, pop._prev_step_heading)
+        np.testing.assert_array_equal(traveled, pop.dispersal_distance_traveled)
+        assert np.isfinite(heading).all()
+
+    def test_dispersal_heading_matches_reference(self):
+        """PSM turn = U(-psm_angle, psm_angle) * SSLogis(3p - 1.5), p = traveled / (0.95 T).
+
+        traveled = 0.9 * 0.95 * T gives p = 0.9 and logistic ~0.881 (max turn ~35.2 deg at
+        psm_angle 40); without the 0.95 factor p = 0.855 and the max turn would be ~34.2.
+        """
+        from cenop.optimizations.jax_kernels import jax_disperse_step
+
+        n, T, prev = 4000, 500.0, 100.0
+        psm_angle, psm_log = 40.0, 0.6
+        inputs = _disperse_step_inputs(n, seed=7)
+        inputs["prev_step_heading"] = jnp.full(n, prev, dtype=jnp.float32)
+        inputs["dispersal_target_distance"] = jnp.full(n, T, dtype=jnp.float32)
+        inputs["dispersal_distance_traveled"] = jnp.full(n, 0.9 * 0.95 * T, dtype=jnp.float32)
+
+        heading, new_psh, is_disp, _ = jax_disperse_step(**inputs)
+        heading = np.asarray(heading)
+
+        assert np.asarray(is_disp).all(), "mid-grid dispersers over deep water must continue"
+        np.testing.assert_array_equal(np.asarray(new_psh), heading)
+        logistic = 1.0 / (1.0 + np.exp(-(3.0 * 0.9 - 1.5) / psm_log))
+        max_dev = psm_angle * logistic
+        dev = (heading - prev + 180.0) % 360.0 - 180.0
+        assert np.max(np.abs(dev)) <= max_dev + 1e-3
+        np.testing.assert_allclose(np.max(dev), max_dev, atol=0.2)
+        np.testing.assert_allclose(np.min(dev), -max_dev, atol=0.2)
+        assert abs(np.mean(dev)) < 1.0, f"mean dev {np.mean(dev):.3f} not ~0 (asymmetric turn)"
 
 
 class TestJaxHeadingAndPosition:
     """Tests for heading composition, boundary reflection, and position update."""
-
-    def test_dispersal_heading_matches_reference(self):
-        """JAX dispersal heading matches NumPy _apply_dispersal_heading formula.
-
-        Reference (population.py _apply_dispersal_heading / DispersalPSMType2.java):
-            distPct  = dist_travelled_from_start / dispersal_target_distance
-            distLogX = 3*distPct - 1.5
-            logistic = 1 / (1 + exp((0 - distLogX)/psm_log))   # SSLogis phi3 = psm_log
-            delta    = U(-psm_angle, +psm_angle) * logistic
-            heading  = prev_step_heading + delta               (mod 360)
-        The old kernel used max_angle=120, distance-to-TARGET, phi3=1.0 and a
-        deterministic sign-toward-target turn — all wrong.
-        """
-        from cenop.optimizations.jax_kernels import jax_heading_composition
-
-        n = 4000
-        psm_angle, psm_log, prev = 20.0, 0.6, 100.0
-        inputs = _make_heading_inputs(n=n, seed=21)
-        inputs["is_dispersing"] = jnp.ones(n, dtype=bool)
-        inputs["mask"] = jnp.ones(n, dtype=bool)
-        inputs["prev_step_heading"] = jnp.full(n, prev, dtype=jnp.float64)
-        inputs["psm_angle"] = psm_angle
-        inputs["psm_log"] = psm_log
-        inputs["disp_key"] = jax.random.PRNGKey(7)
-        # Travelled 100 of a 100-cell dispersal from start (0,0) -> distPct = 1.0.
-        inputs["dispersal_start_x"] = jnp.zeros(n, dtype=jnp.float64)
-        inputs["dispersal_start_y"] = jnp.zeros(n, dtype=jnp.float64)
-        inputs["x"] = jnp.full(n, 100.0, dtype=jnp.float32)
-        inputs["y"] = jnp.zeros(n, dtype=jnp.float32)
-        inputs["dispersal_target_distance"] = jnp.full(n, 100.0, dtype=jnp.float64)
-        # Target far away: old (distance-to-target) code would steer ~120 deg here.
-        inputs["dispersal_target_x"] = jnp.full(n, 5000.0, dtype=jnp.float64)
-        inputs["dispersal_target_y"] = jnp.full(n, 5000.0, dtype=jnp.float64)
-
-        new_heading = np.asarray(jax_heading_composition(**inputs)[0])
-
-        dist_log_x = 3.0 * 1.0 - 1.5
-        logistic = 1.0 / (1.0 + np.exp((0.0 - dist_log_x) / psm_log))  # ~0.9242
-        max_dev = psm_angle * logistic  # ~18.48
-        dev = (new_heading - prev + 180.0) % 360.0 - 180.0
-
-        assert np.max(np.abs(dev)) <= max_dev + 1e-4, (
-            f"max|dev|={np.max(np.abs(dev)):.3f} > psm_angle*logistic={max_dev:.3f} "
-            "(max_angle should be psm_angle, not 120)"
-        )
-        assert np.min(dev) < -0.5 * max_dev, f"no negative deltas (not random): {np.min(dev):.3f}"
-        assert np.max(dev) > 0.5 * max_dev, f"no positive deltas (not random): {np.max(dev):.3f}"
-        # Exact scale pins distance-TRAVELLED (18.48) vs distance-to-target (~20) and phi3=0.6.
-        np.testing.assert_allclose(np.max(dev), max_dev, atol=0.2)
-        np.testing.assert_allclose(np.min(dev), -max_dev, atol=0.2)
-        assert abs(np.mean(dev)) < 0.5, f"mean dev {np.mean(dev):.3f} not ~0 (asymmetric turn)"
 
     def test_heading_composition_basic(self):
         """Heading should change after composition with non-zero inputs."""
@@ -682,48 +743,45 @@ class TestJaxHeadingAndPosition:
         np.testing.assert_array_equal(dy, 0.0)
         np.testing.assert_array_equal(step_dist, 0.0)
 
-    def test_dispersal_heading_override(self):
-        """Dispersing agents should head toward their dispersal target."""
+    def test_dispersers_keep_psm_heading_and_crw_state(self):
+        """Dispersers skip the CRW turn and composition (their heading is the one
+        jax_disperse_step set), take the fixed dispersal step, and keep prev_angle (D13)."""
         from cenop.optimizations.jax_kernels import jax_heading_composition
 
         n = 10
         inputs = _make_heading_inputs(n=n, seed=12)
-
-        # Make agents 0-4 dispersing, targeting (250, 250)
         is_disp = np.zeros(n, dtype=bool)
         is_disp[:5] = True
         inputs["is_dispersing"] = jnp.array(is_disp)
-        inputs["dispersal_target_x"] = jnp.full(n, 250.0, dtype=jnp.float64)
-        inputs["dispersal_target_y"] = jnp.full(n, 250.0, dtype=jnp.float64)
-        inputs["dispersal_target_distance"] = jnp.full(n, 100.0, dtype=jnp.float64)
 
-        # Place dispersing agents far from target
-        x = np.asarray(inputs["x"]).copy()
-        x[:5] = 50.0
-        inputs["x"] = jnp.array(x, dtype=jnp.float32)
-        y = np.asarray(inputs["y"]).copy()
-        y[:5] = 50.0
-        inputs["y"] = jnp.array(y, dtype=jnp.float32)
-
-        result = jax_heading_composition(**inputs)
-        new_heading = np.asarray(result[0])
-        step_dist = np.asarray(result[2])
-
-        # Dispersing agents' heading should be influenced by target direction
-        # Target is at (250, 250), agents at (50, 50) -> target heading ~45 degrees
-        # The SSLogis formula adjusts from prev_step_heading toward target
-        # Just verify the heading is a valid value
-        assert np.all(new_heading[:5] >= 0.0)
-        assert np.all(new_heading[:5] < 360.0)
-
-        # Dispersing step distance should be mean_disp_dist / 0.4 = 5.0
-        expected_disp_step = 2.0 / 0.4
-        np.testing.assert_allclose(
-            step_dist[:5],
-            expected_disp_step,
-            rtol=1e-10,
-            err_msg="Dispersing step should be mean_disp_dist / 0.4",
+        new_heading, new_prev_angle, step_dist, dx, dy, _, disp_delta = (
+            np.asarray(a) for a in jax_heading_composition(**inputs)
         )
+        heading = np.asarray(inputs["heading"])
+        prev_angle = np.asarray(inputs["prev_angle"])
+
+        np.testing.assert_array_equal(new_heading[:5], heading[:5])
+        np.testing.assert_array_equal(new_prev_angle[:5], prev_angle[:5])
+        np.testing.assert_allclose(step_dist[:5], 2.0 / 0.4, rtol=1e-10)
+        np.testing.assert_allclose(disp_delta, np.where(is_disp, 2.0 / 0.4, 0.0), rtol=1e-10)
+        rad = np.radians(heading[:5])
+        np.testing.assert_allclose(dx[:5], 5.0 * np.sin(rad), rtol=1e-10)
+        np.testing.assert_allclose(dy[:5], 5.0 * np.cos(rad), rtol=1e-10)
+        # CRW movers: prev_angle becomes the total turn
+        np.testing.assert_allclose(
+            new_prev_angle[5:], (new_heading[5:] - heading[5:] + 180.0) % 360.0 - 180.0
+        )
+
+    def test_inactive_agents_keep_prev_angle(self):
+        """Inactive slots keep prev_angle, as in the NumPy path."""
+        from cenop.optimizations.jax_kernels import jax_heading_composition
+
+        inputs = _make_heading_inputs(n=20, seed=17)
+        mask = np.ones(20, dtype=bool)
+        mask[:5] = False
+        inputs["mask"] = jnp.array(mask)
+        new_prev_angle = np.asarray(jax_heading_composition(**inputs)[1])
+        np.testing.assert_array_equal(new_prev_angle[:5], np.asarray(inputs["prev_angle"])[:5])
 
     def test_step_dist_computed_correctly(self):
         """step_dist = 10^log_mov / 4, dispersing = mean_disp_dist / 0.4."""
@@ -736,9 +794,6 @@ class TestJaxHeadingAndPosition:
         is_disp = np.zeros(n, dtype=bool)
         is_disp[10:15] = True
         inputs["is_dispersing"] = jnp.array(is_disp)
-        inputs["dispersal_target_x"] = jnp.full(n, 250.0, dtype=jnp.float64)
-        inputs["dispersal_target_y"] = jnp.full(n, 250.0, dtype=jnp.float64)
-        inputs["dispersal_target_distance"] = jnp.full(n, 100.0, dtype=jnp.float64)
 
         result = jax_heading_composition(**inputs)
         step_dist = np.asarray(result[2])
@@ -775,7 +830,7 @@ class TestJaxHeadingAndPosition:
         )
 
         result = jax_heading_composition(**inputs)
-        deter_strength = np.asarray(result[6])
+        deter_strength = np.asarray(result[5])
         expected = np.hypot(np.asarray(inputs["deter_dx"]), np.asarray(inputs["deter_dy"]))
 
         np.testing.assert_allclose(deter_strength, expected, rtol=1e-10)
@@ -1381,6 +1436,54 @@ class TestJaxEnergyHistory:
         np.testing.assert_array_equal(np.asarray(new_ticks), 0.0)
         assert int(np.asarray(new_tc)) == 0
 
+    @pytest.mark.parametrize("energy, expected", [(5.0004, 5.0), (5.0006, 5.001)])
+    def test_jax_energy_history_rounded_to_3dp(self, energy, expected):
+        """Daily mean rounded to 3 d.p., as NumPy _update_energy_history (DEPONS)."""
+        from cenop.optimizations.jax_kernels import jax_energy_history_update
+
+        n = 2
+        e = jnp.full(n, energy, dtype=jnp.float32)
+        mask = jnp.ones(n, dtype=bool)
+        ticks_today = jnp.zeros(n, dtype=jnp.float32)
+        history = jnp.zeros((n, 8), dtype=jnp.float32)
+        tick_counter = jnp.int32(0)
+        for i in range(48):
+            ticks_today, history, tick_counter = jax_energy_history_update(
+                e, mask, ticks_today, history, tick_counter, jnp.bool_(i == 47)
+            )
+        np.testing.assert_array_equal(np.asarray(history)[:, 0], np.float32(expected))
+
+    def test_jax_energy_history_rounding_matches_numpy_at_boundaries(self):
+        """Daily means next to a 3-d.p. rounding boundary: the kernel, called directly and
+        under jit, must give NumPy's float32 np.round result bit for bit."""
+        from cenop.agents.population import PorpoisePopulation
+        from cenop.optimizations.jax_kernels import jax_energy_history_update
+        from cenop.parameters.simulation_params import SimulationParameters
+
+        totals = np.array([247.03201, 699.24, 904.44006], dtype=np.float32)
+        n = len(totals)
+        # NumPy reference: the real _update_energy_history on the last tick of a day
+        pop = PorpoisePopulation(n, SimulationParameters(random_seed=1))
+        pop.energy[:] = 0.0
+        pop._energy_ticks_today[:] = totals
+        pop._tick_counter = 47
+        pop._global_tick += 1
+        pop._update_energy_history(pop.active_mask)
+        expected = pop._energy_history[:, 0].copy()
+        np.testing.assert_array_equal(expected, np.float32([5.146, 14.568, 18.842]))
+
+        args = (
+            jnp.zeros(n, dtype=jnp.float32),
+            jnp.ones(n, dtype=bool),
+            jnp.asarray(totals),
+            jnp.zeros((n, 10), dtype=jnp.float32),
+            jnp.int32(47),
+            jnp.bool_(True),
+        )
+        for fn in (jax_energy_history_update, jax.jit(jax_energy_history_update)):
+            _, history, _ = fn(*args)
+            np.testing.assert_array_equal(np.asarray(history)[:, 0], expected)
+
 
 # ---------------------------------------------------------------------------
 # Dispersal Update (J5)
@@ -1400,13 +1503,8 @@ class TestJaxDispersalUpdate:
 
         new_disp, new_dist, new_dde = jax_dispersal_update(
             is_dispersing=is_disp,
-            dispersal_start_x=jnp.zeros(n, dtype=jnp.float32),
-            dispersal_start_y=jnp.zeros(n, dtype=jnp.float32),
-            dispersal_target_distance=jnp.full(n, 100.0, dtype=jnp.float32),
             dispersal_distance_traveled=jnp.full(n, 50.0, dtype=jnp.float32),
             days_declining_energy=jnp.full(n, 3, dtype=jnp.int32),
-            x=jnp.full(n, 10.0, dtype=jnp.float32),
-            y=jnp.full(n, 10.0, dtype=jnp.float32),
             turbine_deter_strength=deter,
             energy_history=jnp.zeros((n, 8), dtype=jnp.float32),
             active_mask=jnp.ones(n, dtype=bool),
@@ -1414,39 +1512,31 @@ class TestJaxDispersalUpdate:
         )
 
         new_disp_np = np.asarray(new_disp)
-        # Agent 0: dispersing, no deterrence -> still dispersing (but may complete distance)
+        # Agent 0: dispersing, no deterrence -> still dispersing
         # Agent 1: dispersing + deterred -> stopped
         assert not new_disp_np[1], "Deterred agent should stop dispersal"
         # Agent 3: dispersing + deterred -> stopped
         assert not new_disp_np[3], "Deterred agent should stop dispersal"
 
-    def test_distance_completion(self):
-        """Agents reaching target distance should stop."""
+    def test_no_distance_completion(self):
+        """Completion is path-length based, at the start of the next movement tick
+        (jax_disperse_step); this end-of-tick update no longer completes dispersal."""
         from cenop.optimizations.jax_kernels import jax_dispersal_update
 
         n = 3
-        new_disp, _, _ = jax_dispersal_update(
+        traveled = jnp.array([95.0, 50.0, 100.0], dtype=jnp.float32)
+        new_disp, new_dist, _ = jax_dispersal_update(
             is_dispersing=jnp.ones(n, dtype=bool),
-            dispersal_start_x=jnp.zeros(n, dtype=jnp.float32),
-            dispersal_start_y=jnp.zeros(n, dtype=jnp.float32),
-            dispersal_target_distance=jnp.array([100.0, 100.0, 100.0], dtype=jnp.float32),
-            dispersal_distance_traveled=jnp.zeros(n, dtype=jnp.float32),
+            dispersal_distance_traveled=traveled,
             days_declining_energy=jnp.zeros(n, dtype=jnp.int32),
-            # Agent 0: at (96, 0) -> dist=96 >= 0.95*100=95 -> complete
-            # Agent 1: at (50, 0) -> dist=50 < 95 -> continue
-            # Agent 2: at (100, 0) -> dist=100 >= 95 -> complete
-            x=jnp.array([96.0, 50.0, 100.0], dtype=jnp.float32),
-            y=jnp.zeros(n, dtype=jnp.float32),
             turbine_deter_strength=jnp.zeros(n, dtype=jnp.float32),
             energy_history=jnp.zeros((n, 8), dtype=jnp.float32),
             active_mask=jnp.ones(n, dtype=bool),
             is_day_boundary=jnp.bool_(False),
         )
 
-        new_disp_np = np.asarray(new_disp)
-        assert not new_disp_np[0], "Agent at 96% should complete"
-        assert new_disp_np[1], "Agent at 50% should continue"
-        assert not new_disp_np[2], "Agent at 100% should complete"
+        assert np.asarray(new_disp).all()
+        np.testing.assert_array_equal(np.asarray(new_dist), np.asarray(traveled))
 
 
 # ---------------------------------------------------------------------------
@@ -1501,10 +1591,6 @@ class TestJaxTickComposition:
             jnp.zeros(n, dtype=jnp.float32),
             jnp.zeros(n, dtype=jnp.float32),
             jnp.zeros(n, dtype=jnp.float32),
-            jnp.zeros(n, dtype=jnp.float32),
-            jnp.zeros(n, dtype=jnp.float32),
-            jnp.zeros(n, dtype=jnp.float32),
-            jnp.zeros(n, dtype=jnp.float32),
             jnp.array(rng.uniform(5.0, 50.0, n), dtype=jnp.float64),
             jnp.array(rng.uniform(10.0, 35.0, n), dtype=jnp.float64),
             depth_grid,
@@ -1526,6 +1612,7 @@ class TestJaxTickComposition:
             20.0,
             0.6,
             1.0,
+            4.0,
             world_w,
             world_h,
             jax.random.PRNGKey(99),
@@ -1537,25 +1624,94 @@ class TestJaxTickComposition:
         assert np.all(new_y >= 0) and np.all(new_y < world_h)
         assert np.all(np.isfinite(new_x)) and np.all(np.isfinite(new_y))
 
+    def test_tick_movement_land_check_needs_a_sample_bound(self):
+        """land_check=True with n_samples_max <= 0 would check no path samples; both are static,
+        so this fails at trace time with a clear error."""
+        from cenop.optimizations.tick_jax import jax_tick_movement
+
+        n, mem, w = 4, 20, 50
+        f32, f64 = jnp.float32, jnp.float64
+        z32, z64 = jnp.zeros(n, dtype=f32), jnp.zeros(n, dtype=f64)
+        hist = jnp.zeros((n, mem), dtype=f32)
+        args = (
+            jnp.full(n, 25.5, dtype=f32),  # x
+            jnp.full(n, 25.5, dtype=f32),  # y
+            z32,  # heading
+            z64,  # prev_angle
+            z64,  # prev_log_mov
+            jnp.ones(n, dtype=bool),  # active_mask
+            hist,  # stored_util
+            hist,  # pos_hist_x
+            hist,  # pos_hist_y
+            jnp.zeros(n, dtype=jnp.int32),  # mem_ptr
+            jnp.zeros(n, dtype=jnp.int32),  # mem_count
+            jnp.ones(mem, dtype=f64),  # work_mem_table
+            z64,  # deter_dx
+            z64,  # deter_dy
+            z32,  # social_dx
+            z32,  # social_dy
+            jnp.zeros(n, dtype=bool),  # is_dispersing
+            z32,  # dispersal_target_distance
+            z32,  # dispersal_distance_traveled
+            z32,  # prev_step_heading
+            jnp.full(n, 30.0, dtype=f64),  # depths
+            jnp.full(n, 30.0, dtype=f64),  # salinity
+            jnp.full((w, w), 30.0, dtype=f32),  # depth_grid
+            -0.024,
+            -0.008,
+            0.93,
+            -14.0,
+            0.35,
+            0.0005,
+            -0.02,
+            1.73,
+            0.0,
+            4.0,
+            0.0,
+            0.15,
+            0.00001,
+            0.001,
+            2.0,
+            20.0,
+            0.6,
+            1.0,
+            4.0,
+            w,
+            w,
+            jax.random.PRNGKey(0),
+        )
+        for bound in (0, -1):
+            with pytest.raises(ValueError, match="n_samples_max"):
+                jax_tick_movement(*args, land_check=True, n_samples_max=bound)
+
     def test_tick_movement_threads_dispersal_params(self):
-        """Composed jax_tick_movement threads dispersal_start/psm params into the
-        heading kernel: dispersing agents' heading stays within psm_angle*logistic."""
+        """jax_tick_movement runs jax_disperse_step first: dispersers turn by
+        psm_angle * SSLogis(path length), keep CRW state, and take the 5-cell step;
+        a disperser stopped by shallow water takes a CRW step in the same tick."""
         from cenop.optimizations.tick_jax import jax_tick_movement
 
         n = 200
         world_w = world_h = 300
         mem = 20
-        psm_angle, psm_log = 20.0, 0.6
+        T = 500.0
+        psm_angle, psm_log = 40.0, 0.6
         work_table = jnp.array([np.exp(-i * 0.01) for i in range(mem)], dtype=jnp.float64)
-        depth_grid = jnp.full((world_h, world_w), 30.0, dtype=jnp.float32)
+        depth = np.full((world_h, world_w), 30.0, dtype=np.float32)
+        depth[:, 155:] = 3.0  # agent 0 (heading 90 +- 20) stops before this band
+        x = np.full(n, 150.5, dtype=np.float32)
+        psh = np.zeros(n, dtype=np.float32)
+        psh[0] = 90.0
+        prev_angle = np.full(n, 17.0)
+        prev_log_mov = np.full(n, 0.5)
+        traveled = np.full(n, 0.5 * 0.95 * T, dtype=np.float32)  # p = 0.5 -> logistic 0.5
 
         try:
             result = jax_tick_movement(
-                jnp.full(n, 150.0, dtype=jnp.float32),  # x
-                jnp.full(n, 150.0, dtype=jnp.float32),  # y
-                jnp.zeros(n, dtype=jnp.float32),  # heading
-                jnp.zeros(n, dtype=jnp.float64),  # prev_angle
-                jnp.full(n, 1.0, dtype=jnp.float64),  # prev_log_mov
+                jnp.asarray(x),  # x
+                jnp.full(n, 150.5, dtype=jnp.float32),  # y
+                jnp.asarray(psh),  # heading
+                jnp.asarray(prev_angle),  # prev_angle
+                jnp.asarray(prev_log_mov),  # prev_log_mov
                 jnp.ones(n, dtype=bool),  # active_mask
                 jnp.zeros((n, mem), dtype=jnp.float32),  # stored_util
                 jnp.zeros((n, mem), dtype=jnp.float32),  # pos_hist_x
@@ -1568,16 +1724,12 @@ class TestJaxTickComposition:
                 jnp.zeros(n, dtype=jnp.float32),  # social_dx
                 jnp.zeros(n, dtype=jnp.float32),  # social_dy
                 jnp.ones(n, dtype=bool),  # is_dispersing
-                jnp.full(n, 5000.0, dtype=jnp.float32),  # dispersal_target_x
-                jnp.full(n, 5000.0, dtype=jnp.float32),  # dispersal_target_y
-                jnp.full(n, 100.0, dtype=jnp.float32),  # dispersal_target_distance
-                jnp.zeros(n, dtype=jnp.float32),  # dispersal_distance_traveled
-                jnp.zeros(n, dtype=jnp.float32),  # prev_step_heading
-                jnp.full(n, 150.0, dtype=jnp.float32),  # dispersal_start_x (== pos -> travelled 0)
-                jnp.full(n, 150.0, dtype=jnp.float32),  # dispersal_start_y
+                jnp.full(n, T, dtype=jnp.float32),  # dispersal_target_distance
+                jnp.asarray(traveled),  # dispersal_distance_traveled
+                jnp.asarray(psh),  # prev_step_heading
                 jnp.full(n, 30.0, dtype=jnp.float64),  # depths
                 jnp.full(n, 30.0, dtype=jnp.float64),  # salinity
-                depth_grid,
+                jnp.asarray(depth),
                 -0.024,
                 -0.008,
                 0.93,
@@ -1595,9 +1747,10 @@ class TestJaxTickComposition:
                 2.0,  # inertia_const, mean_disp_dist
                 psm_angle,
                 psm_log,
-                1.0,
+                1.0,  # min_depth
+                4.0,  # min_depth_dispersal
                 world_w,
-                world_h,  # min_depth, world dims
+                world_h,
                 jax.random.PRNGKey(0),
             )
         except Exception as e:  # noqa: BLE001 - classify GPU OOM as environmental
@@ -1605,14 +1758,30 @@ class TestJaxTickComposition:
                 pytest.skip(f"JAX GPU OOM (environmental): {e}")
             raise
 
-        disp_heading = np.asarray(result[8])  # new_prev_step_heading = dispersal heading
-        dist_log_x = 3.0 * 0.0 - 1.5  # travelled 0 -> distPct 0
-        logistic = 1.0 / (1.0 + np.exp((0.0 - dist_log_x) / psm_log))  # ~0.0759
-        max_dev = psm_angle * logistic  # ~1.52
-        dev = (disp_heading - 0.0 + 180.0) % 360.0 - 180.0
-        assert (
-            np.max(np.abs(dev)) <= max_dev + 1e-3
-        ), f"max|dev|={np.max(np.abs(dev)):.4f} > {max_dev:.4f}"
+        new_prev_angle = np.asarray(result[3])
+        new_prev_log_mov = np.asarray(result[4])
+        step_dist = np.asarray(result[5])
+        new_traveled = np.asarray(result[7])
+        disp_heading = np.asarray(result[8])  # new_prev_step_heading = PSM heading
+        is_disp = np.asarray(result[9])
+
+        # Agent 0 stopped before shallow water: CRW step this tick, CRW state moves on
+        assert not is_disp[0]
+        assert new_traveled[0] == 0.0
+        assert step_dist[0] != pytest.approx(5.0)
+        assert new_prev_angle[0] != 17.0 and new_prev_log_mov[0] != 0.5
+
+        # Agents 1+: continue, turn within psm_angle * logistic(p = 0.5) = 20 deg
+        assert is_disp[1:].all()
+        np.testing.assert_allclose(step_dist[1:], 5.0)
+        np.testing.assert_allclose(new_traveled[1:], traveled[1:] + 5.0)
+        np.testing.assert_array_equal(new_prev_angle[1:], 17.0)
+        np.testing.assert_array_equal(new_prev_log_mov[1:], 0.5)
+        dev = (disp_heading[1:] + 180.0) % 360.0 - 180.0
+        max_dev = psm_angle * 0.5
+        assert np.max(np.abs(dev)) <= max_dev + 1e-3, f"max|dev|={np.max(np.abs(dev)):.4f}"
+        # Without the 0.95 factor (p = 0.475) the max turn would be 18.75 deg
+        assert np.max(np.abs(dev)) > 19.0
         assert dev.min() < 0.0 < dev.max(), "dispersal turn is not random (one-sided)"
 
     def test_tick_energy_conserves_food(self):
@@ -1630,8 +1799,6 @@ class TestJaxTickComposition:
         result = jax_tick_energy(
             energy,
             mask,
-            jnp.array(xi, dtype=jnp.float32),
-            jnp.array(yi, dtype=jnp.float32),
             jnp.ones(n, dtype=jnp.float32) * 0.5,
             jnp.zeros(n, dtype=bool),
             jnp.zeros(n, dtype=bool),
@@ -1645,9 +1812,6 @@ class TestJaxTickComposition:
             jnp.zeros((n, 10), dtype=jnp.float32),
             jnp.int32(0),
             jnp.zeros(n, dtype=bool),
-            jnp.zeros(n, dtype=jnp.float32),
-            jnp.zeros(n, dtype=jnp.float32),
-            jnp.ones(n, dtype=jnp.float32) * 100.0,
             jnp.zeros(n, dtype=jnp.float32),
             jnp.zeros(n, dtype=jnp.int32),
             jnp.zeros(n, dtype=jnp.float32),
@@ -1836,3 +2000,655 @@ class TestJaxStepRefMem:
         assert (
             pop._mem_count[live] == mem_count_before[live] + 1
         ), "live slot ref-mem did not advance -> test is vacuous"
+
+
+class TestJaxStepDispersal:
+    """_step_jax plumbs jax_disperse_step: a stopped disperser takes a CRW step in the same
+    tick (D12), a continuing one keeps its CRW state (D13), and stopping resets
+    days_declining_energy as _end_dispersal does."""
+
+    def test_step_jax_disperse_step(self):
+        from cenop.agents.population import PorpoisePopulation
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        from cenop.parameters.simulation_params import SimulationParameters
+
+        params = SimulationParameters(
+            random_seed=1, communication_enabled=False, psm_angle=0.0, use_jax=True
+        )
+        land = create_homogeneous_landscape(200, 200)
+        land._depth[100, 105] = 3.0  # set before the first step: _step_jax caches the grid
+        pop = PorpoisePopulation(4, params, land)
+        assert pop._use_jax, "JAX backend not active; the test would be vacuous"
+        # Agent 0 stops before the shallow cell; agent 1 continues over deep water
+        for i, (x, y) in enumerate([(100.5, 100.5), (100.5, 50.5)]):
+            pop.x[i], pop.y[i] = x, y
+            pop.is_dispersing[i] = True
+            pop.dispersal_target_distance[i] = 500.0
+            pop.dispersal_distance_traveled[i] = 0.0
+            pop._prev_step_heading[i] = 90.0
+            pop.heading[i] = 90.0
+        pop.is_dispersing[2:] = False
+        pop.days_declining_energy[0] = 3
+        pop.prev_angle[:] = 17.0
+        pop.prev_log_mov[:] = 0.5
+
+        try:
+            pop.step()
+        except Exception as e:  # noqa: BLE001 - classify GPU OOM as environmental
+            if any(k in str(e) for k in ("RESOURCE_EXHAUSTED", "OUT_OF_MEMORY")):
+                pytest.skip(f"JAX GPU OOM (environmental): {e}")
+            raise
+
+        assert not pop.is_dispersing[0]
+        assert pop.days_declining_energy[0] == 0
+        assert pop.dispersal_distance_traveled[0] == 0.0
+        assert pop._step_dist[0] != pytest.approx(5.0)
+        assert pop.prev_angle[0] != 17.0
+        assert pop.prev_log_mov[0] != 0.5
+
+        assert pop.is_dispersing[1]
+        assert pop._step_dist[1] == pytest.approx(5.0)
+        assert pop.dispersal_distance_traveled[1] == pytest.approx(5.0)
+        assert (pop.x[1], pop.y[1]) == (pytest.approx(105.5), pytest.approx(50.5))
+        assert pop.prev_angle[1] == 17.0
+        assert pop.prev_log_mov[1] == 0.5
+
+    def test_step_jax_without_depth_grid_skips_depth_stop(self):
+        """With no landscape, NumPy skips the depth stop; _step_jax must not apply it to its
+        synthetic 30 m depth grid. The off-grid stop still applies."""
+        from cenop.agents.population import PorpoisePopulation
+        from cenop.parameters.simulation_params import SimulationParameters
+
+        params = SimulationParameters(
+            random_seed=1,
+            communication_enabled=False,
+            psm_angle=0.0,
+            min_depth_dispersal=50.0,
+            use_jax=True,
+        )
+        pop = PorpoisePopulation(4, params)
+        assert pop._use_jax, "JAX backend not active; the test would be vacuous"
+        # Agent 0 mid-grid continues; agent 1 would leave the 1000-cell grid and stops
+        for i, (x, y) in enumerate([(500.5, 500.5), (998.5, 500.5)]):
+            pop.x[i], pop.y[i] = x, y
+            pop.is_dispersing[i] = True
+            pop.dispersal_target_distance[i] = 500.0
+            pop.dispersal_distance_traveled[i] = 0.0
+            pop._prev_step_heading[i] = 90.0
+            pop.heading[i] = 90.0
+        pop.is_dispersing[2:] = False
+
+        try:
+            pop.step()
+        except Exception as e:  # noqa: BLE001 - classify GPU OOM as environmental
+            if any(k in str(e) for k in ("RESOURCE_EXHAUSTED", "OUT_OF_MEMORY")):
+                pytest.skip(f"JAX GPU OOM (environmental): {e}")
+            raise
+
+        assert pop.is_dispersing[0]
+        assert pop.dispersal_distance_traveled[0] == pytest.approx(5.0)
+        assert not pop.is_dispersing[1]
+
+
+class TestJaxStepDailyDispersalOrder:
+    """A dispersal activated at a day boundary gets the same-day energy stop and the same-tick
+    turbine-deterrence cancel on both backends (DEPONS performDailyStep: activate(), then the
+    energy stop; deter() cancels dispersal). jax_tick_energy runs both checks before
+    _step_jax's trigger, so _step_jax must apply them to new activations itself."""
+
+    @staticmethod
+    def _day_boundary_step(use_jax, old_days, turbine_strength):
+        from cenop.agents.population import PorpoisePopulation
+        from cenop.parameters.simulation_params import SimulationParameters
+
+        params = SimulationParameters(
+            random_seed=1, communication_enabled=False, use_jax=use_jax, porpoise_count=4
+        )
+        pop = PorpoisePopulation(4, params, None)
+        assert pop._use_jax == use_jax, "backend not as requested; the comparison is vacuous"
+        pop.x[:] = 500.5
+        pop.y[:] = 500.5
+        for psm in pop._psm_instances[:4]:
+            psm.preferred_distance = 20.0  # a random target always fits on the 1000-cell grid
+        # The new daily mean (~5) < 6 < 7 < 8: three strict drops, so the trigger fires.
+        # The energy stop compares it with min(E[1..7]), which is min(6, old_days).
+        pop.energy[:] = 5.0
+        pop._energy_history[:, :] = old_days
+        pop._energy_history[:, :3] = [6.0, 7.0, 8.0]
+        pop._energy_ticks_today[:] = 5.0 * 47
+        pop._tick_counter = 47  # the next step completes a day on both backends
+        pop._global_tick = 47
+        pop._last_energy_update_tick = 47
+        assert not pop.is_dispersing.any()
+        assert (pop.dispersal_target_distance == 0.0).all()
+        turbine = (np.full(4, turbine_strength), np.zeros(4)) if turbine_strength else None
+
+        try:
+            pop.step(turbine_deterrence_vectors=turbine)
+        except Exception as e:  # noqa: BLE001 - classify GPU OOM as environmental
+            if any(k in str(e) for k in ("RESOURCE_EXHAUSTED", "OUT_OF_MEMORY")):
+                pytest.skip(f"JAX GPU OOM (environmental): {e}")
+            raise
+        return pop
+
+    @pytest.mark.parametrize(
+        "old_days, turbine_strength, expected",
+        [
+            pytest.param(1.0, 0.0, False, id="energy-stop"),  # min(E[1..7]) = 1 < new mean
+            pytest.param(100.0, 0.0, True, id="control"),  # min(E[1..7]) = 6 > new mean
+            pytest.param(100.0, 0.05, False, id="turbine-deterrence"),
+        ],
+    )
+    def test_new_activation_gets_same_day_stops(self, old_days, turbine_strength, expected):
+        pops = {b: self._day_boundary_step(b, old_days, turbine_strength) for b in (False, True)}
+        for use_jax, pop in pops.items():
+            # Non-vacuity: the trigger fired and found a target (_end_dispersal keeps it)
+            assert (pop.dispersal_target_distance > 0.0).all(), f"use_jax={use_jax}: no activation"
+            assert (pop.is_dispersing == expected).all(), (use_jax, pop.is_dispersing)
+        np.testing.assert_array_equal(pops[True].is_dispersing, pops[False].is_dispersing)
+
+
+# ---------------------------------------------------------------------------
+# DEPONS land avoidance on the JAX path (D15 Task 4)
+# ---------------------------------------------------------------------------
+
+_LOG6 = float(np.log10(6.0))
+_N_SAMPLES_MAX = int(np.ceil(10**1.73 / 0.1))  # 538: the bound for params.max_mov = 1.73
+_TIER_BANDS = ((40.0, 50.0), (70.0, 80.0), (120.0, 130.0))
+_LC_SEEDS = (0, 1, 2, 3)
+
+
+def _lc_grid(h=60, w=60, depth=30.0):
+    return np.full((h, w), depth, dtype=np.float64)
+
+
+def _lc_agents(xs, ys, hs, log_movs, mask=None, mem_size=8):
+    n = len(xs)
+    return {
+        "x": np.array(xs, dtype=np.float32),
+        "y": np.array(ys, dtype=np.float32),
+        "heading": np.array(hs, dtype=np.float32),
+        "log_mov": np.array(log_movs, dtype=np.float64),
+        "mask": np.ones(n, dtype=bool) if mask is None else np.array(mask, dtype=bool),
+        "pos_hist_x": np.zeros((n, mem_size), dtype=np.float32),
+        "pos_hist_y": np.zeros((n, mem_size), dtype=np.float32),
+        "mem_ptr": np.zeros(n, dtype=np.int32),
+        "mem_count": np.zeros(n, dtype=np.int32),
+    }
+
+
+def _lc_remember(a, i, entries, mem_ptr):
+    """Store `entries` (oldest first) ending just before ring index `mem_ptr`."""
+    size = a["pos_hist_x"].shape[1]
+    for k, (px, py) in enumerate(entries):
+        b = (mem_ptr - len(entries) + k) % size
+        a["pos_hist_x"][i, b] = px
+        a["pos_hist_y"][i, b] = py
+    a["mem_ptr"][i] = mem_ptr % size
+    a["mem_count"][i] = len(entries)
+
+
+def _lc_corridor():
+    """Land, except water for x < 20 at rows >= 31 and the cells (8..10, 30)."""
+    depth = _lc_grid(depth=-5.0)
+    depth[31:, :20] = 30.0
+    depth[30, 8:11] = 30.0
+    return depth
+
+
+def _lc_case(name):
+    """(depth, agents, kinds) for the Task 1 geometries of tests/test_land_check.py: agent at
+    (30.5, 30.5) heading 0 with presMov 6 unless stated. kinds[i] is "exact" when the jitter
+    cannot change agent i's outcome, "band" when only the tier band and turn sign can match."""
+    depth = _lc_grid()
+    a = _lc_agents([30.5], [30.5], [0.0], [_LOG6])
+    kinds = ["band"]
+    if name == "open_water":
+        kinds = ["exact"]
+    elif name == "right_only":
+        depth[33, 30] = -5.0
+        depth[34:36, 25:27] = -5.0  # left first-tier escape cells are land
+    elif name == "left_only":
+        depth[33, 30] = -5.0
+        depth[34:36, 34:36] = -5.0  # right first-tier escape cells are land
+    elif name == "second_tier":
+        depth[33, 30] = -5.0
+        depth[34:36, 25:27] = 0.5  # every first-tier escape cell is below wmin
+        depth[34:36, 34:36] = 0.5
+    elif name == "beh5_boxed_in":
+        depth = _lc_grid(depth=-1.0)
+        depth[29:32, 29:32] = 0.5
+        depth[29, 31] = 2.0  # deepest neighbour (31, 29): face 135, presMov 1
+        kinds = ["exact"]
+    elif name == "offgrid_lookahead":
+        depth[30, 56] = -5.0  # reached only by the reflected look-ahead from x = 58.5 east
+        a = _lc_agents([58.5], [30.5], [90.0], [_LOG6])
+    elif name == "nan_cell":
+        depth[33, 30] = np.nan
+    elif name == "masked_agent":
+        depth[33, 30] = -5.0
+        depth[33, 10] = -5.0
+        a = _lc_agents([30.5, 10.5], [30.5, 30.5], [0.0, 0.0], [_LOG6, _LOG6], mask=[False, True])
+        kinds = ["exact", "band"]
+    elif name == "beh4_walk_back":
+        depth[:, 20:] = -5.0
+        _lc_remember(a, 0, [(40.5, 40.5), (10.5, 30.5)], mem_ptr=2)
+        kinds = ["exact"]
+    elif name == "beh4_short_history_keeps_trying":
+        depth = _lc_corridor()  # the walk west fails; the next round turns by 40 + r
+        _lc_remember(a, 0, [(10.5, 30.5)], mem_ptr=1)
+    elif name == "beh4_twenty_steps_then_beh5":
+        depth = _lc_corridor()
+        a = _lc_agents([30.5], [30.5], [0.0], [_LOG6], mem_size=30)
+        _lc_remember(a, 0, [(5.5 + k, 30.5) for k in range(25)], mem_ptr=25)
+        kinds = ["exact"]
+    elif name == "beh4_own_position_is_noop":
+        depth = _lc_grid(depth=-5.0)
+        depth[30:40, 30] = 30.0
+        a = _lc_agents([30.5], [30.5], [90.0], [_LOG6])
+        _lc_remember(a, 0, [(30.5, 30.5)], mem_ptr=1)
+        kinds = ["exact"]
+    elif name == "long_lookahead":
+        depth = _lc_grid(160, 160)
+        depth[100, 80] = -5.0  # 49.5..50.5 cells ahead, inside presMov = 10**1.73
+        a = _lc_agents([80.5], [50.5], [0.0], [1.73])
+    else:
+        raise ValueError(name)
+    return depth, a, kinds
+
+
+def _lc_run_numpy(depth, a, seed):
+    """The Task 1 kernel on copies; out_enough starts True, as the JAX kernel reports
+    agents outside the mask."""
+    from cenop.movement import land_check
+    from cenop.optimizations.kernels import seed_numba_rng
+
+    b = {k: v.copy() for k, v in a.items()}
+    out = np.ones(len(b["x"]), dtype=bool)
+    seed_numba_rng(seed)
+    np.random.seed(seed)
+    land_check.depons_land_check(
+        b["x"],
+        b["y"],
+        b["heading"],
+        b["log_mov"],
+        b["mask"],
+        depth,
+        1.0,
+        b["pos_hist_x"],
+        b["pos_hist_y"],
+        b["mem_ptr"],
+        b["mem_count"],
+        out,
+    )
+    return b["x"], b["y"], b["heading"], b["log_mov"], out
+
+
+@functools.cache
+def _jit_land_check():
+    from cenop.optimizations.jax_kernels import jax_depons_land_check
+
+    return jax.jit(jax_depons_land_check, static_argnames=("n_samples_max",))
+
+
+def _lc_run_jax(depth, a, seed):
+    out = _jit_land_check()(
+        jnp.asarray(a["x"]),
+        jnp.asarray(a["y"]),
+        jnp.asarray(a["heading"]),
+        jnp.asarray(a["log_mov"]),
+        jnp.asarray(a["mask"]),
+        jnp.asarray(depth.astype(np.float32)),  # _step_jax caches the grid as float32
+        1.0,
+        jnp.asarray(a["pos_hist_x"]),
+        jnp.asarray(a["pos_hist_y"]),
+        jnp.asarray(a["mem_ptr"]),
+        jnp.asarray(a["mem_count"]),
+        jax.random.PRNGKey(seed),
+        n_samples_max=_N_SAMPLES_MAX,
+    )
+    return tuple(np.asarray(v) for v in out)
+
+
+def _turn(new, old):
+    return (float(new) - float(old) + 180.0) % 360.0 - 180.0
+
+
+def _tier_band(turn):
+    return next((b for b in _TIER_BANDS if b[0] <= abs(turn) < b[1]), None)
+
+
+def _land_coast(depth_edits):
+    """200 x 200 landscape, 30 m everywhere, then `depth_edits(depth)`; renamed so land
+    avoidance is not skipped."""
+    from cenop.landscape.cell_data import create_homogeneous_landscape
+
+    land = create_homogeneous_landscape(200, 200)
+    land._depth[:] = 30.0
+    depth_edits(land._depth)
+    land.landscape_name = "TestCoast"
+    return land
+
+
+class TestJaxDeponsLandCheck:
+    """jax_depons_land_check mirrors cenop.movement.land_check.depons_land_check (D15)."""
+
+    @pytest.mark.parametrize(
+        "case",
+        [
+            "open_water",
+            "right_only",
+            "left_only",
+            "second_tier",
+            "beh5_boxed_in",
+            "offgrid_lookahead",
+            "nan_cell",
+            "masked_agent",
+            "beh4_walk_back",
+            "beh4_short_history_keeps_trying",
+            "beh4_twenty_steps_then_beh5",
+            "beh4_own_position_is_noop",
+            "long_lookahead",
+        ],
+    )
+    def test_jax_land_check_matches_numpy_geometry(self, case):
+        depth, a, kinds = _lc_case(case)
+        for seed in _LC_SEEDS:
+            nx, ny, nh, nl, ne = _lc_run_numpy(depth, a, seed)
+            jx, jy, jh, jl, je = _lc_run_jax(depth, a, seed)
+            np.testing.assert_array_equal(jx, nx)
+            np.testing.assert_array_equal(jy, ny)
+            np.testing.assert_array_equal(jl, nl)
+            np.testing.assert_array_equal(je, ne)
+            assert jh.dtype == np.float32 and jx.dtype == np.float32
+            assert ((jh >= 0.0) & (jh < 360.0)).all()
+            for i, kind in enumerate(kinds):
+                tn = _turn(nh[i], a["heading"][i])
+                tj = _turn(jh[i], a["heading"][i])
+                if kind == "exact":
+                    assert tj == pytest.approx(tn, abs=1e-3), (case, seed, i)
+                else:
+                    band = _tier_band(tn)
+                    assert band is not None, f"{case}: NumPy turn {tn} is not a tier turn"
+                    assert band[0] <= abs(tj) < band[1], (case, seed, i, tn, tj)
+                    assert np.sign(tj) == np.sign(tn), (case, seed, i, tn, tj)
+
+    def test_jax_land_check_batch_untouched_agents_match_numpy(self):
+        """Random batch: the agents the NumPy kernel leaves untouched (first path check passes,
+        independent of the jitter) are exactly those the JAX kernel leaves untouched."""
+        rng = np.random.default_rng(7)
+        depth = rng.uniform(-3.0, 12.0, size=(80, 80))
+        depth[rng.random((80, 80)) < 0.05] = np.nan
+        n = 200
+        a = _lc_agents(
+            rng.uniform(0.0, 80.0, n),
+            rng.uniform(0.0, 80.0, n),
+            rng.uniform(0.0, 360.0, n),
+            rng.uniform(-0.5, 1.2, n),
+            mask=rng.random(n) < 0.9,
+            mem_size=30,
+        )
+        a["pos_hist_x"][:] = rng.uniform(0.0, 80.0, (n, 30)).astype(np.float32)
+        a["pos_hist_y"][:] = rng.uniform(0.0, 80.0, (n, 30)).astype(np.float32)
+        a["mem_ptr"][:] = rng.integers(0, 30, n)
+        a["mem_count"][:] = rng.integers(0, 31, n)
+
+        nx, ny, nh, nl, ne = _lc_run_numpy(depth, a, 11)
+        jx, jy, jh, jl, je = _lc_run_jax(depth, a, 11)
+
+        def untouched(x, y, h, lm):
+            return (x == a["x"]) & (y == a["y"]) & (h == a["heading"]) & (lm == a["log_mov"])
+
+        un = untouched(nx, ny, nh, nl)
+        uj = untouched(jx, jy, jh, jl)
+        np.testing.assert_array_equal(uj, un)
+        assert ne[un].all() and je[uj].all()
+        assert un[~a["mask"]].all()
+        m = a["mask"]
+        assert (un & m).sum() >= 10 and (~un & m).sum() >= 10, "batch exercises one branch only"
+
+
+class TestJaxLandWiring:
+    """D9 water stop, beh 6 and the _step_jax plumbing on the JAX path (D15)."""
+
+    def test_jax_disperse_step_water_filter(self):
+        """Mirrors Task 3: a disperser whose stored water state is False stops right after the
+        PSM turn (heading restored, dispersal ended); True does not stop."""
+        from cenop.agents.population import PorpoisePopulation
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        from cenop.optimizations.jax_kernels import jax_disperse_step
+        from cenop.parameters.simulation_params import SimulationParameters
+
+        land = create_homogeneous_landscape(200, 200)
+        params = SimulationParameters(random_seed=1, communication_enabled=False, psm_angle=0.0)
+        pop = PorpoisePopulation(2, params, land)
+        for i in (0, 1):
+            pop.x[i], pop.y[i] = 100.5, 80.5 + 40.0 * i
+            pop.is_dispersing[i] = True
+            pop.dispersal_target_distance[i] = 500.0
+            pop.dispersal_distance_traveled[i] = 0.0
+            pop._prev_step_heading[i] = 90.0
+            pop.heading[i] = 10.0
+        pop._enough_water_ahead[:] = [False, True]
+
+        out = jax_disperse_step(
+            jnp.asarray(pop.x),
+            jnp.asarray(pop.y),
+            jnp.asarray(pop.heading),
+            jnp.asarray(pop._prev_step_heading),
+            jnp.asarray(pop.is_dispersing),
+            jnp.asarray(pop.dispersal_distance_traveled),
+            jnp.asarray(pop.dispersal_target_distance),
+            jnp.asarray(pop.active_mask),
+            float(params.psm_angle),
+            float(params.psm_log),
+            float(params.mean_disp_dist),
+            jnp.asarray(land._depth.astype(np.float32)),
+            float(params.min_depth_dispersal),
+            land.width,
+            land.height,
+            jax.random.PRNGKey(3),
+            enough_water_ahead=jnp.asarray(pop._enough_water_ahead),
+        )
+        heading, prev_step_heading, is_dispersing, traveled = (np.asarray(v) for v in out)
+
+        assert not is_dispersing[0]
+        assert heading[0] == 10.0
+        assert traveled[0] == 0.0
+        assert is_dispersing[1]
+        assert heading[1] == 90.0
+
+        pop._disperse_step(pop.active_mask)  # the NumPy reference on the same state
+        np.testing.assert_array_equal(is_dispersing, pop.is_dispersing)
+        np.testing.assert_array_equal(heading, pop.heading)
+        np.testing.assert_array_equal(prev_step_heading, pop._prev_step_heading)
+        np.testing.assert_array_equal(traveled, pop.dispersal_distance_traveled)
+
+    def test_jax_rollback_faces_back(self):
+        """Mirrors Task 2: a destination at depth <= 0 returns the agent to its start-of-tick
+        position, facing back from the attempted position (beh 6), even when beh 4 moved the
+        step base; 0 < depth < wmin is accepted; the legacy call keeps today's behaviour."""
+        from cenop.optimizations.jax_kernels import jax_update_positions
+
+        depth = np.full((200, 200), 30.0, dtype=np.float32)
+        depth[:, 52:] = -10.0  # land east of x = 52
+        depth[52, 30] = 0.5
+        bx = np.array([50.5, 50.5, 30.5, 50.5])  # step bases (agent 1: beh 4 moved it)
+        by = np.array([50.5, 47.5, 50.5, 50.5])
+        sx = np.array([50.5, 50.5, 30.5, 50.5], dtype=np.float32)  # start-of-tick positions
+        sy = np.array([50.5, 50.5, 50.5, 50.5], dtype=np.float32)
+        dx = jnp.array([2.5, 2.5, 0.0, 2.5])
+        dy = jnp.array([0.0, 0.0, 2.0, 0.0])
+        heading = jnp.array([180.0, 90.0, 0.0, 90.0])
+        mask = jnp.array([True, True, True, False])
+
+        nx, ny, nh = (
+            np.asarray(v)
+            for v in jax_update_positions(
+                jnp.asarray(bx),
+                jnp.asarray(by),
+                dx,
+                dy,
+                heading,
+                200,
+                200,
+                mask,
+                depth_grid=jnp.asarray(depth),
+                start_x=jnp.asarray(sx),
+                start_y=jnp.asarray(sy),
+            )
+        )
+
+        assert (nx[0], ny[0]) == (50.5, 50.5)
+        assert nh[0] == pytest.approx(270.0)
+        assert (nx[1], ny[1]) == (50.5, 50.5)  # start of tick, not the walked-back base
+        expected = np.degrees(np.arctan2(50.5 - 53.0, 50.5 - 47.5)) % 360.0
+        assert nh[1] == pytest.approx(expected, abs=1e-4)
+        assert (nx[2], ny[2]) == (30.5, 52.5)  # 0.5 m destination accepted
+        assert nh[2] == 0.0
+        assert (nx[3], ny[3]) == (50.5, 50.5) and nh[3] == 90.0  # inactive: untouched
+
+        lx, ly, lh = (
+            np.asarray(v)
+            for v in jax_update_positions(
+                jnp.asarray(bx), jnp.asarray(by), dx, dy, heading, 200, 200, mask
+            )
+        )
+        assert (lx[0], ly[0]) == (53.0, 50.5) and lh[0] == 180.0  # no rollback, no flip
+
+    @staticmethod
+    def _land_parity_pop(use_jax):
+        """Three agents whose outcome the land check's jitter cannot change, with the CRW noise
+        off (r1_sd = r2_sd = 0, prev_angle = 0: CRW turn 0, log_mov = 0.35 * 0.68 + 0.665)."""
+        from cenop.agents.population import PorpoisePopulation
+        from cenop.parameters.simulation_params import SimulationParameters
+
+        def edits(d):
+            d[33, 30] = -5.0  # agent 1: one land cell 2.5 cells ahead (tie: first tier, right)
+            d[20:41, 62:70] = -5.0  # agent 2: land east of x = 62
+            d[140:161, 140:161] = -1.0  # agent 0: boxed in (beh 5)
+            d[149:152, 149:152] = 0.5
+            d[149, 151] = 2.0  # deepest neighbour (151, 149): face 135
+
+        params = SimulationParameters(
+            random_seed=5, communication_enabled=False, use_jax=use_jax, r1_sd=0.0, r2_sd=0.0
+        )
+        pop = PorpoisePopulation(3, params, _land_coast(edits))
+        assert pop._use_jax == use_jax, "backend not as requested; the comparison is vacuous"
+        assert not pop._skip_land_avoidance
+        pop.x[:] = [150.5, 30.5, 60.5]
+        pop.y[:] = [150.5, 30.5, 30.5]
+        pop.heading[:] = 0.0
+        pop.prev_angle[:] = 0.0
+        pop.prev_log_mov[:] = 0.68  # presMov ~ 8, step ~ 2
+        pop.is_dispersing[:] = False
+        pop.energy[:] = 15.0
+        # Agent 2: deterrence pushes the composed heading east, onto land: beh 6
+        deter = (np.array([0.0, 0.0, 1000.0]), np.zeros(3))
+        try:
+            pop.step(deterrence_vectors=deter)
+        except Exception as e:  # noqa: BLE001 - classify GPU OOM as environmental
+            if any(k in str(e) for k in ("RESOURCE_EXHAUSTED", "OUT_OF_MEMORY")):
+                pytest.skip(f"JAX GPU OOM (environmental): {e}")
+            raise
+        return pop
+
+    def test_jax_step_land_parity(self):
+        pops = {b: self._land_parity_pop(b) for b in (False, True)}
+        for use_jax, pop in pops.items():
+            tag = f"use_jax={use_jax}"
+            assert pop.active_mask.all(), tag
+            # Agent 0: beh 5 faces the deepest neighbour, presMov 1, no water ahead
+            assert _turn(pop.heading[0], 135.0) == pytest.approx(0.0, abs=1e-3), tag
+            assert pop.prev_log_mov[0] == 0.0, tag
+            assert pop.prev_angle[0] == pytest.approx(135.0, abs=1e-3), tag
+            # Agent 1: first-tier right turn before composition; prev_angle includes it
+            assert 40.0 <= _turn(pop.heading[1], 0.0) < 50.0, (tag, pop.heading[1])
+            assert 40.0 <= pop.prev_angle[1] < 50.0, (tag, pop.prev_angle[1])
+            # Agent 2: rolled back to the start-of-tick cell, facing back (beh 6)
+            assert (float(pop.x[2]), float(pop.y[2])) == (60.5, 30.5), tag
+            assert abs(_turn(pop.heading[2], 270.0)) < 0.5, (tag, pop.heading[2])
+            assert int(pop._pre_cell_xi[2]) == 60, tag
+            np.testing.assert_array_equal(pop._enough_water_ahead, [False, True, True])
+        np.testing.assert_array_equal(
+            pops[True]._enough_water_ahead, pops[False]._enough_water_ahead
+        )
+
+    @pytest.mark.parametrize("coast", [False, True], ids=["homogeneous", "coast"])
+    def test_step_jax_water_state_stops_disperser(self, coast):
+        """_step_jax feeds the stored water state to the D9 stop on both paths, and writes the
+        land check's result back for CRW movers only (dispersers' state stays frozen)."""
+        from cenop.agents.population import PorpoisePopulation
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        from cenop.parameters.simulation_params import SimulationParameters
+
+        def south_land(d):
+            d[150:, :] = -10.0
+
+        land = _land_coast(south_land) if coast else create_homogeneous_landscape(200, 200)
+        params = SimulationParameters(
+            random_seed=1, communication_enabled=False, psm_angle=0.0, use_jax=True
+        )
+        pop = PorpoisePopulation(3, params, land)
+        assert pop._use_jax and pop._skip_land_avoidance == (not coast)
+        for i in (0, 1):
+            pop.x[i], pop.y[i] = 100.5, 60.5 + 40.0 * i
+            pop.is_dispersing[i] = True
+            pop.dispersal_target_distance[i] = 500.0
+            pop.dispersal_distance_traveled[i] = 0.0
+            pop._prev_step_heading[i] = 90.0
+            pop.heading[i] = 90.0
+        pop.is_dispersing[2] = False
+        pop.x[2], pop.y[2] = 50.5, 100.5
+        pop._enough_water_ahead[:] = [False, True, False]
+
+        try:
+            pop.step()
+        except Exception as e:  # noqa: BLE001 - classify GPU OOM as environmental
+            if any(k in str(e) for k in ("RESOURCE_EXHAUSTED", "OUT_OF_MEMORY")):
+                pytest.skip(f"JAX GPU OOM (environmental): {e}")
+            raise
+
+        assert not pop.is_dispersing[0]  # D9: stopped on the first call
+        assert pop.dispersal_distance_traveled[0] == 0.0
+        assert pop.is_dispersing[1]
+        assert pop.dispersal_distance_traveled[1] == pytest.approx(5.0)
+        if coast:  # the land check ran for agents 0 (stopped, CRW step) and 2: open water
+            np.testing.assert_array_equal(pop._enough_water_ahead, [True, True, True])
+        else:  # no land check: the state is untouched
+            np.testing.assert_array_equal(pop._enough_water_ahead, [False, True, False])
+
+    def test_step_jax_land_check_flag(self, monkeypatch):
+        """The static land_check flag follows _skip_land_avoidance: homogeneous grids and
+        landscape=None keep today's JAX path and the water state stays True."""
+        import cenop.agents.population as popmod
+        from cenop.agents.population import PorpoisePopulation
+        from cenop.landscape.cell_data import create_homogeneous_landscape
+        from cenop.parameters.simulation_params import SimulationParameters
+
+        seen = []
+        orig = popmod.jax_tick_movement
+
+        def spy(*args, **kwargs):
+            seen.append((kwargs.get("land_check"), kwargs.get("n_samples_max")))
+            return orig(*args, **kwargs)
+
+        monkeypatch.setattr(popmod, "jax_tick_movement", spy)
+
+        def coast(d):
+            d[100:, :] = -10.0
+
+        cases = [
+            (create_homogeneous_landscape(200, 200), False),
+            (None, False),
+            (_land_coast(coast), True),
+        ]
+        for land, expect in cases:
+            params = SimulationParameters(random_seed=2, communication_enabled=False, use_jax=True)
+            pop = PorpoisePopulation(20, params, land)
+            assert pop._use_jax and pop._skip_land_avoidance == (not expect)
+            for _ in range(3):
+                pop.step()
+            assert seen[-1] == (expect, _N_SAMPLES_MAX)
+            if not expect:
+                assert pop._enough_water_ahead.all()

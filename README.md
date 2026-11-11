@@ -127,28 +127,31 @@ suite on every push and pull request; the slow validation tier runs nightly and 
 
 ### Production Server: laguna.ku.lt
 
-The application is deployed on the Shiny Server at `laguna.ku.lt`.
+The application runs on the Shiny Server at `laguna.ku.lt`, served directly from the working
+tree of this repository.
 
 **Server Configuration:**
-- Shiny Server path: `/srv/shiny-server/cenjas` (symlink)
-- Application directory: `/home/razinka/cenjas`
-- User: `razinka`
-- URL: https://laguna.ku.lt/cenjas/
+- Application directory: `/home/razinka/cenop/CENOP` (this repository, branch `CENOP-JASMINE`)
+- Shiny Server paths: `/srv/shiny-server/cenop` and `/srv/shiny-server/cenjas`, both symlinks
+  to the application directory
+- URLs: https://laguna.ku.lt/cenop/ and https://laguna.ku.lt/cenjas/ (the same app)
+- Python: `/opt/micromamba/envs/shiny/bin/python3`, set by the `python` directive in
+  `/etc/shiny-server/shiny-server.conf`. The micromamba `shiny` env is shared with other apps.
+- Apps run as the `shiny` user (`run_as shiny`). `app.py` puts `src/` on `sys.path`, so the
+  server does not rely on the editable install.
 
-### Windows Deployment (Recommended)
+Because the server serves the working tree, whatever is checked out in
+`/home/razinka/cenop/CENOP` (including a feature branch or uncommitted edits) goes live the next
+time the app process starts. Keep `CENOP-JASMINE` checked out when you are not developing.
 
-Use the provided `deploy.cmd` script from Windows. Double-click or run from command prompt:
+### Windows Deployment (`deploy.cmd`)
 
-```cmd
-deploy.cmd
+Run `deploy.cmd` from Windows (OpenSSH or Git Bash required). Its menu:
+
 ```
-
-The interactive menu provides the following options:
-
-```
-[1] Full deployment (pull, install, permissions, restart)
+[1] Full deployment (pull, dependencies, permissions, restart)
 [2] Pull latest changes only
-[3] Update dependencies only
+[3] Install missing runtime dependencies only
 [4] Fix permissions for shiny user only
 [5] Restart Shiny Server only
 [6] View server logs
@@ -156,42 +159,42 @@ The interactive menu provides the following options:
 [0] Exit
 ```
 
+It never resets the server checkout. A pull refuses to run unless the checkout is on
+`CENOP-JASMINE`, and it only fast-forwards, so diverged history or conflicting local changes stop
+the deployment instead of being discarded. Steps that need `sudo` prompt for the password over
+`ssh -t`. Restarting Shiny Server restarts every app on the server.
+
 ### Manual Deployment (Linux/SSH)
 
 ```bash
 # 1. SSH into the server
 ssh razinka@laguna.ku.lt
 
-# 2. Navigate to the application directory
-cd ~/cenjas
+# 2. Pull the latest changes. The checkout must be on CENOP-JASMINE. Fast-forward only: this
+#    clone is also the development checkout, so never reset it.
+git -C ~/cenop/CENOP pull --ff-only origin CENOP-JASMINE
 
-# 3. Pull the latest changes
-git fetch origin && git reset --hard origin/main
+# 3. Install missing runtime dependencies (only when requirements.txt changed). The shared env
+#    is owned by the shiny user: pip run as razinka falls back to ~/.local, which the server
+#    never sees. Install only the runtime part (above "# Development"), without -U, so
+#    packages that are already satisfied are left alone.
+sed '/^# Development/,$d' ~/cenop/CENOP/requirements.txt > /tmp/cenop-runtime-requirements.txt
+sudo -u shiny -H /opt/micromamba/envs/shiny/bin/python3 -s -m pip install --no-cache-dir \
+    -r /tmp/cenop-runtime-requirements.txt
 
-# 4. Update dependencies
-source venv/bin/activate
-pip install -r requirements.txt
-pip install -e .
-
-# 5. Set permissions for shiny user
-find ~/cenjas -type d -exec chmod 755 {} \;
-find ~/cenjas -type f -exec chmod 644 {} \;
-chmod 755 ~/cenjas/venv/bin/*
-chmod 755 /home/razinka
-
-# 6. Restart Shiny Server
+# 4. Restart Shiny Server (restarts every app on the server)
 sudo systemctl restart shiny-server
 ```
 
 ### Shiny User Permissions
 
-The shiny server runs as the `shiny` user, which needs read access to the application files. Required permissions:
-- Home directory `/home/razinka`: 755 (allows shiny to traverse)
-- All directories: 755 (read + execute for shiny)
-- All files: 644 (read for shiny)
-- venv binaries: 755 (executable)
+The `shiny` user needs read access to the application files:
+- `/home/razinka` and `/home/razinka/cenop`: traversable by others (`r-x`, e.g. 755)
+- Directories under `/home/razinka/cenop/CENOP`: readable and traversable by others (755)
+- Files: readable by others (644)
 
-The `deploy.cmd --permissions-only` command sets these automatically
+`chmod -R o+rX ~/cenop/CENOP` restores this without removing any existing permission bits
+(`deploy.cmd` option 4 does the same).
 
 ## Project Structure
 
@@ -200,7 +203,7 @@ CENOP/
 ├── app.py                      # Shiny entry point (imports UI + server, warms up Numba)
 ├── pyproject.toml              # Package metadata and dependencies
 ├── requirements.txt            # Pip dependencies
-├── deploy.cmd                  # Windows deployment script
+├── deploy.cmd                  # Windows deployment script (see Deployment)
 ├── static/                     # Logo, icons, SVG assets
 ├── scripts/
 │   ├── benchmark_kernels.py    # Numba kernel performance benchmark

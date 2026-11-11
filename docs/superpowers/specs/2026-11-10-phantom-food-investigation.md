@@ -640,8 +640,14 @@ Informational:
     run) and starve within about 60 days (lagoon N 151 → 18, energy 1.6 at day 60). 134 of the
     144 deaths are in the lagoon, which accounts for the whole N drop (9989 → 9856; the old run
     had 11 deaths, all at sea). The new behaviour is the faithful one; the trap is a
-    data/resolution artefact (the real Klaipėda Strait is narrower than one cell). Whether to
-    connect the lagoon or to restrict initial placement to the sea is an open user decision.
+    data/resolution artefact (the real Klaipėda Strait is narrower than one cell).
+    **Decided 2026-11-11 (user):** for Lithuania only, initial placement is restricted to the
+    largest connected water body (8-connected cells at least 1 m deep;
+    `MAIN_WATER_BODY_LANDSCAPES` in `population.py`). DEPONS landscapes keep DEPONS's rule (any
+    water with depth > 0), so Kattegat starting positions are bit-identical (verified by hash
+    against 9590f23). Seed 42, 10,000 animals, 60 days, with the restriction: 0 animals in the
+    lagoon at the start (151 before), N 9991 at day 60 (9856 before), 9 deaths, all at sea
+    (144 before, 134 of them in the lagoon).
   - **The energy rise is in the sea population:** day-60 sea energy 15.54 against 14.06; the
     lagoon deaths shift the mean by less than 0.03. Intake per animal-tick is +7.4% over the 60
     days (0.00635 against 0.00591), and +11%, +9%, +8.6% and +6.6% in the 5 days before days 15,

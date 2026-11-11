@@ -56,8 +56,12 @@ All notable changes to CENOP-JASMINE are documented in this file.
       placed in the lagoon at the start are trapped (1 crossing) and starve within about 60 days:
       134 of the 144 deaths are in the lagoon, which accounts for the whole N drop
       (9989 → 9856). The new behaviour is the faithful one; the trap is a data/resolution
-      artefact (the real Klaipėda Strait is narrower than one cell). Whether to connect the
-      lagoon or to restrict initial placement to the sea is an open decision.
+      artefact (the real Klaipėda Strait is narrower than one cell). **Resolved (2026-11-11):**
+      for Lithuania only, initial placement is restricted to the largest connected water body
+      (8-connected cells at least 1 m deep). DEPONS landscapes keep DEPONS's rule (any water
+      with depth > 0, as `moveAwayFromLand`), so Kattegat starting positions are bit-identical.
+      With the restriction (seed 42, 10,000 animals, 60 days): no animals start in the lagoon,
+      N is 9991 at day 60 (9856 without it), and the 9 deaths are all at sea.
     - **The energy rise is in the sea population:** day-60 sea energy 15.54 against 14.06 (the
       lagoon deaths shift the mean by less than 0.03). Intake per animal-tick is +7.4% over the
       60 days (+11%, +9%, +8.6% and +6.6% in the 5 days before days 15, 30, 45 and 60), and time

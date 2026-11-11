@@ -5,8 +5,8 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-CENOP = Path("/home/razinka/cenjas/CENOP/output/kattegat_ref")
-DEPONS = Path("/home/razinka/cenjas/CENOP/output/depons_java/kattegat-psm2-undisturbed-v1/N2000-Y5")
+CENOP = Path("/home/razinka/cenop/CENOP/output/kattegat_ref")
+DEPONS = Path("/home/razinka/cenop/CENOP/output/depons_java/kattegat-psm2-undisturbed-v1/N2000-Y5")
 TPY = 17280
 
 

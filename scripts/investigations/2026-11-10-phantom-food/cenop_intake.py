@@ -5,7 +5,7 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, "/home/razinka/cenjas/CENOP/src")
+sys.path.insert(0, "/home/razinka/cenop/CENOP/src")
 from cenop.core.simulation import Simulation  # noqa: E402
 from cenop.landscape.cell_data import CellData  # noqa: E402
 from cenop.parameters.simulation_params import SimulationParameters  # noqa: E402

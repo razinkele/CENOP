@@ -3,7 +3,7 @@ Benchmark JAX JIT tick performance.
 
 C0 baseline: measures current JAX tick throughput vs 1.2 ms/tick target.
 
-Run: cd /home/razinka/cenjas && python3 CENOP/scripts/benchmark_jax_tick.py
+Run: cd /home/razinka/cenop && python3 CENOP/scripts/benchmark_jax_tick.py
 """
 import os
 import sys

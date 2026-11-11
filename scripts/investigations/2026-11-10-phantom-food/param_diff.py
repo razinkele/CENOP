@@ -5,11 +5,11 @@ import dataclasses
 import json
 import sys
 
-sys.path.insert(0, "/home/razinka/cenjas/CENOP/src")
+sys.path.insert(0, "/home/razinka/cenop/CENOP/src")
 from cenop.parameters.simulation_params import SimulationParameters  # noqa: E402
 
 man = json.load(open(
-    "/home/razinka/cenjas/CENOP/output/depons_java/kattegat-psm2-undisturbed-v1/N2000-Y5/seed-42/manifest.json"))
+    "/home/razinka/cenop/CENOP/output/depons_java/kattegat-psm2-undisturbed-v1/N2000-Y5/seed-42/manifest.json"))
 dp = man["parameters"]
 print("DEPONS params:", len(dp))
 for k in sorted(dp):

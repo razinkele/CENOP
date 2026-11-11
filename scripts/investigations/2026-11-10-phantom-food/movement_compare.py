@@ -8,7 +8,7 @@ import sys
 import numpy as np
 
 CELL = 400.0
-rp = "/home/razinka/cenjas/CENOP/output/depons_java/kattegat-psm2-undisturbed-v1/N2000-Y5/seed-42/RandomPorpoise.csv"
+rp = "/home/razinka/cenop/CENOP/output/depons_java/kattegat-psm2-undisturbed-v1/N2000-Y5/seed-42/RandomPorpoise.csv"
 rows = [r for r in csv.DictReader(open(rp)) if float(r["tick"]) < 30 * 48]
 x = np.array([float(r["UtmX"]) for r in rows])
 y = np.array([float(r["UtmY"]) for r in rows])
@@ -19,7 +19,7 @@ print(f"DEPONS tracked id {rows[0]['Id']} (30 d, {len(step)} steps): step mean {
       f"median {np.median(step):.1f} m, cell-change {chg.mean():.3f}, energy {rows[0]['EnergyLevel'][:5]}"
       f" -> {rows[-1]['EnergyLevel'][:5]}")
 
-sys.path.insert(0, "/home/razinka/cenjas/CENOP/src")
+sys.path.insert(0, "/home/razinka/cenop/CENOP/src")
 sys.argv = [sys.argv[0], sys.argv[1], sys.argv[2], "0"]
 exec(open(__import__("os").path.join(__import__("os").path.dirname(__file__), "hypothesis_test.py")).read().split("for tick in range(1, days")[0])
 pm = sim.population_manager  # noqa: F821

@@ -4,8 +4,8 @@ from pathlib import Path
 
 import numpy as np
 
-V30 = Path("/home/razinka/cenjas/CENOP/data/Kattegat")
-V32 = Path("/home/razinka/cenjas/CENOP/.depons-cache/landscape/Kattegat")
+V30 = Path("/home/razinka/cenop/CENOP/data/Kattegat")
+V32 = Path("/home/razinka/cenop/CENOP/.depons-cache/landscape/Kattegat")
 
 
 def read_asc(p):

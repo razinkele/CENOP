@@ -13,7 +13,7 @@ import sys
 import numpy as np
 from numba import njit
 
-sys.path.insert(0, "/home/razinka/cenjas/CENOP/src")
+sys.path.insert(0, "/home/razinka/cenop/CENOP/src")
 import cenop.optimizations.kernels as K  # noqa: E402
 from cenop.core.simulation import Simulation  # noqa: E402
 from cenop.landscape.cell_data import CellData  # noqa: E402

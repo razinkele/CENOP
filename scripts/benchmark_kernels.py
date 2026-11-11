@@ -1,7 +1,7 @@
 """
 Benchmark Numba kernels vs NumPy fallbacks.
 
-Run: cd /home/razinka/cenjas && python3 CENOP/scripts/benchmark_kernels.py
+Run: cd /home/razinka/cenop && python3 CENOP/scripts/benchmark_kernels.py
 """
 import time
 import numpy as np

@@ -1,10 +1,10 @@
 """Verify scripts/fill_lithuania_data_gap.py against the committed (pre-fill) files.
 
-For every filled layer: existing tokens byte-identical to git HEAD, header identical, only water
-gap cells changed, filled-value distribution vs existing (mean, min, max, max histogram gap), and
-no spatial correlation introduced.
+For every filled layer: existing tokens byte-identical to the pre-fill commit (BASE), header
+identical, only water gap cells changed, filled-value distribution vs existing (mean, min, max, max
+histogram gap), and no spatial correlation introduced.
 
-Run from the repo root after the fill: python3 scripts/investigations/2026-11-11-lithuania-data-gap/verify_fill.py
+Run from the repo root: python3 scripts/investigations/2026-11-11-lithuania-data-gap/verify_fill.py
 """
 
 import subprocess
@@ -12,6 +12,7 @@ from pathlib import Path
 
 import numpy as np
 
+BASE = "cc80096~1"  # last commit before the fill (cc80096 committed the filled data)
 REPO = Path(__file__).resolve().parents[3]
 LAND = REPO / "data" / "Lithuania"
 LAYERS = (
@@ -32,7 +33,7 @@ water = bathy.astype(float) > 0
 worst = 0.0
 for name in LAYERS:
     old_raw = subprocess.run(
-        ["git", "-C", str(REPO), "show", f"HEAD:data/Lithuania/{name}"],
+        ["git", "-C", str(REPO), "show", f"{BASE}:data/Lithuania/{name}"],
         capture_output=True,
         check=True,
     ).stdout

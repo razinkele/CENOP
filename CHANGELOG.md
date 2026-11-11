@@ -92,9 +92,9 @@ All notable changes to CENOP-JASMINE are documented in this file.
       looked like a third of the sea's. On the fixed data (same seed and size) without the
       restriction, all 151 animals that start in the lagoon survive and stay there (0
       crossings) with day-60 energy 18.89 against 17.04 at sea; N 9994, 6 deaths, all at sea.
-      With the restriction: N 9996, mean energy 17.00, 4 deaths, all at sea. The restriction
-      remains in place; it now only stops 1.5% of animals from starting in a water body they
-      cannot leave.
+      With the restriction: N 9996, mean energy 17.00, 4 deaths, all at sea. The restriction is
+      kept (decided 2026-11-11): without it 1.5% of animals form an isolated, unrealistically
+      well-fed lagoon group that never rejoins the sea population.
     - **The energy rise is in the sea population:** day-60 sea energy 15.54 against 14.06 (the
       lagoon deaths shift the mean by less than 0.03). Intake per animal-tick is +7.4% over the
       60 days (+11%, +9%, +8.6% and +6.6% in the 5 days before days 15, 30, 45 and 60), and time

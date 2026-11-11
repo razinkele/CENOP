@@ -92,6 +92,25 @@ except ImportError as _e:
     logger.warning("Cython tick unavailable (Python fallback): %s", _e)
 
 
+# Landscapes whose initial placement is restricted to the largest connected water body.
+# Lithuania's Curonian Lagoon is a separate water body on the 1 km grid; animals placed there
+# are trapped by the DEPONS land check and starve. DEPONS landscapes (Kattegat, North Sea, ...)
+# keep DEPONS's rule: any water cell, isolated pockets included (moveAwayFromLand).
+MAIN_WATER_BODY_LANDSCAPES = frozenset({"Lithuania"})
+
+
+def _main_water_body(valid_mask: np.ndarray) -> np.ndarray:
+    """Keep only the largest 8-connected component of ``valid_mask``."""
+    from scipy import ndimage
+
+    labels, n = ndimage.label(valid_mask, structure=np.ones((3, 3), dtype=int))
+    if n <= 1:
+        return valid_mask
+    sizes = np.bincount(labels.ravel())
+    sizes[0] = 0
+    return labels == int(np.argmax(sizes))
+
+
 class PorpoisePopulation:
     """
     Manages the entire population of porpoises using vectorized numpy arrays.
@@ -519,6 +538,8 @@ class PorpoisePopulation:
                 # Find all valid water cells (depth >= min_depth AND not NaN)
                 # NaN values indicate land (-9999 NODATA converted to NaN during loading)
                 valid_mask = (self.landscape._depth >= min_depth) & ~np.isnan(self.landscape._depth)
+                if getattr(self.landscape, "landscape_name", "") in MAIN_WATER_BODY_LANDSCAPES:
+                    valid_mask = _main_water_body(valid_mask)
                 valid_y, valid_x = np.where(valid_mask)
 
                 if len(valid_x) > 0:

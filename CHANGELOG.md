@@ -27,6 +27,31 @@ All notable changes to CENOP-JASMINE are documented in this file.
     unaffected.
   - **Committed Kattegat baselines are stale.** Real-landscape population results from earlier
     versions should be re-run.
+- **Lithuania data gap (27% of its water had no habitat data).** Commit `7d50cfb` (2026-03-12)
+  replaced the Lithuania bathymetry with a larger 329x381 grid (+12,014 water cells: a 55 km
+  open-sea strip in the west, a refined coastline and the lagoon) but only padded the other 28
+  layers with NODATA. Their data still covered exactly the old water mask, so 19,767 of the
+  73,464 water cells had NODATA salinity, prey, food patches, sediment, blocks and distance to
+  coast.
+  - Effect: salinity -9999 makes `a2 * salinity` = +200, so every CRW step on those cells was
+    clamped to `max_mov` (13.4 against 6.5 cells) with a mean turn of 90 degrees, and those
+    cells had no food. 25-27% of animals started there. This also produced the
+    `overflow encountered in power` / `invalid value encountered in multiply` warnings at
+    `crw_core.py:131-132` on the live app (an unmasked agent's unclamped `log_mov` of about 200
+    overflowed the CRW module's float32 step buffer; no state was corrupted).
+  - Present in every Lithuania run since 2026-03-12. Lithuania results from that period, including
+    the Lithuania figures under "Changed" below, were measured on the gapped data.
+  - Fix: the existing Lithuania layers are synthetic placeholders (independent per-cell noise for
+    patches, prey and salinity; constants for sediment and blocks; a plane for distance to
+    coast), so `scripts/fill_lithuania_data_gap.py` completes them on the gap cells only with
+    the same kind of values (a fixed-seed draw from each layer's own water values, month by
+    month; the fitted plane for distance to coast). Existing values are byte-identical.
+    Investigation probes: `scripts/investigations/2026-11-11-lithuania-data-gap/`.
+  - The landscape loader now warns when any layer has NODATA on water cells (warning only:
+    DEPONS-origin Kattegat and NorthSea data keep their known gaps), and the CRW module no longer
+    computes steps for agents it does not move. Kattegat starting positions are bit-identical.
+  - Lithuania's food, prey and salinity layers remain placeholders with no spatial structure;
+    Lithuania results reflect real bathymetry with synthetic habitat.
 
 ### Changed
 - **Land avoidance on CRW movement follows DEPONS 3.2 (spec D15), plus the D9 first-call water
@@ -62,6 +87,14 @@ All notable changes to CENOP-JASMINE are documented in this file.
       with depth > 0, as `moveAwayFromLand`), so Kattegat starting positions are bit-identical.
       With the restriction (seed 42, 10,000 animals, 60 days): no animals start in the lagoon,
       N is 9991 at day 60 (9856 without it), and the 9 deaths are all at sea.
+      **Revisited after the Lithuania data-gap fix (see Fixed):** the starvation came from the
+      gap, not the trap. Most lagoon cells had NODATA food, which is why lagoon food per cell
+      looked like a third of the sea's. On the fixed data (same seed and size) without the
+      restriction, all 151 animals that start in the lagoon survive and stay there (0
+      crossings) with day-60 energy 18.89 against 17.04 at sea; N 9994, 6 deaths, all at sea.
+      With the restriction: N 9996, mean energy 17.00, 4 deaths, all at sea. The restriction
+      remains in place; it now only stops 1.5% of animals from starting in a water body they
+      cannot leave.
     - **The energy rise is in the sea population:** day-60 sea energy 15.54 against 14.06 (the
       lagoon deaths shift the mean by less than 0.03). Intake per animal-tick is +7.4% over the
       60 days (+11%, +9%, +8.6% and +6.6% in the 5 days before days 15, 30, 45 and 60), and time
@@ -72,8 +105,10 @@ All notable changes to CENOP-JASMINE are documented in this file.
       contributor is the look-ahead, which on 1 km cells covers 2.5 times its intended distance
       (see Known issues). The sign is opposite to Kattegat, where the port brought intake down
       to DEPONS's level.
-    - Time within 1 km of the coast (19.9% / 19.8% against 20.5% / 20.5%) says little at this
-      resolution: 27% of Lithuania's water cells have `disttocoast` under 1 km.
+    - Time within 1 km of the coast (19.9% / 19.8% against 20.5% / 20.5%) says nothing: the
+      "27% of water cells with `disttocoast` under 1 km" behind it was the data gap (NODATA,
+      -9999, counts as under 1 km). Lithuania's `disttocoast` is a placeholder plane (minimum 1
+      after the fix), not a distance.
   - **Slower on real landscapes (NumPy/Numba default path).** Without the fix described next,
     the land check took about 46-47% of tick time on Lithuania and 15% on Kattegat (2000
     animals); an instrumented Lithuania 60-day run (10000 animals, seed 42) took about 289 s

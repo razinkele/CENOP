@@ -52,6 +52,21 @@ All notable changes to CENOP-JASMINE are documented in this file.
     computes steps for agents it does not move. Kattegat starting positions are bit-identical.
   - Lithuania's food, prey and salinity layers remain placeholders with no spatial structure;
     Lithuania results reflect real bathymetry with synthetic habitat.
+- **CentralBaltic data gap (3.25% of its water had generator land values).**
+  `scripts/generate_central_baltic.py` built every CentralBaltic layer on its own synthetic
+  bathymetry, whose only land is a border band (edge distance under 2% of the grid, about 9 km);
+  `scripts/download_emodnet_tiles.py` later replaced `bathy.asc` alone with EMODnet depths, which
+  have water in much of that band. Those 59,776 water cells kept NODATA salinity and prey (the
+  same max-speed, 90-degree-turn movement as in Lithuania) and 0 for patches (no food),
+  sediment, blocks and distance to coast; 3.2-3.4% of animals started there.
+  - Fix: `scripts/fill_centralbaltic_data_gap.py` gives exactly those cells the values the
+    generator gives water cells, with its own rules (fixed seed; the EMODnet depth for the
+    sediment class and `disttocoast = 50 * depth`). Every other value is byte-identical.
+  - The unused 1 km monthly files (`prey0000_XX.asc`, `salinity0000_XX.asc`, a 400x400 grid with
+    a different origin) are removed; the loader always read the 250 m files.
+  - Not changed: outside the band, sediment and distance to coast still follow the generator's
+    synthetic depth rather than the EMODnet depth (sediment only affects ship noise; the
+    simulation does not use distance to coast). CentralBaltic habitat layers are synthetic.
 
 ### Changed
 - **Land avoidance on CRW movement follows DEPONS 3.2 (spec D15), plus the D9 first-call water

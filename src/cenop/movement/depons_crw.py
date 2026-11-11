@@ -191,10 +191,14 @@ class DEPONSCRWMovement(MovementModule):
         step_dist = np.zeros(count, dtype=np.float32)
 
         disp_step = getattr(self.params, "mean_disp_dist", 1.6) / 0.4
+        # Only masked agents are moved (the rest are zeroed below), so keep unmasked agents out
+        # of the step calculation: their raw log_mov is never clamped to max_mov and can reach
+        # ~200 (salinity NODATA), which overflows 10**log_mov in the float32 step buffer. The
+        # raw log_mov is still returned unchanged for the population's own composition.
         compose_movement(
             heading,
             pres_angle,
-            log_mov,
+            np.where(mask, log_mov, 0.0),
             ve_total,
             vt_x,
             vt_y,

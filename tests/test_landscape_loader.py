@@ -10,6 +10,7 @@ import logging
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from cenop.landscape.loader import LandscapeLoader, nodata_on_water_counts
 
@@ -79,9 +80,8 @@ def test_loader_is_silent_when_every_water_cell_has_data(tmp_path, caplog):
     assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
 
 
-def test_lithuania_has_data_in_every_layer_on_every_water_cell():
-    data = LandscapeLoader("Lithuania", DATA_DIR).load_all()
-    layers = {
+def _layers(data):
+    return {
         "disttocoast": data["dist_to_coast"],
         "sediment": data["sediment"],
         "patches": data["food_prob"],
@@ -89,5 +89,36 @@ def test_lithuania_has_data_in_every_layer_on_every_water_cell():
         "prey": data["entropy"],
         "salinity": data["salinity"],
     }
+
+
+def test_lithuania_has_data_in_every_layer_on_every_water_cell():
+    data = LandscapeLoader("Lithuania", DATA_DIR).load_all()
+    layers = _layers(data)
     counts = nodata_on_water_counts(data["depth"], layers, data["metadata"].nodata_value)
     assert counts == dict.fromkeys(layers, 0)
+
+
+@pytest.fixture(scope="module")
+def central_baltic():
+    if not (DATA_DIR / "CentralBaltic" / "bathy.asc").exists():
+        pytest.skip("data/CentralBaltic not checked out (excluded from the CI sparse checkout)")
+    return LandscapeLoader("CentralBaltic", DATA_DIR).load_all()
+
+
+def test_central_baltic_has_data_in_every_layer_on_every_water_cell(central_baltic):
+    layers = _layers(central_baltic)
+    counts = nodata_on_water_counts(
+        central_baltic["depth"], layers, central_baltic["metadata"].nodata_value
+    )
+    assert counts == dict.fromkeys(layers, 0)
+
+
+def test_central_baltic_water_cells_carry_generator_values_not_land_values(central_baltic):
+    """generate_central_baltic.py gives every water cell patches >= 0.3, sediment 1-3, a block
+    id >= 1 and a positive distance to coast; 0 is its land value. The EMODnet bathymetry that
+    later replaced bathy.asc has water where the generator had land (its 2% border band)."""
+    water = central_baltic["depth"] > 0
+    assert (central_baltic["food_prob"][water] >= 0.3).all()
+    assert np.isin(central_baltic["sediment"][water], [1, 2, 3]).all()
+    assert (central_baltic["blocks"][water] >= 1).all()
+    assert (central_baltic["dist_to_coast"][water] > 0).all()

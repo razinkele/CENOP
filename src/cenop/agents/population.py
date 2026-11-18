@@ -461,6 +461,12 @@ class PorpoisePopulation:
         self.dispersal_phase = np.zeros(count, dtype=np.int8)
         self._daily_pos_x = np.full((count, 10), 0.5, dtype=np.float32)
         self._daily_pos_y = np.full((count, 10), 0.5, dtype=np.float32)
+        # This tick's end position for animals the mode moved and that are still dispersing;
+        # written by _disperse_step_idw, applied and cleared by _apply_positions
+        self._idw_pending = np.zeros(count, dtype=bool)
+        self._idw_x = np.zeros(count, dtype=np.float32)
+        self._idw_y = np.zeros(count, dtype=np.float32)
+        self._idw_grids = None  # (depth, dist_to_coast, blocks) as float64, built on first use
         # Set by _depons_land_check when it records the start-of-tick position in
         # _pre_move_x/_y; consumed (and cleared) by _apply_positions, and cleared at the top of
         # both CRW movement paths so a record never outlives its tick
@@ -1150,6 +1156,7 @@ class PorpoisePopulation:
         dispersing = mask & self.is_dispersing
         if dispersing.any():
             self.dispersal_distance_traveled[dispersing] += self._step_dist[dispersing]
+        self._idw_write_step()
 
         # Store total turn for next step (Java Porpoise.java:583); CRW movers only (D13)
         total_turn = (self.heading - self._pre_heading + 180) % 360 - 180
@@ -1238,6 +1245,10 @@ class PorpoisePopulation:
         W - 1 (CENOP's reflection edge) and W - 0.5 (DEPONS's off-grid threshold, kept as
         is), and likewise for H.
         """
+        if self._dispersal_mode == "InnerDanishWaters":
+            self._disperse_step_idw(mask)
+            return
+
         d = mask & self.is_dispersing
         if not d.any():
             return
@@ -1290,6 +1301,95 @@ class PorpoisePopulation:
             stopped = idx[stop]
             self._end_dispersal(stopped)
             self.heading[stopped] = start_heading[stop]
+
+    def _get_idw_grids(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Depth, coast distance and navigation blocks as float64 for dispersal_idw."""
+        if self._idw_grids is None:
+            land = self.landscape
+            grids = [getattr(land, n, None) for n in ("_depth", "_dist_to_coast", "_blocks")]
+            if any(g is None for g in grids):
+                raise ValueError(
+                    "dispersal 'InnerDanishWaters' needs a landscape with depth, "
+                    "distance-to-coast and block grids"
+                )
+            self._idw_grids = tuple(np.ascontiguousarray(g, dtype=np.float64) for g in grids)
+        return self._idw_grids
+
+    def _disperse_step_idw(self, mask: np.ndarray) -> None:
+        """DEPONS InnerDanishWatersDispersal.disperse() for ``mask & is_dispersing``.
+
+        One call to cenop.agents.dispersal_idw.disperse per animal, in Java coordinates
+        (x - 0.5). An animal still dispersing afterwards gets its heading now and its end
+        position through _idw_pending (see _idw_write_step, _apply_positions): nothing else
+        moves it this tick, as in DEPONS, where a disperser skips stdMove(). An animal that
+        stopped is written at once (the mode does not restore the heading) and goes on to its
+        normal CRW step in the same tick.
+        """
+        from cenop.agents import dispersal_idw
+
+        self._idw_pending[:] = False
+        idx = np.flatnonzero(mask & self.is_dispersing)
+        if idx.size == 0:
+            return
+        depth, dtc, blocks = self._get_idw_grids()
+        p = self.params
+        step_cost = 0.001 * p.e_use_per_km * p.mean_disp_dist / 0.4
+        stopped_moved = False
+        for i in idx:
+            phase, xj, yj, heading, paid = dispersal_idw.disperse(
+                int(self.dispersal_phase[i]),
+                float(self.x[i]) - 0.5,
+                float(self.y[i]) - 0.5,
+                float(self.heading[i]),
+                float(self.dispersal_target_x[i]) - 0.5,
+                float(self.dispersal_target_y[i]) - 0.5,
+                float(self._daily_pos_x[i, 1]) - 0.5,
+                float(self._daily_pos_y[i, 1]) - 0.5,
+                float(self._daily_pos_x[i, 8]) - 0.5,
+                float(self._daily_pos_y[i, 8]) - 0.5,
+                bool(self._enough_water_ahead[i]),
+                depth,
+                dtc,
+                blocks,
+                p.mean_disp_dist,
+                p.min_depth_dispersal,
+                p.min_depth,
+            )
+            self.heading[i] = heading
+            if paid:
+                self.energy[i] -= paid * step_cost
+            if phase == 0:
+                nx, ny = np.float32(xj + 0.5), np.float32(yj + 0.5)
+                stopped_moved |= bool(nx != self.x[i] or ny != self.y[i])
+                self.x[i], self.y[i] = nx, ny
+                self._end_dispersal(i)
+            else:
+                self.dispersal_phase[i] = phase
+                self._idw_x[i] = xj + 0.5
+                self._idw_y[i] = yj + 0.5
+                self._idw_pending[i] = True
+        if stopped_moved:
+            self._recompute_cell_indices()
+
+    def _idw_write_step(self) -> None:
+        """Replace the heading kernel's fixed dispersal step with the mode's own move."""
+        pend = self._idw_pending
+        if not pend.any():
+            return
+        self._dx[pend] = self._idw_x[pend] - self.x[pend]
+        self._dy[pend] = self._idw_y[pend] - self.y[pend]
+        self._step_dist[pend] = np.hypot(self._dx[pend], self._dy[pend])
+
+    def _dispersal_complete_mask(self) -> np.ndarray:
+        """Path-length completion flag for the behaviour FSM (labels only).
+
+        InnerDanishWaters has no completion rule, so it never reports one.
+        """
+        if self._dispersal_mode == "InnerDanishWaters":
+            return np.zeros(self.count, dtype=bool)
+        return (self.dispersal_distance_traveled >= self.dispersal_target_distance) & (
+            self.is_dispersing
+        )
 
     def _apply_dispersal_heading(self, mask: np.ndarray) -> None:
         """Apply the dispersal turn for the active mode.
@@ -1478,6 +1578,7 @@ class PorpoisePopulation:
         dispersing = mask & self.is_dispersing
         if dispersing.any():
             self.dispersal_distance_traveled[dispersing] += self._step_dist[dispersing]
+        self._idw_write_step()
         total_turn = (self.heading - self._pre_heading + 180) % 360 - 180
         self.prev_angle[crw_mask] = total_turn[crw_mask]
         self.prev_log_mov[crw_mask] = self._log_mov[crw_mask]
@@ -1882,6 +1983,15 @@ class PorpoisePopulation:
         self.x[mask] = self._new_x[mask]
         self.y[mask] = self._new_y[mask]
 
+        # InnerDanishWaters dispersers end the tick exactly where the mode put them, and are
+        # exempt from the post-move depth check below: that check is part of stdMove(), which
+        # a DEPONS disperser skips (the mode does its own landing test, with depth >= 0).
+        idw_moved = self._idw_pending & mask
+        if idw_moved.any():
+            self.x[idw_moved] = self._idw_x[idw_moved]
+            self.y[idw_moved] = self._idw_y[idw_moved]
+        self._idw_pending[:] = False
+
         # Recompute cached cell indices for fresh positions
         self._recompute_cell_indices()
 
@@ -1892,7 +2002,7 @@ class PorpoisePopulation:
             post_depths = self.landscape.get_depths_vectorized(
                 self._positions, xi=self._cell_xi, yi=self._cell_yi
             )
-            on_land = mask & (post_depths <= 0)
+            on_land = mask & ~idw_moved & (post_depths <= 0)
             if on_land.any():
                 if land_checked:
                     self._face_back_beh6(on_land)
@@ -1948,8 +2058,7 @@ class PorpoisePopulation:
             current_speed=self._step_dist,
             memory_cell_count=memory_cells,
             is_dispersing=self.is_dispersing,
-            dispersal_complete=(self.dispersal_distance_traveled >= self.dispersal_target_distance)
-            & self.is_dispersing,
+            dispersal_complete=self._dispersal_complete_mask(),
         )
 
         self._behavior_fsm.update_states(self._behavior_state, context, mask)
@@ -3555,6 +3664,8 @@ class PorpoisePopulation:
 
     def _start_dispersal(self, idx: int) -> bool:
         """DEPONS activate(): pick a target and start dispersing; False if none is found."""
+        if self._dispersal_mode == "InnerDanishWaters":
+            return self._start_dispersal_idw(idx)
         target = self._select_dispersal_target(idx)
         if target is None:
             return False
@@ -3570,6 +3681,30 @@ class PorpoisePopulation:
         self.dispersal_target_distance[idx] = np.hypot(dx, dy)
         self.dispersal_distance_traveled[idx] = 0.0
         self._prev_step_heading[idx] = np.degrees(np.arctan2(dx, dy)) % 360.0
+        return True
+
+    def _start_dispersal_idw(self, idx: int) -> bool:
+        """InnerDanishWatersDispersal.activate(): phase 1 towards one of the twelve best blocks.
+
+        Cannot fail. One draw from self.rng (DEPONS nextDispTargetSelect). The target is kept
+        in CENOP coordinates (Java + 0.5); target distance and start are for the events file.
+        """
+        from cenop.agents import dispersal_idw
+
+        _, _, blocks = self._get_idw_grids()
+        u = float(self.rng.random())
+        txj, tyj = dispersal_idw.select_target(
+            float(self.x[idx]) - 0.5, float(self.y[idx]) - 0.5, u, blocks
+        )
+        tx, ty = txj + 0.5, tyj + 0.5
+        self.is_dispersing[idx] = True
+        self.dispersal_phase[idx] = 1
+        self.dispersal_start_x[idx] = self.x[idx]
+        self.dispersal_start_y[idx] = self.y[idx]
+        self.dispersal_target_x[idx] = tx
+        self.dispersal_target_y[idx] = ty
+        self.dispersal_target_distance[idx] = np.hypot(tx - self.x[idx], ty - self.y[idx])
+        self.dispersal_distance_traveled[idx] = 0.0
         return True
 
     def _update_dispersal(self, mask: np.ndarray) -> None:

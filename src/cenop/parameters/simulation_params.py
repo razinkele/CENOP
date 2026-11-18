@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-DISPERSAL_MODES: tuple[str, ...] = ("off", "PSM-Type2", "Undirected")
+DISPERSAL_MODES: tuple[str, ...] = ("off", "PSM-Type2", "Undirected", "InnerDanishWaters")
 
 
 @dataclass
@@ -244,14 +244,16 @@ class SimulationParameters:
 
     def _validate(self) -> None:
         """Validate parameter ranges."""
-        if self.dispersal == "InnerDanishWaters":
-            raise ValueError(
-                "dispersal 'InnerDanishWaters' is not implemented yet in CENOP; "
-                "use one of: off, PSM-Type2, Undirected"
-            )
         if self.dispersal not in DISPERSAL_MODES:
             raise ValueError(
-                f"unknown dispersal {self.dispersal!r}; use one of: off, PSM-Type2, Undirected"
+                f"unknown dispersal {self.dispersal!r}; use one of: {', '.join(DISPERSAL_MODES)}"
+            )
+        if self.dispersal == "InnerDanishWaters" and self.landscape != "Kattegat":
+            # DEPONS hard-codes Kattegat geography into this mode (cell coordinates, the
+            # 600 x 1000 navigation grid). Java also allows Homogeneous; CENOP does not yet.
+            raise ValueError(
+                "dispersal 'InnerDanishWaters' only supports the Kattegat landscape, "
+                f"not {self.landscape!r}"
             )
         if self.porpoise_count < 0:
             raise ValueError("porpoise_count must be non-negative")

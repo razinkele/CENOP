@@ -29,7 +29,7 @@ TOOLTIPS = {
     "param_b2": "Effect of salinity on turning angle. Higher = more turning in high salinity. DEPONS default: 0.93",
     "param_b3": "Intercept for turning angle model. DEPONS default: -14.0",
     # Dispersal settings
-    "dispersal": "Dispersal behavior type: 'off' = no dispersal, 'PSM-Type2' = memory-based with heading dampening, 'Undirected' = random target, undamped turns. 'InnerDanishWaters' (DEPONS Kattegat mode) is not available yet.",
+    "dispersal": "Dispersal behavior type: 'off' = no dispersal, 'PSM-Type2' = memory-based with heading dampening, 'Undirected' = random target, undamped turns. 'InnerDanishWaters' = DEPONS Kattegat mode (block targets, coast following); Kattegat only.",
     "tdisp": "Number of consecutive days of declining energy that triggers dispersal behavior. DEPONS default: 3 days.",
     # PSM parameters
     "psm_log": "Logistic increase rate for PSM memory cells. Controls how fast food memories strengthen. DEPONS default: 0.6",

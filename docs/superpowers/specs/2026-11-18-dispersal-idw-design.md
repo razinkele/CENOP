@@ -1,6 +1,6 @@
 # Dispersal selector, stage 2: InnerDanishWaters
 
-Date: 2026-11-18. Branch: `feat/dispersal-idw`. Status: awaiting approval.
+Date: 2026-11-18. Branch: `feat/dispersal-idw`. Status: approved 2026-11-18, implemented.
 Follows `2026-11-18-dispersal-selector-design.md` (stage 1, merged `0087b8f`).
 
 ## Intent

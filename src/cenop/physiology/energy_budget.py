@@ -683,6 +683,25 @@ class JASMINEEnergyModule(EnergyModule):
             survival_probability=survival_prob,
         )
 
+    def compute_food_intake(
+        self,
+        state: EnergyState,
+        context: EnergyContext,
+        mask: np.ndarray,
+    ) -> np.ndarray:
+        """Food energy intake only (phase 1 of 2; the population checks starvation between
+        the phases). The intake term of compute_energy_update."""
+        return self.compute_energy_update(state, context, mask).energy_intake
+
+    def compute_bmr_cost(
+        self,
+        state: EnergyState,
+        context: EnergyContext,
+        mask: np.ndarray,
+    ) -> np.ndarray:
+        """All energy costs (phase 2 of 2). The cost terms of compute_energy_update."""
+        return self.compute_energy_update(state, context, mask).total_cost
+
     def apply_result(
         self,
         state: EnergyState,

@@ -67,6 +67,18 @@ All notable changes to CENOP-JASMINE are documented in this file.
   never fill up (all Kattegat baselines) are unchanged by this.
 - The unused per-animal `Porpoise` class and the unused per-animal branch in `Simulation`
   no longer carry a sex field.
+- **Daily bycatch and max-age deaths on every backend.** The fused Cython kernel (used on
+  homogeneous landscapes) only did starvation deaths, so animals there never died of old
+  age or bycatch; the daily check now runs after it. The JAX path now also does the
+  tick-1 max-age check.
+- **`EnergyMode.JASMINE` no longer crashes.** The JASMINE energy module lacked the two
+  split phases the population calls (food intake, then costs, with the starvation check
+  between them), so any run with it failed on the first step. Runs with an energy module
+  also charge lactation on the tick a calf is abandoned.
+- **Population growth.** The arrays grow by a quarter at a time and log the memory in
+  use (about 320 KB per animal). New parameter `max_population` (default 0 = no limit, as
+  in DEPONS): at the limit weaned calves are dropped, counted in
+  `PorpoisePopulation.calves_dropped` and logged once.
 - **Effect.** About half the starting animals now calve around day 165 and use 1.4 times
   the energy while nursing, instead of about a tenth. Populations decline faster and match
   DEPONS-Java on the same landscape: Kattegat (v3.2 landscape), 2000 animals, 5 years,

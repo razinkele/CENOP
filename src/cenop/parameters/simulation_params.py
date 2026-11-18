@@ -23,6 +23,9 @@ class SimulationParameters:
     # === Simulation Setup ===
     random_seed: int | None = None
     porpoise_count: int = 10000
+    # Largest number of animals the population may grow to; 0 = no limit (DEPONS).
+    # Each animal costs about 320 KB of memory. Calves weaned at the limit are dropped.
+    max_population: int = 0
     tracked_porpoise_count: int = 1
     sim_years: int = 50
     landscape: str = "Lithuania"
@@ -259,6 +262,10 @@ class SimulationParameters:
             raise ValueError("porpoise_count must be non-negative")
         if self.porpoise_count > 50000:
             raise ValueError("porpoise_count must not exceed 50,000")
+        if self.max_population < 0:
+            raise ValueError("max_population must be non-negative (0 = no limit)")
+        if 0 < self.max_population < self.porpoise_count:
+            raise ValueError("max_population must not be below porpoise_count")
         if self.sim_years < 1:
             raise ValueError("sim_years must be at least 1")
         if self.sim_years > 200:

@@ -160,7 +160,8 @@ class TestUndirected:
         assert pop.heading[0] == h
 
     def test_refused_on_jax(self):
-        pytest.importorskip("jax")
+        if not popmod._HAS_JAX:  # importable is not enough: a full GPU also disables it
+            pytest.skip("JAX backend not usable")
         with pytest.raises(ValueError, match="Undirected.*JAX"):
             _pop(dispersal="Undirected", use_jax=True)
 
@@ -210,7 +211,8 @@ class TestInnerDanishWatersState:
         assert self._idw()._dispersal_mode == "InnerDanishWaters"
 
     def test_refused_on_jax(self):
-        pytest.importorskip("jax")
+        if not popmod._HAS_JAX:
+            pytest.skip("JAX backend not usable")
         with pytest.raises(ValueError, match="InnerDanishWaters.*JAX"):
             self._idw(use_jax=True)
 
@@ -236,6 +238,7 @@ class TestInnerDanishWatersState:
         pop.y[:] = [11.0, 21.0, 31.0, 41.0]
         seen = {}
         pop._check_dispersal_trigger = lambda mask: seen.update(x0=pop._daily_pos_x[:, 0].copy())
+        pop._global_tick = 48  # not tick 1, which has its own push
         pop._tick_counter = 47
         pop._update_energy_history(pop.active_mask)
         np.testing.assert_array_equal(seen["x0"], pop.x)  # pushed before the trigger
@@ -248,6 +251,17 @@ class TestInnerDanishWatersState:
         np.testing.assert_array_equal(pop._daily_pos_x[:, 1], [10.0, 20.0, 30.0, 40.0])
         np.testing.assert_array_equal(pop._daily_pos_x[:, 0], [13.0, 23.0, 33.0, 43.0])
         assert (pop._daily_pos_x[:, 2] == 0.5).all()
+
+    def test_first_tick_also_pushes(self):
+        # DEPONS runs the daily task once at tick 1 as well (PorpoiseSimBuilder.java:340,355)
+        pop = _pop()
+        pop.x[:] = 10.0
+        pop.y[:] = 11.0
+        pop._global_tick = 1
+        pop._update_energy_history(pop.active_mask)
+        assert (pop._daily_pos_x[:, 0] == 10.0).all() and (pop._daily_pos_y[:, 0] == 11.0).all()
+        assert (pop._daily_pos_x[:, 1] == 0.5).all()
+        assert not pop._energy_history.any()  # the energy history is not touched at tick 1
 
     def test_no_push_inside_a_day(self):
         pop = _pop()

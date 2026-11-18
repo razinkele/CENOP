@@ -3570,6 +3570,12 @@ class PorpoisePopulation:
         if getattr(self, "_use_jax", False):
             return
 
+        # DEPONS also runs its daily task once at tick 1 (PorpoiseSimBuilder.java:340, 355), so
+        # posListDaily holds the tick-1 position before the first day boundary. Only the
+        # position push is mirrored here; it is read by InnerDanishWaters dispersal alone.
+        if self._global_tick == 1:
+            self._push_daily_positions()
+
         # Accumulate energy for current day
         self._energy_ticks_today[mask] += self.energy[mask]
         self._tick_counter += 1
@@ -3589,16 +3595,20 @@ class PorpoisePopulation:
             self._energy_ticks_today[:] = 0.0
 
             # DEPONS posListDaily.add(getPosition()), before the trigger (Porpoise.java:1087)
-            self._daily_pos_x[:, 1:] = self._daily_pos_x[:, :-1]
-            self._daily_pos_x[:, 0] = self.x
-            self._daily_pos_y[:, 1:] = self._daily_pos_y[:, :-1]
-            self._daily_pos_y[:, 0] = self.y
+            self._push_daily_positions()
 
             # Check for declining energy trend (t_disp consecutive days)
             self._check_dispersal_trigger(mask)
 
         # Record this tick as updated
         self._last_energy_update_tick = self._global_tick
+
+    def _push_daily_positions(self) -> None:
+        """DEPONS posListDaily.add(getPosition()): newest at index 0."""
+        self._daily_pos_x[:, 1:] = self._daily_pos_x[:, :-1]
+        self._daily_pos_x[:, 0] = self.x
+        self._daily_pos_y[:, 1:] = self._daily_pos_y[:, :-1]
+        self._daily_pos_y[:, 0] = self.y
 
     def _memory_dispersal_target(self, idx: int) -> tuple[float, float] | None:
         """DEPONS findMostAttractiveMemCell: best food/tick cell in the preferred-distance band."""

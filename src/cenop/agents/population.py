@@ -187,6 +187,7 @@ class PorpoisePopulation:
         # Tracks any porpoise deterred at least once during the reporting period
         self._was_deterred = np.zeros(count, dtype=bool)
         self._abandoned_this_tick = np.zeros(count, dtype=bool)  # calf abandoned in this tick
+        self.calves_dropped = 0  # weaned calves lost to params.max_population
 
         # Reference memory circular buffers (DEPONS 3.2 — 120 entries per agent)
         _REF_MEM_SIZE = params.ref_mem_size if hasattr(params, "ref_mem_size") else 120
@@ -2270,7 +2271,9 @@ class PorpoisePopulation:
             current_month=current_month,
             is_disturbed=self.deter_strength > 0,
             deterrence_magnitude=self.deter_strength,
-            is_lactating=self.with_calf,
+            # A copy: the starvation check between the two energy phases may abandon the
+            # calf, and that tick is still charged for lactation (Porpoise.java:751-753).
+            is_lactating=self.with_calf.copy(),
             is_pregnant=(self.days_since_mating > 0) & (self.days_since_mating < 300),
         )
         return context, food_available
@@ -2459,8 +2462,15 @@ class PorpoisePopulation:
         # Die if: not lactating, or energy <= 0
         starved = starving & ((self.energy <= 0) | ~was_with_calf)
 
-        # Bycatch + max-age: daily schedule (Java Porpoise.java:1137-1153)
-        # Day boundaries (tick % 48 == 0), and tick 1, where DEPONS also runs its daily task
+        bycatch, old_age = self._daily_mortality(mask)
+        self._apply_deaths(starved, old_age, bycatch, active_before)
+
+    def _daily_mortality(self, mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Bycatch and max-age deaths among ``mask`` (Java updMortality, Porpoise.java:1137-1153).
+
+        Daily: day boundaries (tick % 48 == 0), and tick 1, where DEPONS also runs its daily
+        task. Returns (bycatch, old_age) masks, all False on other ticks.
+        """
         bycatch = np.zeros(self.count, dtype=bool)
         old_age = np.zeros(self.count, dtype=bool)
         if self._global_tick % 48 == 0 or self._global_tick == 1:
@@ -2473,8 +2483,16 @@ class PorpoisePopulation:
             # Max-age also daily (Java: same updMortality method)
             max_age = getattr(self.params, "max_age", 30.0)
             old_age = mask & (self.age > max_age)
+        return bycatch, old_age
 
-        # Apply deaths
+    def _apply_deaths(
+        self,
+        starved: np.ndarray,
+        old_age: np.ndarray,
+        bycatch: np.ndarray,
+        active_before: int,
+    ) -> None:
+        """Deactivate the dead and record age, day, cause and the per-tick counters."""
         all_deaths = starved | old_age | bycatch
         if all_deaths.any():
             death_count = int(np.sum(all_deaths))
@@ -2682,8 +2700,27 @@ class PorpoisePopulation:
         inactive_slots = np.flatnonzero(~self.active_mask)
         if inactive_slots.size < n_calves:
             short = n_calves - int(inactive_slots.size)
-            self._grow(max(short, 32, self.count // 10))
-            inactive_slots = np.flatnonzero(~self.active_mask)
+            # A quarter more each time, so repeated growth copies the arrays rarely.
+            extra = max(short, 32, self.count // 4)
+            cap = int(getattr(self.params, "max_population", 0))
+            if cap > 0:
+                extra = min(extra, max(cap - self.count, 0))
+            if extra > 0:
+                self._grow(extra)
+                inactive_slots = np.flatnonzero(~self.active_mask)
+            if inactive_slots.size < n_calves:
+                dropped = n_calves - int(inactive_slots.size)
+                if self.calves_dropped == 0:
+                    logger.warning(
+                        "Population limit max_population=%d reached: weaned calves are "
+                        "being dropped",
+                        cap,
+                    )
+                self.calves_dropped += dropped
+                n_calves = int(inactive_slots.size)
+                mother_indices = mother_indices[:n_calves]
+                if n_calves == 0:
+                    return
         new_slots = inactive_slots[:n_calves]
         self.last_step_births += n_calves
 
@@ -2728,6 +2765,7 @@ class PorpoisePopulation:
             memory_module=self._memory_module,
         )
         fresh.active_mask[:] = False
+        fresh.calves_dropped = self.calves_dropped
         fresh.ids[:] = old + np.arange(extra, dtype=fresh.ids.dtype)
 
         merged: dict[int, np.ndarray] = {}  # id(old array) -> grown array, keeps aliases shared
@@ -2767,7 +2805,12 @@ class PorpoisePopulation:
         merge(self, fresh, 0)
         self.count = old + extra
         self._active_idx = np.flatnonzero(self.active_mask)
-        logger.info("Population arrays grown from %d to %d slots", old, self.count)
+        logger.info(
+            "Population arrays grown from %d to %d slots (about %.0f MB of spatial memory)",
+            old,
+            self.count,
+            self.psm_buffer.nbytes / 1e6,
+        )
 
     def _reset_recycled_slots(self, slots: np.ndarray) -> None:
         """Reset all persistent per-agent state for recycled (reused) slots to
@@ -3170,6 +3213,17 @@ class PorpoisePopulation:
         _jax_deaths = active_before - int(np.sum(self.active_mask))
         if _jax_deaths > 0:
             self.last_step_deaths += _jax_deaths
+        if self._global_tick == 1:
+            # DEPONS also runs its daily task at tick 1; the kernel does the daily bycatch /
+            # max-age check at day boundaries only.
+            bycatch, old_age = self._daily_mortality(self.active_mask)
+            if bycatch.any() or old_age.any():
+                self._apply_deaths(
+                    np.zeros(self.count, dtype=bool),
+                    old_age,
+                    bycatch,
+                    int(np.sum(self.active_mask)),
+                )
         np.copyto(self.with_calf, np.asarray(new_with_calf))
         np.copyto(self._energy_ticks_today, np.asarray(new_energy_ticks_today))
         np.copyto(self._energy_history, np.asarray(new_energy_history))
@@ -3399,9 +3453,21 @@ class PorpoisePopulation:
                     self.death_days.extend([sim_day] * len(dead_idx))
                     # Cython only performs starvation deaths
                     self.death_causes.extend(["starvation"] * len(dead_idx))
-                    # Finding #11: Cython path performs starvation-only deaths.
+                    # The fused kernel performs starvation deaths only.
                     self.last_step_deaths += int(len(dead_idx))
                     self.last_step_deaths_starvation += int(len(dead_idx))
+
+            # Daily bycatch / max-age, which the kernel does not do (same draw order as the
+            # reference path: starvation roll first, bycatch roll second).
+            bycatch, old_age = self._daily_mortality(self.active_mask)
+            if bycatch.any() or old_age.any():
+                self._apply_deaths(
+                    np.zeros(self.count, dtype=bool),
+                    old_age,
+                    bycatch,
+                    int(np.sum(self.active_mask)),
+                )
+                self._active_idx = np.flatnonzero(self.active_mask)
 
             # Dashboard stats
             n_active = len(self._active_idx)

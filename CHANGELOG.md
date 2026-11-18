@@ -52,10 +52,25 @@ All notable changes to CENOP-JASMINE are documented in this file.
 - **Daily pregnancy update at tick 1.** DEPONS runs its daily task once at tick 1 as well
   as every 48 ticks; CENOP now runs the pregnancy update then too, so initially pregnant
   animals calve on the same day as in DEPONS (they were one day late).
+- **Ageing once a day.** Age now advances by 1/360 in the daily step, which also runs at
+  tick 1, as in DEPONS (`Porpoise.java:1082`). It advanced by 1/17280 every tick, which left
+  animals one day younger than in DEPONS. The daily bycatch / max-age check also runs at
+  tick 1 (not on the JAX path).
+- **Lactation cost on the tick a calf is abandoned.** A starving mother that abandons her
+  calf is still charged the lactation factor for that tick, as in DEPONS
+  (`Porpoise.java:751-753`, `:773`). The NumPy and Cython paths charged 1.0x; JAX already
+  matched. The Cython extension must be rebuilt
+  (`src/cenop/optimizations/setup_cython.py build_ext --inplace`).
+- **Weaned calves are never dropped.** When every slot was occupied a weaned calf was
+  silently discarded, so a population could not grow beyond its starting size. The
+  per-animal arrays now grow when needed, as DEPONS adds the calf unconditionally. Runs that
+  never fill up (all Kattegat baselines) are unchanged by this.
+- The unused per-animal `Porpoise` class and the unused per-animal branch in `Simulation`
+  no longer carry a sex field.
 - **Effect.** About half the starting animals now calve around day 165 and use 1.4 times
   the energy while nursing, instead of about a tenth. Populations decline faster and match
   DEPONS-Java on the same landscape: Kattegat (v3.2 landscape), 2000 animals, 5 years,
-  PSM-Type2: CENOP 45-50 against Java 51-57 (was 95-108); InnerDanishWaters: 42-46 against
+  PSM-Type2: CENOP 44-60 against Java 51-57 (was 95-108); InnerDanishWaters: 40-48 against
   47-53 (was 88-98). Investigation:
   `docs/superpowers/specs/2026-11-18-kattegat-population-gap.md`
 - Present in every release so far. All seeded results change (one fewer random draw at

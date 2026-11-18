@@ -1,8 +1,13 @@
 Kattegat ship-scenario reference baseline — PROVENANCE
 =======================================================
 
-Date generated:   2026-11-18
-Producing code:   CENOP-JASMINE, commit 596eec6 (branch fix/females-only-start)
+Date generated:   2026-11-18 (ship scenario rerun finished 2026-11-19)
+Producing code:   CENOP-JASMINE, commit 1a0efbc (branch fix/start-state-minors); the later commits
+                  on that branch leave Kattegat runs bit-identical (undisturbed and
+                  turbine baselines rerun at 2247de4 and compared byte for byte). The
+                  ship files are from a rerun on the follow-up code (branch
+                  fix/backend-daily-step), which reproduced the 1a0efbc run exactly
+                  (294, 114, 104, 88 at days 180, 360, 540, 720)
 Command:          python3 scripts/run_kattegat_reference.py --count 2000 --years 2 \
                     --seed 42 --ships --out output/kattegat_ref_ships
 Landscape:        data/Kattegat (600x1000 cells; DEPONS v3.0 Kattegat landscape),
@@ -16,6 +21,8 @@ SUPERSEDES the baseline of 2026-11-11 (code 99d4c60). Change since then (CHANGEL
     pregnant with probability 0.68 at setup (668b5bf). Before, half the animals were
     male and only mature females started pregnant.
   - Setup mating day and the tick-1 daily pregnancy update as in DEPONS (596eec6).
+  - Ageing once a day and at tick 1, the tick-1 daily mortality check, and the
+    lactation charge on the tick a calf is abandoned, as in DEPONS (1a0efbc).
 
 Earlier changes (baseline of 2026-11-11 against commit 3a87975, 2026-07-09), kept for
 reference, all aimed at DEPONS 3.2 parity (details in CHANGELOG [Unreleased]
@@ -36,10 +43,10 @@ comparable with the previous baseline.
 
 Run summary:
   - 2 yr (34,560 ticks), N=2000; population 2000 -> 294 (day 180) -> 114 (day 360)
-    -> 106 (day 540) -> 91 (day 720). The previous baseline ended at 114.
-  - 34,620 nonzero deter_strength records, max 0.2730 (previous: 37,091, max 0.3168).
-  - The decline matches the other regenerated variants (undisturbed 5 yr: 2000 -> 31;
-    turbines Kattegat-test 2 yr: 2000 -> 83). data/Kattegat is the v3.0 landscape,
+    -> 104 (day 540) -> 88 (day 720). The baseline of 2026-11-11 ended at 114.
+  - 34,859 nonzero deter_strength records, max 0.2863 (2026-11-11: 37,091, max 0.3168).
+  - The decline matches the other regenerated variants (undisturbed 5 yr: 2000 -> 33;
+    turbines Kattegat-test 2 yr: 2000 -> 78). data/Kattegat is the v3.0 landscape,
     which has less food than the v3.2 landscape used for the DEPONS Java comparisons,
     so CENOP's baselines fall faster early (undisturbed: 1008 at day 63) than the
     v3.2 runs reported in the investigation spec.

@@ -154,7 +154,7 @@ What this shows:
 
 CENOP keeps more animals than DEPONS on Kattegat in both dispersal modes: about 1.45 times
 after the first year, about 1.9 times after five. The first-year collapse is slightly
-shallower in CENOP and the later decline is slower (about 9 % a year against about 14 %).
+shallower in CENOP and the later decline is slower (about 10 % a year against about 15 % under InnerDanishWaters).
 This belongs to the existing CENOP-DEPONS energy and mortality differences, outside this
 port. It needs its own investigation; the like-for-like setup used here (CENOP on the v3.2
 landscape, two modes, per-block and per-year numbers) is the place to start.

@@ -305,7 +305,7 @@ class TestDEPONSTrajectoryComparison:
         for tick in range(1, 360 * 48 + 1):
             pop.step()
             if tick % 48 == 0:
-                new = pop.with_calf & (first_calf_day < 0)
+                new = pop.with_calf[:200] & (first_calf_day < 0)  # arrays may have grown
                 first_calf_day[new] = tick // 48
 
         calved = first_calf_day >= 0

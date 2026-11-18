@@ -467,6 +467,9 @@ class Simulation:
         active_mask = self.population_manager.active_mask
         px = self.population_manager.x
         py = self.population_manager.y
+        if self._zero_deterrence.shape[0] != px.shape[0]:
+            # The population arrays grew (weaned calves with no free slot)
+            self._zero_deterrence = np.zeros(px.shape[0], dtype=np.float64)
 
         # Turbine deterrence (skip when off or no active turbines)
         if self.params.turbines != "off" and len(self._turbine_manager.get_active_turbines()) > 0:

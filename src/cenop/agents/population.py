@@ -2654,37 +2654,10 @@ class PorpoisePopulation:
 
         # Weaning: at nursing_time, create the calf (50% chance it is a female agent), end lactation
         weaning = mask & self.with_calf & (self.days_since_birth == self.params.nursing_time)
+        mother_indices = np.empty(0, dtype=np.intp)
         if weaning.any():
             calf_roll = self.rng.random(self.count)
-            creates_calf = weaning & (calf_roll > 0.5)
-
-            n_calves = int(np.sum(creates_calf))
-            if n_calves > 0:
-                inactive_slots = np.where(~self.active_mask)[0]
-                slots_to_use = min(n_calves, len(inactive_slots))
-                if slots_to_use > 0:
-                    self.last_step_births += int(slots_to_use)
-                    new_slots = inactive_slots[:slots_to_use]
-                    mother_indices = np.where(creates_calf)[0][:slots_to_use]
-
-                    self.active_mask[new_slots] = True
-                    self.x[new_slots] = self.x[mother_indices]
-                    self.y[new_slots] = self.y[mother_indices]
-                    self.heading[new_slots] = self.heading[mother_indices]
-                    self.age[new_slots] = 0.0
-                    self.energy[new_slots] = (
-                        self.rng.normal(
-                            self.params.energy_init_mean, self.params.energy_init_sd, slots_to_use
-                        )
-                        .clip(0, 20)
-                        .astype(np.float32)
-                    )
-                    self.pregnancy_status[new_slots] = 0
-                    self.with_calf[new_slots] = False
-                    self.days_since_mating[new_slots] = -99
-                    self.days_since_birth[new_slots] = -99
-                    self.mating_day[new_slots] = -99
-                    self._reset_recycled_slots(new_slots)
+            mother_indices = np.flatnonzero(weaning & (calf_roll > 0.5))
 
             self.with_calf[weaning] = False
             self.days_since_birth[weaning] = -99
@@ -2695,6 +2668,108 @@ class PorpoisePopulation:
 
         lactating = mask & self.with_calf
         self.days_since_birth[lactating] += 1
+
+        # Calves last: adding them may grow the arrays, which invalidates the masks above.
+        # A calf starts at status 0 without a calf, so the counters do not touch it.
+        if mother_indices.size:
+            self._add_calves(mother_indices)
+
+    def _add_calves(self, mother_indices: np.ndarray) -> None:
+        """Add one weaned calf per mother, at her position (Porpoise.java:1210-1215).
+
+        DEPONS adds the calf unconditionally. Free slots are used first; when there are too
+        few, the per-animal arrays grow.
+        """
+        n_calves = int(mother_indices.size)
+        inactive_slots = np.flatnonzero(~self.active_mask)
+        if inactive_slots.size < n_calves:
+            short = n_calves - int(inactive_slots.size)
+            self._grow(max(short, 32, self.count // 10))
+            inactive_slots = np.flatnonzero(~self.active_mask)
+        new_slots = inactive_slots[:n_calves]
+        self.last_step_births += n_calves
+
+        self.active_mask[new_slots] = True
+        self.x[new_slots] = self.x[mother_indices]
+        self.y[new_slots] = self.y[mother_indices]
+        self.heading[new_slots] = self.heading[mother_indices]
+        self.age[new_slots] = 0.0
+        self.energy[new_slots] = (
+            self.rng.normal(self.params.energy_init_mean, self.params.energy_init_sd, n_calves)
+            .clip(0, 20)
+            .astype(np.float32)
+        )
+        self.pregnancy_status[new_slots] = 0
+        self.with_calf[new_slots] = False
+        self.days_since_mating[new_slots] = -99
+        self.days_since_birth[new_slots] = -99
+        self.mating_day[new_slots] = -99
+        self._reset_recycled_slots(new_slots)
+
+    def _grow(self, extra: int) -> None:
+        """Append ``extra`` inactive slots to every per-animal array.
+
+        The new slots come from a freshly constructed population of ``extra`` animals with the
+        same parameters, landscape and modules, so every per-animal array (including module
+        states and constant work arrays) gets correctly initialised values without a registry
+        of names. An array counts as per-animal when its first dimension is ``count`` here and
+        ``extra`` there; ``extra`` is never equal to ``count``, so a grid or lookup table whose
+        size happens to equal the population size is left alone. The fresh population has its
+        own generator: nothing is drawn from this one.
+        """
+        old = self.count
+        if extra == old:
+            extra += 1
+        fresh = PorpoisePopulation(
+            extra,
+            self.params,
+            self.landscape,
+            movement_module=self._movement_module,
+            behavior_fsm=self._behavior_fsm,
+            energy_module=self._energy_module,
+            memory_module=self._memory_module,
+        )
+        fresh.active_mask[:] = False
+        fresh.ids[:] = old + np.arange(extra, dtype=fresh.ids.dtype)
+
+        merged: dict[int, np.ndarray] = {}  # id(old array) -> grown array, keeps aliases shared
+        seen: set[int] = set()
+
+        def merge(mine, theirs, depth):
+            for name, v in list(vars(mine).items()):
+                if name in ("landscape", "params", "rng"):
+                    continue
+                f = vars(theirs).get(name)
+                if f is v or f is None:
+                    continue  # shared (modules size their own buffers) or not per-animal
+                if isinstance(v, np.ndarray):
+                    if id(v) in merged:
+                        setattr(mine, name, merged[id(v)])
+                    elif (
+                        isinstance(f, np.ndarray)
+                        and v.shape[:1] == (old,)
+                        and f.shape[:1] == (extra,)
+                        and v.shape[1:] == f.shape[1:]
+                    ):
+                        merged[id(v)] = np.concatenate([v, f.astype(v.dtype, copy=False)])
+                        setattr(mine, name, merged[id(v)])
+                elif isinstance(v, list):
+                    if isinstance(f, list) and len(v) == old and len(f) == extra:
+                        v.extend(f)
+                elif (
+                    hasattr(v, "__dict__")
+                    and type(v) is type(f)
+                    and type(v).__module__.startswith("cenop")
+                    and id(v) not in seen
+                    and depth < 3
+                ):
+                    seen.add(id(v))
+                    merge(v, f, depth + 1)
+
+        merge(self, fresh, 0)
+        self.count = old + extra
+        self._active_idx = np.flatnonzero(self.active_mask)
+        logger.info("Population arrays grown from %d to %d slots", old, self.count)
 
     def _reset_recycled_slots(self, slots: np.ndarray) -> None:
         """Reset all persistent per-agent state for recycled (reused) slots to

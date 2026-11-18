@@ -10,7 +10,7 @@ from cenop.parameters.simulation_params import DISPERSAL_MODES, SimulationParame
 
 
 def test_modes_constant():
-    assert DISPERSAL_MODES == ("off", "PSM-Type2", "Undirected")
+    assert DISPERSAL_MODES == ("off", "PSM-Type2", "Undirected", "InnerDanishWaters")
 
 
 @pytest.mark.parametrize("mode", ["off", "PSM-Type2", "Undirected"])
@@ -18,14 +18,25 @@ def test_valid_modes_accepted(mode):
     assert SimulationParameters(dispersal=mode).dispersal == mode
 
 
-def test_inner_danish_waters_not_implemented():
-    with pytest.raises(ValueError, match="InnerDanishWaters.*not implemented"):
+def test_inner_danish_waters_accepted_on_kattegat():
+    p = SimulationParameters(dispersal="InnerDanishWaters", landscape="Kattegat")
+    assert p.dispersal == "InnerDanishWaters"
+
+
+@pytest.mark.parametrize("landscape", ["Lithuania", "Homogeneous", "NorthSea"])
+def test_inner_danish_waters_needs_kattegat(landscape):
+    with pytest.raises(ValueError, match="InnerDanishWaters.*Kattegat"):
+        SimulationParameters(dispersal="InnerDanishWaters", landscape=landscape)
+
+
+def test_inner_danish_waters_default_landscape_rejected():
+    with pytest.raises(ValueError, match="InnerDanishWaters.*Kattegat"):
         SimulationParameters(dispersal="InnerDanishWaters")
 
 
 @pytest.mark.parametrize("bad", ["Off", "undirected", " off", "PSM-Typ2", ""])
 def test_unknown_mode_lists_valid_values(bad):
-    with pytest.raises(ValueError, match="off.*PSM-Type2.*Undirected"):
+    with pytest.raises(ValueError, match="off.*PSM-Type2.*Undirected.*InnerDanishWaters"):
         SimulationParameters(dispersal=bad)
 
 
@@ -179,3 +190,84 @@ def test_dispersal_events_file_records_the_mode():
     pop.is_dispersing[0] = True
     writer._detect_dispersal(sim)
     assert [e.dispersal_type for e in events] == ["Undirected"]
+
+
+class TestInnerDanishWatersState:
+    """Guards and per-animal state for dispersal="InnerDanishWaters" (wiring is tested in
+    test_dispersal_idw_population.py)."""
+
+    def _idw(self, **kw):
+        params = SimulationParameters(
+            random_seed=1,
+            communication_enabled=False,
+            dispersal="InnerDanishWaters",
+            landscape="Kattegat",
+            **kw,
+        )
+        return PorpoisePopulation(4, params)
+
+    def test_constructs_on_the_default_backend(self):
+        assert self._idw()._dispersal_mode == "InnerDanishWaters"
+
+    def test_refused_on_jax(self):
+        pytest.importorskip("jax")
+        with pytest.raises(ValueError, match="InnerDanishWaters.*JAX"):
+            self._idw(use_jax=True)
+
+    def test_refused_with_non_crw_movement_module(self):
+        params = SimulationParameters(
+            random_seed=1,
+            communication_enabled=False,
+            dispersal="InnerDanishWaters",
+            landscape="Kattegat",
+        )
+        with pytest.raises(ValueError, match="InnerDanishWaters.*movement"):
+            PorpoisePopulation(4, params, movement_module=JASMINEPhysicsMovement(params))
+
+    def test_initial_state(self):
+        pop = _pop()
+        assert pop.dispersal_phase.dtype == np.int8 and not pop.dispersal_phase.any()
+        assert pop._daily_pos_x.shape == (pop.count, 10)
+        assert (pop._daily_pos_x == 0.5).all() and (pop._daily_pos_y == 0.5).all()
+
+    def test_daily_positions_pushed_at_the_day_boundary(self):
+        pop = _pop()
+        pop.x[:] = [10.0, 20.0, 30.0, 40.0]
+        pop.y[:] = [11.0, 21.0, 31.0, 41.0]
+        seen = {}
+        pop._check_dispersal_trigger = lambda mask: seen.update(x0=pop._daily_pos_x[:, 0].copy())
+        pop._tick_counter = 47
+        pop._update_energy_history(pop.active_mask)
+        np.testing.assert_array_equal(seen["x0"], pop.x)  # pushed before the trigger
+        np.testing.assert_array_equal(pop._daily_pos_y[:, 0], pop.y)
+        assert (pop._daily_pos_x[:, 1] == 0.5).all()
+        pop.x += 3.0
+        pop._tick_counter = 47
+        pop._global_tick += 1
+        pop._update_energy_history(pop.active_mask)
+        np.testing.assert_array_equal(pop._daily_pos_x[:, 1], [10.0, 20.0, 30.0, 40.0])
+        np.testing.assert_array_equal(pop._daily_pos_x[:, 0], [13.0, 23.0, 33.0, 43.0])
+        assert (pop._daily_pos_x[:, 2] == 0.5).all()
+
+    def test_no_push_inside_a_day(self):
+        pop = _pop()
+        pop.x[:] = 10.0
+        pop._tick_counter = 5
+        pop._update_energy_history(pop.active_mask)
+        assert (pop._daily_pos_x == 0.5).all()
+
+    def test_end_dispersal_clears_the_phase(self):
+        pop = _pop()
+        pop.is_dispersing[0] = True
+        pop.dispersal_phase[0] = 2
+        pop._end_dispersal(np.array([0]))
+        assert pop.dispersal_phase[0] == 0
+
+    def test_recycled_slot_is_reset(self):
+        pop = _pop()
+        pop.dispersal_phase[1] = 2
+        pop._daily_pos_x[1, :] = 77.0
+        pop._daily_pos_y[1, :] = 78.0
+        pop._reset_recycled_slots(np.array([1]))
+        assert pop.dispersal_phase[1] == 0
+        assert (pop._daily_pos_x[1] == 0.5).all() and (pop._daily_pos_y[1] == 0.5).all()

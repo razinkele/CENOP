@@ -453,6 +453,14 @@ class PorpoisePopulation:
         # DEPONS enoughWaterAhead: the land check's final path-check result (D15); stays True
         # where the check does not run (dispersers, _skip_land_avoidance)
         self._enough_water_ahead = np.ones(count, dtype=bool)
+
+        # InnerDanishWaters dispersal (cenop.agents.dispersal_idw). Phase: 0 not dispersing,
+        # 1 towards the target block, 2 along the coast. The daily positions are DEPONS
+        # posListDaily: newest at index 0, pushed at the day boundary in every mode, and
+        # initially Java's (0, 0), which is (0.5, 0.5) in CENOP coordinates.
+        self.dispersal_phase = np.zeros(count, dtype=np.int8)
+        self._daily_pos_x = np.full((count, 10), 0.5, dtype=np.float32)
+        self._daily_pos_y = np.full((count, 10), 0.5, dtype=np.float32)
         # Set by _depons_land_check when it records the start-of-tick position in
         # _pre_move_x/_y; consumed (and cleared) by _apply_positions, and cleared at the top of
         # both CRW movement paths so a record never outlives its tick
@@ -473,6 +481,19 @@ class PorpoisePopulation:
 
         # === JAX acceleration ===
         self._use_jax = _HAS_JAX and getattr(params, "use_jax", True)
+        if self._dispersal_mode == "InnerDanishWaters":
+            from cenop.movement.depons_crw import DEPONSCRWMovement
+
+            if self._use_jax:
+                raise ValueError(
+                    "dispersal 'InnerDanishWaters' is not supported on the JAX backend; "
+                    "set use_jax=False"
+                )
+            if movement_module is not None and not isinstance(movement_module, DEPONSCRWMovement):
+                raise ValueError(
+                    "dispersal 'InnerDanishWaters' needs the DEPONS CRW movement; "
+                    f"it does not run with the {type(movement_module).__name__} movement module"
+                )
         if self._use_jax and self._dispersal_mode == "Undirected":
             # jax_disperse_step embeds the PSM-Type2 turn and stop; never fall back silently
             raise ValueError(
@@ -1196,6 +1217,7 @@ class PorpoisePopulation:
     def _end_dispersal(self, sel: np.ndarray) -> None:
         """DEPONS deactivate(): stop dispersing; reset path length and declining-energy days."""
         self.is_dispersing[sel] = False
+        self.dispersal_phase[sel] = 0
         self.dispersal_distance_traveled[sel] = 0.0
         self.days_declining_energy[sel] = 0
 
@@ -2597,6 +2619,9 @@ class PorpoisePopulation:
 
         # Dispersal state (__init__ lines 195-202)
         self.is_dispersing[slots] = False
+        self.dispersal_phase[slots] = 0
+        self._daily_pos_x[slots, :] = 0.5
+        self._daily_pos_y[slots, :] = 0.5
         self.days_declining_energy[slots] = 0
         self.dispersal_target_x[slots] = 0.0
         self.dispersal_target_y[slots] = 0.0
@@ -3453,6 +3478,12 @@ class PorpoisePopulation:
 
             # Reset daily accumulator
             self._energy_ticks_today[:] = 0.0
+
+            # DEPONS posListDaily.add(getPosition()), before the trigger (Porpoise.java:1087)
+            self._daily_pos_x[:, 1:] = self._daily_pos_x[:, :-1]
+            self._daily_pos_x[:, 0] = self.x
+            self._daily_pos_y[:, 1:] = self._daily_pos_y[:, :-1]
+            self._daily_pos_y[:, 0] = self.y
 
             # Check for declining energy trend (t_disp consecutive days)
             self._check_dispersal_trigger(mask)

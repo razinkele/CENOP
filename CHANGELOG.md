@@ -16,7 +16,9 @@ All notable changes to CENOP-JASMINE are documented in this file.
 - Dispersal modes `off` and `Undirected` (DEPONS `DispersalOff`, `UndirectedDispersal`).
   `Undirected` always picks a random target, turns by the full +/- `PSM_angle` draw with no
   logistic damping, and stops when the straight-line distance from its start reaches the
-  target distance. It runs on the default NumPy/Numba path; the JAX backend refuses it. See
+  target distance. It runs on the default NumPy/Numba path; the JAX backend refuses it. With
+  JASMINE-physics or hybrid movement, which have no per-step dispersal turn in any mode, only
+  the random target and the full-distance stop apply. See
   `docs/superpowers/specs/2026-11-18-dispersal-selector-design.md`
 
 ### Fixed — the dispersal setting was ignored

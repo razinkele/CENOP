@@ -1,6 +1,6 @@
 # Dispersal selector, stage 1: make the setting real
 
-Date: 2026-11-18. Branch: `feat/dispersal-selector`. Status: awaiting approval.
+Date: 2026-11-18. Branch: `feat/dispersal-selector`. Status: approved 2026-11-18, implemented.
 
 ## Intent
 

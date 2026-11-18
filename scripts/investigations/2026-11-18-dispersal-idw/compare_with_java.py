@@ -13,10 +13,14 @@ from the north-west on both sides), with the IDW-minus-PSM2 shift on each
 side. Time spent dispersing is compared by episodes.py, per animal-tick.
 
 Run from the repo root:
-python3 scripts/investigations/2026-11-18-dispersal-idw/compare_with_java.py
+python3 scripts/investigations/2026-11-18-dispersal-idw/compare_with_java.py [tag]
+
+``tag`` selects CENOP runs under output/cenop_idw/<tag>/ (e.g. v32: CENOP on the DEPONS v3.2
+landscape, the one the Java runs used). Default: CENOP's own data/Kattegat (v3.0).
 """
 
 import csv
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -26,7 +30,7 @@ JAVA = {
     "InnerDanishWaters": ROOT / "output/depons_java/kattegat-idw-undisturbed-v1/N2000-Y5",
     "PSM-Type2": ROOT / "output/depons_java/kattegat-psm2-undisturbed-v1/N2000-Y5",
 }
-CENOP = ROOT / "output/cenop_idw"
+CENOP = ROOT / "output/cenop_idw" / (sys.argv[1] if len(sys.argv) > 1 else "")
 YEAR_DAYS = 360
 WINDOW = (30, 360)  # days averaged for the block distribution: after spin-up, before few are left
 

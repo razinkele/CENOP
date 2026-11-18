@@ -5,12 +5,19 @@ Date: 2026-11-18. Branch: `feat/dispersal-idw`. Design:
 
 ## Summary
 
-- **Where animals are: agrees.** The share of animals per 40 km block in CENOP follows
-  Java closely (correlation 0.96), much more closely than under PSM-Type2 (0.61).
+- **Where animals are: agrees.** On the same landscape as Java (v3.2), CENOP's share of
+  animals per 40 km block matches Java's as closely as two Java seeds match each other
+  (correlation 0.997, distance 0.034 against 0.045 between Java seeds).
+- **The mode's effect on population: agrees.** InnerDanishWaters leaves 0.59 times as many
+  animals as PSM-Type2 after year 1 in Java and 0.60 times in CENOP; after year 5 the
+  ratios are 0.93 and 0.92.
 - **Time spent dispersing: agrees within what two Java animals can show.**
-- **Population: does not agree.** After 5 years CENOP keeps 87-107 animals; Java keeps
-  47-53. Under PSM-Type2 the two models end at the same level (55 vs 51-57). The cause is
-  not established.
+- **Absolute population: does not agree, in either mode.** On the same landscape CENOP
+  keeps about 1.5 times Java's animals after year 1 and 1.7-1.9 times after year 5, under
+  InnerDanishWaters and under PSM-Type2 alike. This is an existing CENOP-DEPONS
+  difference, not something the port introduced.
+- **The landscape hypothesis is rejected.** Running CENOP on Java's landscape did not
+  bring its InnerDanishWaters population down (88-98 against 87-107 on v3.0).
 
 ## Setup
 
@@ -25,15 +32,16 @@ Date: 2026-11-18. Branch: `feat/dispersal-idw`. Design:
 
 ## Limits
 
-- **Different landscapes.** Java ran on the DEPONS v3.2 Kattegat landscape; CENOP's
-  `data/Kattegat` is the v3.0 landscape (prey, salinity, coast distance and patches differ;
-  the block grid is identical). This confounds every number below.
+- **Different landscapes in the first comparison.** Java ran on the DEPONS v3.2 Kattegat
+  landscape; CENOP's `data/Kattegat` is the v3.0 landscape (prey, salinity, coast distance
+  and patches differ; the block grid is identical). The sections up to "Time spent
+  dispersing" carry that confound; "Same landscape on both sides" removes it.
 - **Two Java seeds.** "Inside the Java spread" means inside the range of two runs.
 - **Different random streams.** Only distributions can be compared.
 - **Java tracks one animal per run** for dispersal phase, and in both seeds that animal
   died around day 120.
 
-## Population at the end of each year
+## Population at the end of each year (CENOP on v3.0)
 
 | | Year 1 | Year 2 | Year 3 | Year 4 | Year 5 |
 |---|---|---|---|---|---|
@@ -51,7 +59,7 @@ Date: 2026-11-18. Branch: `feat/dispersal-idw`. Design:
 - After year 1 CENOP IDW declines more slowly than Java IDW (about 5 % a year against
   about 14 %).
 
-## Where the animals are
+## Where the animals are (CENOP on v3.0)
 
 Mean share of animals per block over days 30-360, compared across all 60 blocks:
 
@@ -96,32 +104,68 @@ while alive):
   more dispersal in CENOP. Those snapshots are taken right after the daily trigger and
   overstate it; they are not used here.
 
-## The population difference
+## Same landscape on both sides (added after the first comparison)
 
-What is known:
-- It is specific to this mode: under PSM-Type2 the two models end within each other's range.
-- It is present by the end of year 1 and grows afterwards.
-- Spatial distribution and dispersal behaviour, the things the port controls directly,
-  agree.
+The first comparison above ran CENOP on its own `data/Kattegat` (v3.0). To test whether the
+landscape explained the population gap, CENOP was rerun on the v3.2 landscape Java used:
+the files from the harness cache linked under the names CENOP's loader reads
+(`prey0000_MM_XX.asc` -> `prey0000_MM.asc`, same for salinity). Seeds as before;
+`compare_with_java.py v32`.
 
-Candidate causes, none tested:
-1. **Landscape.** InnerDanishWaters concentrates animals in a few blocks (a tenth of the
-   population in one). Survival then depends on the food in those blocks, which differs
-   between the v3.0 and v3.2 prey maps. PSM-Type2 spreads animals more widely and would be
-   less sensitive to this.
-2. **A difference in the port that changes energy but not location**, for example what a
-   dispersing animal eats along the way, or the accepted deviation in the eating cell
-   after a stop with a move (see the changelog's known issues).
-3. **Existing CENOP-DEPONS differences in energy and mortality** that matter more when
-   animals disperse more often.
+Population at the end of each year, CENOP on v3.2:
 
-What would separate them: run Java on the v3.0 landscape, or CENOP on v3.2 (its loader
-cannot read the v3.2 files as shipped). If the models then agree, it is cause 1. If not,
-compare the energy of dispersing animals tick by tick.
+| | Year 1 | Year 2 | Year 3 | Year 4 | Year 5 |
+|---|---|---|---|---|---|
+| Java IDW, seeds 42, 43 | 97, 99 | 85, 87 | 75, 74 | 70, 69 | 53, 47 |
+| CENOP IDW, seeds 42-46 (range) | 131-147 | 123-137 | 110-127 | 98-112 | 88-98 |
+| Java PSM-Type2, seeds 42, 43 | 161, 173 | 113, 124 | 89, 97 | 75, 83 | 51, 57 |
+| CENOP PSM-Type2, seeds 42, 43 | 240, 237 | 186, 169 | 152, 149 | 132, 127 | 95, 108 |
+
+| Ratio of means | Year 1 | Year 5 |
+|---|---|---|
+| CENOP / Java, InnerDanishWaters | 1.45 | 1.86 |
+| CENOP / Java, PSM-Type2 | 1.43 | 1.88 |
+| IDW / PSM-Type2, Java | 0.59 | 0.93 |
+| IDW / PSM-Type2, CENOP | 0.60 | 0.92 |
+
+Share of animals per block, days 30-360, CENOP on v3.2:
+
+| Pair | Total variation distance | Correlation |
+|---|---|---|
+| Java IDW vs CENOP IDW | 0.034 | 0.997 |
+| Java PSM-Type2 vs CENOP PSM-Type2 | 0.033 | 0.995 |
+| Java IDW vs Java PSM-Type2 | 0.416 | 0.404 |
+| CENOP IDW vs CENOP PSM-Type2 | 0.389 | 0.461 |
+| Per-block shift IDW minus PSM-Type2, Java vs CENOP | | 0.993 |
+
+What this shows:
+- **The landscape was not the cause of the population gap.** CENOP's InnerDanishWaters
+  population is the same on either landscape.
+- **The gap is not specific to this mode.** On the same landscape CENOP is above Java by
+  the same factor under PSM-Type2. The PSM-Type2 "agreement" in the first table (55
+  against 51-57) came from comparing across two different landscapes and was a coincidence.
+- **The port moves animals as Java does.** Block shares agree to within Java's own
+  seed-to-seed spread, and the change the mode makes relative to PSM-Type2 is the same in
+  both models, in location and in relative population.
+- **The landscape did explain the location differences** in the first comparison
+  (correlation 0.96 there, 0.997 here; PSM-Type2 0.61 there, 0.995 here).
+
+## The remaining population difference
+
+CENOP keeps more animals than DEPONS on Kattegat in both dispersal modes: about 1.45 times
+after the first year, about 1.9 times after five. The first-year collapse is slightly
+shallower in CENOP and the later decline is slower (about 9 % a year against about 14 %).
+This belongs to the existing CENOP-DEPONS energy and mortality differences, outside this
+port. It needs its own investigation; the like-for-like setup used here (CENOP on the v3.2
+landscape, two modes, per-block and per-year numbers) is the place to start.
+
+Not tested: the first-120-day dispersal statistics were not rerun on the v3.2 landscape.
 
 ## Conclusion
 
-The port reproduces where DEPONS sends animals and roughly how long they disperse.
-Population size under this mode is about twice Java's after five years and is not explained.
-Until it is, CENOP InnerDanishWaters runs should not be presented as matching canonical
-DEPONS Kattegat population results.
+On the same landscape the port reproduces where DEPONS sends animals, to within Java's own
+seed-to-seed variation, and reproduces the mode's effect on population relative to
+PSM-Type2. CENOP's absolute Kattegat population is higher than DEPONS's by the same factor
+in both modes, which is an existing difference in the shared energy and mortality code.
+CENOP Kattegat population numbers, in any dispersal mode, should not yet be presented as
+matching DEPONS.

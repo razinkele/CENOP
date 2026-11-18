@@ -7,7 +7,14 @@ day, n, mean_energy, phase1, phase2, b0..b59 (animals per 40 km block, index 0-5
 north-west; block index = blocks.asc value - 1, animals on a NODATA block cell are not counted).
 
 Run from the repo root:
-python3 scripts/investigations/2026-11-18-dispersal-idw/run_cenop.py <mode> <seed> [years]
+python3 scripts/investigations/2026-11-18-dispersal-idw/run_cenop.py <mode> <seed> [years] \
+    [data_root tag]
+
+``data_root`` is a directory holding a ``Kattegat`` landscape folder other than the repo's
+(default: data/, the DEPONS v3.0 landscape); ``tag`` then names the output folder
+output/cenop_idw/<tag>/<mode>/. Used to run CENOP on the DEPONS v3.2 landscape, whose
+monthly files are named prey0000_MM_XX.asc / salinity0000_MM_XX.asc: link them under the
+names CENOP reads (drop the _XX) in a scratch folder and pass that folder's parent.
 """
 
 import sys
@@ -32,14 +39,16 @@ params = SimulationParameters(
     turbines="off",
     dispersal=mode,
 )
-cd = CellData("Kattegat", str(ROOT / "data"))
+data_root = sys.argv[4] if len(sys.argv) > 4 else str(ROOT / "data")
+tag = sys.argv[5] if len(sys.argv) > 5 else ""
+cd = CellData("Kattegat", data_root)
 cd.load()
 sim = Simulation(params=params, cell_data=cd, seed=seed)
 sim.initialize()
 pm = sim.population_manager
 blocks = cd._blocks
 
-out = ROOT / "output" / "cenop_idw" / mode
+out = ROOT / "output" / "cenop_idw" / tag / mode
 out.mkdir(parents=True, exist_ok=True)
 rows = []
 

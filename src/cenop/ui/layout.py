@@ -566,13 +566,14 @@ def create_help_modal():
 
     <h3>Dispersal Tab</h3>
     <p>Controls large-scale movement when porpoises have declining energy.
-    Dispersal uses the <strong>PSM-Type2</strong> algorithm with heading dampening via the SSLogis formula.
+    The default mode is <strong>PSM-Type2</strong>: a remembered target with heading dampening via the SSLogis formula.
+    <strong>Undirected</strong> picks a random target and turns without dampening; <strong>off</strong> disables dispersal.
     Dispersing agents move at a fixed step length (<code>mean_disp_dist&nbsp;/&nbsp;0.4</code> grid cells)
     instead of CRW steps. Dispersal stops when the porpoise's current energy exceeds the minimum of its
     previous 7 days' energy (checked at day boundaries). Deterrence events deactivate ongoing dispersal.</p>
     <table class="param-table">
         <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
-        <tr><td>Dispersal Type</td><td>PSM-Type2</td><td>Memory-based with heading dampening (SSLogis formula)</td></tr>
+        <tr><td>Dispersal Type</td><td>PSM-Type2</td><td>PSM-Type2 (memory-based, SSLogis heading dampening), Undirected (random target, undamped turns) or off</td></tr>
         <tr><td>tDisp</td><td>3 days</td><td>Consecutive days of declining energy to trigger dispersal</td></tr>
         <tr><td>PSM_dist</td><td>N(350;100)</td><td>Preferred dispersal distance: mean 350km, std 100km</td></tr>
         <tr><td>mean_disp_dist</td><td>1.6 km</td><td>Mean distance per dispersal step (DEPONS 3.2)</td></tr>

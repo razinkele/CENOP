@@ -4,6 +4,8 @@ Model Settings Tab UI
 
 from shiny import ui
 
+from cenop.parameters.simulation_params import DISPERSAL_MODES
+
 # Tooltip definitions for all parameters
 TOOLTIPS = {
     # Basic settings
@@ -27,7 +29,7 @@ TOOLTIPS = {
     "param_b2": "Effect of salinity on turning angle. Higher = more turning in high salinity. DEPONS default: 0.93",
     "param_b3": "Intercept for turning angle model. DEPONS default: -14.0",
     # Dispersal settings
-    "dispersal": "Dispersal behavior type: 'off' = no dispersal, 'PSM-Type2' = memory-based with heading dampening, 'Undirected' = random, 'InnerDanishWaters' = region-specific.",
+    "dispersal": "Dispersal behavior type: 'off' = no dispersal, 'PSM-Type2' = memory-based with heading dampening, 'Undirected' = random target, undamped turns. 'InnerDanishWaters' (DEPONS Kattegat mode) is not available yet.",
     "tdisp": "Number of consecutive days of declining energy that triggers dispersal behavior. DEPONS default: 3 days.",
     # PSM parameters
     "psm_log": "Logistic increase rate for PSM memory cells. Controls how fast food memories strengthen. DEPONS default: 0.6",
@@ -365,7 +367,7 @@ def _dispersal_settings_panel():
                     ui.input_select(
                         "dispersal",
                         None,
-                        choices=["off", "PSM-Type2", "Undirected", "InnerDanishWaters"],
+                        choices=list(DISPERSAL_MODES),
                         selected="PSM-Type2",
                     ),
                     class_="mb-3",

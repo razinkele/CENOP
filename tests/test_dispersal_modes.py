@@ -161,3 +161,21 @@ class TestUndirected:
     def test_off_allowed_on_jax(self):
         pytest.importorskip("jax")
         _pop(dispersal="off", use_jax=True)
+
+
+def test_dispersal_events_file_records_the_mode():
+    from types import SimpleNamespace
+
+    from cenop.core.output_writer import OutputConfig, OutputWriter
+
+    pop = _pop(dispersal="Undirected")
+    sim = SimpleNamespace(
+        population_manager=pop, params=pop.params, state=SimpleNamespace(tick=5, day=0)
+    )
+    writer = OutputWriter(OutputConfig(output_dir="unused", dispersal=True))
+    events = []
+    writer._write_dispersal_event = events.append
+    writer._prev_dispersing = np.zeros(pop.count, dtype=bool)
+    pop.is_dispersing[0] = True
+    writer._detect_dispersal(sim)
+    assert [e.dispersal_type for e in events] == ["Undirected"]

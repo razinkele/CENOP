@@ -48,4 +48,11 @@ for _ in range(TICKS):
 blob = np.concatenate([pm.x, pm.y, pm.heading, pm.energy, pm.is_dispersing]).astype(np.float32)
 a = pm.active_mask
 print("state hash", hashlib.sha256(blob.tobytes()).hexdigest()[:16])
-print("ever dispersed", int(ever.sum()), "| N", int(a.sum()), "| meanE", round(float(pm.energy[a].mean()), 6))
+print(
+    "ever dispersed",
+    int(ever.sum()),
+    "| N",
+    int(a.sum()),
+    "| meanE",
+    round(float(pm.energy[a].mean()), 6),
+)

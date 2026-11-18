@@ -45,6 +45,13 @@ All notable changes to CENOP-JASMINE are documented in this file.
   probability `h` (0.68), whatever its age, as in DEPONS (`Porpoise.java:165-178`). CENOP
   started only mature females pregnant. Non-pregnant animals start at status 0 and the
   mature ones become ready to mate at the first daily update.
+- **Mating day at setup.** Drawn as in DEPONS, `round(N(tmating))` from the mating-day
+  parameters. It was truncated, clipped to 0-359 and hard-coded to N(225, 20), so
+  first-year mating was half a day early and a changed mating-day parameter was ignored in
+  year 1.
+- **Daily pregnancy update at tick 1.** DEPONS runs its daily task once at tick 1 as well
+  as every 48 ticks; CENOP now runs the pregnancy update then too, so initially pregnant
+  animals calve on the same day as in DEPONS (they were one day late).
 - **Effect.** About half the starting animals now calve around day 165 and use 1.4 times
   the energy while nursing, instead of about a tenth. Populations decline faster and match
   DEPONS-Java on the same landscape: Kattegat (v3.2 landscape), 2000 animals, 5 years,

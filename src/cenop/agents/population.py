@@ -941,8 +941,12 @@ class PorpoisePopulation:
         # Initialize day-of-year counter for reproduction timing
         self._day_of_year = 0
 
-        # Mating day for every animal, N(225, 20)
-        self.mating_day = np.clip(self.rng.normal(225, 20, self.count), 0, 359).astype(np.int16)
+        # Mating day for every animal. DEPONS draws it in the yearly task that also runs at
+        # tick 1: (int) Math.round(N(tmating)), unclipped (Porpoise.java:1237-1241), the same
+        # draw as rerandomize_mating_days.
+        self.mating_day = np.round(
+            self.rng.normal(self.params.mating_day_mean, self.params.mating_day_sd, self.count)
+        ).astype(np.int16)
 
         # Initial pregnancy state (Java Porpoise.java:165-178). At model setup every animal
         # with age > 0 is pregnant with probability h, whatever its age ("The probability is
@@ -2584,7 +2588,9 @@ class PorpoisePopulation:
     def _handle_reproduction(self, mask: np.ndarray) -> None:
         """Handle reproduction — delegates to pregnancy FSM.
 
-        Only called on day boundaries (tick%48==0) from step().
+        Called from step() on day boundaries (tick % 48 == 0) and once at tick 1: DEPONS runs
+        its daily task at tick 1 as well (PorpoiseSimBuilder.java:340, 355), which puts every
+        initially pregnant animal's days-since-mating one ahead.
         _day_of_year is now incremented in step() before this call.
         """
         self._update_pregnancy_status(mask)
@@ -3138,7 +3144,7 @@ class PorpoisePopulation:
         self._day_of_year = (self._day_of_year + 1) % (360 * 48)
 
         # Reproduction (daily only — pregnancy FSM)
-        if self._global_tick % 48 == 0:
+        if self._global_tick % 48 == 0 or self._global_tick == 1:
             self._handle_reproduction(self.active_mask)
 
     def _get_seasonal_scaling(self, month: int) -> float:
@@ -3381,7 +3387,7 @@ class PorpoisePopulation:
         self._day_of_year = (self._day_of_year + 1) % (360 * 48)
 
         # 7. Reproduction (daily only — pregnancy FSM)
-        if self._global_tick % 48 == 0:
+        if self._global_tick % 48 == 0 or self._global_tick == 1:
             self._handle_reproduction(self.active_mask)
 
     def to_dataframe(self) -> pd.DataFrame:

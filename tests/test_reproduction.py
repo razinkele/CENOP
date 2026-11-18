@@ -653,3 +653,35 @@ class TestFemalesOnlyStart:
         pop.mating_day[:] = 300  # not today
         pop._update_pregnancy_status(pop.active_mask)
         assert (pop.pregnancy_status[mature_idle] == 2).all()
+
+    def test_setup_mating_day_uses_the_parameters_and_rounds(self):
+        # DEPONS draws it in the tick-1 yearly task: (int) Math.round(N(tmating))
+        # (Porpoise.java:1237-1241), from the tmating parameter, unclipped.
+        params = SimulationParameters(random_seed=3, mating_day_mean=100.0, mating_day_sd=0.0)
+        assert (PorpoisePopulation(count=50, params=params).mating_day == 100).all()
+        params = SimulationParameters(random_seed=3, mating_day_mean=224.6, mating_day_sd=0.0)
+        assert (PorpoisePopulation(count=50, params=params).mating_day == 225).all()
+
+    def test_daily_pregnancy_update_also_runs_at_tick_1(self):
+        # DEPONS runs its daily task once at tick 1 as well as every 48 ticks
+        # (PorpoiseSimBuilder.java:340, 355), so days-since-mating is one ahead from day 0.
+        params = SimulationParameters(random_seed=3, porpoise_count=60)
+        land = create_homogeneous_landscape(width=100, height=100, food_prob=0.5)
+        pop = PorpoisePopulation(count=60, params=params, landscape=land)
+        pregnant = pop.pregnancy_status == 1
+        mature_idle = (pop.pregnancy_status == 0) & (pop.age >= params.maturity_age)
+        assert pregnant.any() and mature_idle.any()
+        start = pop.days_since_mating.copy()
+
+        pop.step()
+        alive = pop.active_mask
+        assert (pop.days_since_mating[pregnant & alive] == start[pregnant & alive] + 1).all()
+        assert (pop.pregnancy_status[mature_idle & alive] == 2).all()
+
+        for _ in range(46):
+            pop.step()
+        alive = pop.active_mask
+        assert (pop.days_since_mating[pregnant & alive] == start[pregnant & alive] + 1).all()
+        pop.step()  # tick 48: the first day boundary
+        alive = pop.active_mask
+        assert (pop.days_since_mating[pregnant & alive] == start[pregnant & alive] + 2).all()

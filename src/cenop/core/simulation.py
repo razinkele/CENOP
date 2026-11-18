@@ -593,15 +593,13 @@ class Simulation:
             if hasattr(porpoise, "_calf_ready_to_wean") and porpoise._calf_ready_to_wean:
                 from cenop.agents.porpoise import Porpoise
 
-                # TRACE: 50% sex ratio for calves
-                is_female = np.random.random() < 0.5
+                # The 50% roll for a female calf was made at weaning (Porpoise._update_reproduction)
                 calf = Porpoise(
                     id=next_id,
                     x=porpoise.x + np.random.uniform(-1, 1),
                     y=porpoise.y + np.random.uniform(-1, 1),
                     heading=np.random.uniform(0, 360),
                     age=0.0,
-                    is_female=is_female,
                 )
                 new_calves.append(calf)
                 porpoise._calf_ready_to_wean = False

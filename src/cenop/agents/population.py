@@ -2601,27 +2601,27 @@ class PorpoisePopulation:
         Java ref: YearlyTask.java:99 — p.setRandomMatingDay() for each porpoise
         Porpoise.java:1237-1241 — matingDay = round(N(tmating_mean, tmating_sd))
         """
-        females = self.active_mask
-        n_females = int(np.sum(females))
-        if n_females > 0:
+        active = self.active_mask
+        n_active = int(np.sum(active))
+        if n_active > 0:
             new_days = np.round(
-                self.rng.normal(self.params.mating_day_mean, self.params.mating_day_sd, n_females)
+                self.rng.normal(self.params.mating_day_mean, self.params.mating_day_sd, n_active)
             ).astype(np.int16)
-            self.mating_day[females] = new_days
+            self.mating_day[active] = new_days
 
     def _update_pregnancy_status(self, mask: np.ndarray) -> None:
         """Update pregnancy FSM — called once per day (Java Porpoise.java:1155-1231)."""
-        female_mask = mask  # every agent is female (DEPONS)
+        # Every agent is female (DEPONS), so the whole mask goes through the FSM.
 
         # 0 → 2: Immature to ready-to-mate
         immature = (
-            female_mask & (self.pregnancy_status == 0) & (self.age >= self.params.maturity_age)
+            mask & (self.pregnancy_status == 0) & (self.age >= self.params.maturity_age)
         )
         self.pregnancy_status[immature] = 2
 
         # 2 → 1: Ready to pregnant on mating day
         current_day = self._day_of_year // 48
-        ready = female_mask & (self.pregnancy_status == 2) & (self.mating_day == current_day)
+        ready = mask & (self.pregnancy_status == 2) & (self.mating_day == current_day)
         if ready.any():
             conceive_roll = self.rng.random(self.count)
             conceives = ready & (conceive_roll < self.params.conceive_prob)
@@ -2630,7 +2630,7 @@ class PorpoisePopulation:
 
         # 1 → 2 + birth: Pregnant gives birth at gestation_time
         giving_birth = (
-            female_mask
+            mask
             & (self.pregnancy_status == 1)
             & (self.days_since_mating == self.params.gestation_time)
         )
@@ -2640,8 +2640,8 @@ class PorpoisePopulation:
             self.days_since_mating[giving_birth] = -99
             self.days_since_birth[giving_birth] = 0
 
-        # Weaning: at nursing_time, create female calf, end lactation
-        weaning = female_mask & self.with_calf & (self.days_since_birth == self.params.nursing_time)
+        # Weaning: at nursing_time, create the calf (50% chance it is a female agent), end lactation
+        weaning = mask & self.with_calf & (self.days_since_birth == self.params.nursing_time)
         if weaning.any():
             calf_roll = self.rng.random(self.count)
             creates_calf = weaning & (calf_roll > 0.5)
@@ -2678,10 +2678,10 @@ class PorpoisePopulation:
             self.days_since_birth[weaning] = -99
 
         # Increment counters
-        pregnant = female_mask & (self.pregnancy_status == 1)
+        pregnant = mask & (self.pregnancy_status == 1)
         self.days_since_mating[pregnant] += 1
 
-        lactating = female_mask & self.with_calf
+        lactating = mask & self.with_calf
         self.days_since_birth[lactating] += 1
 
     def _reset_recycled_slots(self, slots: np.ndarray) -> None:
@@ -4005,7 +4005,7 @@ class PorpoisePopulation:
         - Nov-Mar (cold): 1.0 (baseline)
         - Apr, Oct: 1.15 (transition)
         - May-Sep (warm): 1.3 (e_warm)
-        - Lactating females: multiply by 1.4 (e_lact)
+        - Lactating animals: multiply by 1.4 (e_lact)
 
         Args:
             month: Current month (1-12)

@@ -186,6 +186,7 @@ class PorpoisePopulation:
         self._turbine_deter_strength = np.zeros(count, dtype=np.float32)
         # Tracks any porpoise deterred at least once during the reporting period
         self._was_deterred = np.zeros(count, dtype=bool)
+        self._abandoned_this_tick = np.zeros(count, dtype=bool)  # calf abandoned in this tick
 
         # Reference memory circular buffers (DEPONS 3.2 — 120 entries per agent)
         _REF_MEM_SIZE = params.ref_mem_size if hasattr(params, "ref_mem_size") else 120
@@ -2396,6 +2397,10 @@ class PorpoisePopulation:
             # DEPONS inline path: BMR + swimming cost
             current_month = self._get_current_month()
             scaling_factor = self._get_energy_scaling(current_month, mask)
+            abandoned = self._abandoned_this_tick & mask
+            if abandoned.any():
+                scaling_factor[abandoned] *= self.params.e_lact
+                self._abandoned_this_tick[:] = False
             total_cost = 0.001 * scaling_factor * self.params.e_use_per_30_min
             self.energy[mask] -= total_cost[mask]
             n_active = int(np.sum(mask))
@@ -2448,14 +2453,17 @@ class PorpoisePopulation:
         # if (this.withLactCalf) { this.withLactCalf = false; }
         was_with_calf = starving & self.with_calf
         self.with_calf[was_with_calf] = False  # abandon calf first
+        # Java fixes the lactation factor before the calf is abandoned (Porpoise.java:751-753,
+        # then :773), so this tick's cost is still charged at e_lact (_apply_bmr_cost).
+        np.copyto(self._abandoned_this_tick, was_with_calf)
         # Die if: not lactating, or energy <= 0
         starved = starving & ((self.energy <= 0) | ~was_with_calf)
 
         # Bycatch + max-age: daily schedule (Java Porpoise.java:1137-1153)
-        # Only check on day boundaries (tick % 48 == 0)
+        # Day boundaries (tick % 48 == 0), and tick 1, where DEPONS also runs its daily task
         bycatch = np.zeros(self.count, dtype=bool)
         old_age = np.zeros(self.count, dtype=bool)
-        if self._global_tick % 48 == 0:
+        if self._global_tick % 48 == 0 or self._global_tick == 1:
             bycatch_annual = getattr(self.params, "bycatch_prob", 0.0)
             if bycatch_annual > 0:
                 # Java: dailySurvivalProb = exp(log(1 - bycatchProb) / 360)
@@ -2510,10 +2518,14 @@ class PorpoisePopulation:
                 )
 
     def _update_aging(self, mask: np.ndarray) -> None:
-        """Update aging for active agents (continuous small increments)."""
-        self.age[mask] += (
-            1.0 / 360.0 / 48.0
-        )  # Age in years per tick (360 days/year, consistent with DEPONS)
+        """Age active agents by one day, once a day.
+
+        DEPONS: age += 1/360 at the top of performDailyStep (Porpoise.java:1082), which runs
+        every 48 ticks and once at tick 1 (PorpoiseSimBuilder.java:340, 355). Called at the
+        start of the tick, so the daily max-age check and the pregnancy update see the new age.
+        """
+        if self._global_tick % 48 == 0 or self._global_tick == 1:
+            self.age[mask] += 1.0 / 360.0
 
     def _update_reference_memory(self, mask: np.ndarray) -> None:
         """Update reference memory: record food and position, compute veTotal and vt.
@@ -2807,6 +2819,7 @@ class PorpoisePopulation:
         mask = self.active_mask
         active_before = int(np.sum(mask))
         self._global_tick += 1
+        self._update_aging(mask)
 
         # Refresh cached active indices each tick so dead slots are excluded from
         # reference-memory updates (mirrors the Numba path in step()).
@@ -3137,9 +3150,6 @@ class PorpoisePopulation:
         if self._memory_module is not None:
             self._update_disturbance_memory(self.active_mask)
 
-        # Aging
-        self._update_aging(self.active_mask)
-
         # Day-of-year counter (must run every tick — was inside _handle_reproduction)
         self._day_of_year = (self._day_of_year + 1) % (360 * 48)
 
@@ -3211,6 +3221,7 @@ class PorpoisePopulation:
 
         active_before = int(np.sum(self.active_mask))
         self._global_tick += 1
+        self._update_aging(mask)
 
         # Cache active indices once per tick (avoid redundant np.where in sub-methods)
         self._active_idx = np.flatnonzero(mask)  # returns intp = int64 on 64-bit
@@ -3379,9 +3390,6 @@ class PorpoisePopulation:
         # 4.5 Disturbance memory update (JASMINE)
         if self._memory_module is not None:
             self._update_disturbance_memory(self.active_mask)
-
-        # 5. Aging
-        self._update_aging(self.active_mask)
 
         # 6. Day-of-year counter (must run every tick — was inside _handle_reproduction)
         self._day_of_year = (self._day_of_year + 1) % (360 * 48)

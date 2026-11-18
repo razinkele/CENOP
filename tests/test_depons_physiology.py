@@ -287,52 +287,35 @@ class TestDEPONSTrajectoryComparison:
         assert 5 < mean_energy < 18, f"Mean energy {mean_energy:.1f} outside expected range (5-18)"
 
     @pytest.mark.slow
-    def test_female_reproduction_rate(self):
-        """Eligible females should reproduce during breeding season (DEPONS 3.2).
+    def test_initially_pregnant_animals_calve_in_the_first_year(self):
+        """Setup pregnancies end in a birth around day 165, and nobody else calves in year 1.
 
-        Tests that per-tick birth probability (0.0003) produces calves during days 195-255.
-        Uses a population smaller than the pre-allocated array so inactive slots are
-        available for newborns (fixed-array architecture constraint: births require
-        inactive slots, previously masked by age-bracket mortality freeing slots).
+        DEPONS: 68% of animals with age > 0 start pregnant with days-since-mating
+        360 - round(N(225, 20)) and calve when it reaches the gestation time (300 days).
+        Animals that conceive on their mating day (about day 225) calve in year 2.
         """
-        params = SimulationParameters(
-            porpoise_count=500,  # Pre-allocate 500 slots
-            random_seed=42,
-        )
+        params = SimulationParameters(porpoise_count=200, random_seed=42)
         landscape = create_homogeneous_landscape(width=150, height=150, depth=30.0, food_prob=0.5)
-        # Start with only 200 active agents so 300 inactive slots are available for calves
-        pop = PorpoisePopulation(500, params, landscape)
-        pop.active_mask[200:] = False  # deactivate 300 to create free slots
+        pop = PorpoisePopulation(200, params, landscape)
 
-        # Count initial eligible females (mature, not with calf)
-        maturity_age = params.maturity_age
-        max_breeding_age = params.max_breeding_age
-        active = pop.active_mask
-        eligible_start = int(
-            np.sum(
-                active & (pop.age >= maturity_age) & (pop.age <= max_breeding_age) & ~pop.with_calf
-            )
-        )
+        started_pregnant = pop.pregnancy_status == 1
+        assert started_pregnant.sum() > 80
+        first_calf_day = np.full(200, -1)
 
-        # Run for 1 year
-        ticks_per_year = 365 * 48
-        for _ in range(ticks_per_year):
+        for tick in range(1, 360 * 48 + 1):
             pop.step()
+            if tick % 48 == 0:
+                new = pop.with_calf & (first_calf_day < 0)
+                first_calf_day[new] = tick // 48
 
-        # Count females with calves (indicates they gave birth)
-        active = pop.active_mask
-        with_calf_end = int(np.sum(active & pop.with_calf))
-
-        print(f"Eligible females at start: {eligible_start}, with_calf at end: {with_calf_end}")
-
-        # With birth_prob=0.0003 over 60-day season (2880 ticks) and ~50 eligible females,
-        # expected birth rate = 1 - (1-0.0003)^2880 ≈ 58% per female.
-        # At least some births should occur (sanity check).
-        assert eligible_start > 0, "Need eligible females to test reproduction"
-        assert with_calf_end > 0, (
-            f"Expected some births from {eligible_start} eligible females, got 0. "
-            f"Check breeding season logic and slot availability."
-        )
+        calved = first_calf_day >= 0
+        assert not (calved & ~started_pregnant).any()
+        share = np.mean(calved[started_pregnant])
+        print(f"Started pregnant: {started_pregnant.sum()}, calved: {calved.sum()}")
+        assert share > 0.8, f"only {share:.0%} of the initially pregnant animals calved"
+        days = first_calf_day[calved]
+        assert 150 < np.mean(days) < 180, f"mean calving day {np.mean(days):.0f}, expected ~165"
+        assert days.min() > 90 and days.max() < 240
 
 
 class TestFoodSystemParameters:

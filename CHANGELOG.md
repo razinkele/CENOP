@@ -35,6 +35,25 @@ All notable changes to CENOP-JASMINE are documented in this file.
   - Comparison with DEPONS-Java:
     `docs/superpowers/specs/2026-11-18-dispersal-idw-java-comparison.md`
 
+### Fixed — the starting population (changes every run's results)
+- **Females only, as in DEPONS.** CENOP made half of the starting animals male. DEPONS
+  simulates females only, so every animal can become pregnant and pay the lactation cost.
+  The sex field is gone: `is_female` is removed from the population, from the
+  per-individual statistics output and the agent data frame, and the dashboard's `females`
+  statistic is removed.
+- **Pregnancy at setup.** Every starting animal with age > 0 is now pregnant with
+  probability `h` (0.68), whatever its age, as in DEPONS (`Porpoise.java:165-178`). CENOP
+  started only mature females pregnant. Non-pregnant animals start at status 0 and the
+  mature ones become ready to mate at the first daily update.
+- **Effect.** About half the starting animals now calve around day 165 and use 1.4 times
+  the energy while nursing, instead of about a tenth. Populations decline faster and match
+  DEPONS-Java on the same landscape: Kattegat (v3.2 landscape), 2000 animals, 5 years,
+  PSM-Type2: CENOP 47-58 against Java 51-57 (was 95-108); InnerDanishWaters: 39-57 against
+  47-53 (was 88-98). Investigation:
+  `docs/superpowers/specs/2026-11-18-kattegat-population-gap.md`
+- Present in every release so far. All seeded results change (one fewer random draw at
+  setup and a different starting state); the Kattegat reference baselines are regenerated.
+
 ### Fixed — the dispersal setting was ignored
 - `params.dispersal` (the Dispersal Type selector, and the same field in scripts and batch
   runs) was never read: every run used PSM-Type2 whatever was selected, in every release so

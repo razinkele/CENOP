@@ -310,11 +310,7 @@ class TestDEPONSTrajectoryComparison:
         active = pop.active_mask
         eligible_start = int(
             np.sum(
-                active
-                & pop.is_female
-                & (pop.age >= maturity_age)
-                & (pop.age <= max_breeding_age)
-                & ~pop.with_calf
+                active & (pop.age >= maturity_age) & (pop.age <= max_breeding_age) & ~pop.with_calf
             )
         )
 
@@ -325,7 +321,7 @@ class TestDEPONSTrajectoryComparison:
 
         # Count females with calves (indicates they gave birth)
         active = pop.active_mask
-        with_calf_end = int(np.sum(active & pop.is_female & pop.with_calf))
+        with_calf_end = int(np.sum(active & pop.with_calf))
 
         print(f"Eligible females at start: {eligible_start}, with_calf at end: {with_calf_end}")
 

@@ -814,7 +814,6 @@ class TestEnhancedEnergetics:
 
         # Set some lactating females with low energy
         pop.with_calf[:10] = True
-        pop.is_female[:10] = True
         pop.energy[:10] = 1.0  # Very low energy
 
         initial_with_calf = np.sum(pop.with_calf)

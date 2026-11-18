@@ -1,7 +1,7 @@
 # Kattegat population gap: CENOP vs DEPONS-Java
 
-Date: 2026-11-18. Branch: `investigate/kattegat-population-gap`. Status: cause found, not
-fixed. Follows `2026-11-18-dispersal-idw-java-comparison.md`.
+Date: 2026-11-18. Branch: `investigate/kattegat-population-gap`. Status: cause found; fixed
+2026-11-18 on `fix/females-only-start` (see "Fix" at the end). Follows `2026-11-18-dispersal-idw-java-comparison.md`.
 
 ## Finding
 
@@ -107,3 +107,25 @@ InnerDanishWaters, population at the end of each year:
   1800 <dir> [java-init]` writes deaths and daily numbers to `output/population_gap/`.
 - Java reference: `python3 -m validation.depons_java run --scenario
   validation/depons_java/scenarios/kattegat-{psm2,idw}-undisturbed-v1.json`.
+
+## Fix (2026-11-18)
+
+Decision (user): fix it and remove males.
+
+- `is_female` removed from the population, the per-individual output and the dashboard
+  statistics. Every animal has a mating day and goes through the pregnancy update.
+- Setup follows `Porpoise.java:165-178`: every animal with age > 0 is pregnant with
+  probability h, days since mating 360 - round(N(225, 20)); all others start at status 0.
+- Fixed code on the v3.2 landscape, population at the end of years 1-5 (seeds 42, 43, 44):
+
+| | Year 1 | Year 2 | Year 3 | Year 4 | Year 5 |
+|---|---|---|---|---|---|
+| Java PSM-Type2 (42, 43) | 161, 173 | 113, 124 | 89, 97 | 75, 83 | 51, 57 |
+| CENOP PSM-Type2 | 163, 169, 155 | 128, 132, 117 | 109, 106, 92 | 89, 81, 73 | 58, 51, 47 |
+| Java InnerDanishWaters (42, 43) | 97, 99 | 85, 87 | 75, 74 | 70, 69 | 53, 47 |
+| CENOP InnerDanishWaters | 84, 96, 98 | 73, 84, 84 | 65, 85, 74 | 63, 76, 66 | 55, 57, 39 |
+
+- The slow validation tier passes unchanged. The Kattegat reference baselines
+  (`output/kattegat_ref*`) are regenerated.
+- Not touched: the unused per-animal classes in `agents/porpoise.py` and the dead
+  per-animal branch in `core/simulation.py` still carry a sex field.

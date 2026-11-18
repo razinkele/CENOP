@@ -162,7 +162,6 @@ class PorpoisePopulation:
         self.prev_angle = np.full(count, 10.0, dtype=np.float64)
 
         # Demography
-        self.is_female = np.zeros(count, dtype=bool)
         self.age = np.zeros(count, dtype=np.float32)
 
         # Energy
@@ -595,8 +594,7 @@ class PorpoisePopulation:
 
         self.heading = self.rng.uniform(0, 360, self.count).astype(np.float32)
 
-        # Sex ratio 50%
-        self.is_female = self.rng.choice([True, False], self.count)
+        # No sex: DEPONS simulates females only (every agent can become pregnant)
 
         # Ages from distribution
         self.age = self.rng.choice(AGE_DISTRIBUTION_FREQUENCY, size=self.count).astype(np.float32)
@@ -943,25 +941,19 @@ class PorpoisePopulation:
         # Initialize day-of-year counter for reproduction timing
         self._day_of_year = 0
 
-        # Mating day (females only, N(225, 20))
-        mating_days = np.clip(self.rng.normal(225, 20, self.count), 0, 359).astype(np.int16)
-        # Apply only to females, others stay -99
-        self.mating_day = np.where(self.is_female, mating_days, np.int16(-99)).astype(np.int16)
+        # Mating day for every animal, N(225, 20)
+        self.mating_day = np.clip(self.rng.normal(225, 20, self.count), 0, 359).astype(np.int16)
 
-        # Initialize pregnancy state (Java Porpoise.java:165-178)
-        maturity_age = self.params.maturity_age
-        mature_females = self.is_female & (self.age >= maturity_age) & self.active_mask
-
-        # All mature females start as ready-to-mate (status=2)
-        self.pregnancy_status[mature_females] = 2
-
-        # Some conceive with probability conceive_prob → pregnant (status=1)
+        # Initial pregnancy state (Java Porpoise.java:165-178). At model setup every animal
+        # with age > 0 is pregnant with probability h, whatever its age ("The probability is
+        # not dependent on the age of the porpoise if it is above the age of 0"); all others
+        # start at status 0 and the daily update moves the mature ones to ready-to-mate.
         conceive_roll = self.rng.random(self.count)
-        conceives = mature_females & (conceive_roll < self.params.conceive_prob)
+        conceives = self.active_mask & (self.age > 0) & (conceive_roll < self.params.conceive_prob)
         self.pregnancy_status[conceives] = 1
         self.days_since_mating[conceives] = 0
 
-        # Pregnant females get random days_since_mating representing progress into gestation
+        # daysSinceMating = 360 - round(N(7.5 * 30, 20)) (GeneratedRandomSource.java:82, 208)
         n_conceives = int(np.sum(conceives))
         if n_conceives > 0:
             initial_dsm = (360 - np.round(self.rng.normal(225, 20, n_conceives))).astype(np.int16)
@@ -2598,12 +2590,12 @@ class PorpoisePopulation:
         self._update_pregnancy_status(mask)
 
     def rerandomize_mating_days(self) -> None:
-        """Re-draw mating days for all active females. Called yearly.
+        """Re-draw mating days for all active animals. Called yearly.
 
         Java ref: YearlyTask.java:99 — p.setRandomMatingDay() for each porpoise
         Porpoise.java:1237-1241 — matingDay = round(N(tmating_mean, tmating_sd))
         """
-        females = self.is_female & self.active_mask
+        females = self.active_mask
         n_females = int(np.sum(females))
         if n_females > 0:
             new_days = np.round(
@@ -2613,7 +2605,7 @@ class PorpoisePopulation:
 
     def _update_pregnancy_status(self, mask: np.ndarray) -> None:
         """Update pregnancy FSM — called once per day (Java Porpoise.java:1155-1231)."""
-        female_mask = mask & self.is_female
+        female_mask = mask  # every agent is female (DEPONS)
 
         # 0 → 2: Immature to ready-to-mate
         immature = (
@@ -2662,7 +2654,6 @@ class PorpoisePopulation:
                     self.y[new_slots] = self.y[mother_indices]
                     self.heading[new_slots] = self.heading[mother_indices]
                     self.age[new_slots] = 0.0
-                    self.is_female[new_slots] = True
                     self.energy[new_slots] = (
                         self.rng.normal(
                             self.params.energy_init_mean, self.params.energy_init_sd, slots_to_use
@@ -3425,7 +3416,6 @@ class PorpoisePopulation:
                 "x": self.x[mask],
                 "y": self.y[mask],
                 "age": self.age[mask],
-                "is_female": self.is_female[mask],
                 "energy": self.energy[mask],
                 "heading": self.heading[mask],
                 "is_disturbed": is_disturbed[mask],

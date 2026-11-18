@@ -59,14 +59,12 @@ class TestPopulationDynamicsValidation:
         landscape = create_homogeneous_landscape(width=200, height=200, depth=20.0, food_prob=0.5)
         pop = PorpoisePopulation(count=100, params=params, landscape=landscape)
 
-        # Set up eligible females (age 4-20, female, no calf)
-        pop.is_female[:50] = True
-        pop.is_female[50:] = False
+        # Set up eligible animals (age 4-20, no calf); the model has females only
         pop.age[:50] = np.random.uniform(5, 15, 50).astype(np.float32)  # Breeding age
-        pop.age[50:] = np.random.uniform(1, 3, 50).astype(np.float32)  # Juvenile males
+        pop.age[50:] = np.random.uniform(1, 3, 50).astype(np.float32)  # Juveniles
         pop.with_calf[:] = False
 
-        eligible_before = np.sum(pop.is_female & (pop.age >= 4) & (pop.age <= 20) & ~pop.with_calf)
+        eligible_before = np.sum((pop.age >= 4) & (pop.age <= 20) & ~pop.with_calf)
         initial_pop = pop.population_size
 
         # Run for 1 year

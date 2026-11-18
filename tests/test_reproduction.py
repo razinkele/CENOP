@@ -748,9 +748,7 @@ class TestDailyStepParity:
         calls = []
         if cython:
             real = pop_mod._cython_post_crw
-            monkeypatch.setattr(
-                pop_mod, "_cython_post_crw", lambda *a: calls.append(1) or real(*a)
-            )
+            monkeypatch.setattr(pop_mod, "_cython_post_crw", lambda *a: calls.append(1) or real(*a))
         pop.energy[:] = 20.0  # nothing is eaten, so the energy drop is the cost alone
         pop.with_calf[:] = False
         pop.with_calf[:2] = True

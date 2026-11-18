@@ -2626,9 +2626,7 @@ class PorpoisePopulation:
         # Every agent is female (DEPONS), so the whole mask goes through the FSM.
 
         # 0 → 2: Immature to ready-to-mate
-        immature = (
-            mask & (self.pregnancy_status == 0) & (self.age >= self.params.maturity_age)
-        )
+        immature = mask & (self.pregnancy_status == 0) & (self.age >= self.params.maturity_age)
         self.pregnancy_status[immature] = 2
 
         # 2 → 1: Ready to pregnant on mating day

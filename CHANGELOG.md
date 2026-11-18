@@ -55,7 +55,7 @@ All notable changes to CENOP-JASMINE are documented in this file.
 - **Effect.** About half the starting animals now calve around day 165 and use 1.4 times
   the energy while nursing, instead of about a tenth. Populations decline faster and match
   DEPONS-Java on the same landscape: Kattegat (v3.2 landscape), 2000 animals, 5 years,
-  PSM-Type2: CENOP 47-58 against Java 51-57 (was 95-108); InnerDanishWaters: 39-57 against
+  PSM-Type2: CENOP 45-50 against Java 51-57 (was 95-108); InnerDanishWaters: 42-46 against
   47-53 (was 88-98). Investigation:
   `docs/superpowers/specs/2026-11-18-kattegat-population-gap.md`
 - Present in every release so far. All seeded results change (one fewer random draw at

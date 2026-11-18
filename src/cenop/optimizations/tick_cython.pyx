@@ -76,6 +76,7 @@ def cython_depons_post_crw(
     cdef double fract, food_available, eaten, scaling, bmr
     cdef double yearly_surv, step_surv
     cdef int xi_c, yi_c, deaths = 0
+    cdef bint lactating
     cdef int post_xi, post_yi, reflected
     cdef double pre_x, pre_y
 
@@ -196,6 +197,9 @@ def cython_depons_post_crw(
         else:
             step_surv = 0.0
 
+        # Java fixes the lactation factor before the calf is abandoned
+        # (Porpoise.java:751-753, then :773): the abandonment tick is still charged e_lact.
+        lactating = with_calf[i]
         if rand_mort[i] > step_surv:
             if not with_calf[i] or energy[i] <= 0:
                 active_mask[i] = 0
@@ -208,7 +212,7 @@ def cython_depons_post_crw(
 
         # === 4. BMR COST (surviving agents only) ===
         scaling = seasonal_scaling
-        if with_calf[i]:
+        if lactating:
             scaling = scaling * e_lact
         bmr = 0.001 * scaling * e_use_per_30_min
         energy[i] -= <f32>bmr

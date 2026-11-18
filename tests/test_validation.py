@@ -49,41 +49,36 @@ class TestPopulationDynamicsValidation:
         ), f"Population changed by {(change_ratio-1)*100:.1f}%, expected ±30%"
 
     @pytest.mark.slow
-    def test_birth_rate_realistic(self):
-        """Annual birth rate should match DEPONS pattern (~60% of eligible females)."""
+    def test_conception_rate_realistic(self):
+        """About 68% of mature animals conceive on their mating day (Read & Hohn 1995)."""
         from cenop.agents.population import PorpoisePopulation
         from cenop.landscape.cell_data import create_homogeneous_landscape
         from cenop.parameters import SimulationParameters
 
-        params = SimulationParameters(porpoise_count=100)
+        params = SimulationParameters(porpoise_count=300, random_seed=11)
         landscape = create_homogeneous_landscape(width=200, height=200, depth=20.0, food_prob=0.5)
-        pop = PorpoisePopulation(count=100, params=params, landscape=landscape)
+        pop = PorpoisePopulation(count=300, params=params, landscape=landscape)
 
-        # Set up eligible animals (age 4-20, no calf); the model has females only
-        pop.age[:50] = np.random.uniform(5, 15, 50).astype(np.float32)  # Breeding age
-        pop.age[50:] = np.random.uniform(1, 3, 50).astype(np.float32)  # Juveniles
+        # 200 mature animals and 100 juveniles that stay immature all year; nobody pregnant
+        rng = np.random.default_rng(11)
+        pop.age[:200] = rng.uniform(5, 15, 200).astype(np.float32)
+        pop.age[200:] = rng.uniform(0.5, 2.0, 100).astype(np.float32)
+        pop.pregnancy_status[:] = 0
+        pop.days_since_mating[:] = -99
         pop.with_calf[:] = False
 
-        eligible_before = np.sum((pop.age >= 4) & (pop.age <= 20) & ~pop.with_calf)
-        initial_pop = pop.population_size
-
-        # Run for 1 year
         for _ in range(17280):
             pop.step()
 
-        final_pop = pop.population_size
-        births = max(0, final_pop - initial_pop + (initial_pop - pop.population_size))
-
-        # Estimate births from population increase and mothers with calves
-        mothers_with_calves = np.sum(pop.with_calf)
-
-        print(f"Eligible females: {eligible_before}, mothers with calves: {mothers_with_calves}")
-        print(f"Population: {initial_pop} -> {final_pop}")
-
-        # At least some reproduction should occur
-        assert (
-            mothers_with_calves > 0 or final_pop > initial_pop * 0.9
-        ), "Expected some reproduction to occur"
+        alive = pop.active_mask
+        mature = np.zeros(300, dtype=bool)
+        mature[:200] = True
+        assert (alive & mature).sum() > 150
+        share = np.mean(pop.pregnancy_status[alive & mature] == 1)
+        print(f"Mature survivors: {(alive & mature).sum()}, pregnant share: {share:.2f}")
+        assert 0.55 < share < 0.80, f"pregnant share {share:.2f}, expected about 0.68"
+        assert not (pop.pregnancy_status[alive & ~mature] == 1).any()
+        assert not pop.with_calf[alive].any()  # gestation is 300 days: no births yet
 
     @pytest.mark.slow
     def test_mortality_rate_age_dependent(self):
@@ -594,7 +589,7 @@ class TestDEPONSComparisonValidation:
         final_count = pop.population_size
 
         # Calculate effective mortality (accounting for births)
-        # With 50% female, ~50 * 0.6 = 30 potential births
+        # Births: weaned calves join the population (half of them, the female ones)
         # Net change = final - initial = births - deaths
         # Estimate mortality ~= 1 - (final / initial) if births ~= deaths
 

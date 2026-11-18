@@ -685,3 +685,81 @@ class TestFemalesOnlyStart:
         pop.step()  # tick 48: the first day boundary
         alive = pop.active_mask
         assert (pop.days_since_mating[pregnant & alive] == start[pregnant & alive] + 2).all()
+
+
+class _ForcedRoll:
+    """The population's generator, with element 0 of every uniform draw forced above 1
+    (animal 0 always fails the starvation roll)."""
+
+    def __init__(self, rng):
+        self._rng = rng
+
+    def __getattr__(self, name):
+        return getattr(self._rng, name)
+
+    def random(self, *args, **kwargs):
+        out = self._rng.random(*args, **kwargs)
+        if isinstance(out, np.ndarray) and out.size:
+            out[0] = 2.0  # above any survival probability, also one that rounds to 1
+        return out
+
+
+class TestDailyStepParity:
+    """What DEPONS does in performDailyStep and updEnergeticStatus, tick by tick."""
+
+    @staticmethod
+    def _pop(count=6):
+        import cenop.agents.population as pop_mod
+
+        params = SimulationParameters(random_seed=5, porpoise_count=count)
+        land = create_homogeneous_landscape(width=100, height=100, food_prob=0.5)
+        return pop_mod, PorpoisePopulation(count=count, params=params, landscape=land)
+
+    def test_age_advances_once_a_day_and_at_tick_1(self):
+        # Porpoise.java:1082: age += 1/360 in the daily step, which also runs at tick 1
+        # (PorpoiseSimBuilder.java:340, 355).
+        _, pop = self._pop()
+        start = pop.age.copy()
+        pop.step()
+        np.testing.assert_allclose(pop.age, start + 1 / 360, atol=1e-5)
+        for _ in range(46):
+            pop.step()
+        np.testing.assert_allclose(pop.age, start + 1 / 360, atol=1e-5)
+        pop.step()  # tick 48
+        np.testing.assert_allclose(pop.age, start + 2 / 360, atol=1e-5)
+
+    def test_max_age_is_checked_at_tick_1(self, monkeypatch):
+        # updMortality runs in the tick-1 daily step, after the age increment.
+        pop_mod, pop = self._pop()
+        monkeypatch.setattr(pop_mod, "_HAS_CYTHON", False)  # the fused kernel has no max-age
+        pop.age[0] = pop.params.max_age
+        pop.age[1] = pop.params.max_age - 1
+        pop.step()
+        assert not pop.active_mask[0] and pop.active_mask[1]
+        assert pop.death_causes == ["old_age"]
+
+    @pytest.mark.parametrize("cython", [False, True])
+    def test_abandonment_tick_is_still_charged_for_lactation(self, monkeypatch, cython):
+        # Porpoise.java:751-753 fixes the 1.4x factor before the calf is abandoned (:773).
+        pop_mod, pop = self._pop()
+        if cython and not pop_mod._HAS_CYTHON:
+            pytest.skip("Cython not built")
+        monkeypatch.setattr(pop_mod, "_HAS_CYTHON", cython)
+        calls = []
+        if cython:
+            real = pop_mod._cython_post_crw
+            monkeypatch.setattr(pop_mod, "_cython_post_crw", lambda *a: calls.append(1) or real(*a))
+        pop.energy[:] = 20.0  # nothing is eaten, so the energy drop is the cost alone
+        pop.with_calf[:] = False
+        pop.with_calf[:2] = True
+        pop.rng = _ForcedRoll(pop.rng)
+
+        pop.step()
+
+        assert len(calls) == (1 if cython else 0)
+        assert pop.active_mask[:3].all()
+        assert not pop.with_calf[0] and pop.with_calf[1]  # 0 abandoned its calf, 1 did not
+        base = 20.0 - pop.energy[2]
+        assert base > 0
+        assert 20.0 - pop.energy[1] == pytest.approx(base * pop.params.e_lact, rel=1e-3)
+        assert 20.0 - pop.energy[0] == pytest.approx(base * pop.params.e_lact, rel=1e-3)

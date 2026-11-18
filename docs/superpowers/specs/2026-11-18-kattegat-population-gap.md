@@ -120,22 +120,28 @@ Decision (user): fix it and remove males.
   day is `round(N(tmating))` from the parameters, unclipped (`Porpoise.java:1237-1241`),
   and the daily pregnancy update also runs once at tick 1
   (`PorpoiseSimBuilder.java:340-356`), so initially pregnant animals calve on the DEPONS
-  day. Java's tick-1 daily step also ages every animal by one day; that part is not
-  mirrored.
+  day.
+- The remaining review items are fixed too (`1a0efbc`, `2247de4`): age advances once a
+  day and at tick 1 (`Porpoise.java:1082`); the daily bycatch / max-age check runs at
+  tick 1; the tick in which a calf is abandoned is still charged the lactation factor
+  (`Porpoise.java:751-753`, `:773`); a weaned calf is never dropped (the arrays grow).
+  The tick-1 entry DEPONS adds to its daily energy list is not mirrored: CENOP's
+  history starts with zeros, which gives the same dispersal start and stop decisions.
 - Fixed code on the v3.2 landscape, population at the end of years 1-5 (seeds 42, 43, 44):
 
 | | Year 1 | Year 2 | Year 3 | Year 4 | Year 5 |
 |---|---|---|---|---|---|
 | Java PSM-Type2 (42, 43) | 161, 173 | 113, 124 | 89, 97 | 75, 83 | 51, 57 |
-| CENOP PSM-Type2 | 183, 156, 171 | 133, 108, 117 | 105, 87, 97 | 79, 76, 79 | 45, 47, 50 |
+| CENOP PSM-Type2 | 174, 160, 181 | 123, 106, 132 | 102, 89, 105 | 87, 71, 91 | 52, 44, 60 |
 | Java InnerDanishWaters (42, 43) | 97, 99 | 85, 87 | 75, 74 | 70, 69 | 53, 47 |
-| CENOP InnerDanishWaters | 102, 94, 96 | 84, 76, 77 | 72, 66, 70 | 64, 54, 62 | 46, 43, 42 |
+| CENOP InnerDanishWaters | 103, 97, 106 | 84, 85, 87 | 73, 74, 78 | 55, 67, 66 | 40, 48, 48 |
 
-  (Numbers from `596eec6`. CENOP is inside or next to the Java range in years 1-4 and
-  slightly below it in year 5: 42-50 against 47-57. With two Java seeds this is not
-  distinguishable from seed-to-seed spread.)
+  (Numbers from `1a0efbc`. Under PSM-Type2 the CENOP range contains or overlaps the Java
+  values in every year. Under InnerDanishWaters it does in years 1-3 and 5; in year 4
+  CENOP is below Java, 55-67 against 69-70. With two Java seeds this cannot be told apart
+  from seed-to-seed spread.)
 - The slow validation tier passes unchanged. The Kattegat reference baselines
-  (`output/kattegat_ref*`) are regenerated from `596eec6`: undisturbed 2000 -> 31 in
-  5 years, ships -> 91 and turbines -> 83 in 2 years (on CENOP's v3.0 landscape).
-- Not touched: the unused per-animal classes in `agents/porpoise.py` and the dead
-  per-animal branch in `core/simulation.py` still carry a sex field.
+  (`output/kattegat_ref*`) are regenerated from `1a0efbc`: undisturbed 2000 -> 33 in
+  5 years, ships -> 88 and turbines -> 78 in 2 years (on CENOP's v3.0 landscape).
+- The unused per-animal classes in `agents/porpoise.py` and the dead per-animal branch
+  in `core/simulation.py` no longer carry a sex field (`3457961`).

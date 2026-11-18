@@ -186,6 +186,7 @@ class PorpoisePopulation:
         self._turbine_deter_strength = np.zeros(count, dtype=np.float32)
         # Tracks any porpoise deterred at least once during the reporting period
         self._was_deterred = np.zeros(count, dtype=bool)
+        self._abandoned_this_tick = np.zeros(count, dtype=bool)  # calf abandoned in this tick
 
         # Reference memory circular buffers (DEPONS 3.2 — 120 entries per agent)
         _REF_MEM_SIZE = params.ref_mem_size if hasattr(params, "ref_mem_size") else 120
@@ -2396,6 +2397,10 @@ class PorpoisePopulation:
             # DEPONS inline path: BMR + swimming cost
             current_month = self._get_current_month()
             scaling_factor = self._get_energy_scaling(current_month, mask)
+            abandoned = self._abandoned_this_tick & mask
+            if abandoned.any():
+                scaling_factor[abandoned] *= self.params.e_lact
+                self._abandoned_this_tick[:] = False
             total_cost = 0.001 * scaling_factor * self.params.e_use_per_30_min
             self.energy[mask] -= total_cost[mask]
             n_active = int(np.sum(mask))
@@ -2448,14 +2453,17 @@ class PorpoisePopulation:
         # if (this.withLactCalf) { this.withLactCalf = false; }
         was_with_calf = starving & self.with_calf
         self.with_calf[was_with_calf] = False  # abandon calf first
+        # Java fixes the lactation factor before the calf is abandoned (Porpoise.java:751-753,
+        # then :773), so this tick's cost is still charged at e_lact (_apply_bmr_cost).
+        np.copyto(self._abandoned_this_tick, was_with_calf)
         # Die if: not lactating, or energy <= 0
         starved = starving & ((self.energy <= 0) | ~was_with_calf)
 
         # Bycatch + max-age: daily schedule (Java Porpoise.java:1137-1153)
-        # Only check on day boundaries (tick % 48 == 0)
+        # Day boundaries (tick % 48 == 0), and tick 1, where DEPONS also runs its daily task
         bycatch = np.zeros(self.count, dtype=bool)
         old_age = np.zeros(self.count, dtype=bool)
-        if self._global_tick % 48 == 0:
+        if self._global_tick % 48 == 0 or self._global_tick == 1:
             bycatch_annual = getattr(self.params, "bycatch_prob", 0.0)
             if bycatch_annual > 0:
                 # Java: dailySurvivalProb = exp(log(1 - bycatchProb) / 360)
@@ -2510,10 +2518,14 @@ class PorpoisePopulation:
                 )
 
     def _update_aging(self, mask: np.ndarray) -> None:
-        """Update aging for active agents (continuous small increments)."""
-        self.age[mask] += (
-            1.0 / 360.0 / 48.0
-        )  # Age in years per tick (360 days/year, consistent with DEPONS)
+        """Age active agents by one day, once a day.
+
+        DEPONS: age += 1/360 at the top of performDailyStep (Porpoise.java:1082), which runs
+        every 48 ticks and once at tick 1 (PorpoiseSimBuilder.java:340, 355). Called at the
+        start of the tick, so the daily max-age check and the pregnancy update see the new age.
+        """
+        if self._global_tick % 48 == 0 or self._global_tick == 1:
+            self.age[mask] += 1.0 / 360.0
 
     def _update_reference_memory(self, mask: np.ndarray) -> None:
         """Update reference memory: record food and position, compute veTotal and vt.
@@ -2601,27 +2613,25 @@ class PorpoisePopulation:
         Java ref: YearlyTask.java:99 — p.setRandomMatingDay() for each porpoise
         Porpoise.java:1237-1241 — matingDay = round(N(tmating_mean, tmating_sd))
         """
-        females = self.active_mask
-        n_females = int(np.sum(females))
-        if n_females > 0:
+        active = self.active_mask
+        n_active = int(np.sum(active))
+        if n_active > 0:
             new_days = np.round(
-                self.rng.normal(self.params.mating_day_mean, self.params.mating_day_sd, n_females)
+                self.rng.normal(self.params.mating_day_mean, self.params.mating_day_sd, n_active)
             ).astype(np.int16)
-            self.mating_day[females] = new_days
+            self.mating_day[active] = new_days
 
     def _update_pregnancy_status(self, mask: np.ndarray) -> None:
         """Update pregnancy FSM — called once per day (Java Porpoise.java:1155-1231)."""
-        female_mask = mask  # every agent is female (DEPONS)
+        # Every agent is female (DEPONS), so the whole mask goes through the FSM.
 
         # 0 → 2: Immature to ready-to-mate
-        immature = (
-            female_mask & (self.pregnancy_status == 0) & (self.age >= self.params.maturity_age)
-        )
+        immature = mask & (self.pregnancy_status == 0) & (self.age >= self.params.maturity_age)
         self.pregnancy_status[immature] = 2
 
         # 2 → 1: Ready to pregnant on mating day
         current_day = self._day_of_year // 48
-        ready = female_mask & (self.pregnancy_status == 2) & (self.mating_day == current_day)
+        ready = mask & (self.pregnancy_status == 2) & (self.mating_day == current_day)
         if ready.any():
             conceive_roll = self.rng.random(self.count)
             conceives = ready & (conceive_roll < self.params.conceive_prob)
@@ -2630,7 +2640,7 @@ class PorpoisePopulation:
 
         # 1 → 2 + birth: Pregnant gives birth at gestation_time
         giving_birth = (
-            female_mask
+            mask
             & (self.pregnancy_status == 1)
             & (self.days_since_mating == self.params.gestation_time)
         )
@@ -2640,49 +2650,124 @@ class PorpoisePopulation:
             self.days_since_mating[giving_birth] = -99
             self.days_since_birth[giving_birth] = 0
 
-        # Weaning: at nursing_time, create female calf, end lactation
-        weaning = female_mask & self.with_calf & (self.days_since_birth == self.params.nursing_time)
+        # Weaning: at nursing_time, create the calf (50% chance it is a female agent), end lactation
+        weaning = mask & self.with_calf & (self.days_since_birth == self.params.nursing_time)
+        mother_indices = np.empty(0, dtype=np.intp)
         if weaning.any():
             calf_roll = self.rng.random(self.count)
-            creates_calf = weaning & (calf_roll > 0.5)
-
-            n_calves = int(np.sum(creates_calf))
-            if n_calves > 0:
-                inactive_slots = np.where(~self.active_mask)[0]
-                slots_to_use = min(n_calves, len(inactive_slots))
-                if slots_to_use > 0:
-                    self.last_step_births += int(slots_to_use)
-                    new_slots = inactive_slots[:slots_to_use]
-                    mother_indices = np.where(creates_calf)[0][:slots_to_use]
-
-                    self.active_mask[new_slots] = True
-                    self.x[new_slots] = self.x[mother_indices]
-                    self.y[new_slots] = self.y[mother_indices]
-                    self.heading[new_slots] = self.heading[mother_indices]
-                    self.age[new_slots] = 0.0
-                    self.energy[new_slots] = (
-                        self.rng.normal(
-                            self.params.energy_init_mean, self.params.energy_init_sd, slots_to_use
-                        )
-                        .clip(0, 20)
-                        .astype(np.float32)
-                    )
-                    self.pregnancy_status[new_slots] = 0
-                    self.with_calf[new_slots] = False
-                    self.days_since_mating[new_slots] = -99
-                    self.days_since_birth[new_slots] = -99
-                    self.mating_day[new_slots] = -99
-                    self._reset_recycled_slots(new_slots)
+            mother_indices = np.flatnonzero(weaning & (calf_roll > 0.5))
 
             self.with_calf[weaning] = False
             self.days_since_birth[weaning] = -99
 
         # Increment counters
-        pregnant = female_mask & (self.pregnancy_status == 1)
+        pregnant = mask & (self.pregnancy_status == 1)
         self.days_since_mating[pregnant] += 1
 
-        lactating = female_mask & self.with_calf
+        lactating = mask & self.with_calf
         self.days_since_birth[lactating] += 1
+
+        # Calves last: adding them may grow the arrays, which invalidates the masks above.
+        # A calf starts at status 0 without a calf, so the counters do not touch it.
+        if mother_indices.size:
+            self._add_calves(mother_indices)
+
+    def _add_calves(self, mother_indices: np.ndarray) -> None:
+        """Add one weaned calf per mother, at her position (Porpoise.java:1210-1215).
+
+        DEPONS adds the calf unconditionally. Free slots are used first; when there are too
+        few, the per-animal arrays grow.
+        """
+        n_calves = int(mother_indices.size)
+        inactive_slots = np.flatnonzero(~self.active_mask)
+        if inactive_slots.size < n_calves:
+            short = n_calves - int(inactive_slots.size)
+            self._grow(max(short, 32, self.count // 10))
+            inactive_slots = np.flatnonzero(~self.active_mask)
+        new_slots = inactive_slots[:n_calves]
+        self.last_step_births += n_calves
+
+        self.active_mask[new_slots] = True
+        self.x[new_slots] = self.x[mother_indices]
+        self.y[new_slots] = self.y[mother_indices]
+        self.heading[new_slots] = self.heading[mother_indices]
+        self.age[new_slots] = 0.0
+        self.energy[new_slots] = (
+            self.rng.normal(self.params.energy_init_mean, self.params.energy_init_sd, n_calves)
+            .clip(0, 20)
+            .astype(np.float32)
+        )
+        self.pregnancy_status[new_slots] = 0
+        self.with_calf[new_slots] = False
+        self.days_since_mating[new_slots] = -99
+        self.days_since_birth[new_slots] = -99
+        self.mating_day[new_slots] = -99
+        self._reset_recycled_slots(new_slots)
+
+    def _grow(self, extra: int) -> None:
+        """Append ``extra`` inactive slots to every per-animal array.
+
+        The new slots come from a freshly constructed population of ``extra`` animals with the
+        same parameters, landscape and modules, so every per-animal array (including module
+        states and constant work arrays) gets correctly initialised values without a registry
+        of names. An array counts as per-animal when its first dimension is ``count`` here and
+        ``extra`` there; ``extra`` is never equal to ``count``, so a grid or lookup table whose
+        size happens to equal the population size is left alone. The fresh population has its
+        own generator: nothing is drawn from this one.
+        """
+        old = self.count
+        if extra == old:
+            extra += 1
+        fresh = PorpoisePopulation(
+            extra,
+            self.params,
+            self.landscape,
+            movement_module=self._movement_module,
+            behavior_fsm=self._behavior_fsm,
+            energy_module=self._energy_module,
+            memory_module=self._memory_module,
+        )
+        fresh.active_mask[:] = False
+        fresh.ids[:] = old + np.arange(extra, dtype=fresh.ids.dtype)
+
+        merged: dict[int, np.ndarray] = {}  # id(old array) -> grown array, keeps aliases shared
+        seen: set[int] = set()
+
+        def merge(mine, theirs, depth):
+            for name, v in list(vars(mine).items()):
+                if name in ("landscape", "params", "rng"):
+                    continue
+                f = vars(theirs).get(name)
+                if f is v or f is None:
+                    continue  # shared (modules size their own buffers) or not per-animal
+                if isinstance(v, np.ndarray):
+                    if id(v) in merged:
+                        setattr(mine, name, merged[id(v)])
+                    elif (
+                        isinstance(f, np.ndarray)
+                        and v.shape[:1] == (old,)
+                        and f.shape[:1] == (extra,)
+                        and v.shape[1:] == f.shape[1:]
+                    ):
+                        merged[id(v)] = np.concatenate([v, f.astype(v.dtype, copy=False)])
+                        setattr(mine, name, merged[id(v)])
+                elif isinstance(v, list):
+                    if isinstance(f, list) and len(v) == old and len(f) == extra:
+                        v.extend(f)
+                elif (
+                    hasattr(v, "__dict__")
+                    and type(v) is type(f)
+                    and type(v).__module__.startswith("cenop")
+                    and id(v) not in seen
+                    and depth < 3
+                ):
+                    seen.add(id(v))
+                    merge(v, f, depth + 1)
+
+        merge(self, fresh, 0)
+        self.count = old + extra
+        self._active_idx = np.flatnonzero(self.active_mask)
+        logger.info("Population arrays grown from %d to %d slots", old, self.count)
 
     def _reset_recycled_slots(self, slots: np.ndarray) -> None:
         """Reset all persistent per-agent state for recycled (reused) slots to
@@ -2807,6 +2892,7 @@ class PorpoisePopulation:
         mask = self.active_mask
         active_before = int(np.sum(mask))
         self._global_tick += 1
+        self._update_aging(mask)
 
         # Refresh cached active indices each tick so dead slots are excluded from
         # reference-memory updates (mirrors the Numba path in step()).
@@ -3137,9 +3223,6 @@ class PorpoisePopulation:
         if self._memory_module is not None:
             self._update_disturbance_memory(self.active_mask)
 
-        # Aging
-        self._update_aging(self.active_mask)
-
         # Day-of-year counter (must run every tick — was inside _handle_reproduction)
         self._day_of_year = (self._day_of_year + 1) % (360 * 48)
 
@@ -3211,6 +3294,7 @@ class PorpoisePopulation:
 
         active_before = int(np.sum(self.active_mask))
         self._global_tick += 1
+        self._update_aging(mask)
 
         # Cache active indices once per tick (avoid redundant np.where in sub-methods)
         self._active_idx = np.flatnonzero(mask)  # returns intp = int64 on 64-bit
@@ -3379,9 +3463,6 @@ class PorpoisePopulation:
         # 4.5 Disturbance memory update (JASMINE)
         if self._memory_module is not None:
             self._update_disturbance_memory(self.active_mask)
-
-        # 5. Aging
-        self._update_aging(self.active_mask)
 
         # 6. Day-of-year counter (must run every tick — was inside _handle_reproduction)
         self._day_of_year = (self._day_of_year + 1) % (360 * 48)
@@ -4005,7 +4086,7 @@ class PorpoisePopulation:
         - Nov-Mar (cold): 1.0 (baseline)
         - Apr, Oct: 1.15 (transition)
         - May-Sep (warm): 1.3 (e_warm)
-        - Lactating females: multiply by 1.4 (e_lact)
+        - Lactating animals: multiply by 1.4 (e_lact)
 
         Args:
             month: Current month (1-12)

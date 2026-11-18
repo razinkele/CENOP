@@ -3,7 +3,7 @@
 Gate for the dispersal-selector work (docs/superpowers/specs/2026-11-18-dispersal-selector-design.md):
 wiring params.dispersal must leave PSM-Type2 runs bit-identical.
 
-Expected since the females-only start (668b5bf, 2026-11-18; unchanged by 596eec6), by mode:
+Expected since the females-only start (668b5bf, 2026-11-18; unchanged by 596eec6, 1a0efbc and 2247de4), by mode:
 PSM-Type2          state hash 205f0e25647e1f7b | ever dispersed 786 | N 1989 | meanE 6.074059
 off                state hash efac6392b01d3029 | ever dispersed 0 | N 1986 | meanE 6.133584
 Undirected         state hash 2714d8fadec11a10 | ever dispersed 793 | N 1994 | meanE 6.119591

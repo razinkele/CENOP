@@ -164,8 +164,8 @@ Not tested: the first-120-day dispersal statistics were not rerun on the v3.2 la
 ## Update (2026-11-18, later)
 
 The population difference was traced to the starting sex and pregnancy state and fixed
-(`668b5bf`, `596eec6`). On the v3.2 landscape CENOP now ends year 5 at 45-50 (PSM-Type2)
-and 42-46 (InnerDanishWaters) against Java's 51-57 and 47-53. See
+(`668b5bf`, `596eec6`, `1a0efbc`). On the v3.2 landscape CENOP now ends year 5 at 44-60
+(PSM-Type2) and 40-48 (InnerDanishWaters) against Java's 51-57 and 47-53. See
 `2026-11-18-kattegat-population-gap.md`. The population statements above and in the
 conclusion below describe the code before that fix.
 

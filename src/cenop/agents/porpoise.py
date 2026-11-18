@@ -49,7 +49,7 @@ class Porpoise(Agent):
     """
 
     # === Identity (inherited from Agent: id, x, y, heading) ===
-    is_female: bool = True  # Sex (True=female, False=male)
+    # No sex field: DEPONS simulates females only.
 
     # === Movement state ===
     prev_log_mov: float = 0.8  # Previous log10(movement/100) - DEPONS default
@@ -112,12 +112,8 @@ class Porpoise(Agent):
         if self.energy_level == 10.0:
             self.energy_level = np.random.normal(10.0, 1.0)
 
-        # Initialize mating day (only meaningful for females per TRACE)
-        # Males don't need a mating day as only females can become pregnant
-        if self.is_female:
-            self.mating_day = int(np.random.normal(225, 20))
-        else:
-            self.mating_day = -99  # Not applicable for males
+        # Initialize mating day (DEPONS: round(N(225, 20)), Porpoise.java:1237-1241)
+        self.mating_day = int(np.round(np.random.normal(225, 20)))
 
         # Initialize position list
         if not self.pos_list:
@@ -638,13 +634,8 @@ class Porpoise(Agent):
     def _update_reproduction(self, params: SimulationParameters, state: SimulationState) -> None:
         """Update reproduction state.
 
-        TRACE: Only females can become pregnant and give birth.
-        Males skip reproduction entirely.
+        DEPONS simulates females only, so every animal goes through this.
         """
-        # Males don't participate in reproduction
-        if not self.is_female:
-            return
-
         day_of_year = state.day % 360
 
         # Check if ready to mate

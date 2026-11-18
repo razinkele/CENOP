@@ -128,6 +128,7 @@ class PorpoisePopulation:
         memory_module=None,
     ):
         self.params = params
+        self._dispersal_mode = params.dispersal
         self.landscape = landscape
         self.count = count  # Initial count capacity
 
@@ -3345,7 +3346,13 @@ class PorpoisePopulation:
         - If daily mean energy has strictly dropped t_disp days in a row (default 3), i.e.
           history[i] < history[i + 1] for all i in range(t_disp)
         - Then try to activate dispersal (memory target, else random target)
+
+        dispersal="off" (DEPONS DispersalFactory.isOff, Porpoise.java:1089) starts none. This
+        is the only place dispersal starts, on the NumPy and the JAX paths alike.
         """
+        if self._dispersal_mode == "off":
+            return
+
         t_disp = getattr(self.params, "t_disp", 3)
 
         # The check reads history[:, t_disp], so t_disp is at most history_len - 1

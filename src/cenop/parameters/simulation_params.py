@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+DISPERSAL_MODES: tuple[str, ...] = ("off", "PSM-Type2", "Undirected")
+
 
 @dataclass
 class SimulationParameters:
@@ -242,6 +244,15 @@ class SimulationParameters:
 
     def _validate(self) -> None:
         """Validate parameter ranges."""
+        if self.dispersal == "InnerDanishWaters":
+            raise ValueError(
+                "dispersal 'InnerDanishWaters' is not implemented yet in CENOP; "
+                "use one of: off, PSM-Type2, Undirected"
+            )
+        if self.dispersal not in DISPERSAL_MODES:
+            raise ValueError(
+                f"unknown dispersal {self.dispersal!r}; use one of: off, PSM-Type2, Undirected"
+            )
         if self.porpoise_count < 0:
             raise ValueError("porpoise_count must be non-negative")
         if self.porpoise_count > 50000:

@@ -128,6 +128,7 @@ class PorpoisePopulation:
         memory_module=None,
     ):
         self.params = params
+        self._dispersal_mode = params.dispersal
         self.landscape = landscape
         self.count = count  # Initial count capacity
 
@@ -472,6 +473,11 @@ class PorpoisePopulation:
 
         # === JAX acceleration ===
         self._use_jax = _HAS_JAX and getattr(params, "use_jax", True)
+        if self._use_jax and self._dispersal_mode == "Undirected":
+            # jax_disperse_step embeds the PSM-Type2 turn and stop; never fall back silently
+            raise ValueError(
+                "dispersal 'Undirected' is not supported on the JAX backend; set use_jax=False"
+            )
         if self._use_jax:
             import jax
 
@@ -1196,7 +1202,8 @@ class PorpoisePopulation:
     def _disperse_step(self, mask: np.ndarray) -> None:
         """DEPONS AbstractPSMDispersal.disperse() for ``mask & is_dispersing`` (D9-D11).
 
-        In DEPONS order: path-length completion, PSM turn, then the stops (not enough water
+        In DEPONS order: completion (path length for PSM-Type2, displacement from the start
+        for Undirected), PSM turn, then the stops (not enough water
         ahead, off-grid, then too shallow). A stopped animal gets its pre-turn heading back;
         its ``_prev_step_heading`` keeps the PSM turn, as in DEPONS. The not-enough-water
         stop reads ``_enough_water_ahead``, written by the land check of the last tick the
@@ -1213,8 +1220,15 @@ class PorpoisePopulation:
         if not d.any():
             return
 
-        # 1. Completion on path length (DEPONS shouldStopDispersing: traveled >= 0.95 * target)
-        done = d & (self.dispersal_distance_traveled >= 0.95 * self.dispersal_target_distance)
+        # 1. Completion (DEPONS shouldStopDispersing). PSM-Type2: path length >= 0.95 * target.
+        #    Undirected (DispersalPSMType3): straight-line distance from the start >= target.
+        if self._dispersal_mode == "Undirected":
+            displacement = np.hypot(
+                self.x - self.dispersal_start_x, self.y - self.dispersal_start_y
+            )
+            done = d & (displacement >= self.dispersal_target_distance)
+        else:
+            done = d & (self.dispersal_distance_traveled >= 0.95 * self.dispersal_target_distance)
         if done.any():
             self._end_dispersal(done)
             d &= ~done
@@ -1256,12 +1270,15 @@ class PorpoisePopulation:
             self.heading[stopped] = start_heading[stop]
 
     def _apply_dispersal_heading(self, mask: np.ndarray) -> None:
-        """Apply PSM-Type2 dispersal heading using the dispersal module formula.
+        """Apply the dispersal turn for the active mode.
 
-        Delegates to the same formula as PSMType2Dispersal.get_dispersal_move():
+        PSM-Type2 (DispersalPSMType2.calculateNewHeading):
         - angleDelta = U(-psm_angle, +psm_angle) * SSLogis(distLogX)
         - distLogX = 3 * distPercent - 1.5
         - newHeading = previousStepHeading + angleDelta
+
+        Undirected (UndirectedDispersal.calculateNewHeading): the same uniform draw, with no
+        logistic factor.
         """
 
         dispersing = mask & self.is_dispersing
@@ -1291,8 +1308,10 @@ class PorpoisePopulation:
         dist_log_x = np.clip(dist_log_x, -100, 100)
         logistic = 1.0 / (1.0 + np.exp((0.0 - dist_log_x) / psm_log))
 
-        # Scale angle by logistic
-        delta = delta * logistic
+        # Scale angle by logistic; Undirected (UndirectedDispersal.calculateNewHeading) keeps
+        # the full draw
+        if self._dispersal_mode != "Undirected":
+            delta = delta * logistic
 
         # New heading from previous step heading (not CRW heading)
         self.heading[dispersing] = self._prev_step_heading[dispersing] + delta
@@ -3345,7 +3364,13 @@ class PorpoisePopulation:
         - If daily mean energy has strictly dropped t_disp days in a row (default 3), i.e.
           history[i] < history[i + 1] for all i in range(t_disp)
         - Then try to activate dispersal (memory target, else random target)
+
+        dispersal="off" (DEPONS DispersalFactory.isOff, Porpoise.java:1089) starts none. This
+        is the only place dispersal starts, on the NumPy and the JAX paths alike.
         """
+        if self._dispersal_mode == "off":
+            return
+
         t_disp = getattr(self.params, "t_disp", 3)
 
         # The check reads history[:, t_disp], so t_disp is at most history_len - 1
@@ -3489,7 +3514,10 @@ class PorpoisePopulation:
         return float(tx[first]), float(ty[first])
 
     def _select_dispersal_target(self, idx: int) -> tuple[float, float] | None:
-        target = self._memory_dispersal_target(idx)
+        """Memory target, else random; Undirected never consults memory (always random)."""
+        target = None
+        if self._dispersal_mode != "Undirected":
+            target = self._memory_dispersal_target(idx)
         if target is None:
             target = self._random_dispersal_target(idx)
         return target
@@ -3521,7 +3549,8 @@ class PorpoisePopulation:
           checked at the start of the next tick by _disperse_step (DEPONS parity).
         - Non-CRW module path (_update_movement_module_generic: JASMINE physics, hybrid): it
           runs no _disperse_step and tracks no path length, so dispersal ends here once the
-          straight-line distance from the start point reaches 0.95 * target distance.
+          straight-line distance from the start point reaches 0.95 * target distance (the
+          full target distance for Undirected).
         """
         dispersing = mask & self.is_dispersing
         if not dispersing.any():
@@ -3546,7 +3575,8 @@ class PorpoisePopulation:
         dx = self.x - self.dispersal_start_x
         dy = self.y - self.dispersal_start_y
         distances = np.sqrt(dx * dx + dy * dy)
-        completed = dispersing & (distances >= 0.95 * self.dispersal_target_distance)
+        factor = 1.0 if self._dispersal_mode == "Undirected" else 0.95
+        completed = dispersing & (distances >= factor * self.dispersal_target_distance)
         if completed.any():
             self._end_dispersal(completed)
 

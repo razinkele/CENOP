@@ -140,3 +140,14 @@ class TestPsmAngleDefault:
         src = inspect.getsource(settings_mod)
         assert 'ui.input_numeric("psm_angle", None, value=40.0, step=1.0)' in src
         assert "DEPONS default: 40°" in src
+
+
+def test_dispersal_dropdown_offers_only_working_modes():
+    from cenop.parameters.simulation_params import DISPERSAL_MODES
+    from cenop.ui.tabs.settings import TOOLTIPS, _dispersal_settings_panel
+
+    html = str(_dispersal_settings_panel().content.tagify())
+    for mode in DISPERSAL_MODES:
+        assert f'value="{mode}"' in html
+    assert 'value="InnerDanishWaters"' not in html
+    assert "not available yet" in TOOLTIPS["dispersal"]

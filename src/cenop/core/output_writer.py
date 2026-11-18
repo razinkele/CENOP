@@ -430,7 +430,7 @@ class OutputWriter:
                     target_x=float(target_x),
                     target_y=float(target_y),
                     target_distance_km=float(target_dist / 1000),  # m to km
-                    dispersal_type="PSM",
+                    dispersal_type=sim.params.dispersal,
                 )
 
                 self._write_dispersal_event(event)

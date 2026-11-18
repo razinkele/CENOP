@@ -313,7 +313,7 @@ The interactive map shows:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| Dispersal Type | PSM-Type2 | Memory-based with SSLogis heading dampening |
+| Dispersal Type | PSM-Type2 | `PSM-Type2`: memory-based with SSLogis heading dampening. `Undirected`: random target, undamped turns. `InnerDanishWaters`: DEPONS Kattegat mode (block targets, then coast following), Kattegat landscape only. `off`: no dispersal |
 | tDisp | 3 days | Days of declining energy to trigger |
 | mean_disp_dist | 2.0 km | Mean distance per dispersal step (DEPONS 3.2) |
 | PSM_log | 0.6 | Memory strengthening rate |

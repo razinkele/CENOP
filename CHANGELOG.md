@@ -21,6 +21,20 @@ All notable changes to CENOP-JASMINE are documented in this file.
   the random target and the full-distance stop apply. See
   `docs/superpowers/specs/2026-11-18-dispersal-selector-design.md`
 
+- Dispersal mode `InnerDanishWaters` (DEPONS `InnerDanishWatersDispersal`), the mode the
+  DEPONS 3.2 TRACE document specifies for Kattegat. It is opt-in: PSM-Type2 stays the
+  default on every landscape and no baseline changed.
+  - Phase 1 heads for one of the twelve best of sixty 40 km blocks, steering towards deep
+    water and away from the coast; phase 2 follows the coast away from the previous day's
+    position. Ported one animal at a time from the Java (`src/cenop/agents/dispersal_idw.py`),
+    with the DEPONS quirks kept as they are (listed in
+    `docs/superpowers/specs/2026-11-18-dispersal-idw-design.md`).
+  - Kattegat landscape only; any other landscape is rejected when parameters are built
+    (DEPONS also allows Homogeneous, CENOP does not yet). Refused on the JAX backend and
+    with JASMINE-physics or hybrid movement.
+  - Comparison with DEPONS-Java:
+    `docs/superpowers/specs/2026-11-18-dispersal-idw-java-comparison.md`
+
 ### Fixed — the dispersal setting was ignored
 - `params.dispersal` (the Dispersal Type selector, and the same field in scripts and batch
   runs) was never read: every run used PSM-Type2 whatever was selected, in every release so
@@ -83,9 +97,9 @@ All notable changes to CENOP-JASMINE are documented in this file.
     simulation does not use distance to coast). CentralBaltic habitat layers are synthetic.
 
 ### Changed
-- `InnerDanishWaters` is no longer offered in the Dispersal Type selector, and
-  `SimulationParameters` rejects it (and any unknown dispersal value) with an error. It
-  silently ran PSM-Type2 before; its port is a separate piece of work.
+- `SimulationParameters` rejects an unknown dispersal value with an error, and rejects
+  `InnerDanishWaters` on any landscape other than Kattegat. Before, `InnerDanishWaters`
+  silently ran PSM-Type2 everywhere.
 - `Dispersal.txt` records the active mode (`PSM-Type2`, `Undirected`) in `dispersal_type`
   instead of the constant `PSM`.
 - **Land avoidance on CRW movement follows DEPONS 3.2 (spec D15), plus the D9 first-call water
@@ -217,9 +231,13 @@ All notable changes to CENOP-JASMINE are documented in this file.
 - `data/Kattegat` is the DEPONS **v3.0** Kattegat landscape, not v3.2 (all 33 files
   byte-identical to v3.0; prey, salinity, distance-to-coast and patch maps differ from
   v3.2). CENOP's loader cannot read the v3.2 files as shipped
-- The simulation never reads the `dispersal` parameter: large-scale movement is always
-  PSM-Type2, so the UI dispersal selector has no effect and `InnerDanishWaters` (which
-  DEPONS TRACE 3.2 §3.2.4 specifies for Kattegat) cannot be run
+- ~~The simulation never reads the `dispersal` parameter~~ Fixed 2026-11-18: all four modes
+  take effect (see Added and Fixed above). The Kattegat baselines are still PSM-Type2 runs,
+  not the `InnerDanishWaters` configuration DEPONS TRACE 3.2 §3.2.4 specifies
+- **`InnerDanishWaters`: eating cell after a stop with a move (found 2026-11-18).** In the
+  rare tick where the mode moves an animal and then stops (the 1-cell move north of Funen
+  followed by a phase-2 stop, or a step back that bounced off the grid edge), CENOP lets the
+  animal eat at the cell it was moved to; DEPONS uses its start-of-tick cell.
 
 - **PSM-Type2 calf memory differs from DEPONS (found 2026-11-18).** DEPONS gives a nursing
   calf its own spatial memory, filled as the mother forages, and the calf inherits the

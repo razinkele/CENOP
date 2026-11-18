@@ -568,6 +568,8 @@ def create_help_modal():
     <p>Controls large-scale movement when porpoises have declining energy.
     The default mode is <strong>PSM-Type2</strong>: a remembered target with heading dampening via the SSLogis formula.
     <strong>Undirected</strong> picks a random target and turns without dampening; <strong>off</strong> disables dispersal.
+    <strong>InnerDanishWaters</strong> is the DEPONS Kattegat mode: it heads for one of the best 40&nbsp;km blocks,
+    then follows the coast; it runs on the Kattegat landscape only. PSM-Type2 is the default on every landscape.
     Dispersing agents move at a fixed step length (<code>mean_disp_dist&nbsp;/&nbsp;0.4</code> grid cells)
     instead of CRW steps. Dispersal stops when the porpoise's current energy exceeds the minimum of its
     previous 7 days' energy (checked at day boundaries). Deterrence events deactivate ongoing dispersal.</p>

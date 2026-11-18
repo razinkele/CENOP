@@ -24,7 +24,6 @@ def _fake_sim_with_pm():
         active_mask=np.array([True, True, False, True]),
         age=np.array([2.0, 4.0, 99.0, 6.0], dtype=np.float32),
         energy=np.array([10.0, 12.0, 0.0, 8.0], dtype=np.float32),
-        is_female=np.array([True, False, True, True]),
         with_calf=np.array([True, False, False, False]),
     )
     sim = SimpleNamespace(
@@ -54,7 +53,6 @@ class TestBuildSnapshot:
         assert stats["population"] == 3
         assert stats["avg_age"] == 4.0
         assert stats["avg_energy"] == 10.0
-        assert stats["females"] == 2
         assert stats["with_calf"] == 1
 
     def test_snapshot_is_decoupled_from_later_mutation(self):
@@ -86,7 +84,6 @@ class TestBuildSnapshot:
             active_mask=np.zeros(3, dtype=bool),
             age=np.zeros(3, dtype=np.float32),
             energy=np.zeros(3, dtype=np.float32),
-            is_female=np.zeros(3, dtype=bool),
             with_calf=np.zeros(3, dtype=bool),
         )
         sim = SimpleNamespace(population_manager=pm, get_statistics=lambda: {"population": 0})
@@ -111,7 +108,6 @@ class TestBuildSnapshot:
         assert snap["stats"] == {
             "avg_age": 4.0,
             "avg_energy": 10.0,
-            "females": 2,
             "with_calf": 1,
         }
         assert snap["ages"] == [2.0, 4.0, 6.0]
@@ -220,7 +216,6 @@ class TestWorkerPublishesSnapshot:
             active_mask=np.array([True, True, False, True]),
             age=np.array([2.0, 4.0, 99.0, 6.0], dtype=np.float32),
             energy=np.array([10.0, 12.0, 0.0, 8.0], dtype=np.float32),
-            is_female=np.array([True, False, True, True]),
             with_calf=np.array([True, False, False, False]),
         )
         sim = SimpleNamespace(

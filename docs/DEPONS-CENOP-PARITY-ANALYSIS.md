@@ -182,7 +182,8 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 | 9.3 | Tick execution order | Move → Eat → Mortality → BMR → Age → Reproduce | Same sequence | **MATCH** | |
 | 9.4 | Daily boundary check | `tick % 48 == 0` | `tick % 48 == 0` | **MATCH** | |
 | 9.5 | Age distribution init | Empirical (300+ bins) | Hardcoded array (same source) | **MATCH** | |
-| 9.6 | Sex ratio | 50% female | 50% female | **MATCH** | |
+| 9.6 | Sex | Females only (no sex field) | Females only since 2026-11-18; before, half the starting animals were male | **MATCH** | Corrected 2026-11-18: this row used to read "50% female / MATCH". DEPONS's 50% is the chance that a weaned calf becomes an agent |
+| 9.6b | Pregnancy at setup | Every animal with age > 0, P=conceiveProb, any age; others status 0 | Same since 2026-11-18; before, mature females only | **MATCH** | `Porpoise.java:165-178` |
 | 9.7 | Pregnancy FSM states | 0=immature, 1=pregnant, 2=ready | Same 3 states | **MATCH** | |
 | 9.8 | 0→2 (immature → ready) | `age >= maturityAge` | Same | **MATCH** | |
 | 9.9 | 2→1 (mating) | On mating day, P=conceiveProb | Same | **MATCH** | |

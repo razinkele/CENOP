@@ -221,3 +221,7 @@ Other verifications at this point:
   at 55. It is not directly comparable with DEPONS's own 5-year runs (51 / 57, seeds 42 / 43):
   those used the v3.2 landscape, while `data/Kattegat` is the v3.0 landscape, which has less
   food, so CENOP's baseline falls much faster early (994 at day 63, against about 1,950 on v3.2).
+  *Superseded again 2026-11-18:* regenerated after the females-only start fix (`668b5bf`,
+  `596eec6`); the undisturbed baseline now ends at 31 (1008 at day 63). On the same v3.2
+  landscape CENOP now follows DEPONS's 5-year population (45-50 against 51 / 57); see
+  `docs/superpowers/specs/2026-11-18-kattegat-population-gap.md`.

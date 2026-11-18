@@ -291,7 +291,6 @@ class TestPerTickPopulationCounters:
         pop.pregnancy_status[:] = 0
         pop.days_since_mating[:] = -99
         pop.mating_day[:] = -99  # no female is "ready" => no conceive draw
-        pop.is_female[0] = True
         pop.with_calf[:] = False
         pop.with_calf[0] = True
         pop.days_since_birth[0] = pop.params.nursing_time

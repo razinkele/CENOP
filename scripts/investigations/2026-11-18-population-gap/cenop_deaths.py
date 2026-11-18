@@ -4,9 +4,7 @@ Like-for-like with the DEPONS-Java runs under output/depons_java/kattegat-*-undi
 (Reproduction.csv has one row per death with TickAtDeath and AgeAtDeath).
 
 python3 scripts/investigations/2026-11-18-population-gap/cenop_deaths.py <mode> <seed> <days> \
-    <data_root> [java-init]
-
-``java-init`` replaces CENOP's starting sex and pregnancy state with DEPONS's (see below).
+    <data_root>
 Writes output/population_gap/<mode>-seed-<seed>-deaths.csv (tick, age, last_energy) and
 ...-daily.csv (day, n, mean_energy, births_today, energy quantiles 5/25/50/75/95).
 """
@@ -36,25 +34,10 @@ cd.load()
 sim = Simulation(params=params, cell_data=cd, seed=seed)
 sim.initialize()
 pm = sim.population_manager
-variant = sys.argv[5] if len(sys.argv) > 5 else ""
-if variant == "java-init":
-    # DEPONS start (Porpoise.java:165-178): every agent is female; every agent with age > 0
-    # is pregnant with probability h, whatever its age, with daysSinceMating =
-    # 360 - round(N(225, 20)); the rest have status 0. A separate generator is used so the
-    # simulation's own random stream is not shifted.
-    g = np.random.default_rng(seed + 1000)
-    n0 = pm.count
-    pm.is_female[:] = True
-    pm.mating_day[:] = np.clip(g.normal(225, 20, n0), 0, 359).astype(np.int16)
-    pm.pregnancy_status[:] = 0
-    pm.days_since_mating[:] = -99
-    preg = pm.active_mask & (pm.age > 0) & (g.random(n0) < params.conceive_prob)
-    pm.pregnancy_status[preg] = 1
-    dsm = 360 - np.round(g.normal(225, 20, int(preg.sum())))
-    pm.days_since_mating[preg] = np.clip(dsm, 0, 360).astype(np.int16)
-    mode_tag = mode + "-javainit"
-else:
-    mode_tag = mode
+# The "java-init" variant that this script used for the investigation (DEPONS's starting sex
+# and pregnancy state, set here after initialisation) is gone: since 668b5bf the model
+# itself starts that way. Results from before the fix are in the investigation write-up.
+mode_tag = mode
 deaths, daily = [], []
 births_today = 0
 prev_active = pm.active_mask.copy()

@@ -161,6 +161,14 @@ landscape, two modes, per-block and per-year numbers) is the place to start.
 
 Not tested: the first-120-day dispersal statistics were not rerun on the v3.2 landscape.
 
+## Update (2026-11-18, later)
+
+The population difference was traced to the starting sex and pregnancy state and fixed
+(`668b5bf`, `596eec6`). On the v3.2 landscape CENOP now ends year 5 at 45-50 (PSM-Type2)
+and 42-46 (InnerDanishWaters) against Java's 51-57 and 47-53. See
+`2026-11-18-kattegat-population-gap.md`. The population statements above and in the
+conclusion below describe the code before that fix.
+
 ## Conclusion
 
 On the same landscape the port reproduces where DEPONS sends animals, to within Java's own

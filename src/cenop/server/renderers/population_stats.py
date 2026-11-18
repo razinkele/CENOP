@@ -1,7 +1,7 @@
 """Pure population-statistics snapshot builder and renderer helpers.
 
 Finding #22 (data-race): the age/energy histograms and the vital-stats table
-used to read ``pm.active_mask``/``age``/``energy``/``is_female``/``with_calf``
+used to read ``pm.active_mask``/``age``/``energy``/``with_calf``
 and ``sim.get_statistics()`` directly on the session thread while the background
 worker mutated those arrays in place, producing torn (transiently wrong)
 displays.  The worker now builds an immutable snapshot with
@@ -58,7 +58,6 @@ def build_population_stats_snapshot(sim: Any) -> dict[str, Any]:
     if active is not None and np.any(active):
         stats["avg_age"] = float(np.mean(pm.age[active]))
         stats["avg_energy"] = float(np.mean(pm.energy[active]))
-        stats["females"] = int(np.sum(pm.is_female[active]))
         stats["with_calf"] = int(np.sum(pm.with_calf[active]))
 
     return {"ages": ages, "energies": energies, "stats": stats}

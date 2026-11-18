@@ -1,16 +1,24 @@
 Kattegat ship-scenario reference baseline — PROVENANCE
 =======================================================
 
-Date generated:   2026-11-11
-Producing code:   CENOP-JASMINE, commit 99d4c60 (merge of fix/phantom-food-2026-11-10)
+Date generated:   2026-11-18
+Producing code:   CENOP-JASMINE, commit 596eec6 (branch fix/females-only-start)
 Command:          python3 scripts/run_kattegat_reference.py --count 2000 --years 2 \
                     --seed 42 --ships --out output/kattegat_ref_ships
 Landscape:        data/Kattegat (600x1000 cells; DEPONS v3.0 Kattegat landscape),
                   637 real ship routes from data/Kattegat/ships.json
 Seed:             42 (deterministic; DEPONS parameters.xml randomSeed is __NULL__)
 
-SUPERSEDES the prior baseline (commit 3a87975, 2026-07-09, code 5e11846). Behaviour
-changes since then, all aimed at DEPONS 3.2 parity (details in CHANGELOG [Unreleased]
+SUPERSEDES the baseline of 2026-11-11 (code 99d4c60). Change since then (CHANGELOG
+[Unreleased], docs/superpowers/specs/2026-11-18-kattegat-population-gap.md):
+
+  - Starting population as in DEPONS: females only; every animal with age > 0 is
+    pregnant with probability 0.68 at setup (668b5bf). Before, half the animals were
+    male and only mature females started pregnant.
+  - Setup mating day and the tick-1 daily pregnancy update as in DEPONS (596eec6).
+
+Earlier changes (baseline of 2026-11-11 against commit 3a87975, 2026-07-09), kept for
+reference, all aimed at DEPONS 3.2 parity (details in CHANGELOG [Unreleased]
 and docs/superpowers/specs/2026-11-10-phantom-food-investigation.md):
 
   - Phantom food removed: the eat kernels no longer top up empty cells to 0.01
@@ -27,14 +35,13 @@ These change the seeded RNG stream and the population trajectory; outputs are no
 comparable with the previous baseline.
 
 Run summary:
-  - 2 yr (34,560 ticks), N=2000; population 2000 -> 314 (day 180) -> 154 (day 360)
-    -> 135 (day 540) -> 114 (day 720). The previous baseline stayed near 2000 (1998).
-  - 37,091 nonzero deter_strength records, max 0.3168 (previous: 183,932, max 0.3163).
-    The record count falls with the population; the peak is unchanged.
-  - The decline matches the other regenerated variants (undisturbed 5 yr: 2000 -> 55;
-    turbines Kattegat-test 2 yr: 2000 -> 104). data/Kattegat is the v3.0 landscape,
+  - 2 yr (34,560 ticks), N=2000; population 2000 -> 294 (day 180) -> 114 (day 360)
+    -> 106 (day 540) -> 91 (day 720). The previous baseline ended at 114.
+  - 34,620 nonzero deter_strength records, max 0.2730 (previous: 37,091, max 0.3168).
+  - The decline matches the other regenerated variants (undisturbed 5 yr: 2000 -> 31;
+    turbines Kattegat-test 2 yr: 2000 -> 83). data/Kattegat is the v3.0 landscape,
     which has less food than the v3.2 landscape used for the DEPONS Java comparisons,
-    so CENOP's baselines fall faster early (undisturbed: 994 at day 63) than the
+    so CENOP's baselines fall faster early (undisturbed: 1008 at day 63) than the
     v3.2 runs reported in the investigation spec.
 
 Committed files are the compact DEPONS-format outputs (Population.txt, Energy.txt,

@@ -247,7 +247,6 @@ class OutputWriter:
                 "heading",
                 "age",
                 "energy",
-                "is_female",
                 "with_calf",
                 "is_dispersing",
                 "deter_strength",
@@ -482,7 +481,6 @@ class OutputWriter:
                 "heading": f"{pop.heading[idx]:.1f}",
                 "age": f"{pop.age[idx]:.2f}",
                 "energy": f"{pop.energy[idx]:.2f}",
-                "is_female": int(pop.is_female[idx]),
                 "with_calf": int(pop.with_calf[idx]),
                 "is_dispersing": (
                     int(pop.is_dispersing[idx]) if hasattr(pop, "is_dispersing") else 0

@@ -1,6 +1,7 @@
 """Tests for DEPONS 3.2 pregnancy FSM."""
 
 import numpy as np
+import pytest
 
 from cenop.agents.population import PorpoisePopulation
 from cenop.landscape.cell_data import create_homogeneous_landscape
@@ -19,19 +20,12 @@ class TestPregnancyStatusArray:
         assert pop.pregnancy_status.shape == (50,)
 
     def test_initial_values(self):
-        """Males: 0. Mature females: 1 or 2 based on conceive_prob."""
-        np.random.seed(42)
+        """Setup gives status 1 (pregnant) or 0 only; see TestFemalesOnlyStart."""
         params = SimulationParameters()
         pop = PorpoisePopulation(count=200, params=params)
 
-        males = ~pop.is_female & pop.active_mask
-        assert np.all(pop.pregnancy_status[males] == 0)
-
-        mature_females = pop.is_female & (pop.age >= params.maturity_age) & pop.active_mask
-        if np.any(mature_females):
-            pregnant = np.sum(pop.pregnancy_status[mature_females] == 1)
-            ready = np.sum(pop.pregnancy_status[mature_females] == 2)
-            assert pregnant > 0 or ready > 0, "Mature females should have status 1 or 2"
+        assert set(np.unique(pop.pregnancy_status).tolist()) <= {0, 1}
+        assert np.sum(pop.pregnancy_status == 1) > 0
 
     def test_no_max_breeding_age_cap(self):
         """No max_breeding_age should limit reproduction."""
@@ -52,7 +46,6 @@ class TestPregnancyFSM:
     def test_immature_to_ready(self):
         """Status 0 → 2 when age >= maturity_age."""
         pop = self._make_pop(5)
-        pop.is_female[:] = True
         pop.pregnancy_status[:] = 0
         pop.age[:] = 3.44  # At maturity
         pop.active_mask[:] = True
@@ -65,7 +58,6 @@ class TestPregnancyFSM:
         """Status 2 → 1 on mating_day with prob conceive_prob."""
         np.random.seed(0)
         pop = self._make_pop(100)
-        pop.is_female[:] = True
         pop.pregnancy_status[:] = 2
         pop.mating_day[:] = 10
         pop.active_mask[:] = True
@@ -79,7 +71,6 @@ class TestPregnancyFSM:
     def test_pregnant_gives_birth_at_gestation(self):
         """Status 1 → 2 + withLactCalf at gestation_time."""
         pop = self._make_pop(5)
-        pop.is_female[:] = True
         pop.pregnancy_status[:] = 1
         pop.days_since_mating[:] = 300  # gestation_time
         pop.active_mask[:] = True
@@ -96,7 +87,6 @@ class TestPregnancyFSM:
         """At nursing_time, 50% chance female calf created."""
         np.random.seed(42)
         pop = self._make_pop(20)
-        pop.is_female[:10] = True
         pop.with_calf[:10] = True
         pop.days_since_birth[:10] = 240  # nursing_time
         pop.active_mask[:10] = True
@@ -112,22 +102,22 @@ class TestPregnancyFSM:
         calves_created = new_active - initial_active
         assert 1 <= calves_created <= 9, f"Expected ~5 calves, got {calves_created}"
 
-    def test_males_immune_to_fsm(self):
-        """Males should never transition pregnancy status."""
+    def test_animals_outside_the_mask_are_untouched(self):
+        """The FSM acts on the mask only (there are no males to exclude)."""
         pop = self._make_pop(10)
-        pop.is_female[:] = False
         pop.pregnancy_status[:] = 0
         pop.age[:] = 5.0
-        pop.active_mask[:] = True
+        mask = np.zeros(10, dtype=bool)
+        mask[:4] = True
 
-        pop._update_pregnancy_status(pop.active_mask)
+        pop._update_pregnancy_status(mask)
 
-        assert np.all(pop.pregnancy_status == 0)
+        assert np.all(pop.pregnancy_status[:4] == 2)
+        assert np.all(pop.pregnancy_status[4:] == 0)
 
     def test_daily_counter_increments(self):
         """days_since_mating increments for pregnant, days_since_birth for lactating."""
         pop = self._make_pop(4)
-        pop.is_female[:] = True
         pop.active_mask[:] = True
 
         pop.pregnancy_status[0] = 1
@@ -154,7 +144,6 @@ class TestReproductionScheduling:
         params = SimulationParameters()
         pop = PorpoisePopulation(count=20, params=params)
         pop.landscape = create_homogeneous_landscape(width=100, height=100, food_prob=0.5)
-        pop.is_female[:] = True
         pop.pregnancy_status[:] = 0  # All immature
         pop.age[:] = 3.44  # At maturity
         pop.active_mask[:] = True
@@ -176,7 +165,6 @@ class TestReproductionScheduling:
         params = SimulationParameters()
         pop = PorpoisePopulation(count=20, params=params)
         pop.landscape = create_homogeneous_landscape(width=100, height=100, food_prob=0.5)
-        pop.is_female[:] = True
         pop.pregnancy_status[:] = 2  # All ready to mate
         pop.mating_day[:] = 1  # Will mate on day 1 (first day boundary at tick 48)
         pop.active_mask[:] = True
@@ -202,7 +190,6 @@ class TestReproductionScheduling:
         params = SimulationParameters()
         pop = PorpoisePopulation(count=20, params=params)
         pop.landscape = create_homogeneous_landscape(width=100, height=100, food_prob=0.5)
-        pop.is_female[:] = True
         pop.pregnancy_status[:] = 2  # Ready to mate
         pop.mating_day[:] = 10  # Day 10 — outside old breeding season (195-255)
         pop.active_mask[:] = True
@@ -226,26 +213,20 @@ class TestMatingDayReRandomization:
     """Test annual mating day re-draw (Java YearlyTask.java:99)."""
 
     def test_mating_day_changes_yearly(self):
-        """At year boundary, all active females get new mating_day from N(225, 20)."""
-        np.random.seed(42)
+        """At year boundary, all active animals get new mating_day from N(225, 20)."""
         params = SimulationParameters()
         pop = PorpoisePopulation(count=50, params=params)
-        pop.is_female[:25] = True
-        pop.is_female[25:] = False
-        pop.mating_day[25:] = -99  # Reset males after init may have assigned days
         pop.active_mask[:] = True
 
-        initial_mating_days = pop.mating_day[:25].copy()
+        initial_mating_days = pop.mating_day.copy()
 
         pop.rerandomize_mating_days()
 
-        new_mating_days = pop.mating_day[:25]
+        new_mating_days = pop.mating_day
         # Days should have changed (extremely unlikely to stay exactly the same)
         assert not np.array_equal(
             initial_mating_days, new_mating_days
         ), "Mating days should change after re-randomization"
-        # Males should still be -99
-        assert np.all(pop.mating_day[25:] == -99)
         # New days should be around 225
         assert 200 < np.mean(new_mating_days) < 250
 
@@ -253,7 +234,6 @@ class TestMatingDayReRandomization:
         """Inactive (dead) females should not get new mating days."""
         params = SimulationParameters()
         pop = PorpoisePopulation(count=10, params=params)
-        pop.is_female[:] = True
         pop.active_mask[:5] = True
         pop.active_mask[5:] = False
         pop.mating_day[5:] = -99  # Dead females
@@ -383,7 +363,7 @@ class TestPhase2Integration:
         self._run_days(pop, landscape, params, 50)
 
         active = pop.active_mask
-        females = active & pop.is_female
+        females = active
         n_females = int(np.sum(females))
 
         if n_females > 0:
@@ -414,24 +394,23 @@ def test_mating_day_clipped_to_valid_range():
     assert clipped[3] == 225
     params = SimulationParameters(porpoise_count=200)
     pop = PorpoisePopulation(count=200, params=params)
-    female_mating = pop.mating_day[pop.is_female]
+    female_mating = pop.mating_day
     assert np.all(female_mating >= 0), f"Min mating_day = {female_mating.min()}"
     assert np.all(female_mating <= 359), f"Max mating_day = {female_mating.max()}"
 
 
-def test_pregnancy_init_nonpregnant_mature_stay_ready():
-    """Mature females that don't conceive should remain status=2, not reset to 0."""
-    import numpy as np
-
+def test_pregnancy_init_nonpregnant_mature_become_ready_on_the_first_daily_update():
+    """DEPONS setup leaves non-pregnant animals at status 0 (Porpoise.java:176-177); the
+    daily update then makes the mature ones ready to mate (Porpoise.java:1158-1160)."""
     params = SimulationParameters(porpoise_count=500)
-    rng = np.random.default_rng(42)
     pop = PorpoisePopulation(count=500, params=params)
-    mature_female = pop.is_female & (pop.age >= pop.params.maturity_age) & pop.active_mask
-    not_pregnant = mature_female & (pop.pregnancy_status != 1)
-    assert np.sum(not_pregnant) > 0, "Need at least one non-pregnant mature female"
-    assert np.all(
-        pop.pregnancy_status[not_pregnant] == 2
-    ), f"Found {np.sum(pop.pregnancy_status[not_pregnant] == 0)} mature females incorrectly at status 0"
+    mature = (pop.age >= pop.params.maturity_age) & pop.active_mask
+    not_pregnant = mature & (pop.pregnancy_status != 1)
+    assert np.sum(not_pregnant) > 0, "Need at least one non-pregnant mature animal"
+    assert np.all(pop.pregnancy_status[not_pregnant] == 0)
+    pop.mating_day[:] = 300
+    pop._update_pregnancy_status(pop.active_mask)
+    assert np.all(pop.pregnancy_status[not_pregnant] == 2)
 
 
 class TestWeanedCalfSlotReset:
@@ -454,7 +433,6 @@ class TestWeanedCalfSlotReset:
         pop = PorpoisePopulation(count=2, params=params)
 
         # Slot 0 = mother ready to wean a calf this day.
-        pop.is_female[0] = True
         pop.active_mask[0] = True
         pop.with_calf[0] = True
         pop.pregnancy_status[0] = 2
@@ -623,3 +601,87 @@ class TestRecycledSlotNestedStateReset:
         # Same seed -> identical redraw (reproducible), and actually redrawn.
         assert p1._psm_instances[3].preferred_distance == p2._psm_instances[3].preferred_distance
         assert p1._psm_instances[3].preferred_distance != init_pref
+
+
+class TestFemalesOnlyStart:
+    """DEPONS simulates females only (Porpoise.java:165-178): no sex, and at setup every
+    animal with age > 0 is pregnant with probability h, whatever its age."""
+
+    @staticmethod
+    def _pop(count=6000):
+        return PorpoisePopulation(count=count, params=SimulationParameters(random_seed=3))
+
+    def test_population_has_no_sex(self):
+        assert not hasattr(self._pop(10), "is_female")
+
+    def test_every_animal_has_a_mating_day(self):
+        pop = self._pop()
+        assert ((pop.mating_day >= 0) & (pop.mating_day <= 359)).all()
+
+    def test_start_pregnancy_does_not_depend_on_maturity(self):
+        pop = self._pop()
+        mat = pop.params.maturity_age
+        young = (pop.age > 0) & (pop.age < mat)
+        old = pop.age >= mat
+        assert young.sum() > 500 and old.sum() > 500
+        for group in (young, old):
+            share = np.mean(pop.pregnancy_status[group] == 1)
+            assert share == pytest.approx(pop.params.conceive_prob, abs=0.04)
+
+    def test_age_zero_never_starts_pregnant(self):
+        pop = self._pop()
+        zero = pop.age == 0
+        assert zero.sum() > 100
+        assert (pop.pregnancy_status[zero] == 0).all()
+        assert (pop.days_since_mating[zero] == -99).all()
+
+    def test_non_pregnant_start_at_status_0(self):
+        pop = self._pop()
+        assert set(np.unique(pop.pregnancy_status).tolist()) == {0, 1}
+        assert (pop.days_since_mating[pop.pregnancy_status == 0] == -99).all()
+
+    def test_days_since_mating_is_360_minus_mating_day(self):
+        pop = self._pop()
+        dsm = pop.days_since_mating[pop.pregnancy_status == 1].astype(float)
+        assert dsm.mean() == pytest.approx(135.0, abs=2.0)  # 360 - N(225, 20)
+        assert dsm.std() == pytest.approx(20.0, abs=2.0)
+
+    def test_first_daily_update_makes_mature_non_pregnant_ready(self):
+        pop = self._pop(500)
+        mature_idle = (pop.pregnancy_status == 0) & (pop.age >= pop.params.maturity_age)
+        assert mature_idle.any()
+        pop.mating_day[:] = 300  # not today
+        pop._update_pregnancy_status(pop.active_mask)
+        assert (pop.pregnancy_status[mature_idle] == 2).all()
+
+    def test_setup_mating_day_uses_the_parameters_and_rounds(self):
+        # DEPONS draws it in the tick-1 yearly task: (int) Math.round(N(tmating))
+        # (Porpoise.java:1237-1241), from the tmating parameter, unclipped.
+        params = SimulationParameters(random_seed=3, mating_day_mean=100.0, mating_day_sd=0.0)
+        assert (PorpoisePopulation(count=50, params=params).mating_day == 100).all()
+        params = SimulationParameters(random_seed=3, mating_day_mean=224.6, mating_day_sd=0.0)
+        assert (PorpoisePopulation(count=50, params=params).mating_day == 225).all()
+
+    def test_daily_pregnancy_update_also_runs_at_tick_1(self):
+        # DEPONS runs its daily task once at tick 1 as well as every 48 ticks
+        # (PorpoiseSimBuilder.java:340, 355), so days-since-mating is one ahead from day 0.
+        params = SimulationParameters(random_seed=3, porpoise_count=60)
+        land = create_homogeneous_landscape(width=100, height=100, food_prob=0.5)
+        pop = PorpoisePopulation(count=60, params=params, landscape=land)
+        pregnant = pop.pregnancy_status == 1
+        mature_idle = (pop.pregnancy_status == 0) & (pop.age >= params.maturity_age)
+        assert pregnant.any() and mature_idle.any()
+        start = pop.days_since_mating.copy()
+
+        pop.step()
+        alive = pop.active_mask
+        assert (pop.days_since_mating[pregnant & alive] == start[pregnant & alive] + 1).all()
+        assert (pop.pregnancy_status[mature_idle & alive] == 2).all()
+
+        for _ in range(46):
+            pop.step()
+        alive = pop.active_mask
+        assert (pop.days_since_mating[pregnant & alive] == start[pregnant & alive] + 1).all()
+        pop.step()  # tick 48: the first day boundary
+        alive = pop.active_mask
+        assert (pop.days_since_mating[pregnant & alive] == start[pregnant & alive] + 2).all()

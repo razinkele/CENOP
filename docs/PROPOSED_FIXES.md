@@ -52,7 +52,6 @@ Similarly, `server/simulation_controller.py` (329 lines) and `server/reactive_st
 
 | File | Reason |
 |---|---|
-| `app_backup.py` | Old backup with ~15 print statements |
 | `test_app.py`, `test_energy.py`, `test_minimal.py`, `test_shiny.py` | Ad-hoc scripts, not pytestcompatible, duplicate tests already in `tests/` |
 | `minimal_app.py` | Development scaffold |
 | `cenop/` directory (entire tree) | Stale copy of package |

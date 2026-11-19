@@ -188,6 +188,7 @@ class PorpoisePopulation:
         self._was_deterred = np.zeros(count, dtype=bool)
         self._abandoned_this_tick = np.zeros(count, dtype=bool)  # calf abandoned in this tick
         self.calves_dropped = 0  # weaned calves lost to params.max_population
+        self._last_disturbance_tick = np.full(count, -9999, dtype=np.int32)
 
         # Reference memory circular buffers (DEPONS 3.2 — 120 entries per agent)
         _REF_MEM_SIZE = params.ref_mem_size if hasattr(params, "ref_mem_size") else 120
@@ -2035,10 +2036,12 @@ class PorpoisePopulation:
         from cenop.behavior.states import BehaviorContext
 
         # Compute time since last disturbance
+        # Tracked here, not read from the memory module: only the JASMINE memory module
+        # records disturbances, so with DEPONS memory the recovery gate never applied.
+        self._last_disturbance_tick[mask & (self.deter_strength > 0)] = self._global_tick
         time_since = np.full(self.count, 9999, dtype=np.int32)
-        if self._memory_state is not None:
-            valid = self._memory_state.last_disturbance_tick >= 0
-            time_since[valid] = self._global_tick - self._memory_state.last_disturbance_tick[valid]
+        valid = self._last_disturbance_tick >= 0
+        time_since[valid] = self._global_tick - self._last_disturbance_tick[valid]
 
         # Count PSM memory cells per agent
         memory_cells = np.zeros(self.count, dtype=np.int32)
@@ -2860,6 +2863,7 @@ class PorpoisePopulation:
         self.dispersal_target_x[slots] = 0.0
         self.dispersal_target_y[slots] = 0.0
         self.dispersal_target_distance[slots] = 0.0
+        self._last_disturbance_tick[slots] = -9999
         self.dispersal_distance_traveled[slots] = 0.0
         self.dispersal_start_x[slots] = 0.0
         self.dispersal_start_y[slots] = 0.0

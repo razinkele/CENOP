@@ -88,6 +88,18 @@ All notable changes to CENOP-JASMINE are documented in this file.
 - Present in every release so far. All seeded results change (one fewer random draw at
   setup and a different starting state); the Kattegat reference baselines are regenerated.
 
+### Fixed — smaller items
+- `Dispersal.txt`: `target_distance_km` was the target distance in cells divided by 1000;
+  it is now in km (cells times the landscape's cell size).
+- Batch runner: fewer seeds than replicates is rejected with a clear error when the runner
+  is created (it failed with an `IndexError` mid-batch); a progress callback no longer
+  fails when `run(progress=False)` is used.
+- Behaviour FSM: the DISTURBED -> FORAGING recovery time (`disturbance_recovery_ticks`) now
+  applies without the JASMINE memory module. The time since the last disturbance was only
+  recorded by that module, so otherwise animals left DISTURBED on the first quiet tick.
+- Help text: `mean_disp_dist` is 2.0 km (it said 1.6 km).
+- Removed the unreferenced `app_backup.py`.
+
 ### Fixed — the dispersal setting was ignored
 - `params.dispersal` (the Dispersal Type selector, and the same field in scripts and batch
   runs) was never read: every run used PSM-Type2 whatever was selected, in every release so
@@ -262,14 +274,14 @@ All notable changes to CENOP-JASMINE are documented in this file.
   only.
 - Not ported from DEPONS dispersal: the order of the reference-memory turn relative to the
   dispersal move (spec row D16).
-- **Remainders after the D15 port (spec Finding 4, Step 5).**
-  - Energy undershoot: with dispersal off, mean energy at days 90 / 120 / 150 / 165 is
-    6.32 / 5.13 / 3.92 / 3.77 (s42) and 6.23 / 5.08 / 3.91 / 3.77 (s43), against DEPONS
-    6.36 / 5.24 / 4.09 / 3.79 and 6.33 / 5.31 / 4.17 / 3.88: about 0.0-0.3 low (max 0.31, at
-    s43 day 135), with N matching.
-  - Late deaths: days 165-180 show 169 / 160 CENOP deaths against 203 / 191 in DEPONS, while
-    the lactating share rises to 4-6%. Day 180 N with dispersal on is +13% / +8% above DEPONS.
-  - D15 is no longer a candidate cause of either.
+- **Remainder after the D15 port: a small energy undershoot (re-measured 2026-11-19).**
+  After the starting-population fix, on the v3.2 landscape with dispersal off, mean energy
+  at days 90 / 120 / 135 / 150 / 165 is 6.37 / 5.22 / 4.40 / 3.99 / 3.70 (s42) and
+  6.22 / 5.12 / 4.47 / 4.09 / 3.85 (s43), against DEPONS 6.36 / 5.24 / 4.59 / 4.09 / 3.79 and
+  6.33 / 5.31 / 4.67 / 4.17 / 3.88: 0.0-0.2 low (it was up to 0.31), with N within 4.5%.
+  The other two remainders are gone: deaths in days 165-180 are 176 / 199 against DEPONS
+  203 / 191 (were 169 / 160), and day-180 N with dispersal on is 565 / 533 against
+  528 / 546 (+7% / -2%; was +13% / +8%).
 - **JAX backend is about 5x slower per tick on real landscapes after the land-avoidance port**
   (about 70 ms against 13 ms before, at 2000 animals; Numba about 7 ms). JAX stays opt-in; a
   follow-up can compact the still-needing agents in the land-check loop.

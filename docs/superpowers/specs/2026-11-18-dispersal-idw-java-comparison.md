@@ -169,6 +169,104 @@ The population difference was traced to the starting sex and pregnancy state and
 `2026-11-18-kattegat-population-gap.md`. The population statements above and in the
 conclusion below describe the code before that fix.
 
+## Update (2026-11-19): final code on the bundled v3.2 landscape
+
+`data/Kattegat` is now the v3.2 landscape, and the calf memory, the memory-update order
+when dispersing (D16) and the edge heading are fixed (`1cfa8b0`). `run_cenop.py <mode> <seed>
+5 data final`, then `compare_with_java.py final`.
+
+| | Year 1 | Year 2 | Year 3 | Year 4 | Year 5 |
+|---|---|---|---|---|---|
+| Java IDW, seeds 42, 43 | 97, 99 | 85, 87 | 75, 74 | 70, 69 | 53, 47 |
+| CENOP IDW, seeds 42-44 | 96, 91, 93 | 80, 79, 74 | 75, 76, 61 | 65, 69, 55 | 36, 47, 36 |
+| Java PSM-Type2, seeds 42, 43 | 161, 173 | 113, 124 | 89, 97 | 75, 83 | 51, 57 |
+| CENOP PSM-Type2, seeds 42-44 | 176, 164, 156 | 131, 121, 107 | 109, 99, 93 | 96, 79, 83 | 60, 55, 52 |
+
+Share of animals per block, days 30-360: Java IDW vs CENOP IDW distance 0.028, correlation
+0.998; Java PSM-Type2 vs CENOP PSM-Type2 distance 0.034, correlation 0.994.
+
+**A small InnerDanishWaters offset.** Six CENOP seeds (42-47), two years, InnerDanishWaters:
+
+| Code | Year 1 (mean, SD) | Year 2 (mean, SD) |
+|---|---|---|
+| Before the edge-heading fix (`1deb759` on v3.2 data) | 92.8, 11.1 | 78.7, 7.9 |
+| With it (`35a5359`) | 88.3, 7.5 | 75.7, 5.2 |
+| With D16 as well (`1cfa8b0`) | 91.5, 3.3 | 77.7, 2.9 |
+| Java, seeds 42 and 43 | 97, 99 | 85, 87 |
+
+The three code states do not differ beyond seed spread, so the fixes did not move the mode
+relative to Java. All three sit about 7% below Java after year 1 and 9% after year 2. The
+three seeds used in the tables above (42-44) happened to be the high ones before the fixes,
+which hid this. Cause not investigated; PSM-Type2 shows no such offset.
+
+**A lead on the offset (2026-11-19).** A Java run with 200 tracked animals
+(`scenarios/idw_tracked200.json`, 1 year, seed 42) against CENOP seed 42, all animals,
+counted every tick (`tracked_compare.py`):
+
+| Days | Phase 1 share, Java / CENOP | Phase 2 share | Starts per animal-day | Episode mean (ticks) | Mean energy |
+|---|---|---|---|---|---|
+| 0-30 | 0.057 / 0.066 | 0.113 / 0.103 | 0.236 / 0.245 | 37.2 / 35.4 | 9.29 / 9.16 |
+| 30-60 | 0.094 / 0.107 | 0.164 / 0.166 | 0.359 / 0.394 | 34.6 / 33.6 | 6.81 / 6.50 |
+| 60-90 | 0.081 / 0.093 | 0.162 / 0.158 | 0.334 / 0.343 | 33.5 / 33.2 | 4.70 / 4.43 |
+| 90-120 | 0.066 / 0.076 | 0.109 / 0.127 | 0.266 / 0.280 | 30.4 / 32.8 | 4.29 / 4.12 |
+| 120-150 | 0.067 / 0.069 | 0.092 / 0.104 | 0.234 / 0.258 | 32.6 / 31.4 | 4.54 / 4.08 |
+| 150-180 | 0.058 / 0.069 | 0.103 / 0.095 | 0.233 / 0.232 | 31.2 / 32.1 | 4.16 / 3.94 |
+
+The apparent extra phase 1 time in CENOP is a recording difference. CENOP's log counts
+the tick in which the daily step triggers dispersal as a phase 1 tick; Java's row for that
+tick is written before the daily step, so its episodes begin one tick later (38% of them
+already in phase 2). With the trigger tick dropped from CENOP's episodes (first 60 days,
+400 CENOP animals against the 200 Java animals):
+
+| | Java | CENOP |
+|---|---|---|
+| Episodes whose first recorded tick is phase 1 | 0.617 | 0.646 |
+| Episodes that reach phase 2 | 0.892 | 0.885 |
+| Phase 1 ticks per episode (mean) | 12.3 | 12.9 |
+| Phase 2 ticks per episode, when reached (mean) | 25.4 | 24.4 |
+
+So the mode behaves as in Java, episode by episode. What remains is the energy: CENOP's
+mean is 0.1-0.5 lower from the first month, the same size and sign as the undershoot seen
+with dispersal off. The likely reading is that the population offset under this mode is
+that general undershoot, not something in the dispersal port. One Java seed; the cause of
+the undershoot is still open.
+
+**Resolved (2026-11-19): there is no offset.** Six more Java seeds for one year
+(`scenarios/idw_1yr_seeds.json`, seeds 44-49), with the two existing ones:
+
+| Day | Java N, eight seeds (mean, SD) | CENOP N, six seeds (mean, SD) | Difference (SE) |
+|---|---|---|---|
+| 180 | 246.9, 13.7 | 241.8, 10.6 | -5.0 (6.5) |
+| 240 | 122.5, 9.5 | 117.0, 5.5 | -5.5 (4.0) |
+| 300 | 95.1, 8.8 | 94.3, 3.4 | -0.8 (3.4) |
+| 359 | 92.9, 8.2 | 91.5, 3.3 | -1.4 (3.2) |
+
+Java's year-1 values are 90, 105, 83, 84, 86, 99, 97, 99: the two seeds used until now (97
+and 99) are at the high end of its spread. Population-wide mean energy also agrees (days
+180 / 240 / 300: Java 4.22 / 5.68 / 8.97, CENOP 4.26 / 5.78 / 8.98); the lower energy seen in
+the 200 tracked animals above was sampling. The "7% and 9% below Java" statements in this
+section were an artefact of comparing against two Java seeds. Years 2-5 are rechecked below.
+
+**Years 1 to 5 with eight Java seeds per mode (2026-11-19).** Java seeds 42-49
+(`scenarios/idw_5yr_seeds.json`, `psm2_5yr_seeds.json` add 44-49), CENOP seeds 42-47 on
+the final code; `yearly_seeds.py final`. Population at the end of each year, mean (SD):
+
+| Mode | Year | Java | CENOP | Difference | In standard errors |
+|---|---|---|---|---|---|
+| InnerDanishWaters | 1 | 92.9 (8.2) | 91.5 (3.3) | -1.5% | -0.4 |
+| | 2 | 79.5 (7.6) | 77.7 (2.9) | -2.3% | -0.6 |
+| | 3 | 69.8 (3.9) | 69.8 (7.0) | +0.1% | 0.0 |
+| | 4 | 62.6 (5.7) | 62.8 (6.7) | +0.3% | +0.1 |
+| | 5 | 44.6 (5.2) | 42.7 (5.4) | -4.4% | -0.7 |
+| PSM-Type2 | 1 | 167.1 (7.8) | 170.5 (8.6) | +2.0% | +0.8 |
+| | 2 | 121.6 (7.2) | 122.7 (8.4) | +0.9% | +0.2 |
+| | 3 | 97.0 (5.7) | 99.0 (5.8) | +2.1% | +0.6 |
+| | 4 | 82.0 (6.6) | 85.3 (6.5) | +4.1% | +0.9 |
+| | 5 | 55.5 (8.1) | 56.3 (2.9) | +1.5% | +0.3 |
+
+No year in either mode differs by as much as one standard error. This replaces every
+population statement above that rests on Java seeds 42 and 43 alone.
+
 ## Conclusion
 
 On the same landscape the port reproduces where DEPONS sends animals, to within Java's own

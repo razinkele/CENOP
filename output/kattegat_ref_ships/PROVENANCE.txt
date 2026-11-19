@@ -1,57 +1,52 @@
-Kattegat ship-scenario reference baseline — PROVENANCE
-=======================================================
+Kattegat reference baselines — PROVENANCE
+=========================================
 
-Date generated:   2026-11-18 (ship scenario rerun finished 2026-11-19)
-Producing code:   CENOP-JASMINE, commit 1a0efbc (branch fix/start-state-minors); the later commits
-                  on that branch leave Kattegat runs bit-identical (undisturbed and
-                  turbine baselines rerun at 2247de4 and compared byte for byte). The
-                  ship files are from a rerun on the follow-up code (branch
-                  fix/backend-daily-step), which reproduced the 1a0efbc run exactly
-                  (294, 114, 104, 88 at days 180, 360, 540, 720)
-Command:          python3 scripts/run_kattegat_reference.py --count 2000 --years 2 \
-                    --seed 42 --ships --out output/kattegat_ref_ships
-Landscape:        data/Kattegat (600x1000 cells; DEPONS v3.0 Kattegat landscape),
-                  637 real ship routes from data/Kattegat/ships.json
+Date generated:   2026-11-19
+Producing code:   branch feat/kattegat-v32-canonical, undisturbed and turbines at 1cfa8b0, ships
+                  at 80c6aa5 (the ship movement fix, which does not affect runs without ships)
+Landscape:        data/Kattegat = DEPONS v3.2 Kattegat landscape (600x1000 cells of 400 m),
+                  5,148 ships from data/Kattegat/ships.json
+Dispersal:        InnerDanishWaters, the mode DEPONS prescribes for Kattegat (TRACE 3.2,
+                  section 3.2.4). The application default is PSM-Type2.
 Seed:             42 (deterministic; DEPONS parameters.xml randomSeed is __NULL__)
+Commands:         python3 scripts/run_kattegat_reference.py --count 2000 --years 5 --seed 42 \
+                    --out output/kattegat_ref
+                  python3 scripts/run_kattegat_reference.py --count 2000 --years 2 --seed 42 \
+                    --turbines Kattegat-test --out output/kattegat_ref_turbines
+                  python3 scripts/run_kattegat_reference.py --count 2000 --years 2 --seed 42 \
+                    --ships --out output/kattegat_ref_ships
+                  (the ship run takes about 45 minutes)
 
-SUPERSEDES the baseline of 2026-11-11 (code 99d4c60). Change since then (CHANGELOG
-[Unreleased], docs/superpowers/specs/2026-11-18-kattegat-population-gap.md):
+SUPERSEDES the baselines of 2026-11-18/19 (code 1a0efbc), which were PSM-Type2 runs on the
+DEPONS v3.0 landscape (undisturbed 2000 -> 33 in 5 years, ships -> 88 and turbines -> 78 in
+2 years). They are not comparable with these. Changes since then (CHANGELOG [Unreleased]):
 
-  - Starting population as in DEPONS: females only; every animal with age > 0 is
-    pregnant with probability 0.68 at setup (668b5bf). Before, half the animals were
-    male and only mature females started pregnant.
-  - Setup mating day and the tick-1 daily pregnancy update as in DEPONS (596eec6).
-  - Ageing once a day and at tick 1, the tick-1 daily mortality check, and the
-    lactation charge on the tick a calf is abandoned, as in DEPONS (1a0efbc).
+  - data/Kattegat replaced by the v3.2 landscape (prey, salinity, patches, distance to coast
+    and the ship file differ; 5,148 ships instead of 637).
+  - Dispersal mode InnerDanishWaters instead of PSM-Type2.
+  - Reference memory on a dispersal move (D16), calf spatial memory, InnerDanishWaters
+    heading at the grid edge.
+  - Ship movement along a route as in DEPONS (80c6aa5). Before it, ships on Kattegat were
+    either not loaded at all or stranded after their first passage, so earlier ship
+    baselines carried almost no ship effect.
 
-Earlier changes (baseline of 2026-11-11 against commit 3a87975, 2026-07-09), kept for
-reference, all aimed at DEPONS 3.2 parity (details in CHANGELOG [Unreleased]
-and docs/superpowers/specs/2026-11-10-phantom-food-investigation.md):
+KNOWN OPEN ISSUE: with ships, CENOP animals react to ship noise on 28% of animal-ticks
+against 19% in DEPONS (docs/validation/A2-parity-report.md). The ship baseline will change
+again when that is resolved.
 
-  - Phantom food removed: the eat kernels no longer top up empty cells to 0.01
-    (eba75f9). This was what kept the old baselines' population near 2000.
-  - communication_enabled now defaults to False (864d0c9).
-  - PSM-Type2 dispersal ported to DEPONS (D1-D14): validated targets and target
-    heading, three-drop trigger on 3-d.p. daily means, psm_angle turn on path length,
-    per-step look-ahead stops, path-length completion.
-  - Land avoidance ported to DEPONS (D15): checkDepth look-ahead of presMov cells
-    and avoidLand before heading composition, reflection only after, beh-6 turn-back;
-    plus the D9 first-call not-enough-water dispersal stop.
+Run summary (population):
+  - Undisturbed, 5 yr: 2000 -> 1898 (day 63) -> 249 (day 180) -> 96 (day 360)
+    -> 80 (day 720) -> 75 -> 65 -> 36 (day 1800).
+  - Turbines Kattegat-test, 2 yr: 2000 -> 220 (day 180) -> 86 (day 360)
+    -> 85 (day 540) -> 75 (day 720).
+  - Ships, 2 yr: 2000 -> 249 (day 180) -> 87 (day 360) -> 81 (day 540)
+    -> 60 (day 720); 62,617 nonzero deter_strength records, max 0.2651.
 
-These change the seeded RNG stream and the population trajectory; outputs are not
-comparable with the previous baseline.
-
-Run summary:
-  - 2 yr (34,560 ticks), N=2000; population 2000 -> 294 (day 180) -> 114 (day 360)
-    -> 104 (day 540) -> 88 (day 720). The baseline of 2026-11-11 ended at 114.
-  - 34,859 nonzero deter_strength records, max 0.2863 (2026-11-11: 37,091, max 0.3168).
-  - The decline matches the other regenerated variants (undisturbed 5 yr: 2000 -> 33;
-    turbines Kattegat-test 2 yr: 2000 -> 78). data/Kattegat is the v3.0 landscape,
-    which has less food than the v3.2 landscape used for the DEPONS Java comparisons,
-    so CENOP's baselines fall faster early (undisturbed: 1008 at day 63) than the
-    v3.2 runs reported in the investigation spec.
+Against DEPONS-Java on the same landscape and mode (undisturbed): end of year 1, Java 92.9
+(eight seeds, SD 8.2), CENOP 91.5 (six seeds, SD 3.3); see
+docs/superpowers/specs/2026-11-18-dispersal-idw-java-comparison.md.
 
 Committed files are the compact DEPONS-format outputs (Population.txt, Energy.txt,
-Mortality.txt) plus this PROVENANCE.txt. The heavy per-individual / per-event files
-(PorpoiseStatistics.txt, Dispersal.txt) are gitignored and regenerable via the
-command above.
+Mortality.txt) of the three directories plus this PROVENANCE.txt. The heavy per-individual /
+per-event files (PorpoiseStatistics.txt, Dispersal.txt) are gitignored and regenerable via
+the commands above.

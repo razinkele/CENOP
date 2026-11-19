@@ -391,7 +391,14 @@ class Simulation:
 
         # Try to load ships from JSON file
         ships_loaded = False
-        possible_paths = [
+        possible_paths = []
+        # The landscape's own ship file first (DEPONS ships one per landscape, in the
+        # landscape's coordinates); the generic file is a sample for other grids.
+        landscape_name = getattr(self._cell_data, "landscape_name", None)
+        landscape_dir = getattr(self._cell_data, "data_dir", None)
+        if landscape_name and landscape_dir is not None:
+            possible_paths.append(os.path.join(str(landscape_dir), landscape_name, "ships.json"))
+        possible_paths += [
             "data/ships.json",
             "../data/ships.json",
             "cenop/data/ships.json",
@@ -436,6 +443,20 @@ class Simulation:
             )
             ship._is_active = True
             self._ship_manager.ships.append(ship)
+
+        # Routes entirely off the grid mean ship traffic does nothing; say so. This happens
+        # when a landscape has no ships.json of its own and the sample file (made for another
+        # landscape's coordinates) is used.
+        buoys = [b for ship in self._ship_manager.ships for b in ship.route.buoys]
+        if buoys and not any(0 <= b.x < width and 0 <= b.y < height for b in buoys):
+            logger.warning(
+                "Ships are enabled, but all %d ship routes lie outside the landscape grid "
+                "(%d x %d cells): ship traffic will have no effect. The landscape needs its "
+                "own ships.json.",
+                len(self._ship_manager.ships),
+                width,
+                height,
+            )
 
     def step(self) -> None:
         """

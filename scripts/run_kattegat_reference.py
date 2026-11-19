@@ -49,6 +49,11 @@ def main() -> int:
         help="Wind-farm scenario name (file in data/wind-farms/, e.g. 'Kattegat-test'); "
              "exercises turbine deterrence + deter_max_distance. Default 'off'.",
     )
+    parser.add_argument(
+        "--dispersal", default="InnerDanishWaters",
+        help="Dispersal mode. Default InnerDanishWaters, the mode DEPONS prescribes for "
+             "Kattegat (TRACE 3.2 section 3.2.4). The application default is PSM-Type2.",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -63,6 +68,7 @@ def main() -> int:
         landscape="Kattegat",
         ships_enabled=args.ships,
         turbines=args.turbines,
+        dispersal=args.dispersal,
     )
 
     log.info("Loading Kattegat landscape from %s/Kattegat ...", args.data_dir)
@@ -89,7 +95,7 @@ def main() -> int:
 
     total_ticks = sim.max_ticks
     log.info(
-        "Running Kattegat reference: N=%d, %d yr (%d ticks), seed=%d, ships=%s, turbines=%s, "
+        "Running Kattegat reference (dispersal " + args.dispersal + "): N=%d, %d yr (%d ticks), seed=%d, ships=%s, turbines=%s, "
         "%d active turbines -> %s",
         args.count, args.years, total_ticks, args.seed, args.ships, args.turbines,
         len(sim._turbine_manager.turbines), args.out,

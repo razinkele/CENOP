@@ -310,7 +310,7 @@ that fixed each row on branch `fix/phantom-food-2026-11-10`.
 | D13 | CRW state | `prevAngle` and `prevLogMov` frozen while dispersing (`stdMove` skipped) | updated every tick for dispersers | minor | `5a8ae40` |
 | D14 | JAX backend | — | the JAX backend (`jax_kernels.py`, `tick_jax.py`) now mirrors the fixed NumPy behaviour (Task 5, `b9659a1`, `eae0d3a`, `bd55bda`), so D1–D13 apply there too; every later change must be mirrored | fixed with D1–D13 | `b9659a1`, `eae0d3a`, `bd55bda` (+ `bb7c829`: new activations get the same-day stops) |
 | D15 | Foraging land check (outside dispersal) | `checkDepth()` samples every 0.1 cell along the heading out to `presMov` cells (4× the step) before turning; its result is also the not-enough-water state that D9 reads | land avoidance tests only the destination cell at the step distance | established as the main cause of the dispersal-off residual (Finding 4) | fixed: `75df4b9`, `b0c770d`, `14dc077`, `c6d4194` (NumPy/Numba), `480c7b7` (JAX); acceptance: see Step 5 (accepted, one borderline bin) |
-| D16 | Reference-memory order | DEPONS `refMemTurn` runs after the dispersal `forward()`, so it sees the post-move position | CENOP's `_update_reference_memory` runs before the disperser moves | deferred with D15 (pre-existing, outside D1–D14) | open |
+| D16 | Reference-memory order | DEPONS `refMemTurn` runs after the dispersal `forward()`, so it sees the post-move position | CENOP's `_update_reference_memory` runs before the disperser moves | deferred with D15 (pre-existing, outside D1–D14) | fixed 2026-11-19 (`1cfa8b0`): the stored food value is replaced after the move; the stored position stays the pre-move one, as in DEPONS |
 | — | Logistic shape | `LogisticDecreaseSSLogis(1, 0, 0.6)` = 1/(1+e^(−x/0.6)), *increasing* despite the name | same | match | — |
 | — | Dispersal energy cost | `E_USE_PER_KM = 0` | 0 | match | — |
 | — | Daily energy stop | 10-day buffer; stop if E[0] > min(E[1..7]), in the same daily step as the trigger | 10 columns; same rule, same tick | match | JAX new activations: `bb7c829` |
@@ -557,6 +557,15 @@ proposed, not measured.
   remainder is closed: it was the starting pregnancy state (few animals lactating, so few
   paying the lactation cost around day 165). The energy undershoot is smaller but still
   one-sided.
+- **Withdrawn 2026-11-19: there is no energy undershoot.** Eight Java seeds
+  (`scripts/investigations/2026-11-18-dispersal-idw/scenarios/off_1yr_seeds.json`,
+  population-wide mean from `Statistics.csv`) against six CENOP seeds, dispersal off, one
+  year. Mean energy at days 90 / 120 / 135 / 150 / 165: Java 6.32 / 5.15 / 4.42 / 3.93 / 3.70
+  (seed SD about 0.1), CENOP 6.34 / 5.21 / 4.48 / 4.01 / 3.74; differences +0.02 to +0.08,
+  at most 1.1 standard errors. N at days 90 / 120 / 150 / 165 / 180: Java 1762 / 1460 / 1009
+  / 772 / 574, CENOP 1751 / 1450 / 1000 / 774 / 576. The DEPONS energy values used in this
+  section until now (6.36 / 5.24 / 4.59 / 4.09 / 3.79) were means over the 200 tracked
+  animals of one run, which sit 0.1-0.2 above the population mean of that scenario.
 
 **Step 4: combined check, dispersal on (fixed code `e016fe4`) + port, against DEPONS PSM-Type2**
 (`cenop_disp_rates.py <dir> stock 180 120 <seed> --d15-port`; seed 42 / seed 43):

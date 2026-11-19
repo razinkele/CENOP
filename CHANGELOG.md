@@ -88,6 +88,84 @@ All notable changes to CENOP-JASMINE are documented in this file.
 - Present in every release so far. All seeded results change (one fewer random draw at
   setup and a different starting state); the Kattegat reference baselines are regenerated.
 
+### Added — A2 cross-validation against DEPONS 3.2
+- `validation/a2/`: four scenarios (undisturbed InnerDanishWaters, PSM-Type2 and dispersal
+  off; ships), eight seeds per model, seven metrics with pass bands fixed in advance, a
+  CENOP runner and a report generator. Report: `docs/validation/A2-parity-report.md`.
+- **Undisturbed: no metric fails.** Population within 4.2% and 1.6 standard errors at every
+  checkpoint, mean energy within 0.13, block shares correlated at 0.999, age at death
+  indistinguishable.
+- **Ships: not yet in agreement** (see Fixed and Known issues below).
+
+### Fixed — ship movement along a route (changes every run with ships)
+- Found by the A2 ship scenario. CENOP skipped the wait at a route's first waypoint and,
+  after the last waypoint, steered the ship back to the start at that waypoint's speed. In
+  the Kattegat ship file the first makes all 5,148 ships sail at once, and the second (the
+  last waypoint has speed 0) stranded every ship after one passage, so ship noise ended at
+  about day 25 of a run. `Ship.update` now follows DEPONS's `Ship.move()`: one waypoint per
+  tick, waits honoured, route restarted; about 250 ships sail in any tick.
+- Effect (Kattegat, InnerDanishWaters, eight seeds): share of animal-ticks with ship
+  deterrence 0.021 -> 0.283 (DEPONS 0.192); population with ships relative to undisturbed at
+  the end of year 1, 0.994 -> 0.911 (DEPONS 0.918).
+- A run with ships is also much faster: the ship baseline takes about 45 minutes.
+
+### Validation — population against DEPONS-Java with eight Java seeds per mode (2026-11-19)
+- Same landscape (v3.2 Kattegat), 2000 animals, undisturbed, five years; DEPONS-Java seeds
+  42-49, CENOP seeds 42-47. Mean population at the end of years 1 / 2 / 3 / 4 / 5:
+  - `InnerDanishWaters`: Java 92.9 / 79.5 / 69.8 / 62.6 / 44.6, CENOP 91.5 / 77.7 / 69.8 /
+    62.8 / 42.7;
+  - `PSM-Type2`: Java 167.1 / 121.6 / 97.0 / 82.0 / 55.5, CENOP 170.5 / 122.7 / 99.0 / 85.3 /
+    56.3.
+  No difference reaches one standard error (largest: -4.4% and +4.1%). Share of animals
+  per 40 km block: correlation 0.998 and 0.994.
+- **Dispersal off, one year, eight Java and six CENOP seeds.** Population and mean energy
+  agree on every day checked (days 30 to 359): mean energy differs by -0.19 to +0.08, at
+  most 1.1 standard errors; population by at most 11 animals (2.0 standard errors at day
+  120, under 1.5 elsewhere). The "energy undershoot" carried as a known issue since
+  2026-11-11 is withdrawn: its Java reference was the mean of 200 tracked animals, not of
+  the population.
+- Seed-to-seed spread is large on this scenario (SD 3-8 animals), and the two Java seeds
+  used until now (42, 43) are at the high end for `InnerDanishWaters`. Comparisons with
+  two or three seeds per side are not reliable; use six or more.
+
+### Changed — the Kattegat baselines use InnerDanishWaters
+- `scripts/run_kattegat_reference.py` takes `--dispersal` and defaults to
+  `InnerDanishWaters`, the mode DEPONS prescribes for Kattegat (TRACE 3.2 section 3.2.4).
+  The three committed baselines (`output/kattegat_ref*`) are regenerated with it, on the
+  v3.2 landscape. The application default stays `PSM-Type2`.
+
+### Fixed — calf memory and the order of the memory update when dispersing
+- **Calf spatial memory (changes PSM-Type2 results).** DEPONS keeps a memory for a nursing
+  mother's calf: under PSM-Type2 it receives every update of her memory, and the weaned
+  calf starts with it and with her preferred dispersal distance. CENOP gave every newborn
+  an empty memory and a newly drawn distance. Now as in DEPONS, per mode: memory for
+  PSM-Type2 only; inherited distance for PSM-Type2 and `off`; a new draw for `Undirected`
+  and `InnerDanishWaters`. Five-year runs in those last two modes are byte-identical;
+  PSM-Type2 runs change after the first weanings (about day 400).
+- **Reference memory on a dispersal move (D16; changes all dispersing modes).** DEPONS moves
+  a dispersing animal before the memory update, so the food level it stores is that of
+  the cell it moved to. CENOP stored the food of the cell it left. Fixed on the
+  NumPy/Numba and JAX paths; the fused Cython kernel (homogeneous landscapes) reads the
+  food after eating. Runs with dispersal off are unchanged.
+
+### Changed — `data/Kattegat` is now the DEPONS v3.2 landscape (changes every Kattegat result)
+- The bundled Kattegat landscape was DEPONS v3.0. It is replaced by the v3.2 landscape
+  (`https://depons.eu`, the files the DEPONS 3.2 release downloads), byte-identical to the
+  reference harness's copy, under CENOP's file names (`prey0000_MM.asc`,
+  `salinity0000_MM.asc`, `ships.json`). Bathymetry, sediment and blocks are unchanged;
+  prey, salinity, patches and distance to coast differ, and the ship file has 5,148 ships
+  (637 before). CENOP and DEPONS-Java runs on Kattegat are now on the same landscape.
+- Fixed: with ships enabled, the simulation always loaded the sample `data/ships.json`,
+  whose routes lie outside the Kattegat grid, so ships had no effect there. A landscape's
+  own `ships.json` is now used when it has one.
+- Lithuania and CentralBaltic have no ship file, and the sample file's routes (made for
+  Gemini) lie outside their grids, so enabling ships there has no effect. This is now
+  logged as a warning when the simulation is set up. DanTysk gets 8 of the sample's 24
+  waypoints; NorthSea and Gemini use their own files.
+- Ship traffic is about 44% faster with identical results (random reaction numbers are
+  generated only for animals in range, and pairs below the reaction threshold are skipped
+  early). With Kattegat's 5,148 ships a tick still takes about 0.4 s at 2000 animals.
+
 ### Fixed — landscapes with cells that are not 400 m (changes Lithuania and CentralBaltic results)
 - DEPONS is calibrated for 400 m cells, and CENOP assumes them throughout: turbine and ship
   noise distances, the random-walk step, dispersal distances, spatial memory, communication
@@ -301,22 +379,21 @@ All notable changes to CENOP-JASMINE are documented in this file.
   hybrid modules (`_update_movement_module_generic`) still end dispersal on straight-line
   displacement from the start point, not on path length. DEPONS parity applies to the CRW paths
   only.
-- Not ported from DEPONS dispersal: the order of the reference-memory turn relative to the
-  dispersal move (spec row D16).
-- **Remainder after the D15 port: a small energy undershoot (re-measured 2026-11-19).**
-  After the starting-population fix, on the v3.2 landscape with dispersal off, mean energy
-  at days 90 / 120 / 135 / 150 / 165 is 6.37 / 5.22 / 4.40 / 3.99 / 3.70 (s42) and
-  6.22 / 5.12 / 4.47 / 4.09 / 3.85 (s43), against DEPONS 6.36 / 5.24 / 4.59 / 4.09 / 3.79 and
-  6.33 / 5.31 / 4.67 / 4.17 / 3.88: 0.0-0.2 low (it was up to 0.31), with N within 4.5%.
-  The other two remainders are gone: deaths in days 165-180 are 176 / 199 against DEPONS
-  203 / 191 (were 169 / 160), and day-180 N with dispersal on is 565 / 533 against
-  528 / 546 (+7% / -2%; was +13% / +8%).
 - **JAX backend is about 5x slower per tick on real landscapes after the land-avoidance port**
   (about 70 ms against 13 ms before, at 2000 animals; Numba about 7 ms). JAX stays opt-in; a
   follow-up can compact the still-needing agents in the land-check loop.
 - **Known deviations from DEPONS introduced by the land-avoidance port:** beh-5 depth ties use a
   fixed neighbour order (DEPONS shuffles); look-ahead points are reflected at the grid edge as in
   DEPONS's BouncyBorders, but beh-5 neighbours outside the grid read as land.
+- **Ship noise: CENOP animals react more often than in DEPONS (found 2026-11-19).** On
+  Kattegat with ships, 28.3% of animal-ticks have ship deterrence against 19.2% in DEPONS
+  (ratio about 1.45 all year); population at day 90 is 2.2% lower and mean energy at day 30
+  is 0.11 lower. The effect of ships on the year-1 population agrees. Cause open; the
+  position at which sound propagation reads depth, sediment and salinity, and the reaction
+  draws, have not been checked. The ship baseline will change when this is resolved.
+- **The landscape's sunrise table is not used.** DEPONS reads `suntimes.csv` for day and
+  night; CENOP's simulation uses a fixed 6-18 h day. Ship reactions differ between day and
+  night, so this shifts ship exposure slightly (0.260 -> 0.249 over 20 days).
 - **Lithuania and CentralBaltic have placeholder food layers.** Food is present on every
   water cell (Kattegat has food patches on 1.6% of cells). On the 400 m grid each of the
   6.25 new cells carries the food value of its 1 km cell, so food per km2 is 6.25 times
@@ -327,21 +404,12 @@ All notable changes to CENOP-JASMINE are documented in this file.
   one-cell-wide land barriers: the sea stays separate (largest water body 112,128 ->
   112,200 km2), but the lagoon water bodies of 616 and 349 km2 join into one of 1,146 km2.
   A land-wins rule was tried and is worse (2% of the water lost, lagoons split).
-- `data/Kattegat` is the DEPONS **v3.0** Kattegat landscape, not v3.2 (all 33 files
-  byte-identical to v3.0; prey, salinity, distance-to-coast and patch maps differ from
-  v3.2). CENOP's loader cannot read the v3.2 files as shipped
 - ~~The simulation never reads the `dispersal` parameter~~ Fixed 2026-11-18: all four modes
-  take effect (see Added and Fixed above). The Kattegat baselines are still PSM-Type2 runs,
-  not the `InnerDanishWaters` configuration DEPONS TRACE 3.2 §3.2.4 specifies
+  take effect (see Added and Fixed above). The Kattegat baselines use `InnerDanishWaters` since 2026-11-19.
 - **`InnerDanishWaters`: eating cell after a stop with a move (found 2026-11-18).** In the
   rare tick where the mode moves an animal and then stops (the 1-cell move north of Funen
   followed by a phase-2 stop, or a step back that bounced off the grid edge), CENOP lets the
   animal eat at the cell it was moved to; DEPONS uses its start-of-tick cell.
-
-- **PSM-Type2 calf memory differs from DEPONS (found 2026-11-18).** DEPONS gives a nursing
-  calf its own spatial memory, filled as the mother forages, and the calf inherits the
-  mother's preferred dispersal distance. CENOP clears the memory and redraws the distance for
-  every newborn. Fixing it changes PSM-Type2 results and needs a baseline regeneration.
 
 ### CI & docs
 - The CI lint gate now also checks `validation/` (the harness package)

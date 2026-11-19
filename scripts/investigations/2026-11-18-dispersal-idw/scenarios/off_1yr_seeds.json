@@ -1,0 +1,14 @@
+{
+  "id": "kattegat-off-1yr-seeds-probe",
+  "description": "Investigation probe: dispersal off, undisturbed, 1 year, seeds 42-49 (energy and population with dispersal off).",
+  "overrides": {
+    "landscape": "Kattegat",
+    "dispersal": "off",
+    "ships": "false",
+    "turbines": "off",
+    "porpoiseCount": "2000",
+    "simYears": "1"
+  },
+  "seeds": [42, 43, 44, 45, 46, 47, 48, 49],
+  "determinism_seed": 42
+}

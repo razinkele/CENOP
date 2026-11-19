@@ -225,3 +225,10 @@ Other verifications at this point:
   `1a0efbc`); the undisturbed baseline now ends at 33 (1008 at day 63). On the same v3.2
   landscape CENOP now follows DEPONS's 5-year population (44-60 against 51 / 57); see
   `docs/superpowers/specs/2026-11-18-kattegat-population-gap.md`.
+
+## 2026-11-19: `data/Kattegat` is now the v3.2 landscape
+
+The bundled landscape was replaced by the v3.2 files from this harness's cache (33 files,
+byte-identical, `_XX` dropped from the monthly names, `ships0000_XX_XX.json` stored as
+`ships.json`). The sections above that describe `data/Kattegat` as v3.0 are history. CENOP
+and DEPONS Kattegat runs are on the same landscape from here on.

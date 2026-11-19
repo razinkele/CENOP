@@ -283,6 +283,14 @@ class PorpoisePopulation:
         self.psm_cols = world_w // self.psm_cell_size
         self.psm_rows = world_h // self.psm_cell_size
         self.psm_buffer = np.zeros((count, self.psm_rows, self.psm_cols, 2), dtype=np.float32)
+        # Calf spatial memory (DEPONS calfPsm), kept sparse: sorted keys
+        # mother_index * n_psm_cells + psm_cell, with ticks and food per key.
+        self._calf_keys = np.empty(0, dtype=np.int64)
+        self._calf_ticks = np.empty(0, dtype=np.float32)
+        self._calf_food = np.empty(0, dtype=np.float32)
+        self._calf_pending: list[tuple[np.ndarray, np.ndarray]] = []
+        # Preferred dispersal distance the calf will get (NaN = draw a new one)
+        self._calf_pref_dist = np.full(count, np.nan, dtype=np.float32)
 
         # Initialize
         self._initialize_population()
@@ -2649,6 +2657,10 @@ class PorpoisePopulation:
         """Update pregnancy FSM — called once per day (Java Porpoise.java:1155-1231)."""
         # Every agent is female (DEPONS), so the whole mask goes through the FSM.
 
+        # Calf memories of mothers that died or abandoned the calf since yesterday are
+        # discarded (DEPONS sets calfPsm to null), before any slot is reused below.
+        self._calf_memory_consolidate()
+
         # 0 → 2: Immature to ready-to-mate
         immature = mask & (self.pregnancy_status == 0) & (self.age >= self.params.maturity_age)
         self.pregnancy_status[immature] = 2
@@ -2673,6 +2685,14 @@ class PorpoisePopulation:
             self.with_calf[giving_birth] = True
             self.days_since_mating[giving_birth] = -99
             self.days_since_birth[giving_birth] = 0
+            # The calf's preferred dispersal distance is fixed at birth: the mother's in
+            # the PSM modes and with dispersal off, else a new draw at weaning
+            # (Porpoise.java:1180-1187, calfInheritsPsmDist).
+            if self._dispersal_mode in ("PSM-Type2", "off"):
+                for m in np.flatnonzero(giving_birth):
+                    self._calf_pref_dist[m] = self._psm_instances[int(m)].preferred_distance
+            else:
+                self._calf_pref_dist[giving_birth] = np.nan
 
         # Weaning: at nursing_time, create the calf (50% chance it is a female agent), end lactation
         weaning = mask & self.with_calf & (self.days_since_birth == self.params.nursing_time)
@@ -2745,7 +2765,9 @@ class PorpoisePopulation:
         self.days_since_mating[new_slots] = -99
         self.days_since_birth[new_slots] = -99
         self.mating_day[new_slots] = -99
-        self._reset_recycled_slots(new_slots)
+        inherited = self._calf_pref_dist[mother_indices]
+        self._reset_recycled_slots(new_slots, preferred_distance=inherited)
+        self._calf_memory_hand_over(mother_indices, new_slots)
 
     def _grow(self, extra: int) -> None:
         """Append ``extra`` inactive slots to every per-animal array.
@@ -2818,7 +2840,56 @@ class PorpoisePopulation:
             self.psm_buffer.nbytes / 1e6,
         )
 
-    def _reset_recycled_slots(self, slots: np.ndarray) -> None:
+    def _calf_memory_consolidate(self) -> None:
+        """Merge the pending per-tick updates and drop memories without a nursing mother."""
+        if self._calf_pending:
+            keys = np.concatenate([self._calf_keys] + [k for k, _ in self._calf_pending])
+            ticks = np.concatenate(
+                [self._calf_ticks]
+                + [np.ones(k.size, dtype=np.float32) for k, _ in self._calf_pending]
+            )
+            food = np.concatenate([self._calf_food] + [f for _, f in self._calf_pending])
+            self._calf_pending = []
+            uniq, inverse = np.unique(keys, return_inverse=True)
+            self._calf_keys = uniq
+            self._calf_ticks = np.bincount(inverse, weights=ticks, minlength=uniq.size).astype(
+                np.float32
+            )
+            self._calf_food = np.bincount(inverse, weights=food, minlength=uniq.size).astype(
+                np.float32
+            )
+        if self._calf_keys.size:
+            mothers = self._calf_keys // (self.psm_rows * self.psm_cols)
+            keep = (self.active_mask & self.with_calf)[mothers]
+            if not keep.all():
+                self._calf_keys = self._calf_keys[keep]
+                self._calf_ticks = self._calf_ticks[keep]
+                self._calf_food = self._calf_food[keep]
+
+    def _calf_memory_hand_over(self, mothers: np.ndarray, slots: np.ndarray) -> None:
+        """Give each weaned calf (in ``slots``) the memory kept for it by its mother.
+
+        Called after the weaning mothers' with_calf flag is cleared, so the pending updates
+        are merged here without the nursing-mother filter of the daily consolidation.
+        """
+        if not self._calf_pending and not self._calf_keys.size:
+            return
+        nursing = self.with_calf.copy()
+        self.with_calf[mothers] = True  # keep their entries through the merge
+        self._calf_memory_consolidate()
+        np.copyto(self.with_calf, nursing)
+        n_cells = self.psm_rows * self.psm_cols
+        for m, s in zip(mothers.tolist(), slots.tolist()):
+            lo, hi = np.searchsorted(self._calf_keys, [m * n_cells, (m + 1) * n_cells])
+            if hi > lo:
+                cells = self._calf_keys[lo:hi] - m * n_cells
+                memory = self.psm_buffer[s].reshape(n_cells, 2)
+                memory[cells, 0] = self._calf_ticks[lo:hi]
+                memory[cells, 1] = self._calf_food[lo:hi]
+
+    def _reset_recycled_slots(
+        self, slots: np.ndarray, preferred_distance: np.ndarray | None = None
+    ) -> None:
         """Reset all persistent per-agent state for recycled (reused) slots to
         newborn defaults.
 
@@ -2884,9 +2955,19 @@ class PorpoisePopulation:
         # dead occupant's) and clear stale memory cells. Batch-draw from the seeded
         # rng so it stays reproducible. The memory GRID (psm_buffer) is zeroed above.
         k = int(len(slots))
-        new_pref = np.maximum(
-            1.0, self.rng.normal(self.params.psm_dist_mean, self.params.psm_dist_sd, k)
-        )
+        # A calf that inherits its mother's distance (preferred_distance not NaN) draws
+        # none; in DEPONS only the non-inheriting modes generate one.
+        if preferred_distance is None:
+            preferred_distance = np.full(k, np.nan, dtype=np.float32)
+        new_pref = np.asarray(preferred_distance, dtype=np.float64).copy()
+        draw = np.isnan(new_pref)
+        if draw.any():
+            new_pref[draw] = np.maximum(
+                1.0,
+                self.rng.normal(
+                    self.params.psm_dist_mean, self.params.psm_dist_sd, int(draw.sum())
+                ),
+            )
         for i, s in enumerate(slots):
             psm = self._psm_instances[int(s)]
             psm._mem_cells.clear()
@@ -3631,6 +3712,18 @@ class PorpoisePopulation:
             np.add.at(
                 self.psm_buffer[:, :, :, 1], (active_idx, psm_y, psm_x), food_gained[active_idx]
             )
+
+        # The calf's memory gets the same update while the mother nurses
+        # (Porpoise.java:731-733), in the modes where the calf has one.
+        if self._dispersal_mode == "PSM-Type2":
+            nursing = self.with_calf[active_idx]
+            if nursing.any():
+                keys = (
+                    active_idx[nursing].astype(np.int64) * (self.psm_rows * self.psm_cols)
+                    + psm_y[nursing].astype(np.int64) * self.psm_cols
+                    + psm_x[nursing]
+                )
+                self._calf_pending.append((keys, food_arr[nursing]))
 
         # NOTE: Per-agent PSM instances (_psm_instances) are kept only for
         # preferred_distance access. Memory data is stored in psm_buffer only.

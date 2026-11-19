@@ -1700,6 +1700,9 @@ class PorpoisePopulation:
         # Recalculate heading ONLY for agents whose displacement was reflected
         # (DEPONS Porpoise.forward(): setHeading + setPrevAngle(0) after bounce)
         reflected = mask & ((self._dx != self._orig_dx) | (self._dy != self._orig_dy))
+        # An InnerDanishWaters move has already bounced and set its own heading; its position
+        # is restored in _apply_positions.
+        reflected &= ~self._idw_pending
         if reflected.any():
             self.heading[reflected] = (
                 np.degrees(np.arctan2(self._dx[reflected], self._dy[reflected])) % 360.0

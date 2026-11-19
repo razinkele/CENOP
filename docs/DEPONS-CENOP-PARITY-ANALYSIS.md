@@ -1,13 +1,48 @@
 # DEPONS 3.2 ↔ CENOP Python: Simulation Logic Parity Analysis
 
-**Date:** 2026-03-21
+**Date:** 2026-03-21; status section and rows 3.3-3.16, 7.1, 9.6, G1-G8 revised 2026-11-19
 **Reference Java:** DEPONS 3.2 (`/DEPONS-3.2/src/dk/au/bios/porpoise/`)
 **Reference Python:** CENOP (`/CENOP/src/cenop/`)
 **Scope:** Simulation logic only (excludes UI, visualization, Repast framework)
 
 ---
 
+## Status as of 2026-11-19 (read this first)
+
+The tables below were written on 2026-03-21 by reading the two code bases side by side. Work in
+November 2026 compared CENOP with runs of the DEPONS 3.2 release and found that several rows
+marked MATCH did not hold in a run. Rows 3.3-3.16, 7.1, 9.6, 9.6b and the gap list G1-G8 are
+corrected in place; the rest of the document has not been re-audited and should be read as
+"the formulas were ported", not "the behaviour was verified".
+
+What was found and fixed (details in `CHANGELOG.md` and `docs/superpowers/specs/`):
+
+| Area | Finding | State |
+|---|---|---|
+| Food | Eat kernels topped empty cells up to 0.01 ("phantom food"), which kept populations near their starting size | Fixed 2026-11-10 |
+| Dispersal selector | `params.dispersal` was never read; every run used PSM-Type2 | Fixed 2026-11-18: `off`, `PSM-Type2`, `Undirected`, `InnerDanishWaters` take effect; the other types are not selectable |
+| PSM-Type2 | Target validation, trigger, turn and completion differed from DEPONS (D1-D14) | Fixed 2026-11-11 |
+| Land avoidance | Destination-cell check instead of DEPONS's look-ahead (D15) | Fixed 2026-11-11 |
+| InnerDanishWaters | The class existed but was unwired and untested | Ported and validated against Java 2026-11-18 (Kattegat only) |
+| Starting population | Half the animals were male; only mature females started pregnant | Fixed 2026-11-18: females only, DEPONS pregnancy at setup |
+| Daily step | Ageing per tick, no tick-1 daily step, lactation charge on the abandonment tick, weaned calves dropped when full | Fixed 2026-11-19 |
+| Grid units | Lithuania (1 km) and CentralBaltic (250 m) ran with 400 m conversions | Fixed 2026-11-19: resampled to 400 m when loaded |
+
+Verified against DEPONS-Java on the same (v3.2 Kattegat) landscape, 2000 animals, 5 years: the
+population follows Java in both `PSM-Type2` and `InnerDanishWaters`, and the share of animals
+per 40 km block correlates at 0.995-0.997.
+
+Known differences that remain: PSM-Type2 calf memory (row 3.15), the order of the
+reference-memory turn relative to the dispersal move (D16), a 0.0-0.2 energy undershoot with
+dispersal off, non-CRW movement modules ending dispersal on straight-line distance, and the
+bundled `data/Kattegat` being the v3.0 landscape.
+
+---
+
 ## Executive Summary
+
+> Superseded in part by the status section above: the "~90% functional parity" figure counts
+> ported formulas and predates the comparison with DEPONS runs.
 
 CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standard simulation scenarios. All core formulas (CRW, energy, mortality, reproduction, deterrence, sound propagation) match exactly. Gaps are limited to rarely-used dispersal variants, hydrophone monitoring, and suntimes CSV support. Intentional divergences (vectorization, proportional food sharing, explicit FSM) improve performance and clarity without changing simulation semantics.
 
@@ -64,20 +99,20 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 |---|---------|------------|--------------|--------|---------|
 | 3.1 | PSM cell structure | `PersistentSpatialMemory.java` | `psm.py` | **MATCH** | 5-cell (2km) grid; sparse dict; `foodObtained/ticksSpent` |
 | 3.2 | PSM cell number calculation | `Math.floor(x/MEM_CELL_SIZE)` | `int(x) // mem_cell_size` | **MATCH** | Identical formula |
-| 3.3 | PSM-Type1 dispersal | `DispersalPSMType1.java` | `dispersal.py` PSMType1 | **MATCH** | Target = best energy cell; stop at cumulative distance |
-| 3.4 | PSM-Type2 heading formula | `DispersalPSMType2.java:68-87` | `dispersal.py:266-308` | **MATCH** | `angleDelta = U(-maxAngle,+maxAngle) * SSLogis(3*distPerc - 1.5)` |
+| 3.3 | PSM-Type1 dispersal | `DispersalPSMType1.java` | `dispersal.py` PSMType1 | **GAP** | Class exists in `behavior/dispersal.py` but is not selectable: `DISPERSAL_MODES` has `off`, `PSM-Type2`, `Undirected`, `InnerDanishWaters` (2026-11-18) |
+| 3.4 | PSM-Type2 heading formula | `DispersalPSMType2.java:68-87` | `dispersal.py:266-308` | **MATCH** | Ported line by line 2026-11-11 (D1-D14) in `agents/population.py`; `angleDelta = U(-maxAngle,+maxAngle) * SSLogis(3*distPerc - 1.5)` |
 | 3.5 | PSM-Type2 target distance | `super.calc() * 0.95` | `target_distance *= 0.95` | **MATCH** | 95% of Euclidean distance |
-| 3.6 | PSM-Type3 heading formula | `DispersalPSMType3.java:65-78` | `dispersal.py:354-388` | **MATCH** | `angleDelta = maxAngle / (1 + exp(-log*(dist-x0)))` with random ±1 sign |
-| 3.7 | PSM-Type3 stop condition | Distance from START ≥ target | Distance from START ≥ target | **MATCH** | **Critical**: NOT cumulative distance |
-| 3.8 | PSM-Type3 cost function | `energyExpect - cost(distance*Q1)` | `energy * exp(-dist*q1)`, q1=0.02 | **MATCH** | Distance-cost applied in target selection |
+| 3.6 | PSM-Type3 heading formula | `DispersalPSMType3.java:65-78` | `dispersal.py:354-388` | **GAP** | Class exists in `behavior/dispersal.py` but is not selectable: `DISPERSAL_MODES` has `off`, `PSM-Type2`, `Undirected`, `InnerDanishWaters` (2026-11-18) |
+| 3.7 | PSM-Type3 stop condition | Distance from START ≥ target | Distance from START ≥ target | **GAP** | Class exists in `behavior/dispersal.py` but is not selectable: `DISPERSAL_MODES` has `off`, `PSM-Type2`, `Undirected`, `InnerDanishWaters` (2026-11-18) |
+| 3.8 | PSM-Type3 cost function | `energyExpect - cost(distance*Q1)` | `energy * exp(-dist*q1)`, q1=0.02 | **GAP** | Class exists in `behavior/dispersal.py` but is not selectable: `DISPERSAL_MODES` has `off`, `PSM-Type2`, `Undirected`, `InnerDanishWaters` (2026-11-18) |
 | 3.9 | SSLogis function | `phi1 / (1 + exp((phi2-x)/phi3))` | Identical | **MATCH** | phi1=1, phi2=0, phi3=psm_log(0.6) |
 | 3.10 | Dispersal trigger | Energy declining ≥ t_disp days + ≥50 PSM cells | Same conditions | **MATCH** | Both check energy trend + memory size |
-| 3.11 | PSM-Type3-randdir | `DispersalPSMType3randdir.java` | `PSMType3RanddirDispersal` | **MATCH** | Forces random target via `force_random_target` property |
-| 3.12 | PSM-Type3-randdist | `DispersalPSMType3randdist.java` | `PSMType3RanddistDispersal` | **MATCH** | `should_stop_dispersing()` returns False |
-| 3.13 | Undirected dispersal | `UndirectedDispersal.java` | `UndirectedDispersal` | **MATCH** | Type2 heading + random target + no calf PSM |
-| 3.14 | InnerDanishWaters dispersal | `InnerDanishWatersDispersal.java` | `InnerDanishWatersDispersal` | **MATCH** | Block-based navigation with 2-phase dispersal |
-| 3.15 | Calf PSM inheritance | `calfHasPSM()`/`calfInheritsPsmDist()` | `copy_for_calf()` | **MATCH** | Calves inherit mother's cells + new preferred distance |
-| 3.16 | Dispersal types coverage | 8 types (Off, T1-T3, T3randdir, T3randdist, IDW, Undirected) | All 8 types | **MATCH** | Full type coverage via factory |
+| 3.11 | PSM-Type3-randdir | `DispersalPSMType3randdir.java` | `PSMType3RanddirDispersal` | **GAP** | Class exists in `behavior/dispersal.py` but is not selectable: `DISPERSAL_MODES` has `off`, `PSM-Type2`, `Undirected`, `InnerDanishWaters` (2026-11-18) |
+| 3.12 | PSM-Type3-randdist | `DispersalPSMType3randdist.java` | `PSMType3RanddistDispersal` | **GAP** | Class exists in `behavior/dispersal.py` but is not selectable: `DISPERSAL_MODES` has `off`, `PSM-Type2`, `Undirected`, `InnerDanishWaters` (2026-11-18) |
+| 3.13 | Undirected dispersal | `UndirectedDispersal.java` | `UndirectedDispersal` | **MATCH** | Wired 2026-11-18 (`agents/population.py`); refused on the JAX path |
+| 3.14 | InnerDanishWaters dispersal | `InnerDanishWatersDispersal.java` | `InnerDanishWatersDispersal` | **MATCH** | Scalar port in `agents/dispersal_idw.py`, wired 2026-11-18, Kattegat only; replayed against Java's tracked animal with zero mismatches over 2,461 dispersing ticks |
+| 3.15 | Calf PSM inheritance | `calfHasPSM()`/`calfInheritsPsmDist()` | `copy_for_calf()` | **GAP** | DEPONS: the calf has its own spatial memory and inherits the mother's preferred distance. CENOP clears the memory and redraws the distance for every newborn (found 2026-11-18, open) |
+| 3.16 | Dispersal types coverage | 8 types (Off, T1-T3, T3randdir, T3randdist, IDW, Undirected) | All 8 types | **GAP** | 4 of 8 selectable: Off, PSM-Type2, Undirected, InnerDanishWaters |
 
 ---
 
@@ -139,7 +174,7 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 
 | # | Feature | Java Source | Python Source | Status | Details |
 |---|---------|------------|--------------|--------|---------|
-| 7.1 | Cell size | 400m (REQUIRED_CELL_SIZE) | 400m (CELL_SIZE) | **MATCH** | |
+| 7.1 | Cell size | 400m (REQUIRED_CELL_SIZE) | 400m (CELL_SIZE) | **MATCH** | The model assumes 400 m throughout; landscapes stored on another grid are resampled to 400 m when loaded (2026-11-19) |
 | 7.2 | ASC file parsing | `SimpleDataFile` | `np.loadtxt()` + header parse | **MATCH** | |
 | 7.3 | Y-axis flipping | Implicit in spatial indexing | Explicit `np.flipud()` | **MATCH** | |
 | 7.4 | NODATA handling | -9999 sentinel | -9999 sentinel | **MATCH** | |
@@ -255,9 +290,9 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 
 | # | Gap | Impact | Recommendation |
 |---|-----|--------|----------------|
-| ~~G1~~ | ~~`mean_disp_dist` default 2.0 vs Java 1.6~~ | ~~Affects dispersal step size~~ | **FIXED** — Python default changed to 1.6 |
-| ~~G2~~ | ~~InnerDanishWaters dispersal not ported~~ | ~~Blocks Danish waters scenarios~~ | **FIXED** — `InnerDanishWatersDispersal` class with 2-phase block navigation |
-| ~~G3~~ | ~~PSM-Type3 cost function missing~~ | ~~Affects target cell selection~~ | **FIXED** — `q1=0.02` param + distance-cost in target selection |
+| ~~G1~~ | ~~`mean_disp_dist` default 2.0 vs Java 1.6~~ | ~~Affects dispersal step size~~ | **Corrected 2026-11**: the DEPONS runtime `parameters.xml` value is 2.0, and CENOP's default is 2.0 |
+| ~~G2~~ | ~~InnerDanishWaters dispersal not ported~~ | ~~Blocks Danish waters scenarios~~ | **FIXED 2026-11-18** — the class was unwired until then; now `agents/dispersal_idw.py`, validated against Java |
+| ~~G3~~ | ~~PSM-Type3 cost function missing~~ | ~~Affects target cell selection~~ | Class exists, **not selectable** (see row 3.8) |
 
 ### Medium Priority
 
@@ -265,9 +300,9 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 |---|-----|--------|----------------|
 | ~~G4~~ | ~~Initial `prev_log_mov` (1.25 vs 0.8)~~ | ~~Affects first CRW step~~ | **FIXED** — MovementState default changed to 0.8 |
 | ~~G5~~ | ~~Suntimes CSV not supported~~ | ~~Fixed 6am–6pm vs seasonal light~~ | **FIXED** — `Suntimes` class in time_manager.py loads CSV per DOY |
-| ~~G6~~ | ~~PSM-Type3-randdir not ported~~ | ~~Specialized variant~~ | **FIXED** — `PSMType3RanddirDispersal` class |
-| ~~G7~~ | ~~PSM-Type3-randdist not ported~~ | ~~Specialized variant~~ | **FIXED** — `PSMType3RanddistDispersal` class |
-| ~~G8~~ | ~~Undirected dispersal not ported~~ | ~~Specialized variant~~ | **FIXED** — `UndirectedDispersal` class |
+| ~~G6~~ | ~~PSM-Type3-randdir not ported~~ | ~~Specialized variant~~ | Class exists, **not selectable** (see row 3.11) |
+| ~~G7~~ | ~~PSM-Type3-randdist not ported~~ | ~~Specialized variant~~ | Class exists, **not selectable** (see row 3.12) |
+| ~~G8~~ | ~~Undirected dispersal not ported~~ | ~~Specialized variant~~ | **FIXED 2026-11-18** — wired into the simulation |
 
 ### ~~Low Priority~~ All Fixed
 

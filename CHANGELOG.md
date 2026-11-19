@@ -123,6 +123,11 @@ All notable changes to CENOP-JASMINE are documented in this file.
   recorded by that module, so otherwise animals left DISTURBED on the first quiet tick.
 - Help text: `mean_disp_dist` is 2.0 km (it said 1.6 km).
 - Removed the unreferenced `app_backup.py`.
+- `InnerDanishWaters`: an animal whose dispersal move ended within one cell of the right or
+  top grid edge had its heading rewritten by the border reflection; the mode's own heading
+  is now kept. Seeded `InnerDanishWaters` runs change slightly; the other modes do not.
+- `docs/DEPONS-CENOP-PARITY-ANALYSIS.md`: status section added and the rows that the
+  November comparison with DEPONS runs showed to be wrong are corrected.
 
 ### Fixed — the dispersal setting was ignored
 - `params.dispersal` (the Dispersal Type selector, and the same field in scripts and batch

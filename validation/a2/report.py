@@ -22,6 +22,7 @@ from validation.a2 import metrics as m
 ROOT = Path(__file__).resolve().parents[2]
 JAVA = ROOT / "output" / "a2" / "java"
 CENOP = ROOT / "output" / "a2" / "cenop"
+FIGURES = ROOT / "docs" / "validation" / "figures"
 SCENARIOS = ["u-idw", "u-psm", "u-off", "d-ships"]
 TITLES = {
     "u-idw": "Undisturbed, InnerDanishWaters, 5 years",
@@ -247,6 +248,9 @@ def build() -> tuple[str, dict]:
                 + fmt_rows([row], 4)
                 + ["", f"Band: within {100 * m.MAX_REL_EXPOSURE:.0f}% of Java.", ""]
             )
+        fig_path = FIGURES / f"a2-{scenario}.png"
+        figure(TITLES[scenario], {"pop": jp, "energy": je}, {"pop": cp, "energy": ce}, fig_path)
+        lines += [f"![{TITLES[scenario]}](figures/{fig_path.name})", ""]
         summary[scenario] = verdicts
     return "\n".join(lines), summary
 
@@ -275,3 +279,73 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+# Figure colours: categorical slots 1 and 2 of the project's chart palette (checked for
+# colour-vision-deficiency separation and contrast on the light surface).
+_JAVA_COLOUR, _CENOP_COLOUR = "#2a78d6", "#eb6834"
+_SURFACE, _INK, _MUTED, _GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
+
+
+def figure(title: str, java: dict, cenop: dict, path: Path) -> None:
+    """Trajectory envelopes: mean and +/- 2 SD over seeds, population (log) and mean energy.
+
+    ``java`` / ``cenop``: {"pop": (seeds, days + 1), "energy": (seeds, days + 1)}.
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.2), facecolor=_SURFACE)
+    panels = [("pop", "Animals alive (log scale)", True), ("energy", "Mean energy", False)]
+    for ax, (key, ylabel, log) in zip(axes, panels):
+        ax.set_facecolor(_SURFACE)
+        # End labels: the two lines usually coincide, so the higher one's label goes above
+        # its end and the lower one's below.
+        java_end = np.nanmean(np.asarray(java[key], dtype=float)[:, -1])
+        cenop_end = np.nanmean(np.asarray(cenop[key], dtype=float)[:, -1])
+        up = 9 if java_end >= cenop_end else -9
+        series = (("DEPONS", java, _JAVA_COLOUR, up), ("CENOP", cenop, _CENOP_COLOUR, -up))
+        for name, data, colour, label_dy in series:
+            arr = np.asarray(data[key], dtype=float)[:, 1:]
+            days = np.arange(1, arr.shape[1] + 1)
+            mean = np.nanmean(arr, axis=0)
+            sd = np.nanstd(arr, axis=0, ddof=1) if arr.shape[0] > 1 else np.zeros_like(mean)
+            lower = np.maximum(mean - 2 * sd, 1e-9) if log else mean - 2 * sd
+            ax.fill_between(days, lower, mean + 2 * sd, color=colour, alpha=0.18, linewidth=0)
+            ax.plot(days, mean, color=colour, linewidth=2, label=f"{name} ({arr.shape[0]} seeds)")
+            ax.annotate(
+                name,
+                (days[-1], mean[-1]),
+                xytext=(6, label_dy),
+                textcoords="offset points",
+                color=_INK,
+                fontsize=9,
+                va="center",
+            )
+        if log:
+            from matplotlib.ticker import FixedLocator, NullLocator, ScalarFormatter
+
+            ax.set_yscale("log")
+            ax.yaxis.set_major_locator(FixedLocator([20, 50, 100, 200, 500, 1000, 2000]))
+            ax.yaxis.set_minor_locator(NullLocator())
+            ax.yaxis.set_major_formatter(ScalarFormatter())
+        ax.set_xlabel("Day of simulation", color=_MUTED)
+        ax.set_ylabel(ylabel, color=_MUTED)
+        ax.grid(True, color=_GRID, linewidth=0.8)
+        ax.set_axisbelow(True)
+        ax.tick_params(colors=_MUTED)
+        for side in ("top", "right"):
+            ax.spines[side].set_visible(False)
+        for side in ("left", "bottom"):
+            ax.spines[side].set_color(_GRID)
+        ax.margins(x=0.08)
+    axes[0].legend(frameon=False, labelcolor=_INK, fontsize=9, loc="upper right")
+    fig.suptitle(
+        f"{title}: mean over seeds, band = mean ± 2 SD", color=_INK, fontsize=11, x=0.01, ha="left"
+    )
+    fig.tight_layout()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=130, facecolor=_SURFACE)
+    plt.close(fig)

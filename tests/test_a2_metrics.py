@@ -157,3 +157,18 @@ class TestLoaders:
         assert run["blocks"][2, 0] == 8
         assert run["ages"].tolist() == [3, 0]
         assert run["exposure"] == pytest.approx(30 / 880)
+
+
+def test_figure_is_written(tmp_path):
+    from validation.a2.report import figure
+
+    rng = np.random.default_rng(3)
+    days = np.arange(361)
+    pop = 2000 * np.exp(-days / 120.0) + 50
+    data = {
+        "pop": pop + rng.normal(0, 5, (8, 361)),
+        "energy": 10 - 5 * np.sin(days / 115.0) + rng.normal(0, 0.1, (8, 361)),
+    }
+    out = tmp_path / "fig" / "x.png"
+    figure("Synthetic", data, {k: v + 1 for k, v in data.items()}, out)
+    assert out.stat().st_size > 10_000

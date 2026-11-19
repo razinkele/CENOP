@@ -67,6 +67,29 @@ if _NUMBA:
     _compute_tl_percell = njit(cache=True)(_compute_tl_percell)
 
 
+def _reaction_draw_rows(seed: list[int], rows: np.ndarray, steps: int) -> np.ndarray:
+    """Rows ``rows`` (ascending) of ``default_rng(SeedSequence(seed)).random((n, steps))``.
+
+    The full (n, steps) matrix costs n * steps draws per ship per tick, of which only the
+    rows of the porpoises in range are used. PCG64 can jump ahead, and a float64 draw takes
+    exactly one step of the generator, so row r starts r * steps steps into the stream. The
+    values are identical to the full matrix, whatever n is.
+    """
+    out = np.empty((len(rows), steps), dtype=np.float64)
+    if len(rows) == 0:
+        return out
+    bit_generator = np.random.PCG64(np.random.SeedSequence(seed))
+    generator = np.random.Generator(bit_generator)
+    position = 0
+    for k, r in enumerate(rows.tolist()):
+        start = r * steps
+        if start != position:
+            bit_generator.advance(start - position)
+        out[k] = generator.random(steps)
+        position = start + steps
+    return out
+
+
 def _ship_received_level_from_env(source_level, dist_m, depths, grains, sal, params, weston):
     """Received level (dB, clamped >= 0) from a ship, given the porpoise-cell environment
     already fetched.
@@ -650,11 +673,8 @@ class ShipManager:
             # porpoise i's draws at flat positions i, n+i, 2n+i, ... which shift with n.)
             # Only the marginal Bernoulli RATE matches DEPONS (global draw order is
             # unreproducible under SoA).
-            if _force_u is None:
-                rng = np.random.default_rng(np.random.SeedSequence([base_seed, tick, int(ship.id)]))
-                u_all = rng.random((n, STEPS))
-            else:
-                u_all = None
+            # The draws are generated further down, for the in-range porpoises only
+            # (_reaction_draw_rows gives the same values as the full matrix).
 
             px_c = porpoise_x[cand]
             py_c = porpoise_y[cand]
@@ -696,7 +716,11 @@ class ShipManager:
             )
 
             if _force_u is None:
-                u_ir = u_all[cand, :].ravel()[ir]  # porpoise-major rows
+                used_rows, inverse = np.unique(rows, return_inverse=True)
+                u_rows = _reaction_draw_rows(
+                    [base_seed, tick, int(ship.id)], cand[used_rows], STEPS
+                )
+                u_ir = u_rows[inverse, ir % STEPS]  # porpoise-major rows
             else:
                 u_ir = np.full(ir.size, float(_force_u), dtype=np.float64)
             vx_ir, vy_ir, _, _, _ = ship.deterrence_model.deterrence_components(

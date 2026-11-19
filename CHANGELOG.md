@@ -88,6 +88,26 @@ All notable changes to CENOP-JASMINE are documented in this file.
 - Present in every release so far. All seeded results change (one fewer random draw at
   setup and a different starting state); the Kattegat reference baselines are regenerated.
 
+### Changed — the Kattegat baselines use InnerDanishWaters
+- `scripts/run_kattegat_reference.py` takes `--dispersal` and defaults to
+  `InnerDanishWaters`, the mode DEPONS prescribes for Kattegat (TRACE 3.2 section 3.2.4).
+  The three committed baselines (`output/kattegat_ref*`) are regenerated with it, on the
+  v3.2 landscape. The application default stays `PSM-Type2`.
+
+### Fixed — calf memory and the order of the memory update when dispersing
+- **Calf spatial memory (changes PSM-Type2 results).** DEPONS keeps a memory for a nursing
+  mother's calf: under PSM-Type2 it receives every update of her memory, and the weaned
+  calf starts with it and with her preferred dispersal distance. CENOP gave every newborn
+  an empty memory and a newly drawn distance. Now as in DEPONS, per mode: memory for
+  PSM-Type2 only; inherited distance for PSM-Type2 and `off`; a new draw for `Undirected`
+  and `InnerDanishWaters`. Five-year runs in those last two modes are byte-identical;
+  PSM-Type2 runs change after the first weanings (about day 400).
+- **Reference memory on a dispersal move (D16; changes all dispersing modes).** DEPONS moves
+  a dispersing animal before the memory update, so the food level it stores is that of
+  the cell it moved to. CENOP stored the food of the cell it left. Fixed on the
+  NumPy/Numba and JAX paths; the fused Cython kernel (homogeneous landscapes) reads the
+  food after eating. Runs with dispersal off are unchanged.
+
 ### Changed — `data/Kattegat` is now the DEPONS v3.2 landscape (changes every Kattegat result)
 - The bundled Kattegat landscape was DEPONS v3.0. It is replaced by the v3.2 landscape
   (`https://depons.eu`, the files the DEPONS 3.2 release downloads), byte-identical to the
@@ -312,8 +332,6 @@ All notable changes to CENOP-JASMINE are documented in this file.
   hybrid modules (`_update_movement_module_generic`) still end dispersal on straight-line
   displacement from the start point, not on path length. DEPONS parity applies to the CRW paths
   only.
-- Not ported from DEPONS dispersal: the order of the reference-memory turn relative to the
-  dispersal move (spec row D16).
 - **Remainder after the D15 port: a small energy undershoot (re-measured 2026-11-19).**
   After the starting-population fix, on the v3.2 landscape with dispersal off, mean energy
   at days 90 / 120 / 135 / 150 / 165 is 6.37 / 5.22 / 4.40 / 3.99 / 3.70 (s42) and
@@ -339,17 +357,17 @@ All notable changes to CENOP-JASMINE are documented in this file.
   112,200 km2), but the lagoon water bodies of 616 and 349 km2 join into one of 1,146 km2.
   A land-wins rule was tried and is worse (2% of the water lost, lagoons split).
 - ~~The simulation never reads the `dispersal` parameter~~ Fixed 2026-11-18: all four modes
-  take effect (see Added and Fixed above). The Kattegat baselines are still PSM-Type2 runs,
-  not the `InnerDanishWaters` configuration DEPONS TRACE 3.2 §3.2.4 specifies
+  take effect (see Added and Fixed above). The Kattegat baselines use `InnerDanishWaters` since 2026-11-19.
+- **`InnerDanishWaters` populations are slightly below DEPONS (measured 2026-11-19).** On the
+  same landscape, 2000 animals, six CENOP seeds against two Java seeds: 91.5 animals after
+  year 1 (seed SD 3.3) against 97 and 99, and 77.7 after year 2 (SD 2.9) against 85 and 87,
+  about 7% and 9% lower. Locations agree (per-block correlation 0.998). PSM-Type2
+  populations overlap Java's in every year. The offset was there before the D16 and
+  edge-heading fixes (92.8 and 88.3 after year 1 on the same six seeds); the cause is open.
 - **`InnerDanishWaters`: eating cell after a stop with a move (found 2026-11-18).** In the
   rare tick where the mode moves an animal and then stops (the 1-cell move north of Funen
   followed by a phase-2 stop, or a step back that bounced off the grid edge), CENOP lets the
   animal eat at the cell it was moved to; DEPONS uses its start-of-tick cell.
-
-- **PSM-Type2 calf memory differs from DEPONS (found 2026-11-18).** DEPONS gives a nursing
-  calf its own spatial memory, filled as the mother forages, and the calf inherits the
-  mother's preferred dispersal distance. CENOP clears the memory and redraws the distance for
-  every newborn. Fixing it changes PSM-Type2 results and needs a baseline regeneration.
 
 ### CI & docs
 - The CI lint gate now also checks `validation/` (the harness package)

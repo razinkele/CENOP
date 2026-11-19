@@ -169,6 +169,36 @@ The population difference was traced to the starting sex and pregnancy state and
 `2026-11-18-kattegat-population-gap.md`. The population statements above and in the
 conclusion below describe the code before that fix.
 
+## Update (2026-11-19): final code on the bundled v3.2 landscape
+
+`data/Kattegat` is now the v3.2 landscape, and the calf memory, the memory-update order
+when dispersing (D16) and the edge heading are fixed (`1cfa8b0`). `run_cenop.py <mode> <seed>
+5 data final`, then `compare_with_java.py final`.
+
+| | Year 1 | Year 2 | Year 3 | Year 4 | Year 5 |
+|---|---|---|---|---|---|
+| Java IDW, seeds 42, 43 | 97, 99 | 85, 87 | 75, 74 | 70, 69 | 53, 47 |
+| CENOP IDW, seeds 42-44 | 96, 91, 93 | 80, 79, 74 | 75, 76, 61 | 65, 69, 55 | 36, 47, 36 |
+| Java PSM-Type2, seeds 42, 43 | 161, 173 | 113, 124 | 89, 97 | 75, 83 | 51, 57 |
+| CENOP PSM-Type2, seeds 42-44 | 176, 164, 156 | 131, 121, 107 | 109, 99, 93 | 96, 79, 83 | 60, 55, 52 |
+
+Share of animals per block, days 30-360: Java IDW vs CENOP IDW distance 0.028, correlation
+0.998; Java PSM-Type2 vs CENOP PSM-Type2 distance 0.034, correlation 0.994.
+
+**A small InnerDanishWaters offset.** Six CENOP seeds (42-47), two years, InnerDanishWaters:
+
+| Code | Year 1 (mean, SD) | Year 2 (mean, SD) |
+|---|---|---|
+| Before the edge-heading fix (`1deb759` on v3.2 data) | 92.8, 11.1 | 78.7, 7.9 |
+| With it (`35a5359`) | 88.3, 7.5 | 75.7, 5.2 |
+| With D16 as well (`1cfa8b0`) | 91.5, 3.3 | 77.7, 2.9 |
+| Java, seeds 42 and 43 | 97, 99 | 85, 87 |
+
+The three code states do not differ beyond seed spread, so the fixes did not move the mode
+relative to Java. All three sit about 7% below Java after year 1 and 9% after year 2. The
+three seeds used in the tables above (42-44) happened to be the high ones before the fixes,
+which hid this. Cause not investigated; PSM-Type2 shows no such offset.
+
 ## Conclusion
 
 On the same landscape the port reproduces where DEPONS sends animals, to within Java's own

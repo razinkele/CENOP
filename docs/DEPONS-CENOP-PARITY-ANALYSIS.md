@@ -32,9 +32,10 @@ Verified against DEPONS-Java on the same (v3.2 Kattegat) landscape, 2000 animals
 population follows Java in both `PSM-Type2` and `InnerDanishWaters`, and the share of animals
 per 40 km block correlates at 0.995-0.997.
 
-Known differences that remain: PSM-Type2 calf memory (row 3.15), the order of the
-reference-memory turn relative to the dispersal move (D16), a 0.0-0.2 energy undershoot with
-dispersal off, and non-CRW movement modules ending dispersal on straight-line distance.
+Known differences that remain: a 0.0-0.2 energy undershoot with dispersal off,
+`InnerDanishWaters` populations about 7-9% below DEPONS in years 1-2, and non-CRW movement
+modules ending dispersal on straight-line distance. Calf memory (row 3.15) and the
+memory-update order when dispersing (D16) were fixed on 2026-11-19.
 
 ---
 
@@ -110,7 +111,7 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 | 3.12 | PSM-Type3-randdist | `DispersalPSMType3randdist.java` | `PSMType3RanddistDispersal` | **GAP** | Class exists in `behavior/dispersal.py` but is not selectable: `DISPERSAL_MODES` has `off`, `PSM-Type2`, `Undirected`, `InnerDanishWaters` (2026-11-18) |
 | 3.13 | Undirected dispersal | `UndirectedDispersal.java` | `UndirectedDispersal` | **MATCH** | Wired 2026-11-18 (`agents/population.py`); refused on the JAX path |
 | 3.14 | InnerDanishWaters dispersal | `InnerDanishWatersDispersal.java` | `InnerDanishWatersDispersal` | **MATCH** | Scalar port in `agents/dispersal_idw.py`, wired 2026-11-18, Kattegat only; replayed against Java's tracked animal with zero mismatches over 2,461 dispersing ticks |
-| 3.15 | Calf PSM inheritance | `calfHasPSM()`/`calfInheritsPsmDist()` | `copy_for_calf()` | **GAP** | DEPONS: the calf has its own spatial memory and inherits the mother's preferred distance. CENOP clears the memory and redraws the distance for every newborn (found 2026-11-18, open) |
+| 3.15 | Calf PSM inheritance | `calfHasPSM()`/`calfInheritsPsmDist()` | `copy_for_calf()` | **MATCH** | Fixed 2026-11-19: sparse calf memory filled while the mother nurses (PSM-Type2), mother's preferred distance inherited (PSM types, off), new draw otherwise |
 | 3.16 | Dispersal types coverage | 8 types (Off, T1-T3, T3randdir, T3randdist, IDW, Undirected) | All 8 types | **GAP** | 4 of 8 selectable: Off, PSM-Type2, Undirected, InnerDanishWaters |
 
 ---

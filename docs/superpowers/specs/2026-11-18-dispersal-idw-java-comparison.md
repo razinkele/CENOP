@@ -199,6 +199,26 @@ relative to Java. All three sit about 7% below Java after year 1 and 9% after ye
 three seeds used in the tables above (42-44) happened to be the high ones before the fixes,
 which hid this. Cause not investigated; PSM-Type2 shows no such offset.
 
+**A lead on the offset (2026-11-19).** A Java run with 200 tracked animals
+(`scenarios/idw_tracked200.json`, 1 year, seed 42) against CENOP seed 42, all animals,
+counted every tick (`tracked_compare.py`):
+
+| Days | Phase 1 share, Java / CENOP | Phase 2 share | Starts per animal-day | Episode mean (ticks) | Mean energy |
+|---|---|---|---|---|---|
+| 0-30 | 0.057 / 0.066 | 0.113 / 0.103 | 0.236 / 0.245 | 37.2 / 35.4 | 9.29 / 9.16 |
+| 30-60 | 0.094 / 0.107 | 0.164 / 0.166 | 0.359 / 0.394 | 34.6 / 33.6 | 6.81 / 6.50 |
+| 60-90 | 0.081 / 0.093 | 0.162 / 0.158 | 0.334 / 0.343 | 33.5 / 33.2 | 4.70 / 4.43 |
+| 90-120 | 0.066 / 0.076 | 0.109 / 0.127 | 0.266 / 0.280 | 30.4 / 32.8 | 4.29 / 4.12 |
+| 120-150 | 0.067 / 0.069 | 0.092 / 0.104 | 0.234 / 0.258 | 32.6 / 31.4 | 4.54 / 4.08 |
+| 150-180 | 0.058 / 0.069 | 0.103 / 0.095 | 0.233 / 0.232 | 31.2 / 32.1 | 4.16 / 3.94 |
+
+Starts, episode lengths and phase 2 time agree. CENOP spends more time in phase 1 in every
+bin (about 15% more over the first 120 days) and its mean energy is 0.1-0.5 lower from
+the first month. The lower energy is of the same size and sign as the undershoot seen
+with dispersal off, so the population offset may be that undershoot acting on a mode in
+which animals forage less. Not established: whether the extra phase 1 time is a cause or a
+consequence, and which rule produces it. One Java seed.
+
 ## Conclusion
 
 On the same landscape the port reproduces where DEPONS sends animals, to within Java's own

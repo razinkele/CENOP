@@ -1,0 +1,23 @@
+{
+  "id": "a2-u-idw",
+  "description": "A2 cross-validation. Undisturbed, InnerDanishWaters, 5 years.",
+  "overrides": {
+    "landscape": "Kattegat",
+    "ships": "false",
+    "turbines": "off",
+    "porpoiseCount": "2000",
+    "dispersal": "InnerDanishWaters",
+    "simYears": "5"
+  },
+  "seeds": [
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49
+  ],
+  "determinism_seed": 42
+}

@@ -1,0 +1,23 @@
+{
+  "id": "a2-u-off",
+  "description": "A2 cross-validation. Undisturbed, dispersal off, 1 year.",
+  "overrides": {
+    "landscape": "Kattegat",
+    "ships": "false",
+    "turbines": "off",
+    "porpoiseCount": "2000",
+    "dispersal": "off",
+    "simYears": "1"
+  },
+  "seeds": [
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49
+  ],
+  "determinism_seed": 42
+}

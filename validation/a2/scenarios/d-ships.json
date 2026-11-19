@@ -1,0 +1,24 @@
+{
+  "id": "a2-d-ships",
+  "description": "A2 cross-validation. Ships (v3.2 Kattegat ship file), InnerDanishWaters, 1 year, 200 tracked animals for exposure.",
+  "overrides": {
+    "landscape": "Kattegat",
+    "ships": "true",
+    "turbines": "off",
+    "porpoiseCount": "2000",
+    "dispersal": "InnerDanishWaters",
+    "simYears": "1",
+    "trackedPorpoiseCount": "200"
+  },
+  "seeds": [
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49
+  ],
+  "determinism_seed": 42
+}

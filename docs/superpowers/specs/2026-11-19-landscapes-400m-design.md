@@ -118,3 +118,32 @@ Lithuania with the Curonian Nord wind farm (35 turbines), 2000 animals, 10 days,
 | Load time / 10 days of simulation | 0.2 s / 5.1 s | 0.6 s / 5.5 s |
 
 No existing test needed a change. The four Kattegat state hashes are unchanged.
+
+### Checks after the first implementation (2026-11-19)
+
+**Food at the default population size.** The trial in the design used 2000 animals, where
+food never binds. At 10,000 animals (seed 42, 60 days) the variants differ:
+
+| Variant | Mean energy, days 15 / 30 / 45 / 60 | N at day 60 | Dispersal attempts, found |
+|---|---|---|---|
+| 1 km grid (before) | 14.66 / 15.81 / 16.57 / 16.99 | 9996 | 112,426, 1,075 (1%) |
+| 400 m, nearest neighbour (implemented) | 19.89 / 19.89 / 19.91 / 19.91 | 10000 | 7,573, 2,153 (28%) |
+| 400 m, food scaled by 0.16 (food per km2 kept) | 15.61 / 17.89 / 19.10 / 19.32 | 9997 | 1,130, 360 (32%) |
+
+Nearest neighbour multiplies food per km2 by 6.25, which removes the mild competition the
+1 km grid showed. Scaling the food keeps it early on. Nobody starves in any variant. Which
+rule to use is a modelling choice on placeholder data; nearest neighbour is implemented
+and the choice is open with the user.
+
+**Memory.** The per-animal spatial memory is sized from the grid: 76 x 65 cells before,
+190 x 164 after. Peak memory at 10,000 animals goes from about 1.0 GB to 2.9 GB; time per
+tick stays at about 52 ms.
+
+**CentralBaltic.** Coarsening 250 m to 400 m by nearest neighbour keeps the water area
+(114,842 -> 114,832 km2) and the sea (112,128 -> 112,200 km2) but joins the lagoon bodies of
+616 and 349 km2 into one of 1,146 km2. A land-wins rule loses 2% of the water and splits
+lagoons (110,074 / 643 / 318 / 195 km2), so nearest neighbour is kept and the join is a
+known issue.
+
+**Map.** The depth bitmap layer for the 822 x 952 grid builds in 2.3 s (about 1 MB). The
+app was not opened in a browser.

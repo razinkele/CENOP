@@ -148,3 +148,14 @@ def test_lithuania_run_with_a_wind_farm_uses_the_400_m_grid():
     a = pm.active_mask
     assert np.isfinite(pm.energy[a]).all()
     assert ((pm.x[a] >= 0) & (pm.x[a] < 822) & (pm.y[a] >= 0) & (pm.y[a] < 952)).all()
+
+
+def test_central_baltic_is_coarsened_to_400_m():
+    if not (DATA_DIR / "CentralBaltic" / "bathy.asc").exists():
+        pytest.skip("data/CentralBaltic not checked out (excluded from the CI sparse checkout)")
+    data = LandscapeLoader("CentralBaltic", DATA_DIR).load_all()
+    meta = data["metadata"]
+    assert (meta.ncols, meta.nrows, meta.cellsize) == (1125, 1150, 400.0)
+    water_km2 = (data["depth"] > 0).sum() * 0.16
+    assert water_km2 == pytest.approx(1837473 * 0.0625, rel=0.01)
+    assert data["salinity"].shape == (12, 1150, 1125)

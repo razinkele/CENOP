@@ -88,6 +88,15 @@ All notable changes to CENOP-JASMINE are documented in this file.
 - Present in every release so far. All seeded results change (one fewer random draw at
   setup and a different starting state); the Kattegat reference baselines are regenerated.
 
+### Validation — InnerDanishWaters against DEPONS-Java with more seeds (2026-11-19)
+- Same landscape, 2000 animals, undisturbed. Population at the end of year 1: DEPONS-Java
+  92.9 (eight seeds, SD 8.2; range 83-105), CENOP 91.5 (six seeds, SD 3.3). At day 180:
+  246.9 against 241.8; day 240: 122.5 against 117.0; day 300: 95.1 against 94.3. Mean energy
+  agrees to within 0.1 on those days. Share of animals per 40 km block: correlation 0.998.
+- Comparisons against the first two Java seeds alone (97 and 99 after year 1) suggested
+  CENOP was 7% low. Those two seeds are at the high end of Java's own spread; two or three
+  seeds are not enough for population comparisons on this scenario.
+
 ### Changed — the Kattegat baselines use InnerDanishWaters
 - `scripts/run_kattegat_reference.py` takes `--dispersal` and defaults to
   `InnerDanishWaters`, the mode DEPONS prescribes for Kattegat (TRACE 3.2 section 3.2.4).
@@ -358,14 +367,6 @@ All notable changes to CENOP-JASMINE are documented in this file.
   A land-wins rule was tried and is worse (2% of the water lost, lagoons split).
 - ~~The simulation never reads the `dispersal` parameter~~ Fixed 2026-11-18: all four modes
   take effect (see Added and Fixed above). The Kattegat baselines use `InnerDanishWaters` since 2026-11-19.
-- **`InnerDanishWaters` populations are slightly below DEPONS (measured 2026-11-19).** On the
-  same landscape, 2000 animals, six CENOP seeds against two Java seeds: 91.5 animals after
-  year 1 (seed SD 3.3) against 97 and 99, and 77.7 after year 2 (SD 2.9) against 85 and 87,
-  about 7% and 9% lower. Locations agree (per-block correlation 0.998). PSM-Type2
-  populations overlap Java's in every year. The offset was there before the D16 and
-  edge-heading fixes (92.8 and 88.3 after year 1 on the same six seeds). Dispersal episodes
-  match Java's when compared with 200 tracked Java animals; CENOP's mean energy is 0.1-0.5
-  lower from the first month, as in the undershoot item above, which is the likely cause.
 - **`InnerDanishWaters`: eating cell after a stop with a move (found 2026-11-18).** In the
   rare tick where the mode moves an animal and then stops (the 1-cell move north of Funen
   followed by a phase-2 stop, or a step back that bounced off the grid edge), CENOP lets the

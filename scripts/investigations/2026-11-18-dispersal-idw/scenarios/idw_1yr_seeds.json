@@ -1,0 +1,14 @@
+{
+  "id": "kattegat-idw-1yr-seeds-probe",
+  "description": "Investigation probe: InnerDanishWaters undisturbed, 1 year, more seeds (seed-to-seed spread of year-1 population).",
+  "overrides": {
+    "landscape": "Kattegat",
+    "dispersal": "InnerDanishWaters",
+    "ships": "false",
+    "turbines": "off",
+    "porpoiseCount": "2000",
+    "simYears": "1"
+  },
+  "seeds": [44, 45, 46, 47, 48, 49],
+  "determinism_seed": 44
+}

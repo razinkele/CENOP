@@ -231,6 +231,23 @@ with dispersal off. The likely reading is that the population offset under this 
 that general undershoot, not something in the dispersal port. One Java seed; the cause of
 the undershoot is still open.
 
+**Resolved (2026-11-19): there is no offset.** Six more Java seeds for one year
+(`scenarios/idw_1yr_seeds.json`, seeds 44-49), with the two existing ones:
+
+| Day | Java N, eight seeds (mean, SD) | CENOP N, six seeds (mean, SD) | Difference (SE) |
+|---|---|---|---|
+| 180 | 246.9, 13.7 | 241.8, 10.6 | -5.0 (6.5) |
+| 240 | 122.5, 9.5 | 117.0, 5.5 | -5.5 (4.0) |
+| 300 | 95.1, 8.8 | 94.3, 3.4 | -0.8 (3.4) |
+| 359 | 92.9, 8.2 | 91.5, 3.3 | -1.4 (3.2) |
+
+Java's year-1 values are 90, 105, 83, 84, 86, 99, 97, 99: the two seeds used until now (97
+and 99) are at the high end of its spread. Population-wide mean energy also agrees (days
+180 / 240 / 300: Java 4.22 / 5.68 / 8.97, CENOP 4.26 / 5.78 / 8.98); the lower energy seen in
+the 200 tracked animals above was sampling. The "7% and 9% below Java" statements in this
+section were an artefact of comparing against two Java seeds. Years 2-5 have only those
+two Java seeds and were not rechecked.
+
 ## Conclusion
 
 On the same landscape the port reproduces where DEPONS sends animals, to within Java's own

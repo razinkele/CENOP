@@ -363,7 +363,9 @@ All notable changes to CENOP-JASMINE are documented in this file.
   year 1 (seed SD 3.3) against 97 and 99, and 77.7 after year 2 (SD 2.9) against 85 and 87,
   about 7% and 9% lower. Locations agree (per-block correlation 0.998). PSM-Type2
   populations overlap Java's in every year. The offset was there before the D16 and
-  edge-heading fixes (92.8 and 88.3 after year 1 on the same six seeds); the cause is open.
+  edge-heading fixes (92.8 and 88.3 after year 1 on the same six seeds). Dispersal episodes
+  match Java's when compared with 200 tracked Java animals; CENOP's mean energy is 0.1-0.5
+  lower from the first month, as in the undershoot item above, which is the likely cause.
 - **`InnerDanishWaters`: eating cell after a stop with a move (found 2026-11-18).** In the
   rare tick where the mode moves an animal and then stops (the 1-cell move north of Funen
   followed by a phase-2 stop, or a step back that bounced off the grid edge), CENOP lets the

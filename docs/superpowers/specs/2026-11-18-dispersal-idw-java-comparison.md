@@ -212,12 +212,24 @@ counted every tick (`tracked_compare.py`):
 | 120-150 | 0.067 / 0.069 | 0.092 / 0.104 | 0.234 / 0.258 | 32.6 / 31.4 | 4.54 / 4.08 |
 | 150-180 | 0.058 / 0.069 | 0.103 / 0.095 | 0.233 / 0.232 | 31.2 / 32.1 | 4.16 / 3.94 |
 
-Starts, episode lengths and phase 2 time agree. CENOP spends more time in phase 1 in every
-bin (about 15% more over the first 120 days) and its mean energy is 0.1-0.5 lower from
-the first month. The lower energy is of the same size and sign as the undershoot seen
-with dispersal off, so the population offset may be that undershoot acting on a mode in
-which animals forage less. Not established: whether the extra phase 1 time is a cause or a
-consequence, and which rule produces it. One Java seed.
+The apparent extra phase 1 time in CENOP is a recording difference. CENOP's log counts
+the tick in which the daily step triggers dispersal as a phase 1 tick; Java's row for that
+tick is written before the daily step, so its episodes begin one tick later (38% of them
+already in phase 2). With the trigger tick dropped from CENOP's episodes (first 60 days,
+400 CENOP animals against the 200 Java animals):
+
+| | Java | CENOP |
+|---|---|---|
+| Episodes whose first recorded tick is phase 1 | 0.617 | 0.646 |
+| Episodes that reach phase 2 | 0.892 | 0.885 |
+| Phase 1 ticks per episode (mean) | 12.3 | 12.9 |
+| Phase 2 ticks per episode, when reached (mean) | 25.4 | 24.4 |
+
+So the mode behaves as in Java, episode by episode. What remains is the energy: CENOP's
+mean is 0.1-0.5 lower from the first month, the same size and sign as the undershoot seen
+with dispersal off. The likely reading is that the population offset under this mode is
+that general undershoot, not something in the dispersal port. One Java seed; the cause of
+the undershoot is still open.
 
 ## Conclusion
 

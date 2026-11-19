@@ -4,10 +4,12 @@ Gate for the dispersal-selector work (docs/superpowers/specs/2026-11-18-dispersa
 wiring params.dispersal must leave PSM-Type2 runs bit-identical.
 
 Expected since data/Kattegat became the DEPONS v3.2 landscape (2026-11-19), by mode:
-PSM-Type2          state hash db53325ee2776df8 | ever dispersed 745 | N 1994 | meanE 8.41835
+PSM-Type2          state hash 46de741f10c115b6 | ever dispersed 744 | N 1996 | meanE 8.459647
 off                state hash 1bee39bbb72fca93 | ever dispersed 0 | N 1995 | meanE 8.617797
-Undirected         state hash 56433231e4d19b2d | ever dispersed 747 | N 1996 | meanE 8.511453
-InnerDanishWaters  state hash 958a276adfdfaf12 | ever dispersed 1899 | N 1995 | meanE 7.944942
+Undirected         state hash 01a735339cb6f920 | ever dispersed 740 | N 1997 | meanE 8.510094
+InnerDanishWaters  state hash 2b99ef3c04df1e98 | ever dispersed 1890 | N 1995 | meanE 7.959076
+(before the reference-memory order fix D16, same day: db53325ee2776df8, 56433231e4d19b2d,
+958a276adfdfaf12; off is unaffected by it)
 
 On the v3.0 landscape (668b5bf .. 6942915) they were 205f0e25647e1f7b, efac6392b01d3029,
 2714d8fadec11a10 and 31ff4e44948ba01c (97bb85e7b247346a before the edge-heading fix).

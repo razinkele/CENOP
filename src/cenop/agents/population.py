@@ -189,6 +189,7 @@ class PorpoisePopulation:
         self._abandoned_this_tick = np.zeros(count, dtype=bool)  # calf abandoned in this tick
         self.calves_dropped = 0  # weaned calves lost to params.max_population
         self._last_disturbance_tick = np.full(count, -9999, dtype=np.int32)
+        self._disp_move = np.zeros(count, dtype=bool)  # makes a dispersal move this tick
 
         # Reference memory circular buffers (DEPONS 3.2 — 120 entries per agent)
         _REF_MEM_SIZE = params.ref_mem_size if hasattr(params, "ref_mem_size") else 120
@@ -1005,6 +1006,7 @@ class PorpoisePopulation:
         # dispersing skip stdMove(): their CRW state (prev_angle, prev_log_mov) stays frozen
         # (D13), and they move by the heading kernel's fixed dispersal step.
         self._disperse_step(mask)
+        np.logical_and(mask, self.is_dispersing, out=self._disp_move)
         crw_mask = mask & ~self.is_dispersing
 
         # === Get environmental variables from landscape ===
@@ -1480,6 +1482,7 @@ class PorpoisePopulation:
         # 0. DEPONS disperse() before stdMove() (identical to inline, same RNG order): stopped
         #    dispersers take a CRW step this tick (D12); continuing ones keep CRW state (D13).
         self._disperse_step(mask)
+        np.logical_and(mask, self.is_dispersing, out=self._disp_move)
         crw_mask = mask & ~self.is_dispersing
 
         # 1. Environment at current cells (identical to inline, incl. Kattegat override)
@@ -2629,6 +2632,25 @@ class PorpoisePopulation:
         self._mem_ptr[active] = (ptrs + 1) % mem_size
         self._mem_count[active] = np.minimum(self._mem_count[active] + 1, mem_size)
 
+    def _store_dispersal_move_food(self) -> None:
+        """Reference memory of animals that made a dispersal move this tick (D16).
+
+        DEPONS runs disperse() before refMemTurn (Porpoise.move), so a disperser stores the
+        food level of the cell it is in *after* the move; the position list still holds the
+        position before the move at that index (FastRefMemTurn.java:53-64). CENOP stores
+        both before the move, so the food value is replaced here, once the position is
+        final and before anyone eats. The stored position is left as it is.
+        """
+        if self.landscape is None:
+            return
+        idx = np.flatnonzero(self._disp_move & self.active_mask)
+        if idx.size:
+            last = (self._mem_ptr[idx] - 1) % self._stored_util.shape[1]
+            self._stored_util[idx, last] = self.landscape.get_food_levels_vectorized(
+                None, xi=self._cell_xi[idx], yi=self._cell_yi[idx]
+            )
+        self._disp_move[:] = False
+
     def _handle_reproduction(self, mask: np.ndarray) -> None:
         """Handle reproduction — delegates to pregnancy FSM.
 
@@ -3220,6 +3242,10 @@ class PorpoisePopulation:
                 self.y[on_land] = _jax_pre_y[on_land]
                 self._recompute_cell_indices()
 
+        # D16: animals still dispersing after the tick's dispersal step made the move
+        np.logical_and(mask, new_is_dispersing_np, out=self._disp_move)
+        self._store_dispersal_move_food()
+
         # ==============================
         # 2. Behavioral FSM (Python)
         # ==============================
@@ -3528,6 +3554,8 @@ class PorpoisePopulation:
 
             # Post-Cython housekeeping
             self._recompute_cell_indices()
+            # D16; the fused kernel has already eaten, so this reads post-eating food levels
+            self._store_dispersal_move_food()
             self._active_idx = np.flatnonzero(self.active_mask)
 
             # Record death statistics (Cython killed agents in-place via starvation)
@@ -3588,6 +3616,7 @@ class PorpoisePopulation:
 
             # 3. Apply positions
             self._apply_positions(mask)
+            self._store_dispersal_move_food()
 
             # 3.5 Behavioral FSM update (JASMINE)
             if self._behavior_fsm is not None:

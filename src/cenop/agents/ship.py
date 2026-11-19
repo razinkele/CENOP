@@ -715,6 +715,20 @@ class ShipManager:
                 source_level, d_ir, depths_ir, grains_ir, sal_ir, params, weston
             )
 
+            # A pair at or below the reaction threshold can never win a slot (the winner
+            # test below needs rl > tships), so it needs no reaction draw and no vector.
+            # Dropping it here leaves the result unchanged: its slot keeps RL = -inf.
+            audible = rl_ir > tships
+            if not audible.any():
+                continue
+            if not audible.all():
+                ir = ir[audible]
+                rows = rows[audible]
+                d_ir = d_ir[audible]
+                gdx_ir = gdx_ir[audible]
+                gdy_ir = gdy_ir[audible]
+                rl_ir = rl_ir[audible]
+
             if _force_u is None:
                 used_rows, inverse = np.unique(rows, return_inverse=True)
                 u_rows = _reaction_draw_rows(

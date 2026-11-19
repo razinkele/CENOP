@@ -88,6 +88,30 @@ All notable changes to CENOP-JASMINE are documented in this file.
 - Present in every release so far. All seeded results change (one fewer random draw at
   setup and a different starting state); the Kattegat reference baselines are regenerated.
 
+### Fixed — landscapes with cells that are not 400 m (changes Lithuania and CentralBaltic results)
+- DEPONS is calibrated for 400 m cells, and CENOP assumes them throughout: turbine and ship
+  noise distances, the random-walk step, dispersal distances, spatial memory, communication
+  range and swimming speed. Lithuania (the default landscape) has 1 km cells and
+  CentralBaltic 250 m, so on Lithuania every distance was treated as 0.4 of its real length
+  (noise sources 2.5 times closer, animals covering 2.5 times the intended distance per
+  tick), and on CentralBaltic as 1.6 times its real length.
+- Landscapes on another grid are now resampled to 400 m when they are loaded
+  (`cenop.landscape.resample`). The files in `data/` are unchanged. Every layer is resampled
+  by nearest neighbour; distance to coast is recomputed from the water mask, in metres
+  (Lithuania's layer was a placeholder plane). Lithuania becomes 822 x 952 cells,
+  CentralBaltic 1125 x 1150.
+- Effect on Lithuania with the Curonian Nord wind farm (2000 animals, 10 days, seed 42):
+  deterrence is felt out to about 53 km (it was about 133 km of real distance), and
+  deterred animal-ticks fall from 144,357 to 28,286.
+- Dispersal on Lithuania (10,000 animals, 60 days): 28% of attempts find a target (2,153
+  of 7,573); it was 1% (1,075 of 112,426).
+- Cost on Lithuania at 10,000 animals: the per-animal spatial memory follows the grid
+  (76 x 65 -> 190 x 164 cells), so peak memory rises from about 1.0 GB to 2.9 GB. Time
+  per tick is unchanged (about 52 ms).
+- Landscapes with 400 m cells (Kattegat, DanTysk, Gemini, NorthSea) are not touched;
+  Kattegat state hashes are unchanged.
+- Design: `docs/superpowers/specs/2026-11-19-landscapes-400m-design.md`
+
 ### Fixed — smaller items
 - `Dispersal.txt`: `target_distance_km` was the target distance in cells divided by 1000;
   it is now in km (cells times the landscape's cell size).
@@ -288,11 +312,16 @@ All notable changes to CENOP-JASMINE are documented in this file.
 - **Known deviations from DEPONS introduced by the land-avoidance port:** beh-5 depth ties use a
   fixed neighbour order (DEPONS shuffles); look-ahead points are reflected at the grid edge as in
   DEPONS's BouncyBorders, but beh-5 neighbours outside the grid read as land.
-- **Lithuania's 1 km cells conflict with CENOP's 400 m km-to-cell conversions.**
-  `data/Lithuania/bathy.asc` has CELLSIZE 1000, but CENOP converts km to cells by dividing by
-  0.4 (DEPONS's 400 m cells) for dispersal distances, the dispersal step and other movement
-  scales, so on Lithuania these cover 2.5 times the intended distance. Pre-existing, and outside
-  the dispersal port.
+- **Lithuania and CentralBaltic have placeholder food layers.** Food is present on every
+  water cell (Kattegat has food patches on 1.6% of cells). On the 400 m grid each of the
+  6.25 new cells carries the food value of its 1 km cell, so food per km2 is 6.25 times
+  what it was on Lithuania: at 10,000 animals mean energy stays at the cap (19.9 through
+  day 60; it was 14.7-17.0 on the 1 km grid) and nobody starves. Population results on
+  these landscapes are not meaningful until the food layers are replaced with real data.
+- **CentralBaltic lagoons after coarsening.** Going from 250 m to 400 m cells loses some
+  one-cell-wide land barriers: the sea stays separate (largest water body 112,128 ->
+  112,200 km2), but the lagoon water bodies of 616 and 349 km2 join into one of 1,146 km2.
+  A land-wins rule was tried and is worse (2% of the water lost, lagoons split).
 - `data/Kattegat` is the DEPONS **v3.0** Kattegat landscape, not v3.2 (all 33 files
   byte-identical to v3.0; prey, salinity, distance-to-coast and patch maps differ from
   v3.2). CENOP's loader cannot read the v3.2 files as shipped

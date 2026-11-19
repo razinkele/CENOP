@@ -114,16 +114,21 @@ class LandscapeLoader:
                 ", ".join(f"{name} {n}" for name, n in gaps.items()),
             )
 
-        return {
-            "metadata": metadata,
-            "depth": depth,
-            "dist_to_coast": dist_to_coast,
-            "sediment": sediment,
-            "food_prob": food_prob,
-            "blocks": blocks.astype(int),
-            "entropy": entropy,
-            "salinity": salinity,
-        }
+        from cenop.landscape.resample import resample_to_400m
+
+        # The model assumes DEPONS's 400 m cells; other grids are resampled here.
+        return resample_to_400m(
+            {
+                "metadata": metadata,
+                "depth": depth,
+                "dist_to_coast": dist_to_coast,
+                "sediment": sediment,
+                "food_prob": food_prob,
+                "blocks": blocks.astype(int),
+                "entropy": entropy,
+                "salinity": salinity,
+            }
+        )
 
     def _load_asc(self, filename: str) -> tuple[np.ndarray, LandscapeMetadata]:
         """

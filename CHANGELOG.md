@@ -88,14 +88,18 @@ All notable changes to CENOP-JASMINE are documented in this file.
 - Present in every release so far. All seeded results change (one fewer random draw at
   setup and a different starting state); the Kattegat reference baselines are regenerated.
 
-### Validation — InnerDanishWaters against DEPONS-Java with more seeds (2026-11-19)
-- Same landscape, 2000 animals, undisturbed. Population at the end of year 1: DEPONS-Java
-  92.9 (eight seeds, SD 8.2; range 83-105), CENOP 91.5 (six seeds, SD 3.3). At day 180:
-  246.9 against 241.8; day 240: 122.5 against 117.0; day 300: 95.1 against 94.3. Mean energy
-  agrees to within 0.1 on those days. Share of animals per 40 km block: correlation 0.998.
-- Comparisons against the first two Java seeds alone (97 and 99 after year 1) suggested
-  CENOP was 7% low. Those two seeds are at the high end of Java's own spread; two or three
-  seeds are not enough for population comparisons on this scenario.
+### Validation — population against DEPONS-Java with eight Java seeds per mode (2026-11-19)
+- Same landscape (v3.2 Kattegat), 2000 animals, undisturbed, five years; DEPONS-Java seeds
+  42-49, CENOP seeds 42-47. Mean population at the end of years 1 / 2 / 3 / 4 / 5:
+  - `InnerDanishWaters`: Java 92.9 / 79.5 / 69.8 / 62.6 / 44.6, CENOP 91.5 / 77.7 / 69.8 /
+    62.8 / 42.7;
+  - `PSM-Type2`: Java 167.1 / 121.6 / 97.0 / 82.0 / 55.5, CENOP 170.5 / 122.7 / 99.0 / 85.3 /
+    56.3.
+  No difference reaches one standard error (largest: -4.4% and +4.1%). Share of animals
+  per 40 km block: correlation 0.998 and 0.994.
+- Seed-to-seed spread is large on this scenario (SD 3-8 animals), and the two Java seeds
+  used until now (42, 43) are at the high end for `InnerDanishWaters`. Comparisons with
+  two or three seeds per side are not reliable; use six or more.
 
 ### Changed — the Kattegat baselines use InnerDanishWaters
 - `scripts/run_kattegat_reference.py` takes `--dispersal` and defaults to

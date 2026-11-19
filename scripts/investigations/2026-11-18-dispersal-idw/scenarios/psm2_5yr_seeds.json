@@ -1,0 +1,14 @@
+{
+  "id": "kattegat-psm2-5yr-seeds-probe",
+  "description": "Investigation probe: PSM-Type2 undisturbed, 5 years, seeds 44-49 (seed-to-seed spread of yearly population).",
+  "overrides": {
+    "landscape": "Kattegat",
+    "dispersal": "PSM-Type2",
+    "ships": "false",
+    "turbines": "off",
+    "porpoiseCount": "2000",
+    "simYears": "5"
+  },
+  "seeds": [44, 45, 46, 47, 48, 49],
+  "determinism_seed": 44
+}

@@ -245,8 +245,27 @@ Java's year-1 values are 90, 105, 83, 84, 86, 99, 97, 99: the two seeds used unt
 and 99) are at the high end of its spread. Population-wide mean energy also agrees (days
 180 / 240 / 300: Java 4.22 / 5.68 / 8.97, CENOP 4.26 / 5.78 / 8.98); the lower energy seen in
 the 200 tracked animals above was sampling. The "7% and 9% below Java" statements in this
-section were an artefact of comparing against two Java seeds. Years 2-5 have only those
-two Java seeds and were not rechecked.
+section were an artefact of comparing against two Java seeds. Years 2-5 are rechecked below.
+
+**Years 1 to 5 with eight Java seeds per mode (2026-11-19).** Java seeds 42-49
+(`scenarios/idw_5yr_seeds.json`, `psm2_5yr_seeds.json` add 44-49), CENOP seeds 42-47 on
+the final code; `yearly_seeds.py final`. Population at the end of each year, mean (SD):
+
+| Mode | Year | Java | CENOP | Difference | In standard errors |
+|---|---|---|---|---|---|
+| InnerDanishWaters | 1 | 92.9 (8.2) | 91.5 (3.3) | -1.5% | -0.4 |
+| | 2 | 79.5 (7.6) | 77.7 (2.9) | -2.3% | -0.6 |
+| | 3 | 69.8 (3.9) | 69.8 (7.0) | +0.1% | 0.0 |
+| | 4 | 62.6 (5.7) | 62.8 (6.7) | +0.3% | +0.1 |
+| | 5 | 44.6 (5.2) | 42.7 (5.4) | -4.4% | -0.7 |
+| PSM-Type2 | 1 | 167.1 (7.8) | 170.5 (8.6) | +2.0% | +0.8 |
+| | 2 | 121.6 (7.2) | 122.7 (8.4) | +0.9% | +0.2 |
+| | 3 | 97.0 (5.7) | 99.0 (5.8) | +2.1% | +0.6 |
+| | 4 | 82.0 (6.6) | 85.3 (6.5) | +4.1% | +0.9 |
+| | 5 | 55.5 (8.1) | 56.3 (2.9) | +1.5% | +0.3 |
+
+No year in either mode differs by as much as one standard error. This replaces every
+population statement above that rests on Java seeds 42 and 43 alone.
 
 ## Conclusion
 

@@ -132,8 +132,11 @@ food never binds. At 10,000 animals (seed 42, 60 days) the variants differ:
 
 Nearest neighbour multiplies food per km2 by 6.25, which removes the mild competition the
 1 km grid showed. Scaling the food keeps it early on. Nobody starves in any variant. Which
-rule to use is a modelling choice on placeholder data; nearest neighbour is implemented
-and the choice is open with the user.
+rule to use is a modelling choice on placeholder data. **Decided by the user, 2026-11-19: keep
+the value per cell (nearest neighbour).** DEPONS food is a per-cell quantity (an animal eats
+from its cell and each cell regrows to its own maximum), the 1 km energy curve came from runs
+with wrong step lengths and is no reference, scaling still leaves nobody starving, and a 0.16
+factor would read as calibration. The real fix is a patchy or measured food layer.
 
 **Memory.** The per-animal spatial memory is sized from the grid: 76 x 65 cells before,
 190 x 164 after. Peak memory at 10,000 animals goes from about 1.0 GB to 2.9 GB; time per

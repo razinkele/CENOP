@@ -1,6 +1,6 @@
 # Landscapes on a 400 m grid
 
-Date: 2026-11-19. Branch: `feat/landscapes-400m`. Status: design, awaiting approval.
+Date: 2026-11-19. Branch: `feat/landscapes-400m`. Status: approved by the user 2026-11-19 (A1), implemented.
 
 ## Why
 
@@ -105,3 +105,16 @@ layers are replaced with real data. That is outside this change.
 
 Naming inside the module, log wording, and which existing Lithuania tests need their grid
 sizes updated.
+
+## Result (2026-11-19)
+
+Lithuania with the Curonian Nord wind farm (35 turbines), 2000 animals, 10 days, seed 42:
+
+| | 1 km grid (before) | 400 m grid |
+|---|---|---|
+| Grid | 329 x 381 | 822 x 952 |
+| Farthest deterred animal from a turbine | 133 cells = 133 km | 132 cells = 53 km |
+| Deterred animal-ticks | 144,357 | 28,286 |
+| Load time / 10 days of simulation | 0.2 s / 5.1 s | 0.6 s / 5.5 s |
+
+No existing test needed a change. The four Kattegat state hashes are unchanged.

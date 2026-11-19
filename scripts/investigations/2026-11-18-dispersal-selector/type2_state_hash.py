@@ -7,7 +7,8 @@ Expected since the females-only start (668b5bf, 2026-11-18; unchanged by 596eec6
 PSM-Type2          state hash 205f0e25647e1f7b | ever dispersed 786 | N 1989 | meanE 6.074059
 off                state hash efac6392b01d3029 | ever dispersed 0 | N 1986 | meanE 6.133584
 Undirected         state hash 2714d8fadec11a10 | ever dispersed 793 | N 1994 | meanE 6.119591
-InnerDanishWaters  state hash 97bb85e7b247346a | ever dispersed 1987 | N 1988 | meanE 6.000232
+InnerDanishWaters  state hash 31ff4e44948ba01c | ever dispersed 1986 | N 1989 | meanE 5.963736
+                   (97bb85e7b247346a until the edge-heading fix of 2026-11-19)
 
 Before that fix (15dc4ec .. 377a84a) the first three were aec15387d1425dd9,
 7f2de66bb7ef401b and ba0c5558af305b87; the dispersal-selector work was gated on those.

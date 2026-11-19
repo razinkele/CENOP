@@ -225,3 +225,19 @@ def test_thirty_days_on_kattegat(kattegat):
         assert np.isfinite(arr[a]).all()
     assert ((pm.x[a] >= 0) & (pm.x[a] < 600) & (pm.y[a] >= 0) & (pm.y[a] < 1000)).all()
     assert (pm.dispersal_phase[a] > 0).tolist() == pm.is_dispersing[a].tolist()
+
+
+def test_border_reflection_leaves_a_dispersing_animals_heading_alone(kattegat):
+    # The mode bounces inside its own move (Java range -0.5 .. W - 0.5, CENOP 0 .. W) and
+    # sets the heading; CENOP's reflection (range 0 .. W - 1) must not rewrite it.
+    pop = make_pop(kattegat)
+    w = kattegat.width
+    pop.x[0], pop.y[0] = w - 3.0, 500.5
+    pop.heading[0] = 77.0
+    pop.is_dispersing[0] = True
+    pop.dispersal_phase[0] = 1
+    pop._idw_pending[0] = True
+    pop._idw_x[0], pop._idw_y[0] = w - 0.2, 501.0
+    pop._idw_write_step()
+    pop._handle_land_avoidance(pop.active_mask)
+    assert pop.heading[0] == 77.0

@@ -388,3 +388,31 @@ class TestMonthlyStatsResetPerCause:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+def test_ships_come_from_the_landscapes_own_file():
+    """A landscape that ships its own ships.json uses it, not the generic data/ships.json."""
+    from pathlib import Path
+
+    import pytest
+
+    from cenop.core.simulation import Simulation
+    from cenop.landscape.cell_data import CellData
+    from cenop.parameters import SimulationParameters
+
+    data = Path(__file__).resolve().parents[1] / "data"
+    if not (data / "Kattegat" / "ships.json").exists():
+        pytest.skip("data/Kattegat not checked out")
+    cd = CellData("Kattegat", data)
+    cd.load()
+    params = SimulationParameters(
+        porpoise_count=10, sim_years=1, random_seed=1, landscape="Kattegat", ships_enabled=True
+    )
+    sim = Simulation(params=params, cell_data=cd, seed=1)
+    sim.initialize()
+    manager = sim._ship_manager
+    assert manager.count > 1000
+    manager.update(0)
+    active = manager.get_active_ships()
+    assert active
+    assert all(0 <= s.x < cd.width and 0 <= s.y < cd.height for s in active)

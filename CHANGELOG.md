@@ -88,6 +88,17 @@ All notable changes to CENOP-JASMINE are documented in this file.
 - Present in every release so far. All seeded results change (one fewer random draw at
   setup and a different starting state); the Kattegat reference baselines are regenerated.
 
+### Changed — `data/Kattegat` is now the DEPONS v3.2 landscape (changes every Kattegat result)
+- The bundled Kattegat landscape was DEPONS v3.0. It is replaced by the v3.2 landscape
+  (`https://depons.eu`, the files the DEPONS 3.2 release downloads), byte-identical to the
+  reference harness's copy, under CENOP's file names (`prey0000_MM.asc`,
+  `salinity0000_MM.asc`, `ships.json`). Bathymetry, sediment and blocks are unchanged;
+  prey, salinity, patches and distance to coast differ, and the ship file has 5,148 ships
+  (637 before). CENOP and DEPONS-Java runs on Kattegat are now on the same landscape.
+- Fixed: with ships enabled, the simulation always loaded the sample `data/ships.json`,
+  whose routes lie outside the Kattegat grid, so ships had no effect there. A landscape's
+  own `ships.json` is now used when it has one.
+
 ### Fixed — landscapes with cells that are not 400 m (changes Lithuania and CentralBaltic results)
 - DEPONS is calibrated for 400 m cells, and CENOP assumes them throughout: turbine and ship
   noise distances, the random-walk step, dispersal distances, spatial memory, communication
@@ -327,9 +338,6 @@ All notable changes to CENOP-JASMINE are documented in this file.
   one-cell-wide land barriers: the sea stays separate (largest water body 112,128 ->
   112,200 km2), but the lagoon water bodies of 616 and 349 km2 join into one of 1,146 km2.
   A land-wins rule was tried and is worse (2% of the water lost, lagoons split).
-- `data/Kattegat` is the DEPONS **v3.0** Kattegat landscape, not v3.2 (all 33 files
-  byte-identical to v3.0; prey, salinity, distance-to-coast and patch maps differ from
-  v3.2). CENOP's loader cannot read the v3.2 files as shipped
 - ~~The simulation never reads the `dispersal` parameter~~ Fixed 2026-11-18: all four modes
   take effect (see Added and Fixed above). The Kattegat baselines are still PSM-Type2 runs,
   not the `InnerDanishWaters` configuration DEPONS TRACE 3.2 §3.2.4 specifies

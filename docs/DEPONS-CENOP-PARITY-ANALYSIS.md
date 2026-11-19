@@ -34,8 +34,7 @@ per 40 km block correlates at 0.995-0.997.
 
 Known differences that remain: PSM-Type2 calf memory (row 3.15), the order of the
 reference-memory turn relative to the dispersal move (D16), a 0.0-0.2 energy undershoot with
-dispersal off, non-CRW movement modules ending dispersal on straight-line distance, and the
-bundled `data/Kattegat` being the v3.0 landscape.
+dispersal off, and non-CRW movement modules ending dispersal on straight-line distance.
 
 ---
 

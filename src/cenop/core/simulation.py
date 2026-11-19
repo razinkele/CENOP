@@ -391,7 +391,14 @@ class Simulation:
 
         # Try to load ships from JSON file
         ships_loaded = False
-        possible_paths = [
+        possible_paths = []
+        # The landscape's own ship file first (DEPONS ships one per landscape, in the
+        # landscape's coordinates); the generic file is a sample for other grids.
+        landscape_name = getattr(self._cell_data, "landscape_name", None)
+        landscape_dir = getattr(self._cell_data, "data_dir", None)
+        if landscape_name and landscape_dir is not None:
+            possible_paths.append(os.path.join(str(landscape_dir), landscape_name, "ships.json"))
+        possible_paths += [
             "data/ships.json",
             "../data/ships.json",
             "cenop/data/ships.json",

@@ -160,6 +160,11 @@ class BatchRunner:
             base_seed = np.random.default_rng().integers(0, 100000)
             self.seeds = [base_seed + i for i in range(config.replicates)]
         else:
+            if len(config.seeds) < config.replicates:
+                raise ValueError(
+                    f"{len(config.seeds)} seeds given for {config.replicates} replicates; "
+                    "give one seed per replicate or leave seeds unset"
+                )
             self.seeds = config.seeds
 
     def run(self, progress: bool = True) -> list[BatchResult]:
@@ -209,12 +214,12 @@ class BatchRunner:
         for combo in combinations:
             for rep in range(self.config.replicates):
                 seed = self.seeds[rep]
+                param_str = ", ".join(
+                    f"{k}={v}" for k, v in combo.items() if k in self.config.variations
+                )
 
                 if progress:
                     pct = (run_id + 1) / total * 100
-                    param_str = ", ".join(
-                        f"{k}={v}" for k, v in combo.items() if k in self.config.variations
-                    )
                     logger.info(
                         "  [%d/%d] (%.0f%%) %s, rep=%d", run_id + 1, total, pct, param_str, rep + 1
                     )

@@ -396,6 +396,8 @@ class OutputWriter:
             return
 
         current_dispersing = pop.is_dispersing.copy()
+        metadata = getattr(getattr(pop, "landscape", None), "metadata", None)
+        cell_km = (metadata.cellsize if metadata is not None else 400.0) / 1000.0
 
         if self._prev_dispersing is not None:
             # Find newly dispersing porpoises
@@ -428,7 +430,7 @@ class OutputWriter:
                     start_y=float(pop.y[idx]),
                     target_x=float(target_x),
                     target_y=float(target_y),
-                    target_distance_km=float(target_dist / 1000),  # m to km
+                    target_distance_km=float(target_dist * cell_km),  # cells to km
                     dispersal_type=sim.params.dispersal,
                 )
 

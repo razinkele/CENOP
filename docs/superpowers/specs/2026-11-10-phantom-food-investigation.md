@@ -547,6 +547,16 @@ proposed, not measured.
   death hazard by energy band has not been measured. Candidates: reproduction timing and the
   mortality implementation.
 - Accept the fix through day 165; treat day 180 as informational.
+- **Re-measured 2026-11-19, after the starting-population fix** (`9343824`; CENOP on the
+  v3.2 landscape, `scripts/investigations/2026-11-18-population-gap/cenop_deaths.py off
+  <seed> 180 <dir>`). Dispersal off, seeds 42 / 43: N at days 90 / 120 / 150 / 165 is
+  1749 / 1448 / 989 / 778 and 1776 / 1464 / 979 / 749 (DEPONS 1737 / 1442 / 989 / 780 and
+  1722 / 1417 / 994 / 784); mean energy at days 90 / 120 / 135 / 150 / 165 is
+  6.37 / 5.22 / 4.40 / 3.99 / 3.70 and 6.22 / 5.12 / 4.47 / 4.09 / 3.85, so the undershoot is
+  now 0.0-0.2; deaths in days 165-180 are 176 / 199 (DEPONS 203 / 191). The late-death
+  remainder is closed: it was the starting pregnancy state (few animals lactating, so few
+  paying the lactation cost around day 165). The energy undershoot is smaller but still
+  one-sided.
 
 **Step 4: combined check, dispersal on (fixed code `e016fe4`) + port, against DEPONS PSM-Type2**
 (`cenop_disp_rates.py <dir> stock 180 120 <seed> --d15-port`; seed 42 / seed 43):

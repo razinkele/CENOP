@@ -444,6 +444,20 @@ class Simulation:
             ship._is_active = True
             self._ship_manager.ships.append(ship)
 
+        # Routes entirely off the grid mean ship traffic does nothing; say so. This happens
+        # when a landscape has no ships.json of its own and the sample file (made for another
+        # landscape's coordinates) is used.
+        buoys = [b for ship in self._ship_manager.ships for b in ship.route.buoys]
+        if buoys and not any(0 <= b.x < width and 0 <= b.y < height for b in buoys):
+            logger.warning(
+                "Ships are enabled, but all %d ship routes lie outside the landscape grid "
+                "(%d x %d cells): ship traffic will have no effect. The landscape needs its "
+                "own ships.json.",
+                len(self._ship_manager.ships),
+                width,
+                height,
+            )
+
     def step(self) -> None:
         """
         Execute one simulation step (30 minutes in DEPONS mode).

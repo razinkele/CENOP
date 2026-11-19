@@ -416,3 +416,23 @@ def test_ships_come_from_the_landscapes_own_file():
     active = manager.get_active_ships()
     assert active
     assert all(0 <= s.x < cd.width and 0 <= s.y < cd.height for s in active)
+
+
+def test_warns_when_no_ship_route_touches_the_landscape(caplog):
+    """Lithuania has no ship file of its own; the sample routes lie outside its grid."""
+    import logging
+    from pathlib import Path
+
+    from cenop.core.simulation import Simulation
+    from cenop.landscape.cell_data import CellData
+    from cenop.parameters import SimulationParameters
+
+    cd = CellData("Lithuania", Path(__file__).resolve().parents[1] / "data")
+    cd.load()
+    params = SimulationParameters(
+        porpoise_count=10, sim_years=1, random_seed=1, landscape="Lithuania", ships_enabled=True
+    )
+    with caplog.at_level(logging.WARNING, logger="cenop.core.simulation"):
+        sim = Simulation(params=params, cell_data=cd, seed=1)
+        sim.initialize()
+    assert any("outside the landscape" in r.getMessage() for r in caplog.records)

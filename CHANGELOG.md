@@ -137,6 +137,13 @@ All notable changes to CENOP-JASMINE are documented in this file.
 - Fixed: with ships enabled, the simulation always loaded the sample `data/ships.json`,
   whose routes lie outside the Kattegat grid, so ships had no effect there. A landscape's
   own `ships.json` is now used when it has one.
+- Lithuania and CentralBaltic have no ship file, and the sample file's routes (made for
+  Gemini) lie outside their grids, so enabling ships there has no effect. This is now
+  logged as a warning when the simulation is set up. DanTysk gets 8 of the sample's 24
+  waypoints; NorthSea and Gemini use their own files.
+- Ship traffic is about 44% faster with identical results (random reaction numbers are
+  generated only for animals in range, and pairs below the reaction threshold are skipped
+  early). With Kattegat's 5,148 ships a tick still takes about 0.4 s at 2000 animals.
 
 ### Fixed — landscapes with cells that are not 400 m (changes Lithuania and CentralBaltic results)
 - DEPONS is calibrated for 400 m cells, and CENOP assumes them throughout: turbine and ship

@@ -277,10 +277,6 @@ def main() -> None:
     print("\n".join(head[4:]))
 
 
-if __name__ == "__main__":
-    main()
-
-
 # Figure colours: categorical slots 1 and 2 of the project's chart palette (checked for
 # colour-vision-deficiency separation and contrast on the light surface).
 _JAVA_COLOUR, _CENOP_COLOUR = "#2a78d6", "#eb6834"
@@ -349,3 +345,7 @@ def figure(title: str, java: dict, cenop: dict, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=130, facecolor=_SURFACE)
     plt.close(fig)
+
+
+if __name__ == "__main__":
+    main()

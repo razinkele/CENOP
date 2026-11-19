@@ -239,6 +239,7 @@ class Ship(Agent):
     route: Route = field(default_factory=Route)
     current_buoy_idx: int = 0
     ticks_paused: int = 0
+    _route_started: bool = False  # False until the first move (DEPONS index -1)
 
     # Current state
     current_speed: float = 10.0  # knots
@@ -276,65 +277,59 @@ class Ship(Agent):
         return self._is_active and self.current_buoy_idx >= 0 and self.ticks_paused <= 0
 
     def update(self, current_tick: int) -> None:
-        """
-        Update ship position and status for current tick.
+        """Move the ship for this tick, as DEPONS Ship.move() (Ship.java:145-173).
 
-        Args:
-            current_tick: Current simulation tick
+        DEPONS moves a ship one buoy per tick: the route is sampled at 30-minute positions and
+        a buoy's speed is used for the noise level only. On arriving at a buoy with a pause the
+        ship waits that many ticks; after the last buoy the route starts again at the first.
+        A ship file can therefore place each passage in time by the waits at its first and
+        last buoy (the Kattegat file does: every route is one passage in a 721-tick cycle).
+
+        In a tick the ship deters along the line from its buoy to the next one
+        (deterPorpoise, Ship.java:204-210), unless it is waiting. After this call
+        ``(_prev_x, _prev_y)`` is the ship's position in this tick (its buoy) and ``(x, y)``
+        is the end of that sweep; they are equal when there is nothing to sweep to.
         """
-        # Start-of-tick position for sub-tick swept-path deterrence (set before any
-        # early return so paused/inactive ships keep prev == current).
         self._prev_x, self._prev_y = self.x, self.y
-        # Check if active
-        self._is_active = self.tick_start <= current_tick < self.tick_end
-
-        if not self._is_active or not self.route.buoys:
+        if current_tick < self.tick_start:
+            self._is_active = False
+            return
+        if current_tick > self.tick_end:
+            self._is_active = False
+            self.current_buoy_idx = -1
+            return
+        self._is_active = True
+        n = self.route.length
+        if n == 0:
             return
 
-        # Handle pausing at buoy
         if self.ticks_paused > 0:
             self.ticks_paused -= 1
-            return
-
-        # Get current and next buoy
-        current_buoy = self.route.get_buoy(self.current_buoy_idx)
-        if self.route.length == 0:
-            return
-        next_idx = (self.current_buoy_idx + 1) % self.route.length
-        next_buoy = self.route.get_buoy(next_idx)
-
-        if current_buoy is None or next_buoy is None:
-            return
-
-        # Calculate movement towards next buoy
-        dx = next_buoy.x - self.x
-        dy = next_buoy.y - self.y
-        distance = np.sqrt(dx**2 + dy**2)
-
-        # Speed in grid cells per tick (knots -> cells/30min)
-        # 1 knot = 1.852 km/h = 0.926 km/30min
-        # cell_size = 400m = 0.4km
-        speed_cells = current_buoy.speed * 1.852 * 0.5 / 0.4
-
-        if distance <= speed_cells:
-            # Arrived at next buoy
-            self.x = next_buoy.x
-            self.y = next_buoy.y
-            self.current_buoy_idx = next_idx
-            self.ticks_paused = next_buoy.pause_ticks
-            self.current_speed = next_buoy.speed
         else:
-            # Move towards next buoy
-            ratio = speed_cells / distance
-            self.x += dx * ratio
-            self.y += dy * ratio
+            # DEPONS starts at index -1, so the first move lands on buoy 0
+            idx = self.current_buoy_idx + 1 if self._route_started else 0
+            if idx >= n or idx < 0:
+                idx = 0  # repeat the route from the beginning
+            self._route_started = True
+            self.current_buoy_idx = idx
+            self.ticks_paused = max(int(self.route.buoys[idx].pause_ticks), 0)
 
-        # Update heading
-        if distance > 0:
-            self.heading = np.degrees(np.arctan2(dx, dy))
-
-        # Update noise model with current speed
+        idx = self.current_buoy_idx
+        buoy = self.route.buoys[idx]
+        self.current_speed = buoy.speed
         self.noise.speed = self.current_speed
+
+        start_x, start_y = buoy.x, buoy.y
+        end_x, end_y = start_x, start_y
+        # findNextBuoy: none while waiting, at the last buoy, or when the next tick is outside
+        # the ship's period
+        if self.ticks_paused == 0 and idx + 1 < n and current_tick + 1 <= self.tick_end:
+            nxt = self.route.buoys[idx + 1]
+            end_x, end_y = nxt.x, nxt.y
+            if end_x != start_x or end_y != start_y:
+                self.heading = float(np.degrees(np.arctan2(end_x - start_x, end_y - start_y)))
+        self._prev_x, self._prev_y = start_x, start_y
+        self.x, self.y = end_x, end_y
 
     def get_source_level(self) -> float:
         """Get current source level."""

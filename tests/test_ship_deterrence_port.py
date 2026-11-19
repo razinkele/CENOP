@@ -1299,9 +1299,9 @@ class TestSubTickInterpolation:
 
 class TestSubTickWestonHeterogeneous:
     """Guard for the WestonFlux per-cell-lookup optimization: on a HETEROGENEOUS
-    landscape (porpoises on cells with distinct depths -> distinct RL), the sub-tick
-    aggregator must match a brute-force reference that re-fetches the per-cell
-    environment at each porpoise via the single-position _ship_received_level helper.
+    landscape (the depth changes along the ship's path -> distinct RL per sub-step), the
+    sub-tick aggregator must match a brute-force reference that re-fetches the per-cell
+    environment at each ship sub-position via the single-position _ship_received_level helper.
     Homogeneous-landscape tests cannot catch a tiling/alignment bug in the optimized
     per-candidate-set env lookup; this one can."""
 
@@ -1327,9 +1327,9 @@ class TestSubTickWestonHeterogeneous:
         # DISTINCT depth so their WestonFlux RL differs (non-vacuous heterogeneity).
         px = np.array([45.0, 50.0, 55.0])
         py = np.array([53.0, 52.0, 51.0])
-        depths = {(53, 45): 8.0, (52, 50): 30.0, (51, 55): 50.0}
-        for (yi, xi), d in depths.items():
-            land._depth[yi, xi] = d
+        # DEPONS reads the WestonFlux environment at the ship's sub-position, so the depth
+        # varies along the swept path (row 50, columns 40-60), not at the porpoise cells.
+        land._depth[50, 40:61] = np.linspace(8.0, 50.0, 21)
 
         s = self._ship(1, 60.0, 50.0, prev=(40.0, 50.0), sl=205.0)  # sweep east, y=50
         mgr = ShipManager([s])
@@ -1355,8 +1355,8 @@ class TestSubTickWestonHeterogeneous:
                 rl = _ship_received_level(
                     s.noise.get_source_level(),
                     d,
-                    np.array([px[pi]]),
-                    np.array([py[pi]]),
+                    np.array([sub_x]),
+                    np.array([sub_y]),
                     p,
                     land,
                     1,
@@ -1462,7 +1462,7 @@ class TestSubTickOutOfRangeSlots:
         p = SimulationParameters()
         p.weston_flux_percell = True
         land = create_homogeneous_landscape(width=100, height=100, depth=20.0, food_prob=0.5)
-        land._depth[52, 60] = 37.0  # porpoise cell depth (weston env path, distinct value)
+        land._depth[50, :51] = np.linspace(10.0, 60.0, 51)  # depth varies along the ship's path
 
         s = self._ship(1, 50.0, 50.0, prev=(0.0, 50.0), sl=205.0)
         mgr = ShipManager([s])
@@ -1487,7 +1487,7 @@ class TestSubTickOutOfRangeSlots:
                 continue
             n_in += 1
             rl = _ship_received_level(
-                s.noise.get_source_level(), d, np.array([60.0]), np.array([52.0]), p, land, 1, True
+                s.noise.get_source_level(), d, np.array([sub_x]), np.array([50.0]), p, land, 1, True
             )
             if rl[0] <= p.deter_ships_min_db:
                 continue

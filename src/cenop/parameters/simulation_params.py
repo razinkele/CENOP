@@ -139,8 +139,11 @@ class SimulationParameters:
     )
 
     # WestonFlux per-cell transmission loss (optional, off by default)
-    weston_flux_percell: bool = False  # Use per-cell depth/sediment/salinity for TL
-    weston_flux_default_temperature: float = 12.0  # Default water temperature (°C) when no grid
+    # Ship transmission loss by WestonFlux from depth, sediment and salinity at the ship's
+    # position, as DEPONS always does (Ship.calculateReceivedLevelFor). False = the simple
+    # spreading formula (a CENOP option; used automatically when a landscape has no sediment).
+    weston_flux_percell: bool = True
+    weston_flux_default_temperature: float = 10.0  # Water temperature (deg C); DEPONS WATER_TEMP
 
     # Probabilistic turbine deterrence response (JASMINE extension).
     # DEPONS applies FULL turbine deterrence strength deterministically once RL exceeds

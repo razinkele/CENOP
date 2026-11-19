@@ -15,8 +15,8 @@ TOOLTIPS = {
     "weston_flux_percell": (
         "Use physics-based Weston Flux transmission loss for ship noise. "
         "Reads depth, sediment grain size, and salinity from the landscape "
-        "grids at each porpoise position. Requires sediment data (sediment.asc). "
-        "When off, uses simple spreading-loss formula."
+        "grids at the ship's position, as DEPONS does. Requires sediment data "
+        "(sediment.asc). When off, uses a simple spreading-loss formula."
     ),
     "bycatch_prob": "Annual probability (0-1) that a porpoise dies from fishing net entanglement. DEPONS default: 0.018 for Kattegat.",
     # Movement/CRW parameters
@@ -221,7 +221,7 @@ def _basic_settings_panel():
                                 style="cursor: help; color: #0d7377;",
                             ),
                         ),
-                        ui.input_switch("weston_flux_percell", None, value=False),
+                        ui.input_switch("weston_flux_percell", None, value=True),
                         class_="mb-3 ms-3",
                     ),
                 ),

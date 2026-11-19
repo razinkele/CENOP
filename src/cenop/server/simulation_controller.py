@@ -170,7 +170,7 @@ def create_simulation_from_inputs(input) -> Simulation:
         turbines=input.turbines(),
         ships_enabled=input.ships_enabled(),
         weston_flux_percell=(
-            input.weston_flux_percell() if hasattr(input, "weston_flux_percell") else False
+            input.weston_flux_percell() if hasattr(input, "weston_flux_percell") else True
         ),
         dispersal=input.dispersal(),
         random_seed=seed_value if seed_value > 0 else None,

@@ -97,6 +97,12 @@ All notable changes to CENOP-JASMINE are documented in this file.
     56.3.
   No difference reaches one standard error (largest: -4.4% and +4.1%). Share of animals
   per 40 km block: correlation 0.998 and 0.994.
+- **Dispersal off, one year, eight Java and six CENOP seeds.** Population and mean energy
+  agree on every day checked (days 30 to 359): mean energy differs by -0.19 to +0.08, at
+  most 1.1 standard errors; population by at most 11 animals (2.0 standard errors at day
+  120, under 1.5 elsewhere). The "energy undershoot" carried as a known issue since
+  2026-11-11 is withdrawn: its Java reference was the mean of 200 tracked animals, not of
+  the population.
 - Seed-to-seed spread is large on this scenario (SD 3-8 animals), and the two Java seeds
   used until now (42, 43) are at the high end for `InnerDanishWaters`. Comparisons with
   two or three seeds per side are not reliable; use six or more.
@@ -345,14 +351,6 @@ All notable changes to CENOP-JASMINE are documented in this file.
   hybrid modules (`_update_movement_module_generic`) still end dispersal on straight-line
   displacement from the start point, not on path length. DEPONS parity applies to the CRW paths
   only.
-- **Remainder after the D15 port: a small energy undershoot (re-measured 2026-11-19).**
-  After the starting-population fix, on the v3.2 landscape with dispersal off, mean energy
-  at days 90 / 120 / 135 / 150 / 165 is 6.37 / 5.22 / 4.40 / 3.99 / 3.70 (s42) and
-  6.22 / 5.12 / 4.47 / 4.09 / 3.85 (s43), against DEPONS 6.36 / 5.24 / 4.59 / 4.09 / 3.79 and
-  6.33 / 5.31 / 4.67 / 4.17 / 3.88: 0.0-0.2 low (it was up to 0.31), with N within 4.5%.
-  The other two remainders are gone: deaths in days 165-180 are 176 / 199 against DEPONS
-  203 / 191 (were 169 / 160), and day-180 N with dispersal on is 565 / 533 against
-  528 / 546 (+7% / -2%; was +13% / +8%).
 - **JAX backend is about 5x slower per tick on real landscapes after the land-avoidance port**
   (about 70 ms against 13 ms before, at 2000 animals; Numba about 7 ms). JAX stays opt-in; a
   follow-up can compact the still-needing agents in the land-check loop.

@@ -557,6 +557,15 @@ proposed, not measured.
   remainder is closed: it was the starting pregnancy state (few animals lactating, so few
   paying the lactation cost around day 165). The energy undershoot is smaller but still
   one-sided.
+- **Withdrawn 2026-11-19: there is no energy undershoot.** Eight Java seeds
+  (`scripts/investigations/2026-11-18-dispersal-idw/scenarios/off_1yr_seeds.json`,
+  population-wide mean from `Statistics.csv`) against six CENOP seeds, dispersal off, one
+  year. Mean energy at days 90 / 120 / 135 / 150 / 165: Java 6.32 / 5.15 / 4.42 / 3.93 / 3.70
+  (seed SD about 0.1), CENOP 6.34 / 5.21 / 4.48 / 4.01 / 3.74; differences +0.02 to +0.08,
+  at most 1.1 standard errors. N at days 90 / 120 / 150 / 165 / 180: Java 1762 / 1460 / 1009
+  / 772 / 574, CENOP 1751 / 1450 / 1000 / 774 / 576. The DEPONS energy values used in this
+  section until now (6.36 / 5.24 / 4.59 / 4.09 / 3.79) were means over the 200 tracked
+  animals of one run, which sit 0.1-0.2 above the population mean of that scenario.
 
 **Step 4: combined check, dispersal on (fixed code `e016fe4`) + port, against DEPONS PSM-Type2**
 (`cenop_disp_rates.py <dir> stock 180 120 <seed> --d15-port`; seed 42 / seed 43):

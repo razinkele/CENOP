@@ -32,9 +32,10 @@ Verified against DEPONS-Java on the same (v3.2 Kattegat) landscape, 2000 animals
 population follows Java in both `PSM-Type2` and `InnerDanishWaters`, and the share of animals
 per 40 km block correlates at 0.995-0.997.
 
-Known differences that remain: a 0.0-0.2 energy undershoot with dispersal off, and non-CRW
-movement modules ending dispersal on straight-line distance. Year-1 `InnerDanishWaters`
-populations agree with DEPONS when enough seeds are used (eight Java, six CENOP). Calf memory (row 3.15) and the
+Known differences that remain: non-CRW movement modules end dispersal on straight-line
+distance. With eight Java and six CENOP seeds, population agrees in every year under
+`InnerDanishWaters` and `PSM-Type2`, and population and mean energy agree through year 1
+with dispersal off; the earlier "energy undershoot" was a sampling artefact. Calf memory (row 3.15) and the
 memory-update order when dispersing (D16) were fixed on 2026-11-19.
 
 ---

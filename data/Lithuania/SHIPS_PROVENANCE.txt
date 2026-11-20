@@ -1,8 +1,8 @@
-Ship file written 2026-11-20 by scripts/build_ships_from_ais.py
+Ship file written 2026-11-21 by scripts/build_ships_from_ais.py
 Window: 2024-08-12 00:00 UTC, 15 days; routes span 721 ticks and repeat
-Input: ais_lithuania_2024-08-12_15d.parquet: 1494820 positions of 1413 vessels, of which 862568 (58%) on the landscape's water
-Output: 3069 passages of 1136 vessels (moored ships and passages shorter than one hour dropped)
-Types: {'Bulker': 1389, 'Tanker': 447, 'Passenger': 432, 'Tug': 270, 'Other': 234, 'Fishing': 117, 'Government/Research': 96, 'Recreational': 47, 'Dredger': 21, 'Naval': 16}
-Lengths: 1621 passages from --lengths, the rest the median length of their class in DEPONS's Kattegat ship file
-Speed while moving (knots): median 9.9, p10 3.0, p90 15.5
+Input: ais_lithuania_2024-08-12_15d.parquet: 1494820 positions of 1413 vessels, of which 1003341 (67%) on the landscape's water
+Output: 3469 passages of 1201 vessels (moored ships and passages shorter than one hour dropped)
+Types: {'Bulker': 1510, 'Tanker': 458, 'Passenger': 445, 'Tug': 363, 'Other': 325, 'Fishing': 126, 'Government/Research': 122, 'Recreational': 56, 'Dredger': 41, 'Naval': 23}
+Lengths: 1758 passages from --lengths, the rest the median length of their class in DEPONS's Kattegat ship file
+Speed while moving (knots): median 9.7, p10 2.8, p90 15.4
 Source: Raw AIS from aisstream.io for the Baltic, 29 Jul - 27 Oct 2024: Huetten, M. (2025), figshare, CC BY 4.0, doi:10.6084/m9.figshare.29062715 (aisstream.io's own terms not checked). Window 2024-08-12 to 2024-08-27, positions inside the landscape extent and on its water. Ship lengths, where known, from Danish Maritime Authority AIS static records of 2024-08-14 and 2025-06-24 (contains data from the Danish Maritime Authority).

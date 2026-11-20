@@ -88,6 +88,35 @@ All notable changes to CENOP-JASMINE are documented in this file.
 - Present in every release so far. All seeded results change (one fewer random draw at
   setup and a different starting state); the Kattegat reference baselines are regenerated.
 
+### Deprecated — the JAX backend (2026-11-20)
+- `use_jax=True` now raises a `FutureWarning`. The backend still runs where it ran before,
+  but model changes are no longer ported to it and it will be removed in a later release.
+- Reasons and the options considered: `docs/decisions/2026-11-20-backends.md` (roadmap B1).
+  The Cython kernel is kept.
+
+### Changed — faster tick, same results (roadmap B2, 2026-11-20)
+- Kattegat tick at 2000 animals: 8.50 -> 4.94 ms with `InnerDanishWaters`, 9.59 -> 7.41 ms
+  with `PSM-Type2`. Seeded results are bit-identical.
+- The `InnerDanishWaters` dispersal step runs in one compiled call, and the two
+  reference-memory kernels no longer take a modulo per remembered position.
+- Profile and measurements: `docs/performance/2026-11-20-tick-profile.md`.
+
+### Fixed — backlog pass 3 (2026-11-20)
+- **`InnerDanishWaters`: eating cell after a stop with a move.** When the mode moved an
+  animal and stopped it in the same tick, the animal ate at the cell it was moved to, and a
+  land rollback returned it there. DEPONS uses the position at the start of the tick for
+  both. The case is rare (222 of 8.1 million animal-ticks in 90 days, 2000 animals), but
+  seeded `InnerDanishWaters` results change; the Kattegat baselines are regenerated
+  (undisturbed 2000 -> 97 at day 360 -> 33 at day 1800; turbines -> 80 and ships -> 62 at
+  day 720; before: 96, 36, 75 and 71). These are single-seed runs and the changes are within
+  the spread between seeds; the A2 comparison was not repeated.
+- **JASMINE physics movement: step length (deep-review finding #17).** The simplified step
+  reused the previous step length, so every animal moved about 1.58 cells per tick for the
+  whole run. The length is now redrawn each tick with the DEPONS step model.
+- **JASMINE physics and hybrid movement ignored `random_seed`.** Both modules drew from an
+  unseeded generator. They now use the population's generator, so runs in these modes are
+  reproducible. The default movement (DEPONS random walk) was not affected.
+
 ### Added — A2 cross-validation against DEPONS 3.2
 - `validation/a2/`: four scenarios (undisturbed InnerDanishWaters, PSM-Type2 and dispersal
   off; ships), eight seeds per model, seven metrics with pass bands fixed in advance, a
@@ -390,8 +419,8 @@ All notable changes to CENOP-JASMINE are documented in this file.
   displacement from the start point, not on path length. DEPONS parity applies to the CRW paths
   only.
 - **JAX backend is about 5x slower per tick on real landscapes after the land-avoidance port**
-  (about 70 ms against 13 ms before, at 2000 animals; Numba about 7 ms). JAX stays opt-in; a
-  follow-up can compact the still-needing agents in the land-check loop.
+  (about 70 ms against 13 ms before, at 2000 animals; Numba about 7 ms). JAX is deprecated since
+  2026-11-20 (see Deprecated above), so this will not be fixed.
 - **Known deviations from DEPONS introduced by the land-avoidance port:** beh-5 depth ties use a
   fixed neighbour order (DEPONS shuffles); look-ahead points are reflected at the grid edge as in
   DEPONS's BouncyBorders, but beh-5 neighbours outside the grid read as land.
@@ -407,10 +436,7 @@ All notable changes to CENOP-JASMINE are documented in this file.
   A land-wins rule was tried and is worse (2% of the water lost, lagoons split).
 - ~~The simulation never reads the `dispersal` parameter~~ Fixed 2026-11-18: all four modes
   take effect (see Added and Fixed above). The Kattegat baselines use `InnerDanishWaters` since 2026-11-19.
-- **`InnerDanishWaters`: eating cell after a stop with a move (found 2026-11-18).** In the
-  rare tick where the mode moves an animal and then stops (the 1-cell move north of Funen
-  followed by a phase-2 stop, or a step back that bounced off the grid edge), CENOP lets the
-  animal eat at the cell it was moved to; DEPONS uses its start-of-tick cell.
+- ~~`InnerDanishWaters`: eating cell after a stop with a move~~ Fixed 2026-11-20 (see Fixed, backlog pass 3).
 
 ### CI & docs
 - The CI lint gate now also checks `validation/` (the harness package)

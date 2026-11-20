@@ -7,7 +7,7 @@
 
 ---
 
-## Status as of 2026-11-19 (read this first)
+## Status as of 2026-11-20 (read this first)
 
 The tables below were written on 2026-03-21 by reading the two code bases side by side. Work in
 November 2026 compared CENOP with runs of the DEPONS 3.2 release and found that several rows
@@ -27,13 +27,19 @@ What was found and fixed (details in `CHANGELOG.md` and `docs/superpowers/specs/
 | Starting population | Half the animals were male; only mature females started pregnant | Fixed 2026-11-18: females only, DEPONS pregnancy at setup |
 | Daily step | Ageing per tick, no tick-1 daily step, lactation charge on the abandonment tick, weaned calves dropped when full | Fixed 2026-11-19 |
 | Grid units | Lithuania (1 km) and CentralBaltic (250 m) ran with 400 m conversions | Fixed 2026-11-19: resampled to 400 m when loaded |
+| Ships | Ships stranded after one passage; ship sound used a spreading formula at the animal's cell | Fixed 2026-11-19/20: DEPONS route movement, WestonFlux at the ship's position |
+| InnerDanishWaters eating cell | After a stop with a move the animal ate at the cell it was moved to | Fixed 2026-11-20: start-of-tick cell, as DEPONS |
 
 Verified against DEPONS-Java on the same (v3.2 Kattegat) landscape, 2000 animals, 5 years: the
 population follows Java in both `PSM-Type2` and `InnerDanishWaters`, and the share of animals
 per 40 km block correlates at 0.995-0.997.
 
+Quantitative comparison with eight seeds per model, four scenarios including ships:
+`docs/validation/A2-parity-report.md` (every metric passes).
+
 Known differences that remain: non-CRW movement modules end dispersal on straight-line
-distance. With eight Java and six CENOP seeds, population agrees in every year under
+distance; land-avoidance depth ties use a fixed neighbour order (DEPONS shuffles); four
+dispersal types (PSM-Type1, PSM-Type3 and its two variants) are not selectable. With eight Java and six CENOP seeds, population agrees in every year under
 `InnerDanishWaters` and `PSM-Type2`, and population and mean energy agree through year 1
 with dispersal off; the earlier "energy undershoot" was a sampling artefact. Calf memory (row 3.15) and the
 memory-update order when dispersing (D16) were fixed on 2026-11-19.

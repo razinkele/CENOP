@@ -224,22 +224,55 @@ class TestDisperseStep:
         pop._update_dispersal(pop.active_mask)
         assert pop.is_dispersing[1]
 
-    @pytest.mark.parametrize(
-        "module_cls, generic",
-        [(JASMINEPhysicsMovement, True), (DEPONSCRWMovementVectorized, False)],
-    )
-    def test_displacement_completion_only_on_generic_module_path(self, module_cls, generic):
-        # Non-CRW modules skip _disperse_step and track no path length, so they keep the
-        # straight-line rule; the CRW-module path completes on path length only.
-        params = SimulationParameters(random_seed=1, communication_enabled=False)
-        pop = PorpoisePopulation(4, params, movement_module=module_cls(params))
-        _disperser(pop, 0, 100.0, 100.0, 90.0, target_dist=self.T)
-        pop.x[0] = 100.0 + 0.95 * self.T
-        _disperser(pop, 1, 100.0, 300.0, 90.0, target_dist=self.T)
-        pop.x[1] = 100.0 + 0.9 * self.T
+    @staticmethod
+    def _generic_pop(dispersal="PSM-Type2"):
+        params = SimulationParameters(
+            random_seed=1, communication_enabled=False, dispersal=dispersal
+        )
+        return PorpoisePopulation(4, params, movement_module=JASMINEPhysicsMovement(params))
+
+    def test_generic_path_completes_psm_type2_on_path_length(self):
+        """Non-CRW modules use the same rule as the CRW path: path length >= 0.95 * target."""
+        pop = self._generic_pop()
+        _disperser(pop, 0, 100.0, 100.0, 90.0, target_dist=self.T, traveled=0.95 * self.T)
+        _disperser(pop, 1, 100.0, 300.0, 90.0, target_dist=self.T, traveled=0.0)
+        pop.x[1] = 100.0 + 0.95 * self.T  # far from its start, but has not travelled
         pop._update_dispersal(pop.active_mask)
-        assert bool(pop.is_dispersing[0]) is not generic
+        assert not pop.is_dispersing[0]
         assert pop.is_dispersing[1]
+
+    def test_generic_path_completes_undirected_on_displacement(self):
+        pop = self._generic_pop("Undirected")
+        _disperser(pop, 0, 100.0, 100.0, 90.0, target_dist=self.T, traveled=0.0)
+        pop.x[0] = 100.0 + self.T
+        _disperser(pop, 1, 100.0, 300.0, 90.0, target_dist=self.T, traveled=5.0 * self.T)
+        pop.x[1] = 100.0 + 0.95 * self.T
+        pop._update_dispersal(pop.active_mask)
+        assert not pop.is_dispersing[0]
+        assert pop.is_dispersing[1]
+
+    def test_generic_path_accumulates_path_length(self):
+        pop = self._generic_pop()
+        _disperser(pop, 0, 100.0, 100.0, 90.0, target_dist=1e9)
+        before = float(pop.dispersal_distance_traveled[0])
+        steps = 0.0
+        for _ in range(5):
+            pop._update_movement_module_generic(pop.active_mask, None, None)
+            steps += float(pop._step_dist[0])
+            pop.x[0] += pop._dx[0]
+            pop.y[0] += pop._dy[0]
+        assert steps > 0
+        assert float(pop.dispersal_distance_traveled[0]) - before == pytest.approx(steps, rel=1e-5)
+        assert pop.dispersal_distance_traveled[1] == 0.0  # not dispersing
+
+    def test_crw_module_path_is_untouched_by_update_dispersal(self):
+        """The CRW-module path completes in _disperse_step, never in _update_dispersal."""
+        params = SimulationParameters(random_seed=1, communication_enabled=False)
+        pop = PorpoisePopulation(4, params, movement_module=DEPONSCRWMovementVectorized(params))
+        _disperser(pop, 0, 100.0, 100.0, 90.0, target_dist=self.T, traveled=self.T)
+        pop.x[0] = 100.0 + self.T
+        pop._update_dispersal(pop.active_mask)
+        assert pop.is_dispersing[0]
 
     def test_zero_target_distance_completes_without_nan(self):
         pop = _pop()

@@ -1699,6 +1699,11 @@ class PorpoisePopulation:
         self._dy[mask] = result.dy[mask]
         self.heading[mask] = result.new_heading[mask]
         self._step_dist[mask] = result.step_distance[mask]
+
+        # Path length while dispersing, for PSM-Type2 completion (see _update_dispersal)
+        dispersing = mask & self.is_dispersing
+        if dispersing.any():
+            self.dispersal_distance_traveled[dispersing] += self._step_dist[dispersing]
         self.prev_angle[mask] = result.turning_angle[mask]
 
         # Update prev_log_mov from step distance
@@ -4038,9 +4043,10 @@ class PorpoisePopulation:
         - CRW paths (inline, or a DEPONSCRWMovement module): path-length completion only,
           checked at the start of the next tick by _disperse_step (DEPONS parity).
         - Non-CRW module path (_update_movement_module_generic: JASMINE physics, hybrid): it
-          runs no _disperse_step and tracks no path length, so dispersal ends here once the
-          straight-line distance from the start point reaches 0.95 * target distance (the
-          full target distance for Undirected).
+          runs no _disperse_step, so dispersal ends here, by the same rule as the CRW paths:
+          path length >= 0.95 * target distance for PSM-Type2, straight-line distance from
+          the start point >= target distance for Undirected. It is checked at the end of the
+          tick, where the CRW paths check at the start of the next one.
         """
         dispersing = mask & self.is_dispersing
         if not dispersing.any():
@@ -4057,16 +4063,20 @@ class PorpoisePopulation:
         if not dispersing.any() or self._movement_module is None:
             return
 
-        # --- Straight-line completion, non-CRW module path only (see docstring) ---
+        # --- Completion, non-CRW module path only (see docstring) ---
         from cenop.movement.depons_crw import DEPONSCRWMovement
 
         if isinstance(self._movement_module, DEPONSCRWMovement):
             return
-        dx = self.x - self.dispersal_start_x
-        dy = self.y - self.dispersal_start_y
-        distances = np.sqrt(dx * dx + dy * dy)
-        factor = 1.0 if self._dispersal_mode == "Undirected" else 0.95
-        completed = dispersing & (distances >= factor * self.dispersal_target_distance)
+        if self._dispersal_mode == "Undirected":
+            displacement = np.hypot(
+                self.x - self.dispersal_start_x, self.y - self.dispersal_start_y
+            )
+            completed = dispersing & (displacement >= self.dispersal_target_distance)
+        else:
+            completed = dispersing & (
+                self.dispersal_distance_traveled >= 0.95 * self.dispersal_target_distance
+            )
         if completed.any():
             self._end_dispersal(completed)
 

@@ -5,6 +5,12 @@ All notable changes to CENOP-JASMINE are documented in this file.
 ## [Unreleased]
 
 ### Changed
+- **JASMINE physics and hybrid movement: dispersal ends by the same rule as the default
+  movement.** These modules ended `PSM-Type2` dispersal once the straight-line distance from
+  the start reached 95% of the target, because they did not track the path length. They now
+  track it and end on path length, as the default movement and DEPONS do (`Undirected` still
+  ends on straight-line distance, as in DEPONS). Only runs with these movement modules
+  change; the default movement is untouched.
 - **Runs with ships are about 2.6 times faster, with identical results.** A Kattegat tick
   with ship traffic takes about 34 ms where it took about 88 ms (2000 animals). The ship
   deterrence calculation handles all ships in one pass, finds the in-range pairs in
@@ -463,10 +469,7 @@ results of every earlier version differ. See `docs/validation/A2-parity-report.m
 ### Known issues (found 2026-11-10, not yet fixed)
 - **JASMINE social vector scaling.** When enabled, the social vector overrides the DEPONS random
   walk under realistic food. It needs rescaling before social behaviour is used in science runs.
-- **Non-CRW movement modules keep the old dispersal completion.** The JASMINE physics and
-  hybrid modules (`_update_movement_module_generic`) still end dispersal on straight-line
-  displacement from the start point, not on path length. DEPONS parity applies to the CRW paths
-  only.
+- ~~Non-CRW movement modules keep the old dispersal completion~~ Fixed after 2.3.0 (see Unreleased).
 - **JAX backend is about 5x slower per tick on real landscapes after the land-avoidance port**
   (about 70 ms against 13 ms before, at 2000 animals; Numba about 7 ms). JAX is deprecated since
   2026-11-20 (see Deprecated above), so this will not be fixed.

@@ -37,9 +37,11 @@ per 40 km block correlates at 0.995-0.997.
 Quantitative comparison with eight seeds per model, four scenarios including ships:
 `docs/validation/A2-parity-report.md` (every metric passes).
 
-Known differences that remain: non-CRW movement modules end dispersal on straight-line
-distance; four
-dispersal types (PSM-Type1, PSM-Type3 and its two variants) are not selectable. With eight Java and six CENOP seeds, population agrees in every year under
+Not ported: four dispersal types (PSM-Type1, PSM-Type3 and its two variants). They exist in
+the DEPONS 3.2 code but DEPONS does not offer them either: its `parameters.xml` lists only
+`off`, `PSM-Type2`, `Undirected` and `InnerDanishWaters`, the four CENOP has.
+
+With eight Java and six CENOP seeds, population agrees in every year under
 `InnerDanishWaters` and `PSM-Type2`, and population and mean energy agree through year 1
 with dispersal off; the earlier "energy undershoot" was a sampling artefact. Calf memory (row 3.15) and the
 memory-update order when dispersing (D16) were fixed on 2026-11-19.
@@ -119,7 +121,7 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 | 3.13 | Undirected dispersal | `UndirectedDispersal.java` | `UndirectedDispersal` | **MATCH** | Wired 2026-11-18 (`agents/population.py`); refused on the JAX path |
 | 3.14 | InnerDanishWaters dispersal | `InnerDanishWatersDispersal.java` | `InnerDanishWatersDispersal` | **MATCH** | Scalar port in `agents/dispersal_idw.py`, wired 2026-11-18, Kattegat only; replayed against Java's tracked animal with zero mismatches over 2,461 dispersing ticks |
 | 3.15 | Calf PSM inheritance | `calfHasPSM()`/`calfInheritsPsmDist()` | `copy_for_calf()` | **MATCH** | Fixed 2026-11-19: sparse calf memory filled while the mother nurses (PSM-Type2), mother's preferred distance inherited (PSM types, off), new draw otherwise |
-| 3.16 | Dispersal types coverage | 8 types (Off, T1-T3, T3randdir, T3randdist, IDW, Undirected) | All 8 types | **GAP** | 4 of 8 selectable: Off, PSM-Type2, Undirected, InnerDanishWaters |
+| 3.16 | Dispersal types coverage | 8 types (Off, T1-T3, T3randdir, T3randdist, IDW, Undirected) | All 8 types | **GAP** | 4 of 8 selectable: Off, PSM-Type2, Undirected, InnerDanishWaters, the same four DEPONS 3.2 offers in `parameters.xml` |
 
 ---
 

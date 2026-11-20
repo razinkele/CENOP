@@ -22,7 +22,8 @@ Cells use CENOP's lookup: floor of the position, depth indexed [y, x]; NaN reads
 (DEPONS getDepth). Look-ahead points (the ahead point, every path sample, every escape point)
 are first reflected into [0, W) x [0, H), as DEPONS's BouncyBorders translate does on every
 non-homogeneous landscape (PorpoiseSimBuilder 214-220), so an open-water grid edge does not read
-as land. Only beh-5 neighbour cells outside the grid read as -9999.
+as land. beh 5 considers only the neighbour cells inside the grid, as DEPONS's Repast
+neighbourhood does on a grid that is not periodic.
 Heading 0 is north (+y), 90 east (+x).
 
 The kernel loops over agents sequentially: the jitter comes from np.random.uniform inside it, so
@@ -185,13 +186,20 @@ def _py(
             # DEPONS shuffles the neighbours and keeps the first deepest one
             # (Agent.getNeighbors), so a tie is broken uniformly at random. Here the tied
             # neighbours are counted and one random number is drawn only when there is a tie:
-            # runs without ties keep their random stream.
-            best = 0
-            best_d = _depth_at(depth, cx + _NB_DX[0] + 0.5, cy + _NB_DY[0] + 0.5)
-            n_best = 1
-            for k in range(1, 8):
-                d = _depth_at(depth, cx + _NB_DX[k] + 0.5, cy + _NB_DY[k] + 0.5)
-                if d > best_d:
+            # runs without ties keep their random stream. Neighbours outside the grid are
+            # left out, as in DEPONS (Repast GridCellNgh on a grid that is not periodic).
+            width = depth.shape[1]
+            height = depth.shape[0]
+            best = -1
+            best_d = 0.0
+            n_best = 0
+            for k in range(8):
+                nx = cx + _NB_DX[k]
+                ny = cy + _NB_DY[k]
+                if nx < 0 or ny < 0 or nx >= width or ny >= height:
+                    continue
+                d = _depth_at(depth, nx + 0.5, ny + 0.5)
+                if best < 0 or d > best_d:
                     best_d = d
                     best = k
                     n_best = 1
@@ -200,11 +208,17 @@ def _py(
             if n_best > 1:
                 pick = min(int(np.random.uniform(0.0, 1.0) * n_best), n_best - 1)
                 for k in range(8):
-                    if _depth_at(depth, cx + _NB_DX[k] + 0.5, cy + _NB_DY[k] + 0.5) == best_d:
+                    nx = cx + _NB_DX[k]
+                    ny = cy + _NB_DY[k]
+                    if nx < 0 or ny < 0 or nx >= width or ny >= height:
+                        continue
+                    if _depth_at(depth, nx + 0.5, ny + 0.5) == best_d:
                         if pick == 0:
                             best = k
                             break
                         pick -= 1
+            if best < 0:  # no neighbour inside the grid: a one-cell grid; keep the heading
+                best = 0
             tx = cx + _NB_DX[best] + 0.5
             ty = cy + _NB_DY[best] + 0.5
             h = math.atan2(tx - px, ty - py) / _DEG

@@ -319,6 +319,32 @@ def test_beh5_unique_deepest_neighbour_takes_no_extra_draw(run):
         assert _turn_of_second(run, depth, seed) != first
 
 
+def test_beh5_ignores_neighbours_outside_the_grid(run):
+    """DEPONS's neighbourhood is cut off at the grid border (Repast GridCellNgh, not periodic),
+    so an animal on the edge can only face a cell inside the grid, even if all of them are
+    land and so tie with what CENOP reads outside the grid."""
+    depth = _grid(depth=np.nan)  # NaN reads as -9999, the same as off the grid
+    depth[30, 0] = 0.5  # the animal's own cell, on the west edge
+    seen = set()
+    for seed in range(80):
+        a = _one(x=0.5, y=30.5)
+        run(a, depth, seed=seed)
+        assert a["log_mov"][0] == 0.0 and not a["out_enough"][0]  # beh 5
+        seen.add(round(float(a["heading"][0])) % 360)
+    assert seen == {0, 45, 90, 135, 180}  # the five neighbours inside the grid, never west
+
+
+def test_beh5_corner_cell_has_three_neighbours(run):
+    depth = _grid(depth=np.nan)
+    depth[0, 0] = 0.5
+    seen = set()
+    for seed in range(60):
+        a = _one(x=0.5, y=0.5)
+        run(a, depth, seed=seed)
+        seen.add(round(float(a["heading"][0])) % 360)
+    assert seen == {0, 45, 90}
+
+
 def test_beh5_nan_neighbour_is_land(run):
     depth = _grid(depth=-1.0)
     depth[29:32, 29:32] = 0.5
@@ -721,14 +747,21 @@ def _reference_always_rechecks(
         if not enough:
             cx = int(math.floor(px))
             cy = int(math.floor(py))
-            # beh 5 as in the kernel: a tie for the deepest neighbour is broken with one draw
-            ds = [
-                land_check._depth_at(
+            # beh 5 as in the kernel: neighbours inside the grid only; a tie for the deepest
+            # one is broken with one draw
+            inside = [
+                k
+                for k in range(8)
+                if 0 <= cx + land_check._NB_DX[k] < depth.shape[1]
+                and 0 <= cy + land_check._NB_DY[k] < depth.shape[0]
+            ]
+            ds = {
+                k: land_check._depth_at(
                     depth, cx + land_check._NB_DX[k] + 0.5, cy + land_check._NB_DY[k] + 0.5
                 )
-                for k in range(8)
-            ]
-            tied = [k for k in range(8) if ds[k] == max(ds)]
+                for k in inside
+            }
+            tied = [k for k in inside if ds[k] == max(ds.values())]
             best = tied[0]
             if len(tied) > 1:
                 best = tied[min(int(np.random.uniform(0.0, 1.0) * len(tied)), len(tied) - 1)]

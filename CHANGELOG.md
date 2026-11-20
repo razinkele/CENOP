@@ -95,7 +95,9 @@ All notable changes to CENOP-JASMINE are documented in this file.
 - **Undisturbed: no metric fails.** Population within 4.2% and 1.6 standard errors at every
   checkpoint, mean energy within 0.13, block shares correlated at 0.999, age at death
   indistinguishable.
-- **Ships: not yet in agreement** (see Fixed and Known issues below).
+- **Ships: no metric fails on the third run**, after the comparison found two defects in
+  CENOP's ship code (next section). Exposure to ship noise 0.193 of animal-ticks against
+  0.192 in DEPONS; population within 4.1% at every checkpoint. Only the first run was blind.
 
 ### Fixed — ship movement along a route (changes every run with ships)
 - Found by the A2 ship scenario. CENOP skipped the wait at a route's first waypoint and,
@@ -108,6 +110,14 @@ All notable changes to CENOP-JASMINE are documented in this file.
   deterrence 0.021 -> 0.283 (DEPONS 0.192); population with ships relative to undisturbed at
   the end of year 1, 0.994 -> 0.911 (DEPONS 0.918).
 - A run with ships is also much faster: the ship baseline takes about 45 minutes.
+- **Ship sound as in DEPONS by default.** After the movement fix animals still reacted to
+  ships 1.45 times as often as in DEPONS. Transmission loss used a spreading formula unless
+  `weston_flux_percell` was switched on, where DEPONS always uses WestonFlux for ships; depth,
+  sediment and salinity were read at the animal's cell instead of at the ship's position;
+  the water temperature was 12 degrees instead of 10; and the simulation used a fixed
+  6-18 h day instead of the landscape's `suntimes.csv`. All four now follow DEPONS;
+  `weston_flux_percell` defaults to on (the switch remains, to fall back to the spreading
+  formula). Exposure 0.283 -> 0.193 (DEPONS 0.192).
 
 ### Validation — population against DEPONS-Java with eight Java seeds per mode (2026-11-19)
 - Same landscape (v3.2 Kattegat), 2000 animals, undisturbed, five years; DEPONS-Java seeds
@@ -385,15 +395,6 @@ All notable changes to CENOP-JASMINE are documented in this file.
 - **Known deviations from DEPONS introduced by the land-avoidance port:** beh-5 depth ties use a
   fixed neighbour order (DEPONS shuffles); look-ahead points are reflected at the grid edge as in
   DEPONS's BouncyBorders, but beh-5 neighbours outside the grid read as land.
-- **Ship noise: CENOP animals react more often than in DEPONS (found 2026-11-19).** On
-  Kattegat with ships, 28.3% of animal-ticks have ship deterrence against 19.2% in DEPONS
-  (ratio about 1.45 all year); population at day 90 is 2.2% lower and mean energy at day 30
-  is 0.11 lower. The effect of ships on the year-1 population agrees. Cause open; the
-  position at which sound propagation reads depth, sediment and salinity, and the reaction
-  draws, have not been checked. The ship baseline will change when this is resolved.
-- **The landscape's sunrise table is not used.** DEPONS reads `suntimes.csv` for day and
-  night; CENOP's simulation uses a fixed 6-18 h day. Ship reactions differ between day and
-  night, so this shifts ship exposure slightly (0.260 -> 0.249 over 20 days).
 - **Lithuania and CentralBaltic have placeholder food layers.** Food is present on every
   water cell (Kattegat has food patches on 1.6% of cells). On the 400 m grid each of the
   6.25 new cells carries the food value of its 1 km cell, so food per km2 is 6.25 times

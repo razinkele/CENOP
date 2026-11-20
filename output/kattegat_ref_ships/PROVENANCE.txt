@@ -1,9 +1,10 @@
 Kattegat reference baselines — PROVENANCE
 =========================================
 
-Date generated:   2026-11-19
+Date generated:   2026-11-19 (ships 2026-11-20)
 Producing code:   branch feat/kattegat-v32-canonical, undisturbed and turbines at 1cfa8b0, ships
-                  at 80c6aa5 (the ship movement fix, which does not affect runs without ships)
+                  at bbe57bc (ship movement and ship sound as in DEPONS; neither affects runs
+                  without ships)
 Landscape:        data/Kattegat = DEPONS v3.2 Kattegat landscape (600x1000 cells of 400 m),
                   5,148 ships from data/Kattegat/ships.json
 Dispersal:        InnerDanishWaters, the mode DEPONS prescribes for Kattegat (TRACE 3.2,
@@ -26,25 +27,23 @@ DEPONS v3.0 landscape (undisturbed 2000 -> 33 in 5 years, ships -> 88 and turbin
   - Dispersal mode InnerDanishWaters instead of PSM-Type2.
   - Reference memory on a dispersal move (D16), calf spatial memory, InnerDanishWaters
     heading at the grid edge.
+  - Ship sound as in DEPONS (bbe57bc): WestonFlux at the ship's position, real day length.
   - Ship movement along a route as in DEPONS (80c6aa5). Before it, ships on Kattegat were
     either not loaded at all or stranded after their first passage, so earlier ship
     baselines carried almost no ship effect.
-
-KNOWN OPEN ISSUE: with ships, CENOP animals react to ship noise on 28% of animal-ticks
-against 19% in DEPONS (docs/validation/A2-parity-report.md). The ship baseline will change
-again when that is resolved.
 
 Run summary (population):
   - Undisturbed, 5 yr: 2000 -> 1898 (day 63) -> 249 (day 180) -> 96 (day 360)
     -> 80 (day 720) -> 75 -> 65 -> 36 (day 1800).
   - Turbines Kattegat-test, 2 yr: 2000 -> 220 (day 180) -> 86 (day 360)
     -> 85 (day 540) -> 75 (day 720).
-  - Ships, 2 yr: 2000 -> 249 (day 180) -> 87 (day 360) -> 81 (day 540)
-    -> 60 (day 720); 62,617 nonzero deter_strength records, max 0.2651.
+  - Ships, 2 yr: 2000 -> 252 (day 180) -> 86 (day 360) -> 86 (day 540)
+    -> 71 (day 720); 42,392 nonzero deter_strength records, max 0.2595.
 
 Against DEPONS-Java on the same landscape and mode (undisturbed): end of year 1, Java 92.9
 (eight seeds, SD 8.2), CENOP 91.5 (six seeds, SD 3.3); see
-docs/superpowers/specs/2026-11-18-dispersal-idw-java-comparison.md.
+docs/superpowers/specs/2026-11-18-dispersal-idw-java-comparison.md. With ships, eight seeds per
+model, year 1: every A2 metric passes (docs/validation/A2-parity-report.md).
 
 Committed files are the compact DEPONS-format outputs (Population.txt, Energy.txt,
 Mortality.txt) of the three directories plus this PROVENANCE.txt. The heavy per-individual /

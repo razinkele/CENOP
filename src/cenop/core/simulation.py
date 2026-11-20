@@ -11,6 +11,7 @@ JASMINE mode (flexible timestep, event-driven) via the TimeManager.
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -200,6 +201,19 @@ class Simulation:
                 self._cell_data = create_homogeneous_landscape()
             else:
                 self._cell_data = CellData(self.params.landscape)
+
+        # Day and night from the landscape's own sunrise table when it has one (DEPONS reads
+        # suntimes.csv from the landscape; ship reactions differ between day and night).
+        landscape_dir = getattr(self._cell_data, "data_dir", None)
+        landscape_name = getattr(self._cell_data, "landscape_name", None)
+        if (
+            landscape_dir is not None
+            and landscape_name
+            and not self.time_manager.suntimes.is_loaded
+        ):
+            suntimes_path = os.path.join(str(landscape_dir), landscape_name, "suntimes.csv")
+            if os.path.exists(suntimes_path):
+                self.time_manager.suntimes.load(suntimes_path)
 
         # Create initial porpoise population (Vectorized - Phase 3)
         from cenop.agents.population import PorpoisePopulation

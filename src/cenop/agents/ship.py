@@ -91,8 +91,8 @@ def _reaction_draw_rows(seed: list[int], rows: np.ndarray, steps: int) -> np.nda
 
 
 def _ship_received_level_from_env(source_level, dist_m, depths, grains, sal, params, weston):
-    """Received level (dB, clamped >= 0) from a ship, given the porpoise-cell environment
-    already fetched.
+    """Received level (dB, clamped >= 0) from a ship, given the environment already fetched
+    (at the ship's sub-position, as in DEPONS).
 
     WestonFlux per-cell when `weston` (using the supplied `depths`/`grains`/`sal`), else
     simple alpha/beta TL (env args ignored). NODATA on depth/grain/salinity OR TL <= 0 ->
@@ -123,12 +123,12 @@ def _ship_received_level_from_env(source_level, dist_m, depths, grains, sal, par
 
 
 def _ship_received_level(source_level, dist_m, px, py, params, cell_data, month, weston):
-    """Received level (dB, clamped >= 0) at the given porpoise positions for one ship.
+    """Received level (dB, clamped >= 0) for one ship, with the WestonFlux environment read
+    at the positions ``(px, py)``.
 
-    Fetches the per-cell WestonFlux environment at the porpoise positions (when `weston`)
-    then delegates to `_ship_received_level_from_env`. All array args are the in-range
-    subset; `source_level` is a scalar. NODATA/depth are evaluated at the PORPOISE position
-    (an accepted SoA divergence; DEPONS uses the ship cell).
+    DEPONS reads depth, sediment and salinity at the ship's (interpolated) position
+    (Ship.calculateReceivedLevelFor), so callers pass the ship's sub-position here. All array
+    args are the in-range subset; ``source_level`` is a scalar.
     """
     if weston:
         pos = np.column_stack((px, py))
@@ -548,8 +548,8 @@ class ShipManager:
                 _ship_received_level(
                     source_level,
                     np.array([dist_m]),
-                    np.array([porpoise_x]),
-                    np.array([porpoise_y]),
+                    np.array([ship.x]),  # environment at the ship, as DEPONS
+                    np.array([ship.y]),
                     params,
                     cell_data,
                     month,
@@ -694,16 +694,16 @@ class ShipManager:
             gdx_ir = gdx.ravel()[ir]
             gdy_ir = gdy.ravel()[ir]
 
-            # Fixed-per-tick porpoise-cell environment for WestonFlux: fetch ONCE per
-            # candidate (m lookups) -- depth/grain/salinity are at the porpoise cell and
-            # don't vary across the ship's sub-positions, only the distance does -- then
-            # index by the in-range pairs' porpoise rows. The per-pair TL formula still
-            # recomputes because distance varies.
+            # WestonFlux environment at the SHIP's sub-position, as DEPONS
+            # (Ship.calculateReceivedLevelFor(sourceLevel, position, distToShip) reads depth,
+            # sediment and salinity at `position`, the interpolated ship position): one lookup
+            # per sub-step, indexed by the in-range pairs' slot.
             if weston:
-                pos_c = np.column_stack((px_c, py_c))
-                depths_ir = cell_data.get_depths_vectorized(pos_c)[rows]
-                grains_ir = cell_data.get_sediments_vectorized(pos_c)[rows]
-                sal_ir = cell_data.get_salinities_vectorized(pos_c, month)[rows]
+                pos_s = np.column_stack((sub_x, sub_y))
+                slots = ir % STEPS
+                depths_ir = cell_data.get_depths_vectorized(pos_s)[slots]
+                grains_ir = cell_data.get_sediments_vectorized(pos_s)[slots]
+                sal_ir = cell_data.get_salinities_vectorized(pos_s, month)[slots]
             else:
                 depths_ir = grains_ir = sal_ir = None
             rl_ir = _ship_received_level_from_env(

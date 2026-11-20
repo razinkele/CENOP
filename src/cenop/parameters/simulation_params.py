@@ -160,7 +160,9 @@ class SimulationParameters:
     communication_source_level: float = 160.0  # Source level (dB re 1 µPa) of porpoise calls
     communication_threshold: float = 120.0  # RL for 50% detection probability (dB)
     communication_response_slope: float = 0.2  # Steepness of detection logistic
-    social_weight: float = 0.3  # Weight [0-1] of social attraction influence
+    # Social attraction as a fraction of the random walk's pull (uncalibrated; see
+    # docs/2026-11-20-social-weight.md)
+    social_weight: float = 0.3
 
     # How often (in ticks) to recompute neighbor topology for social calls. Reusing
     # the neighbor pairs for a few ticks can reduce per-tick overhead when agents

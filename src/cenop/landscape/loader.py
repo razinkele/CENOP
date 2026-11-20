@@ -25,6 +25,7 @@ SEDIMENT_FILE = "sediment.asc"
 PATCHES_FILE = "patches.asc"
 BLOCKS_FILE = "blocks.asc"
 PREY_FILE_PREFIX = "prey"
+CELL_400_M = 400.0  # DEPONS cell size (see cenop.landscape.resample)
 SALINITY_FILE_PREFIX = "salinity"
 
 
@@ -84,27 +85,43 @@ class LandscapeLoader:
         depth, metadata = self._load_asc(BATHY_FILE)
         dist_to_coast, _ = self._load_asc(DISTTOCOAST_FILE)
         sediment, _ = self._load_asc(SEDIMENT_FILE)
-        food_prob, _ = self._load_asc(PATCHES_FILE)
+        food_prob, food_meta = self._load_asc(PATCHES_FILE)
         blocks, _ = self._load_asc(BLOCKS_FILE)
 
         # Load monthly files
-        entropy = self._load_monthly(PREY_FILE_PREFIX)
+        entropy, entropy_metas = self._load_monthly_with_metadata(PREY_FILE_PREFIX)
         salinity = self._load_monthly(SALINITY_FILE_PREFIX)
+
+        # Food layers already on the 400 m grid of a landscape stored on another grid are used
+        # as written (DEPONS food patches are single 400 m cells); the rest is resampled below.
+        on_400 = {}
+        if metadata.cellsize != CELL_400_M:
+            if food_meta.cellsize == CELL_400_M:
+                on_400["food_prob"] = (food_prob, food_meta, PATCHES_FILE)
+            prey_cells = {m.cellsize for m in entropy_metas}
+            if prey_cells == {CELL_400_M}:
+                on_400["entropy"] = (entropy, entropy_metas[0], f"{PREY_FILE_PREFIX} files")
+            elif CELL_400_M in prey_cells:
+                raise ValueError(
+                    f"Landscape {self.landscape_name}: the monthly prey files mix 400 m and "
+                    "other cell sizes"
+                )
 
         # NODATA on a water cell silently breaks the model there (salinity -9999 forces every
         # CRW step to max_mov; patches/prey -9999 mean no food), so report it loudly.
-        gaps = nodata_on_water_counts(
-            depth,
-            {
-                "disttocoast": dist_to_coast,
-                "sediment": sediment,
-                "patches": food_prob,
-                "blocks": blocks,
-                "prey": entropy,
-                "salinity": salinity,
-            },
-            metadata.nodata_value,
-        )
+        native = {
+            "disttocoast": dist_to_coast,
+            "sediment": sediment,
+            "patches": food_prob,
+            "blocks": blocks,
+            "prey": entropy,
+            "salinity": salinity,
+        }
+        if "food_prob" in on_400:
+            del native["patches"]
+        if "entropy" in on_400:
+            del native["prey"]
+        gaps = nodata_on_water_counts(depth, native, metadata.nodata_value)
         gaps = {name: n for name, n in gaps.items() if n}
         if gaps:
             logger.warning(
@@ -117,18 +134,46 @@ class LandscapeLoader:
         from cenop.landscape.resample import resample_to_400m
 
         # The model assumes DEPONS's 400 m cells; other grids are resampled here.
-        return resample_to_400m(
+        out = resample_to_400m(
             {
                 "metadata": metadata,
                 "depth": depth,
                 "dist_to_coast": dist_to_coast,
                 "sediment": sediment,
-                "food_prob": food_prob,
+                "food_prob": None if "food_prob" in on_400 else food_prob,
                 "blocks": blocks.astype(int),
-                "entropy": entropy,
+                "entropy": None if "entropy" in on_400 else entropy,
                 "salinity": salinity,
             }
         )
+        grid = out["metadata"]
+        for key, (arr, meta, name) in on_400.items():
+            same_corner = (
+                abs(meta.xllcorner - grid.xllcorner) < 1.0
+                and abs(meta.yllcorner - grid.yllcorner) < 1.0
+            )
+            if not same_corner or (meta.nrows, meta.ncols) != (grid.nrows, grid.ncols):
+                raise ValueError(
+                    f"Landscape {self.landscape_name}: {name} on 400 m cells must match the "
+                    f"resampled grid ({grid.ncols} x {grid.nrows} from "
+                    f"{grid.xllcorner:g}, {grid.yllcorner:g}); got {meta.ncols} x {meta.nrows} "
+                    f"from {meta.xllcorner:g}, {meta.yllcorner:g}"
+                )
+            out[key] = arr
+        if on_400:
+            late = {name: out[key] for key, (_, _, name) in on_400.items()}
+            late_gaps = {
+                n: c
+                for n, c in nodata_on_water_counts(out["depth"], late, grid.nodata_value).items()
+                if c
+            }
+            if late_gaps:
+                logger.warning(
+                    "Landscape %s: 400 m water cells with NODATA: %s",
+                    self.landscape_name,
+                    ", ".join(f"{name} {n}" for name, n in late_gaps.items()),
+                )
+        return out
 
     def _load_asc(self, filename: str) -> tuple[np.ndarray, LandscapeMetadata]:
         """
@@ -213,6 +258,12 @@ class LandscapeLoader:
         return data_array, metadata
 
     def _load_monthly(self, prefix: str) -> np.ndarray:
+        """Load 12 monthly data files as an array of shape (12, height, width)."""
+        return self._load_monthly_with_metadata(prefix)[0]
+
+    def _load_monthly_with_metadata(
+        self, prefix: str
+    ) -> tuple[np.ndarray, list[LandscapeMetadata]]:
         """
         Load 12 monthly data files.
 
@@ -224,9 +275,10 @@ class LandscapeLoader:
             prefix: File prefix (e.g., 'prey' or 'salinity')
 
         Returns:
-            Array of shape (12, height, width)
+            Array of shape (12, height, width) and each month's grid metadata
         """
         monthly_data = []
+        metas = []
 
         for month in range(1, 13):
             # Try short name first, then DEPONS long name
@@ -234,11 +286,13 @@ class LandscapeLoader:
             long = f"{prefix}0000_{month:02d}.asc"
 
             if (self.landscape_path / short).exists():
-                data, _ = self._load_asc(short)
+                data, meta = self._load_asc(short)
                 monthly_data.append(data)
+                metas.append(meta)
             elif (self.landscape_path / long).exists():
-                data, _ = self._load_asc(long)
+                data, meta = self._load_asc(long)
                 monthly_data.append(data)
+                metas.append(meta)
             else:
                 # If file doesn't exist, duplicate previous month with warning
                 if monthly_data:
@@ -252,13 +306,17 @@ class LandscapeLoader:
                         month - 1,
                     )
                     monthly_data.append(monthly_data[-1].copy())
+                    metas.append(metas[-1])
                 else:
                     raise FileNotFoundError(
                         f"Monthly file not found: {self.landscape_path / short} "
                         f"or {self.landscape_path / long}"
                     )
 
-        return np.stack(monthly_data)
+        shapes = {a.shape for a in monthly_data}
+        if len(shapes) > 1:
+            raise ValueError(f"Monthly {prefix} files have different grid sizes: {sorted(shapes)}")
+        return np.stack(monthly_data), metas
 
     def file_exists(self, filename: str) -> bool:
         """Check if a data file exists."""

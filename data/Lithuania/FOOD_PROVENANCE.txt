@@ -1,0 +1,5 @@
+Food layers written 2026-11-20 by scripts/build_food_layers.py
+Grid: patches on 400 m cells, 822 x 952; prey on 1000 m cells, 329 x 381; both from (4754000, 3482000), EPSG:3035
+Patches: 7344 cells = 1.60% of the water, random, seed 0
+Prey: uniform, 0.38592 (the DEPONS mean) on every water cell in every month
+Source: Interim food layers: random patches with uniform prey. The prey maps built from the SAMBAH harbour porpoise distribution (Carlen et al. 2018, doi:10.1016/j.biocon.2018.06.031) wait for the data owner to confirm the licence (the data record names none; HELCOM's copy allows non-commercial use). See docs/2026-11-20-baltic-public-data.md.

@@ -208,12 +208,15 @@ CENOP/
 ├── static/                     # Logo, icons, SVG assets
 ├── scripts/
 │   ├── benchmark_kernels.py    # Numba kernel performance benchmark
-│   ├── generate_central_baltic.py
-│   └── download_emodnet_*.py   # Bathymetry data acquisition
+│   ├── build_baltic_bathymetry.py   # Baltic depth, coast distance, blocks (EMODnet)
+│   ├── build_baltic_environment.py  # Baltic salinity (BNSC) and sediment (EMODnet Geology)
+│   ├── build_food_layers.py         # DEPONS-style food patches and monthly prey maps
+│   ├── fetch_ais_huetten.py         # Public Baltic AIS (aisstream.io, 2024)
+│   └── build_ships_from_ais.py      # DEPONS ships.json from AIS tracks
 ├── data/
 │   ├── NorthSea/               # North Sea landscape (2088×2175 @ 400m)
 │   ├── Kattegat/               # Kattegat landscape (600×1000 @ 400m)
-│   ├── CentralBaltic/          # Central Baltic landscape
+│   ├── CentralBaltic/          # Baltic Proper (615×677 @ 1 km, public data; see docs/2026-11-20-baltic-public-data.md)
 │   ├── Lithuania/              # Lithuanian waters (Curonian Nord)
 │   ├── Gemini/                 # Gemini wind farm area
 │   ├── DanTysk/                # DanTysk wind farm area

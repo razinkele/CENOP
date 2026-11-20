@@ -418,8 +418,32 @@ def test_ships_come_from_the_landscapes_own_file():
     assert all(0 <= s.x < cd.width and 0 <= s.y < cd.height for s in active)
 
 
-def test_warns_when_no_ship_route_touches_the_landscape(caplog):
-    """Lithuania has no ship file of its own; the sample routes lie outside its grid."""
+def test_warns_when_no_ship_route_touches_the_landscape(caplog, tmp_path):
+    """A landscape without a ship file of its own falls back to the sample routes, which lie
+    outside its grid (here a copy of Lithuania without its ships.json)."""
+    import logging
+    import shutil
+    from pathlib import Path
+
+    from cenop.core.simulation import Simulation
+    from cenop.landscape.cell_data import CellData
+    from cenop.parameters import SimulationParameters
+
+    src = Path(__file__).resolve().parents[1] / "data" / "Lithuania"
+    shutil.copytree(src, tmp_path / "Lithuania", ignore=shutil.ignore_patterns("ships.json"))
+    cd = CellData("Lithuania", tmp_path)
+    cd.load()
+    params = SimulationParameters(
+        porpoise_count=10, sim_years=1, random_seed=1, landscape="Lithuania", ships_enabled=True
+    )
+    with caplog.at_level(logging.WARNING, logger="cenop.core.simulation"):
+        sim = Simulation(params=params, cell_data=cd, seed=1)
+        sim.initialize()
+    assert any("outside the landscape" in r.getMessage() for r in caplog.records)
+
+
+def test_lithuania_ship_file_lies_on_the_landscape(caplog):
+    """Lithuania's own ships.json (public AIS, August 2024) loads and its routes are on its grid."""
     import logging
     from pathlib import Path
 
@@ -435,4 +459,9 @@ def test_warns_when_no_ship_route_touches_the_landscape(caplog):
     with caplog.at_level(logging.WARNING, logger="cenop.core.simulation"):
         sim = Simulation(params=params, cell_data=cd, seed=1)
         sim.initialize()
-    assert any("outside the landscape" in r.getMessage() for r in caplog.records)
+    assert not any("outside the landscape" in r.getMessage() for r in caplog.records)
+    ships = sim._ship_manager.ships
+    assert len(ships) > 1000
+    h, w = cd._depth.shape
+    inside = [0 <= b.x < w and 0 <= b.y < h for s in ships[:200] for b in s.route.buoys]
+    assert all(inside)

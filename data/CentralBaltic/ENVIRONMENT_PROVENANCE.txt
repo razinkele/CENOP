@@ -1,0 +1,24 @@
+Environment layers written 2026-11-20
+
+bathy.asc, disttocoast.asc, blocks.asc: scripts/build_baltic_bathymetry.py --lon 13 22 --lat 53.9 59.5
+  --cellsize 1000. EMODnet Bathymetry DTM (WCS emodnet:mean, mean elevation), tiles merged and
+  reprojected to EPSG:3035 with average resampling; water = mean elevation < 0; distance to coast =
+  Euclidean distance to the nearest non-water cell (m); blocks = 40 km squares. EMODnet Bathymetry
+  Consortium, EMODnet Digital Bathymetry (DTM), CC BY 4.0.
+
+salinity01-12.asc: scripts/fetch_copernicus_salinity.py + scripts/build_baltic_environment.py.
+  Copernicus Marine BALTICSEA_MULTIYEAR_PHY_003_011 (dataset cmems_mod_bal_phy_my_P1M-m, version
+  202303), sea water salinity at the top level (0.5 m), monthly means for 2021: the product and
+  year DEPONS used for Kattegat (TRACE 2.6). Bilinear onto the grid, gaps from the nearest value.
+  Copernicus Marine Service, free under the Copernicus Marine licence. Checked against DEPONS's
+  Kattegat salinity on the overlap near the Sound: January medians 8.53 and 8.53, July 7.31 and
+  7.59, correlation 0.97-0.99.
+
+sediment.asc: scripts/build_baltic_environment.py. Median grain size (phi) from EMODnet Geology seabed
+  substrate (1:1M, 1:250k, 1:100k, Lithuanian 1:50k multiscale; finer overwrites coarser), CC BY 4.0,
+  with DEPONS's per-class values (TRACE Appendix 1, Table S1, as in DEPONS's Kattegat sediment.asc):
+  Mud 7.142, sandy Mud 4.40, muddy Sand 3.155, Sand 2.277, Coarse 1.218, Mixed 1.495, Rock -8.
+  'Mud to muddy Sand' without a finer class gets 4.40 (sandy Mud; a choice made here). Gaps (lagoons)
+  from the nearest value.
+
+Food (patches, prey) and ships: see FOOD_PROVENANCE.txt and SHIPS_PROVENANCE.txt.

@@ -5,6 +5,33 @@ All notable changes to CENOP-JASMINE are documented in this file.
 ## [Unreleased]
 
 ### Added
+- **CentralBaltic rebuilt from public data (it was misplaced).** The old landscape, a
+  placeholder since the first commit, carried a grid origin about 400 km south of its data:
+  its download script stored latitude-longitude depths under an EPSG:3035 header without
+  reprojecting, so over a million "water" cells lay over inland Poland. The new landscape
+  covers the Baltic Proper from Bornholm to north of Gotland (13-22 E, 53.9-59.5 N) on
+  615 x 677 cells of 1 km: EMODnet depths (checked at known places and against Lithuania:
+  median difference 0.2 m), distance to coast, 40 km blocks, Copernicus monthly salinity
+  for 2021 (the product DEPONS used),
+  EMODnet Geology grain size, random food patches (prey uniform for now, see below) and
+  10,245 ship passages from
+  2024 AIS. 117 MB instead of 842 MB. Results on CentralBaltic change entirely. The scripts
+  that built the old grid are removed; `scripts/build_baltic_bathymetry.py` and
+  `scripts/build_baltic_environment.py` replace them.
+- **Lithuania: real salinity and sediment.** Its salinity was random around 7.5 and its
+  sediment one value everywhere. Now Copernicus monthly surface salinity for 2021 (the
+  product DEPONS used; up to 7.9, near-fresh in the lagoon) and EMODnet Geology grain size,
+  as for CentralBaltic. Salinity enters the random walk, so Lithuania
+  results change.
+- **Lithuania: food patches and ship traffic from public data.** Food: DEPONS-style random
+  patches (1.6% of the water, single 400 m cells) in place of food on every water cell; the
+  prey level is uniform (the DEPONS mean, 0.38592) until monthly maps from the SAMBAH porpoise
+  distribution can be published (see Known issues). Ships: 3,069 passages over 15 days of
+  August 2024 from public raw AIS (aisstream.io via figshare, CC BY 4.0), encoded like DEPONS's
+  Kattegat file. Tools:
+  `scripts/build_food_layers.py`, `scripts/fetch_ais_huetten.py`,
+  `scripts/build_ships_from_ais.py`; the loader accepts patch and prey files on the 400 m grid
+  of a landscape stored on another grid. Details: `docs/2026-11-20-baltic-public-data.md`.
 - **Dark mode.** A switch in the navbar turns the light shell (navbar, sidebar) dark; the
   maps switch to a dark basemap. A basemap the user hid in the legend stays hidden.
 - **Share settings.** A navbar button gives a link that reopens CENOP with the current
@@ -505,16 +532,13 @@ results of every earlier version differ. See `docs/validation/A2-parity-report.m
   (about 70 ms against 13 ms before, at 2000 animals; Numba about 7 ms). JAX is deprecated since
   2026-11-20 (see Deprecated above), so this will not be fixed.
 - ~~Known deviations from DEPONS in land avoidance~~ Both fixed after 2.3.0 (see Unreleased).
-- **Lithuania and CentralBaltic have placeholder food layers.** Food is present on every
-  water cell (Kattegat has food patches on 1.6% of cells). On the 400 m grid each of the
-  6.25 new cells carries the food value of its 1 km cell, so food per km2 is 6.25 times
-  what it was on Lithuania: at 10,000 animals mean energy stays at the cap (19.9 through
-  day 60; it was 14.7-17.0 on the 1 km grid) and nobody starves. Population results on
-  these landscapes are not meaningful until the food layers are replaced with real data.
-- **CentralBaltic lagoons after coarsening.** Going from 250 m to 400 m cells loses some
-  one-cell-wide land barriers: the sea stays separate (largest water body 112,128 ->
-  112,200 km2), but the lagoon water bodies of 616 and 349 km2 join into one of 1,146 km2.
-  A land-wins rule was tried and is worse (2% of the water lost, lagoons split).
+- ~~CentralBaltic misplaced, placeholder layers~~ Rebuilt from public data after 2.3.0 (see Unreleased).
+- **Baltic prey maps are uniform for now.** Monthly prey maps for Lithuania and CentralBaltic
+  have been built from the SAMBAH harbour porpoise distribution (Carlen et al. 2018) with
+  `scripts/build_food_layers.py`, but are not published: the data record names no licence and
+  HELCOM's copy allows non-commercial use only. Until the data owner confirms, both landscapes
+  carry uniform prey on random patches, so food has no spatial or seasonal pattern there.
+- ~~CentralBaltic lagoons after coarsening~~ Obsolete: CentralBaltic was rebuilt on 1 km cells after 2.3.0.
 - ~~The simulation never reads the `dispersal` parameter~~ Fixed 2026-11-18: all four modes
   take effect (see Added and Fixed above). The Kattegat baselines use `InnerDanishWaters` since 2026-11-19.
 - ~~`InnerDanishWaters`: eating cell after a stop with a move~~ Fixed 2026-11-20 (see Fixed, backlog pass 3).

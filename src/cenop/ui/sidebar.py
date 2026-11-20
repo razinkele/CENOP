@@ -29,7 +29,12 @@ LANDSCAPE_TURBINE_COMPATIBILITY: dict[str, dict[str, str]] = {
 # Used for map centering only (NOT for coordinate transforms — use grid_to_lonlat)
 LANDSCAPE_BOUNDS = {
     "Homogeneous": (53.27, 54.79, 4.83, 7.13),  # Default North Sea bounds
-    "CentralBaltic": (51.2, 55.3, 16.2, 23.7),  # Central Baltic - actual grid extent
+    "CentralBaltic": (
+        53.35,
+        59.99,
+        12.59,
+        23.86,
+    ),  # Baltic Proper, 615x677 @ 1 km (EMODnet, 2026-11-20)
     "Kattegat": (53.90, 57.41, 9.45, 13.49),  # Kattegat / Inner Danish Waters - 600x1000 @ 400m
     "Lithuania": (54.20, 57.28, 17.49, 21.70),  # Lithuanian EEZ expanded - 215x375 grid at 1km
     "NorthSea": (50.62, 59.06, -1.95, 9.89),  # DEPONS North Sea - 2088x2175 @ 400m
@@ -228,7 +233,7 @@ def create_sidebar():
                 ),
                 ui.p(
                     "Pull towards calling neighbours, as a fraction of the random walk's own "
-                    "pull. Not calibrated against observations.",
+                    "pull. Bounded by DEPONS movement data, not fitted to group sizes.",
                     class_="text-muted small",
                 ),
             ),

@@ -241,3 +241,22 @@ def test_border_reflection_leaves_a_dispersing_animals_heading_alone(kattegat):
     pop._idw_write_step()
     pop._handle_land_avoidance(pop.active_mask)
     assert pop.heading[0] == 77.0
+
+
+def test_stop_with_a_move_eats_at_the_start_of_tick_cell(kattegat, open_cells, monkeypatch):
+    """DEPONS eats at posList.get(1), the position before disperse() moved the animal."""
+    pop = make_pop(kattegat)
+    place(pop, 0, open_cells[0], 2)
+    x0, y0 = float(pop.x[0]), float(pop.y[0])
+
+    def stop_three_cells_east(phase, xj, yj, heading, *rest):
+        return 0, xj + 3.0, yj, heading, 1
+
+    monkeypatch.setattr(idw, "disperse", stop_three_cells_east)
+    tick(pop)
+    assert not pop.is_dispersing[0]
+    assert (float(pop._pre_move_x[0]), float(pop._pre_move_y[0])) == (x0, y0)
+    assert (int(pop._pre_cell_xi[0]), int(pop._pre_cell_yi[0])) == (int(x0), int(y0))
+    x1, y1 = float(pop.x[0]), float(pop.y[0])
+    tick(pop)
+    assert (float(pop._pre_move_x[0]), float(pop._pre_move_y[0])) == (x1, y1)

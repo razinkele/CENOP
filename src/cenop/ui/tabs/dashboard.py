@@ -3,65 +3,7 @@ Dashboard Tab UI
 """
 
 from shiny import ui
-from shiny_deckgl import (
-    CARTO_POSITRON,
-    MapWidget,
-    legend_control,
-)
-
-# Legend entries for the layer control (matches deck.gl layer IDs in server)
-LEGEND_ENTRIES = [
-    {
-        "layer_id": "depth-bitmap",
-        "label": "Bathymetry",
-        "colors": [
-            [1, 31, 75],
-            [3, 56, 108],
-            [15, 94, 156],
-            [46, 134, 193],
-            [86, 180, 233],
-            [166, 216, 247],
-        ],
-        "shape": "rect",
-    },
-    {
-        "layer_id": "foraging-bitmap",
-        "label": "Foraging",
-        "colors": [
-            [8, 48, 20],
-            [20, 100, 40],
-            [40, 160, 60],
-            [80, 200, 80],
-            [140, 230, 100],
-            [200, 255, 140],
-        ],
-        "shape": "rect",
-    },
-    {
-        "layer_id": "noise-construction",
-        "label": "Construction noise",
-        "color": [255, 60, 60, 160],
-        "shape": "circle",
-    },
-    {
-        "layer_id": "noise-operational",
-        "label": "Operational noise",
-        "color": [255, 200, 60, 120],
-        "shape": "circle",
-    },
-    {
-        "layer_id": "turbine-poles",
-        "label": "Wind turbines",
-        "color": [50, 160, 240],
-        "shape": "rect",
-    },
-    {
-        "layer_id": "porpoises",
-        "label": "Porpoises",
-        "color": [0, 150, 255],
-        "shape": "circle",
-    },
-]
+from shiny_deckgl import CARTO_POSITRON, MapWidget
 
 # Module-level widget instance — shared between UI and server
 sim_map = MapWidget(
@@ -78,16 +20,9 @@ sim_map = MapWidget(
         "html": "<b>{layerType}</b><br/>{info}",
         "style": {"backgroundColor": "#fff", "color": "#333", "fontSize": "12px"},
     },
-    # Only legend control as initial MapLibre control (no default nav — deck.gl widgets handle that)
-    controls=[
-        legend_control(
-            {entry["layer_id"]: entry["label"] for entry in LEGEND_ENTRIES},
-            position="bottom-right",
-            show_checkbox=True,
-            show_default=True,
-            title="Layers",
-        ),
-    ],
+    # No MapLibre controls: navigation and the layer legend are deck.gl widgets, sent by the
+    # server (cenop.server.main, cenop.server.map_legend)
+    controls=[],
 )
 
 

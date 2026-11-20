@@ -240,8 +240,8 @@ class SimulationParameters:
     world_width: int = 1000  # Grid width (for homogeneous)
     world_height: int = 1000  # Grid height (for homogeneous)
 
-    # === JAX Acceleration ===
-    use_jax: bool = False  # Deprecated 2026-11-20 (docs/decisions/2026-11-20-backends.md)
+    # The JAX backend was removed after 2.3.0; True raises (docs/decisions/2026-11-20-backends.md)
+    use_jax: bool = False
 
     # === Model Version ===
     model: int = 4  # Model version (affects behavior) - DEPONS hardcodes to 4

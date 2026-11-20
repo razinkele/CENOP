@@ -39,6 +39,4 @@ jobs:
         run: python setup_cython.py build_ext --inplace
 
       - name: Run slow validation tier
-        env:
-          JAX_PLATFORMS: cpu
         run: pytest tests/ -m slow -q

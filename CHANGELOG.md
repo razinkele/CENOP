@@ -4,6 +4,12 @@ All notable changes to CENOP-JASMINE are documented in this file.
 
 ## [Unreleased]
 
+### Removed
+- **The JAX backend.** Deprecated in 2.3.0, now removed: its kernels, the JAX branch of the
+  tick, its tests and `jax[cpu]` in the CI environment. `use_jax=True` raises a `ValueError`
+  with an explanation. The default NumPy/Numba backend was faster on real landscapes and the
+  only one compared with DEPONS. The code is in git history up to `v2.3.0`.
+
 ### Changed
 - **JASMINE social attraction is scaled to the random walk (communication on only).** The
   social pull was added to the heading as weight x step length, which outweighed the random
@@ -35,7 +41,7 @@ All notable changes to CENOP-JASMINE are documented in this file.
   one. A random number is drawn only when there is a tie. On Kattegat the fallback fired
   3,650 times in 60 days (2000 animals) and never met a tie, so seeded results are unchanged
   there (all four 30-day state hashes identical). Landscapes with flat areas next to land
-  can differ. The deprecated JAX backend keeps the fixed order.
+  can differ.
 - **Land avoidance at the grid edge: neighbours outside the grid are left out.** In the
   same fallback, CENOP read cells beyond the grid edge as land, so for an animal on the edge
   whose neighbours inside the grid were all land, a cell outside the grid could tie with

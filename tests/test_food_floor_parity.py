@@ -54,33 +54,6 @@ def test_eat_food_kernel_v1_does_not_create_food_in_empty_cells():
     _assert_depons_floor(food, eaten)
 
 
-def test_jax_eat_food_does_not_create_food_in_empty_cells():
-    pytest.importorskip("jax")
-    import jax.numpy as jnp
-
-    from cenop.optimizations.jax_kernels import jax_eat_food
-
-    energy = jnp.array([10.0, 10.0, 10.0, 20.0], dtype=jnp.float32)
-    active = jnp.ones(4, dtype=bool)
-    eaten, food = jax_eat_food(jnp.asarray(_grid()), XI, YI, energy, MIN_FOOD, active)
-    _assert_depons_floor(np.asarray(food), np.asarray(eaten))
-
-
-def test_jax_eat_food_ignores_inactive_agents():
-    """Dead slots keep stale positions; they must neither eat nor floor a cell."""
-    pytest.importorskip("jax")
-    import jax.numpy as jnp
-
-    from cenop.optimizations.jax_kernels import jax_eat_food
-
-    food0 = _grid()
-    energy = jnp.full(4, 10.0, dtype=jnp.float32)
-    active = jnp.array([True, True, False, False])
-    eaten, food = jax_eat_food(jnp.asarray(food0), XI, YI, energy, MIN_FOOD, active)
-    np.testing.assert_array_equal(np.asarray(food), food0)
-    np.testing.assert_array_equal(np.asarray(eaten), np.zeros(4, dtype=np.float32))
-
-
 def _cython_post_crw_on_patchy_grid():
     from cenop.optimizations.tick_cython import cython_depons_post_crw
 

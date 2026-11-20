@@ -70,18 +70,6 @@ except ImportError as _e:
     logger.warning("Land avoidance kernel unavailable (Python fallback): %s", _e)
 
 try:
-    from cenop.optimizations.tick_jax import (
-        is_jax_available,
-        jax_tick_energy,
-        jax_tick_movement,
-    )
-
-    _HAS_JAX = is_jax_available()
-except ImportError as _e:
-    _HAS_JAX = False
-    logger.warning("JAX tick unavailable (Numba/NumPy fallback): %s", _e)
-
-try:
     from cenop.optimizations.tick_cython import cython_available
     from cenop.optimizations.tick_cython import cython_depons_post_crw as _cython_post_crw
 
@@ -501,41 +489,20 @@ class PorpoisePopulation:
                 min_depth = self.params.min_depth if self.params else 1.0
                 self._skip_land_avoidance = bool(np.all(depth >= min_depth))
 
-        # === JAX acceleration ===
-        self._use_jax = _HAS_JAX and getattr(params, "use_jax", True)
+        # The JAX backend was removed after 2.3.0 (docs/decisions/2026-11-20-backends.md)
+        if getattr(params, "use_jax", False):
+            raise ValueError(
+                "use_jax=True: the JAX backend was removed after CENOP 2.3.0; the default "
+                "NumPy/Numba backend is faster on real landscapes. Set use_jax=False."
+            )
         if self._dispersal_mode == "InnerDanishWaters":
             from cenop.movement.depons_crw import DEPONSCRWMovement
 
-            if self._use_jax:
-                raise ValueError(
-                    "dispersal 'InnerDanishWaters' is not supported on the JAX backend; "
-                    "set use_jax=False"
-                )
             if movement_module is not None and not isinstance(movement_module, DEPONSCRWMovement):
                 raise ValueError(
                     "dispersal 'InnerDanishWaters' needs the DEPONS CRW movement; "
                     f"it does not run with the {type(movement_module).__name__} movement module"
                 )
-        if self._use_jax and self._dispersal_mode == "Undirected":
-            # jax_disperse_step embeds the PSM-Type2 turn and stop; never fall back silently
-            raise ValueError(
-                "dispersal 'Undirected' is not supported on the JAX backend; set use_jax=False"
-            )
-        if self._use_jax:
-            import warnings
-
-            import jax
-
-            warnings.warn(
-                "The JAX backend is deprecated and will be removed in a later release; it is "
-                "slower than the default backend on real landscapes and no longer receives "
-                "model changes. Set use_jax=False (the default). "
-                "See docs/decisions/2026-11-20-backends.md.",
-                FutureWarning,
-                stacklevel=2,
-            )
-            _jax_seed = params.random_seed if params.random_seed else 42
-            self._jax_key = jax.random.PRNGKey(_jax_seed)
 
         # === Cython acceleration (decided at runtime in step()) ===
         self._use_cython = False
@@ -1198,7 +1165,7 @@ class PorpoisePopulation:
         the social attraction as a fraction of the random walk's pull, whatever the food
         situation. Needs this tick's _log_mov and _ve_total.
 
-        ``into="displacement"`` (non-CRW module path, deprecated JAX path): social_weight times
+        ``into="displacement"`` (non-CRW module path): social_weight times
         the step length 10**prev_log_mov / 4 in cells, as float32.
         """
         dir_x, dir_y = self._compute_social_vectors(mask, ambient_rl)
@@ -3092,380 +3059,8 @@ class PorpoisePopulation:
             es.disturbance_events[slots] = fresh.disturbance_events
             es.cumulative_energy_deficit[slots] = fresh.cumulative_energy_deficit
 
-    def _step_jax(
-        self,
-        deterrence_vectors: tuple[np.ndarray, np.ndarray] | None = None,
-        ambient_rl: np.ndarray | None = None,
-    ) -> None:
-        """JAX JIT tick — replaces the Numba/NumPy path.
-
-        Ordering matches step():
-        1. Movement (JIT)
-        2. Behavioral FSM (Python)
-        3. Food + mortality + BMR + energy history + dispersal (JIT)
-        4. PSM, dispersal trigger, disturbance memory, aging, reproduction (Python)
-        """
-        import jax
-        import jax.numpy as jnp
-
-        mask = self.active_mask
-        active_before = int(np.sum(mask))
-        self._global_tick += 1
-        self._update_aging(mask)
-
-        # Refresh cached active indices each tick so dead slots are excluded from
-        # reference-memory updates (mirrors the Numba path in step()).
-        self._active_idx = np.flatnonzero(self.active_mask)
-
-        if self._global_tick == 1:
-            self._recompute_cell_indices()
-
-        # --- Pre-compute Python-side vectors ---
-        # Deterrence
-        if deterrence_vectors is not None:
-            d_dx, d_dy = deterrence_vectors
-            self.deter_strength[mask] = np.hypot(d_dx[mask], d_dy[mask])
-            self._was_deterred |= (self.deter_strength > 0) & mask
-        else:
-            d_dx = np.zeros(self.count, dtype=np.float64)
-            d_dy = np.zeros(self.count, dtype=np.float64)
-            self.deter_strength[mask] = 0.0
-
-        # Social vectors (cKDTree — stays in Python); deprecated JAX path keeps the step scale
-        if self._comm_enabled:
-            soc_dx, soc_dy = self._social_pull(mask, ambient_rl, "displacement")
-        else:
-            soc_dx = np.zeros(self.count, dtype=np.float32)
-            soc_dy = np.zeros(self.count, dtype=np.float32)
-
-        # Environment variables at current positions
-        if self.landscape is not None:
-            self._positions[:, 0] = self.x
-            self._positions[:, 1] = self.y
-            np.copyto(
-                self._depths,
-                self.landscape.get_depths_vectorized(
-                    self._positions, xi=self._cell_xi, yi=self._cell_yi
-                ),
-            )
-            np.copyto(
-                self._salinity_vals,
-                self.landscape.get_salinities_vectorized(
-                    self._positions, xi=self._cell_xi, yi=self._cell_yi
-                ),
-            )
-            landscape_name = getattr(self.landscape, "landscape_name", "")
-            if landscape_name == "Kattegat":
-                self._salinity_vals[:] = 34.069105813295
-        else:
-            self._depths.fill(30.0)
-            self._salinity_vals.fill(30.0)
-
-        # Update reference memory (stores food, computes veTotal and vt) — Python
-        self._update_reference_memory(mask)
-
-        # Landscape grids — cache JAX versions
-        if not hasattr(self, "_jax_depth_grid") or self._jax_depth_grid is None:
-            if (
-                self.landscape is not None
-                and hasattr(self.landscape, "_depth")
-                and self.landscape._depth is not None
-            ):
-                self._jax_depth_grid = jnp.asarray(self.landscape._depth.astype(np.float32))
-            else:
-                self._jax_depth_grid = jnp.full(
-                    (self.params.world_height, self.params.world_width),
-                    30.0,
-                    dtype=jnp.float32,
-                )
-
-        world_w = self.landscape.width if self.landscape else self.params.world_width
-        world_h = self.landscape.height if self.landscape else self.params.world_height
-        min_depth = self.params.min_depth if self.params else 1.0
-        # Without a depth grid NumPy's _disperse_step skips the depth stop; _jax_depth_grid is
-        # then a synthetic 30 m grid, so -inf turns the stop off instead
-        has_depth = (
-            self.landscape is not None and getattr(self.landscape, "_depth", None) is not None
-        )
-        min_depth_dispersal = self.params.min_depth_dispersal if has_depth else -np.inf
-        # D15 land check inside the JAX tick, where the NumPy CRW paths run _depons_land_check
-        # (a no-op without a depth grid); homogeneous grids and landscape=None keep today's path
-        land_check = (not self._skip_land_avoidance) and has_depth
-        n_samples_max = int(np.ceil(10.0 ** float(self.params.max_mov) / 0.1))
-
-        # Ref mem tables
-        mem_size = self._stored_util.shape[1]
-        work_table = self._work_mem_table_f64
-
-        # Split RNG key
-        self._jax_key, movement_key, energy_key = jax.random.split(self._jax_key, 3)
-
-        # ==============================
-        # 1. JAX movement tick
-        # ==============================
-        (
-            new_x,
-            new_y,
-            new_heading,
-            new_prev_angle,
-            new_prev_log_mov,
-            step_dist,
-            jax_deter_strength,
-            new_dispersal_distance_traveled,
-            new_prev_step_heading,
-            new_is_dispersing,
-            _,
-            new_enough_water_ahead,
-        ) = jax_tick_movement(
-            jnp.asarray(self.x),
-            jnp.asarray(self.y),
-            jnp.asarray(self.heading),
-            jnp.asarray(self.prev_angle),
-            jnp.asarray(self.prev_log_mov),
-            jnp.asarray(mask),
-            jnp.asarray(self._stored_util),
-            jnp.asarray(self._pos_history_x),
-            jnp.asarray(self._pos_history_y),
-            jnp.asarray(self._mem_ptr),
-            jnp.asarray(self._mem_count),
-            jnp.asarray(work_table),
-            jnp.asarray(d_dx),
-            jnp.asarray(d_dy),
-            jnp.asarray(soc_dx),
-            jnp.asarray(soc_dy),
-            jnp.asarray(self.is_dispersing),
-            jnp.asarray(self.dispersal_target_distance),
-            jnp.asarray(self.dispersal_distance_traveled),
-            jnp.asarray(self._prev_step_heading),
-            jnp.asarray(self._depths),
-            jnp.asarray(self._salinity_vals),
-            self._jax_depth_grid,
-            float(self.params.corr_angle_base),
-            float(self.params.corr_angle_bathy),
-            float(self.params.corr_angle_salinity),
-            float(self.params.corr_angle_base_sd),
-            float(self.params.corr_logmov_length),
-            float(self.params.corr_logmov_bathy),
-            float(self.params.corr_logmov_salinity),
-            float(self.params.max_mov),
-            float(self.params.r2_mean),
-            float(self.params.r2_sd),
-            float(self.params.r1_mean),
-            float(self.params.r1_sd),
-            float(self.params.m),
-            float(self.params.inertia_const),
-            float(self.params.mean_disp_dist),
-            float(self.params.psm_angle),
-            float(self.params.psm_log),
-            float(min_depth),
-            float(min_depth_dispersal),
-            int(world_w),
-            int(world_h),
-            movement_key,
-            enough_water_ahead=jnp.asarray(self._enough_water_ahead),
-            land_check=land_check,
-            n_samples_max=n_samples_max,
-        )
-
-        # Save pre-move positions BEFORE write-back (for land rollback)
-        _jax_pre_x = self.x.copy()
-        _jax_pre_y = self.y.copy()
-        # Capture pre-move cell — food is eaten where the porpoise just was
-        # (DEPONS posList.get(1)), not the post-move cell.
-        self._snapshot_pre_move_cells(_jax_pre_x, _jax_pre_y)
-
-        # Write movement results back to SoA arrays
-        np.copyto(self.x, np.asarray(new_x))
-        np.copyto(self.y, np.asarray(new_y))
-        np.copyto(self.heading, np.asarray(new_heading))
-        np.copyto(self.prev_angle, np.asarray(new_prev_angle))
-        np.copyto(self.prev_log_mov, np.asarray(new_prev_log_mov))
-        np.copyto(self._step_dist, np.asarray(step_dist))
-        np.copyto(self._prev_step_heading, np.asarray(new_prev_step_heading))
-        # Dispersal step results; animals that stopped get the rest of _end_dispersal
-        new_is_dispersing_np = np.asarray(new_is_dispersing)
-        self.days_declining_energy[self.is_dispersing & ~new_is_dispersing_np] = 0
-        np.copyto(self.is_dispersing, new_is_dispersing_np)
-        np.copyto(self.dispersal_distance_traveled, np.asarray(new_dispersal_distance_traveled))
-        # DEPONS enoughWaterAhead: the land check rewrote it for CRW movers (shared with NumPy)
-        np.copyto(self._enough_water_ahead, np.asarray(new_enough_water_ahead))
-
-        # Recompute cached cell indices
-        self._recompute_cell_indices()
-
-        # Post-move depth check (Java Porpoise.java:639-660). With land_check the JAX tick has
-        # already rolled back from depth <= 0 to the start-of-tick position and applied beh 6.
-        if self.landscape is not None and not land_check:
-            self._positions[:, 0] = self.x
-            self._positions[:, 1] = self.y
-            post_depths = self.landscape.get_depths_vectorized(
-                self._positions, xi=self._cell_xi, yi=self._cell_yi
-            )
-            on_land = mask & (post_depths <= 0)
-            if on_land.any():
-                # Rollback to pre-move positions saved before write-back
-                self.x[on_land] = _jax_pre_x[on_land]
-                self.y[on_land] = _jax_pre_y[on_land]
-                self._recompute_cell_indices()
-
-        # D16: animals still dispersing after the tick's dispersal step made the move
-        np.logical_and(mask, new_is_dispersing_np, out=self._disp_move)
-        self._store_dispersal_move_food()
-
-        # ==============================
-        # 2. Behavioral FSM (Python)
-        # ==============================
-        if self._behavior_fsm is not None:
-            self._update_behavior_fsm(mask)
-
-        # ==============================
-        # 3. JAX energy tick
-        # ==============================
-        current_month = self._get_current_month()
-        scaling = self._get_seasonal_scaling(current_month)
-        is_day_boundary = self._global_tick % 48 == 0
-
-        # Speed in m/s
-        speed_ms = self._step_dist * (400.0 / 1800.0)
-
-        # Food grid
-        if (
-            self.landscape is not None
-            and hasattr(self.landscape, "_food_value")
-            and self.landscape._food_value is not None
-        ):
-            jax_food = jnp.asarray(self.landscape._food_value)
-        else:
-            jax_food = jnp.ones((world_h, world_w), dtype=jnp.float32)
-
-        (
-            new_energy,
-            new_active_mask,
-            new_with_calf,
-            new_food_grid,
-            food_eaten,
-            total_cost,
-            new_energy_ticks_today,
-            new_energy_history,
-            new_tick_counter,
-            new_is_dispersing,
-            new_dispersal_distance_traveled,
-            new_days_declining_energy,
-            _,
-        ) = jax_tick_energy(
-            jnp.asarray(self.energy),
-            jnp.asarray(mask),
-            jnp.asarray(speed_ms),
-            jnp.asarray(self.with_calf),
-            jnp.asarray(self.deter_strength > 0),
-            jnp.asarray(self.deter_strength),
-            jnp.asarray(self.with_calf),
-            jnp.asarray(self.age),
-            jax_food,
-            jnp.asarray(self._pre_cell_xi),
-            jnp.asarray(self._pre_cell_yi),
-            jnp.asarray(self._energy_ticks_today),
-            jnp.asarray(self._energy_history),
-            jnp.int32(self._tick_counter),
-            jnp.asarray(self.is_dispersing),
-            jnp.asarray(self.dispersal_distance_traveled),
-            jnp.asarray(self.days_declining_energy.astype(np.int32)),
-            jnp.asarray(self._turbine_deter_strength),
-            jnp.float32(scaling),
-            float(self.params.e_use_per_30_min),
-            float(self.params.e_lact),
-            0.01,  # DEPONS ADD_ARTIFICIAL_FOOD floor (matches NumPy/Numba/kernels)
-            float(self._m_mort_prob_const),
-            float(self._x_survival_const),
-            float(getattr(self.params, "bycatch_prob", 0.0)),
-            float(self.params.max_age),
-            jnp.bool_(is_day_boundary),
-            energy_key,
-        )
-
-        # Write energy results back (shared view with _energy_state)
-        np.copyto(self.energy, np.asarray(new_energy))
-        np.copyto(self.active_mask, np.asarray(new_active_mask))
-        # Finding #11: JAX mortality happens inside jax_tick_energy with no
-        # per-cause split (JAX also never populated death_causes). Count total
-        # deaths from the active-mask delta (no births have occurred yet this
-        # tick) so totals aren't lost; per-cause attribution is unavailable here.
-        _jax_deaths = active_before - int(np.sum(self.active_mask))
-        if _jax_deaths > 0:
-            self.last_step_deaths += _jax_deaths
-        if self._global_tick == 1:
-            # DEPONS also runs its daily task at tick 1; the kernel does the daily bycatch /
-            # max-age check at day boundaries only.
-            bycatch, old_age = self._daily_mortality(self.active_mask)
-            if bycatch.any() or old_age.any():
-                self._apply_deaths(
-                    np.zeros(self.count, dtype=bool),
-                    old_age,
-                    bycatch,
-                    int(np.sum(self.active_mask)),
-                )
-        np.copyto(self.with_calf, np.asarray(new_with_calf))
-        np.copyto(self._energy_ticks_today, np.asarray(new_energy_ticks_today))
-        np.copyto(self._energy_history, np.asarray(new_energy_history))
-        self._tick_counter = int(new_tick_counter)
-        self._last_energy_update_tick = self._global_tick
-        np.copyto(self.is_dispersing, np.asarray(new_is_dispersing))
-        np.copyto(
-            self.dispersal_distance_traveled,
-            np.asarray(new_dispersal_distance_traveled),
-        )
-        self.days_declining_energy[:] = np.asarray(new_days_declining_energy).astype(np.int16)
-
-        # Write food grid back
-        if (
-            self.landscape is not None
-            and hasattr(self.landscape, "_food_value")
-            and self.landscape._food_value is not None
-        ):
-            np.copyto(self.landscape._food_value, np.asarray(new_food_grid))
-
-        # Dashboard metrics
-        n_active = int(np.sum(self.active_mask))
-        food_eaten_np = np.asarray(food_eaten)
-        total_cost_np = np.asarray(total_cost)
-        if n_active > 0:
-            self.avg_food_gained = float(np.mean(food_eaten_np[self.active_mask]))
-            self.avg_energy_cost = float(np.mean(total_cost_np[self.active_mask]))
-        else:
-            self.avg_food_gained = 0.0
-            self.avg_energy_cost = 0.0
-
-        # ==============================
-        # 4. Python post-processing
-        # ==============================
-        # PSM update
-        self._update_psm(self.active_mask, food_eaten_np)
-
-        # Dispersal trigger check (day boundary). jax_tick_energy has already run the
-        # deterrence cancel and the energy stop, so new activations get them here, as on the
-        # NumPy path, where _update_dispersal runs after the trigger (DEPONS
-        # performDailyStep: activate(), then the energy stop; deter() in the same tick).
-        if is_day_boundary and self._global_tick > 0:
-            before = self.is_dispersing.copy()
-            self._check_dispersal_trigger(self.active_mask)
-            new = self.is_dispersing & ~before
-            if new.any():
-                new = self._stop_dispersal_if_deterred(new)
-                self._stop_dispersal_if_energy_recovered(new)
-
-        # Disturbance memory (JASMINE)
-        if self._memory_module is not None:
-            self._update_disturbance_memory(self.active_mask)
-
-        # Day-of-year counter (must run every tick — was inside _handle_reproduction)
-        self._day_of_year = (self._day_of_year + 1) % (360 * 48)
-
-        # Reproduction (daily only — pregnancy FSM)
-        if self._global_tick % 48 == 0 or self._global_tick == 1:
-            self._handle_reproduction(self.active_mask)
-
     def _get_seasonal_scaling(self, month: int) -> float:
-        """Get scalar seasonal scaling factor (no lactation — handled in JAX)."""
+        """Scalar seasonal scaling factor (no lactation); used by the Cython fast path."""
         if month == 4 or month == 10:
             return 1.15
         elif 5 <= month <= 9:
@@ -3503,9 +3098,8 @@ class PorpoisePopulation:
         """
         mask = self.active_mask
 
-        # Finding #11: reset per-tick counters. This runs before the early return
-        # and before the JAX dispatch, so it covers the NumPy, Cython and JAX
-        # paths (_step_jax is only reached from here).
+        # Finding #11: reset per-tick counters. This runs before the early return, so it
+        # covers the NumPy and Cython paths.
         self.last_step_births = 0
         self.last_step_deaths = 0
         self.last_step_deaths_starvation = 0
@@ -3520,11 +3114,6 @@ class PorpoisePopulation:
             np.hypot(_t_dx, _t_dy, out=self._turbine_deter_strength)
         else:
             self._turbine_deter_strength.fill(0.0)
-
-        # JAX JIT path — replaces Numba/NumPy for movement + energy
-        if self._use_jax:
-            self._step_jax(deterrence_vectors, ambient_rl)
-            return
 
         active_before = int(np.sum(self.active_mask))
         self._global_tick += 1
@@ -3838,7 +3427,7 @@ class PorpoisePopulation:
         - Then try to activate dispersal (memory target, else random target)
 
         dispersal="off" (DEPONS DispersalFactory.isOff, Porpoise.java:1089) starts none. This
-        is the only place dispersal starts, on the NumPy and the JAX paths alike.
+        is the only place dispersal starts.
         """
         if self._dispersal_mode == "off":
             return
@@ -3902,10 +3491,6 @@ class PorpoisePopulation:
         """
         # Prevent double-update within the same tick
         if getattr(self, "_last_energy_update_tick", -1) == self._global_tick:
-            return
-
-        # JAX path manages tick_counter and energy history via jax_tick_energy
-        if getattr(self, "_use_jax", False):
             return
 
         # DEPONS also runs its daily task once at tick 1 (PorpoiseSimBuilder.java:340, 355), so

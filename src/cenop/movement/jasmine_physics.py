@@ -324,8 +324,26 @@ class JASMINEPhysicsMovement(MovementModule):
         """
         count = len(x)
 
-        # Base speed from parameters (convert from DEPONS log scale)
-        base_speed = np.power(10.0, state.prev_log_mov) / 4.0
+        # Step length redrawn each tick with the DEPONS model (Porpoise.java:414-463):
+        # log10(mov) = a0*prev + a1*depth + a2*salinity + N(r1_mean, r1_sd), redrawn while
+        # above max_mov. Only masked animals are drawn; the rest keep their previous value.
+        p = self.params
+        idx = np.flatnonzero(mask)
+        log_mov = np.asarray(state.prev_log_mov, dtype=np.float64).copy()
+        if idx.size:
+            fixed = (
+                p.corr_logmov_length * log_mov[idx]
+                + p.corr_logmov_bathy * np.asarray(environment.depth, dtype=np.float64)[idx]
+                + p.corr_logmov_salinity * np.asarray(environment.salinity, dtype=np.float64)[idx]
+            )
+            draw = fixed + self.rng.normal(p.r1_mean, p.r1_sd, idx.size)
+            for _ in range(200):
+                bad = draw > p.max_mov
+                if not bad.any():
+                    break
+                draw[bad] = fixed[bad] + self.rng.normal(p.r1_mean, p.r1_sd, int(bad.sum()))
+            log_mov[idx] = np.minimum(draw, p.max_mov)
+        base_speed = np.power(10.0, log_mov) / 4.0
 
         # Heading-based displacement
         heading_rad = np.radians(state.heading)

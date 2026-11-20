@@ -478,6 +478,11 @@ class PorpoisePopulation:
         self._idw_x = np.zeros(count, dtype=np.float32)
         self._idw_y = np.zeros(count, dtype=np.float32)
         self._idw_grids = None  # (depth, dist_to_coast, blocks) as float64, built on first use
+        # Animals the mode moved and then stopped this tick, with their start-of-tick positions
+        # (see _record_pre_move); set by _disperse_step_idw, cleared by _apply_positions
+        self._idw_stop_idx = np.empty(0, dtype=np.intp)
+        self._idw_stop_x = np.empty(0, dtype=np.float32)
+        self._idw_stop_y = np.empty(0, dtype=np.float32)
         # Set by _depons_land_check when it records the start-of-tick position in
         # _pre_move_x/_y; consumed (and cleared) by _apply_positions, and cleared at the top of
         # both CRW movement paths so a record never outlives its tick
@@ -517,8 +522,18 @@ class PorpoisePopulation:
                 "dispersal 'Undirected' is not supported on the JAX backend; set use_jax=False"
             )
         if self._use_jax:
+            import warnings
+
             import jax
 
+            warnings.warn(
+                "The JAX backend is deprecated and will be removed in a later release; it is "
+                "slower than the default backend on real landscapes and no longer receives "
+                "model changes. Set use_jax=False (the default). "
+                "See docs/decisions/2026-11-20-backends.md.",
+                FutureWarning,
+                stacklevel=2,
+            )
             _jax_seed = params.random_seed if params.random_seed else 42
             self._jax_key = jax.random.PRNGKey(_jax_seed)
 
@@ -1199,8 +1214,7 @@ class PorpoisePopulation:
         if self._skip_land_avoidance or depth is None:
             return
 
-        np.copyto(self._pre_move_x, self.x)
-        np.copyto(self._pre_move_y, self.y)
+        self._record_pre_move()
         self._pre_move_recorded = True
 
         # One seed per call from self.rng, drawn even for an empty mask so both CRW paths
@@ -1229,6 +1243,19 @@ class PorpoisePopulation:
             self._mem_count,
             self._enough_water_ahead,
         )
+
+    def _record_pre_move(self) -> None:
+        """Record the start-of-tick position (DEPONS posList.get(0) before this tick's add).
+
+        An InnerDanishWaters animal that the mode moved and then stopped is already away from
+        that position; DEPONS still eats at, and beh 6 still returns to, where it began the
+        tick, because disperse() does not touch posList.
+        """
+        np.copyto(self._pre_move_x, self.x)
+        np.copyto(self._pre_move_y, self.y)
+        if self._idw_stop_idx.size:
+            self._pre_move_x[self._idw_stop_idx] = self._idw_stop_x
+            self._pre_move_y[self._idw_stop_idx] = self._idw_stop_y
 
     def _end_dispersal(self, sel: np.ndarray) -> None:
         """DEPONS deactivate(): stop dispersing; reset path length and declining-energy days."""
@@ -1337,48 +1364,57 @@ class PorpoisePopulation:
         from cenop.agents import dispersal_idw
 
         self._idw_pending[:] = False
+        self._idw_stop_idx = self._idw_stop_idx[:0]
         idx = np.flatnonzero(mask & self.is_dispersing)
         if idx.size == 0:
             return
         depth, dtc, blocks = self._get_idw_grids()
         p = self.params
         step_cost = 0.001 * p.e_use_per_km * p.mean_disp_dist / 0.4
-        stopped_moved = False
-        for i in idx:
-            phase, xj, yj, heading, paid = dispersal_idw.disperse(
-                int(self.dispersal_phase[i]),
-                float(self.x[i]) - 0.5,
-                float(self.y[i]) - 0.5,
-                float(self.heading[i]),
-                float(self.dispersal_target_x[i]) - 0.5,
-                float(self.dispersal_target_y[i]) - 0.5,
-                float(self._daily_pos_x[i, 1]) - 0.5,
-                float(self._daily_pos_y[i, 1]) - 0.5,
-                float(self._daily_pos_x[i, 8]) - 0.5,
-                float(self._daily_pos_y[i, 8]) - 0.5,
-                bool(self._enough_water_ahead[i]),
-                depth,
-                dtc,
-                blocks,
-                p.mean_disp_dist,
-                p.min_depth_dispersal,
-                p.min_depth,
-            )
-            self.heading[i] = heading
-            if paid:
-                self.energy[i] -= paid * step_cost
-            if phase == 0:
-                nx, ny = np.float32(xj + 0.5), np.float32(yj + 0.5)
-                stopped_moved |= bool(nx != self.x[i] or ny != self.y[i])
-                self.x[i], self.y[i] = nx, ny
-                self._end_dispersal(i)
-            else:
-                self.dispersal_phase[i] = phase
-                self._idw_x[i] = xj + 0.5
-                self._idw_y[i] = yj + 0.5
-                self._idw_pending[i] = True
-        if stopped_moved:
-            self._recompute_cell_indices()
+        phase, xn, yn, heading, paid = dispersal_idw.disperse_many(
+            idx,
+            self.dispersal_phase,
+            self.x,
+            self.y,
+            self.heading,
+            self.dispersal_target_x,
+            self.dispersal_target_y,
+            self._daily_pos_x[:, 1],
+            self._daily_pos_y[:, 1],
+            self._daily_pos_x[:, 8],
+            self._daily_pos_y[:, 8],
+            self._enough_water_ahead,
+            depth,
+            dtc,
+            blocks,
+            p.mean_disp_dist,
+            p.min_depth_dispersal,
+            p.min_depth,
+        )
+        self.heading[idx] = heading
+        charged = paid > 0
+        if charged.any():
+            # float32 minus float32, as the per-animal form (a Python float is a weak scalar)
+            self.energy[idx[charged]] -= (paid[charged] * step_cost).astype(np.float32)
+        xn, yn = xn.astype(np.float32), yn.astype(np.float32)
+        going = phase != 0
+        on = idx[going]
+        self.dispersal_phase[on] = phase[going]
+        self._idw_x[on] = xn[going]
+        self._idw_y[on] = yn[going]
+        self._idw_pending[on] = True
+        off = idx[~going]
+        if off.size:
+            moved = (xn[~going] != self.x[off]) | (yn[~going] != self.y[off])
+            if moved.any():
+                self._idw_stop_idx = off[moved]
+                self._idw_stop_x = self.x[off[moved]].copy()
+                self._idw_stop_y = self.y[off[moved]].copy()
+            self.x[off] = xn[~going]
+            self.y[off] = yn[~going]
+            self._end_dispersal(off)
+            if moved.any():
+                self._recompute_cell_indices()
 
     def _idw_write_step(self) -> None:
         """Replace the heading kernel's fixed dispersal step with the mode's own move."""
@@ -1612,6 +1648,12 @@ class PorpoisePopulation:
             env = EnvironmentContext.from_landscape(self.landscape, self.x, self.y)
         else:
             env = EnvironmentContext.create_homogeneous(self.count)
+
+        # Drive the module, and a hybrid selector's two sub-modules, off the seeded generator
+        module = self._movement_module
+        for m in (module, getattr(module, "_depons", None), getattr(module, "_jasmine", None)):
+            if m is not None:
+                m.rng = self.rng
 
         # Sync population → MovementState
         state = self._movement_state
@@ -1987,8 +2029,8 @@ class PorpoisePopulation:
         land_checked = self._pre_move_recorded
         self._pre_move_recorded = False
         if not land_checked:
-            np.copyto(self._pre_move_x, self.x)
-            np.copyto(self._pre_move_y, self.y)
+            self._record_pre_move()
+        self._idw_stop_idx = self._idw_stop_idx[:0]
         # Capture the pre-move cell — food is eaten where the porpoise just was
         # (DEPONS posList.get(1)), not at the post-move cell.
         self._snapshot_pre_move_cells(self._pre_move_x, self._pre_move_y)

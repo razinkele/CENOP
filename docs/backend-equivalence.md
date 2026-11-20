@@ -1,7 +1,8 @@
 # Backend equivalence & determinism — scope and limits
 
 CENOP has four tick backends: NumPy reference, Numba (production), Cython
-(`tick_cython.pyx`), and JAX (opt-in). This documents what we test for equivalence
+(`tick_cython.pyx`), and JAX (opt-in; deprecated since 2026-11-20, see
+`docs/decisions/2026-11-20-backends.md`). This documents what we test for equivalence
 and why some comparisons are impossible. (Code references use symbol names, not line
 numbers, to avoid rot.)
 

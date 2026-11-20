@@ -147,3 +147,20 @@ def test_cython_mortality_uses_seeded_rng():
     assert s1[2] == s0[2] and np.array_equal(
         s1[1], s0[1]
     ), "Cython tick consumed global np.random; mortality must use self.rng"
+
+
+@pytest.mark.skipif(not getattr(pop_mod, "_HAS_JAX", False), reason="JAX not installed")
+def test_jax_backend_warns_that_it_is_deprecated():
+    """Roadmap B1 (2026-11-20): JAX is deprecated; docs/decisions/2026-11-20-backends.md."""
+    params = SimulationParameters(porpoise_count=4, random_seed=1, use_jax=True)
+    with pytest.warns(FutureWarning, match="JAX backend is deprecated"):
+        pop_mod.PorpoisePopulation(4, params)
+
+
+def test_default_backend_does_not_warn():
+    import warnings
+
+    params = SimulationParameters(porpoise_count=4, random_seed=1)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FutureWarning)
+        pop_mod.PorpoisePopulation(4, params)

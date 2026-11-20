@@ -65,7 +65,8 @@ The JASMINE (Just Another Simulation Model In Nature Environments) extension add
 
 **Optimizations:** Pre-allocated buffers (RefMemWorkspace ~1.5MB/tick saved), vectorized land avoidance, cached cell indices, fused heading+position+reflect kernel, social sound fusion, dtype ping-pong elimination
 
-- 516+ tests passing across 26 test files (unit, integration, equivalence, performance, and parallel determinism tests)
+- About 1,270 fast tests and 11 slow validation tests (unit, integration, backend equivalence, DEPONS parity)
+- Checked against runs of DEPONS 3.2 on the Kattegat landscape: `docs/validation/A2-parity-report.md`
 
 ## Installation
 

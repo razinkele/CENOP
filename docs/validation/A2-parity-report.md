@@ -8,8 +8,10 @@ runs are kept in `run1-before-ship-fix/`, `run2-before-ship-sound-fix/` and
 
 ## Result
 
-**One metric fails on the current code: mean energy in the ship scenario at day 150. Every
-other metric passes or is inconclusive, in all four scenarios.**
+**In the eight-seed comparison one metric fails on the current code: mean energy in the ship
+scenario at day 150. A check with sixteen seeds per model, fixed in advance, does not
+confirm it: the difference is 0.05, 1.0 standard error. Every other metric passes or is
+inconclusive, in all four scenarios.**
 
 - **The failure.** With ships, CENOP's mean energy at day 150 is 4.29 against 4.14 in DEPONS:
   0.16 higher (3.8%), 2.9 standard errors. The band is "within 2 standard errors and within
@@ -73,7 +75,27 @@ Mean energy at day 150, ship scenario, eight seeds each:
 - **No band was changed.** Run 3's statement that every metric passes holds for the code and
   the sample of run 3; it does not hold for run 4.
 
-## Looking for the cause (2026-11-20): not found
+## Sixteen DEPONS seeds (2026-11-20): the difference does not hold
+
+Eight more DEPONS ship runs (seeds 50-57) were added. The test was fixed before they were
+seen: all 16 DEPONS seeds against the 16 CENOP ship trajectories of runs 3 and 4; mean
+energy at day 150 and each seed's mean over days 110-150; the difference holds if either
+is beyond 2 standard errors. Script:
+`scripts/investigations/2026-11-20-ship-energy/sixteen_seeds.py`.
+
+| Quantity | DEPONS (16) | first 8 | new 8 | CENOP (16) | Difference | In SE |
+|---|---|---|---|---|---|---|
+| Mean energy, day 150 | 4.23 | 4.14 | 4.32 | 4.27 | +0.05 | 1.0 |
+| Mean energy, days 110-150 | 4.17 | 4.10 | 4.23 | 4.21 | +0.05 | 1.4 |
+
+The first eight DEPONS seeds were low; the new eight are higher than CENOP. The run-4 table
+above is kept as it was produced, with its FAIL: it is what eight seeds showed. The
+conclusion drawn from it, that CENOP's animals carry more energy with ships, is withdrawn.
+
+The lesson for this comparison: at eight seeds per model a 2 SE criterion applied to about
+35 checkpoints will fail somewhere by chance, and a failure near 3 SE is not proof.
+
+## Looking for the cause (2026-11-20): none found, and none needed
 
 Scripts: `scripts/investigations/2026-11-20-ship-energy/`. Animals of both models were
 compared in eight ten-day periods between day 20 and day 160 (DEPONS: its 200 tracked animals

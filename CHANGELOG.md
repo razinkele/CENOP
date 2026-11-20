@@ -4,6 +4,12 @@ All notable changes to CENOP-JASMINE are documented in this file.
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-11-20
+
+CENOP checked against runs of DEPONS 3.2 for the first time. The comparison found and fixed
+defects that kept populations, dispersal, ship traffic and ship noise from matching DEPONS;
+results of every earlier version differ. See `docs/validation/A2-parity-report.md`.
+
 ### Added
 - DEPONS 3.2 reference harness (`validation/depons_java/`, roadmap Track A1). It runs the
   official, unmodified DEPONS 3.2 release headless on Linux from one command: it fetches the
@@ -130,6 +136,17 @@ All notable changes to CENOP-JASMINE are documented in this file.
 - **JASMINE physics and hybrid movement ignored `random_seed`.** Both modules drew from an
   unseeded generator. They now use the population's generator, so runs in these modes are
   reproducible. The default movement (DEPONS random walk) was not affected.
+
+### Validation — A2 repeated on the released code (run 4, 2026-11-20)
+- All 32 CENOP runs were repeated after the last model change. With eight seeds per model,
+  every metric passes or is inconclusive except mean energy in the ship scenario at day 150
+  (4.29 against 4.14, 2.9 standard errors; inside the 0.25 size band).
+- A check with sixteen seeds per model, fixed before the extra DEPONS runs were seen, does
+  not confirm that difference: +0.05 at day 150 (1.0 standard error) and +0.05 over days
+  110-150 (1.4). The first eight DEPONS seeds were low by chance.
+- A search for a cause found none: exposure, deterrence strength, dispersal and step length
+  of exposed animals agree with DEPONS period by period.
+- Report: `docs/validation/A2-parity-report.md`. Earlier runs are kept beside it.
 
 ### Added — A2 cross-validation against DEPONS 3.2
 - `validation/a2/`: four scenarios (undisturbed InnerDanishWaters, PSM-Type2 and dispersal
@@ -426,14 +443,6 @@ All notable changes to CENOP-JASMINE are documented in this file.
   - **The committed Kattegat baselines are stale** until regenerated.
 
 ### Known issues (found 2026-11-10, not yet fixed)
-- **Ships: mean energy 3-4% above DEPONS from day 110 to day 150 (found 2026-11-20).** The
-  A2 comparison repeated on the current code (run 4) fails one metric: with ships, mean
-  energy at day 150 is 4.29 against 4.14 in DEPONS (2.9 standard errors; the size is inside
-  the 0.25 band). Over days 110-150, pooling two CENOP samples, CENOP is 0.11 higher with
-  ships (p = 0.006) and 0.01 higher without; the part specific to ships is 1.8 standard
-  errors, so suggestive only. A search for the cause found none: exposure, deterrence
-  strength, dispersal and step length of exposed animals agree with DEPONS period by period
-  (`docs/validation/A2-parity-report.md`, "Looking for the cause").
 - **JASMINE social vector scaling.** When enabled, the social vector overrides the DEPONS random
   walk under realistic food. It needs rescaling before social behaviour is used in science runs.
 - **Non-CRW movement modules keep the old dispersal completion.** The JASMINE physics and

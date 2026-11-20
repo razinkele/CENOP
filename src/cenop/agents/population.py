@@ -522,8 +522,18 @@ class PorpoisePopulation:
                 "dispersal 'Undirected' is not supported on the JAX backend; set use_jax=False"
             )
         if self._use_jax:
+            import warnings
+
             import jax
 
+            warnings.warn(
+                "The JAX backend is deprecated and will be removed in a later release; it is "
+                "slower than the default backend on real landscapes and no longer receives "
+                "model changes. Set use_jax=False (the default). "
+                "See docs/decisions/2026-11-20-backends.md.",
+                FutureWarning,
+                stacklevel=2,
+            )
             _jax_seed = params.random_seed if params.random_seed else 42
             self._jax_key = jax.random.PRNGKey(_jax_seed)
 

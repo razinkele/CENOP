@@ -239,7 +239,7 @@ class SimulationParameters:
     world_height: int = 1000  # Grid height (for homogeneous)
 
     # === JAX Acceleration ===
-    use_jax: bool = False  # Use JAX JIT when available (falls back to Numba)
+    use_jax: bool = False  # Deprecated 2026-11-20 (docs/decisions/2026-11-20-backends.md)
 
     # === Model Version ===
     model: int = 4  # Model version (affects behavior) - DEPONS hardcodes to 4

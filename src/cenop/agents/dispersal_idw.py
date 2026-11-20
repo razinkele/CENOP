@@ -369,3 +369,46 @@ def disperse(phase, xj, yj, heading, tx, ty, d1x, d1y, d8x, d8y, enough_water, d
         )
         paid += paid2
     return phase, xj, yj, heading, paid
+
+
+@njit
+def disperse_many(idx, phase, x, y, heading, tx, ty, d1x, d1y, d8x, d8y, enough_water, depth, dtc, blocks, mean_disp_dist, min_disp_depth, min_depth,):  # fmt: skip
+    """disperse() for the animals ``idx``, read from CENOP's per-animal arrays.
+
+    Positions go in and come out in CENOP coordinates (Java + 0.5); nothing is written to the
+    inputs. Returns (phase, x, y, heading, paid_moves), one entry per element of ``idx``.
+    One call replaces a Python loop over disperse() and gives the same numbers.
+    """
+    n = idx.shape[0]
+    out_phase = np.empty(n, dtype=np.int64)
+    out_x = np.empty(n, dtype=np.float64)
+    out_y = np.empty(n, dtype=np.float64)
+    out_heading = np.empty(n, dtype=np.float64)
+    out_paid = np.empty(n, dtype=np.int64)
+    for k in range(n):
+        i = idx[k]
+        ph, xj, yj, hd, paid = disperse(
+            int(phase[i]),
+            float(x[i]) - 0.5,
+            float(y[i]) - 0.5,
+            float(heading[i]),
+            float(tx[i]) - 0.5,
+            float(ty[i]) - 0.5,
+            float(d1x[i]) - 0.5,
+            float(d1y[i]) - 0.5,
+            float(d8x[i]) - 0.5,
+            float(d8y[i]) - 0.5,
+            bool(enough_water[i]),
+            depth,
+            dtc,
+            blocks,
+            mean_disp_dist,
+            min_disp_depth,
+            min_depth,
+        )
+        out_phase[k] = ph
+        out_x[k] = xj + 0.5
+        out_y[k] = yj + 0.5
+        out_heading[k] = hd
+        out_paid[k] = paid
+    return out_phase, out_x, out_y, out_heading, out_paid

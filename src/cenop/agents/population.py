@@ -1371,46 +1371,50 @@ class PorpoisePopulation:
         depth, dtc, blocks = self._get_idw_grids()
         p = self.params
         step_cost = 0.001 * p.e_use_per_km * p.mean_disp_dist / 0.4
-        stopped_moved = []
-        for i in idx:
-            phase, xj, yj, heading, paid = dispersal_idw.disperse(
-                int(self.dispersal_phase[i]),
-                float(self.x[i]) - 0.5,
-                float(self.y[i]) - 0.5,
-                float(self.heading[i]),
-                float(self.dispersal_target_x[i]) - 0.5,
-                float(self.dispersal_target_y[i]) - 0.5,
-                float(self._daily_pos_x[i, 1]) - 0.5,
-                float(self._daily_pos_y[i, 1]) - 0.5,
-                float(self._daily_pos_x[i, 8]) - 0.5,
-                float(self._daily_pos_y[i, 8]) - 0.5,
-                bool(self._enough_water_ahead[i]),
-                depth,
-                dtc,
-                blocks,
-                p.mean_disp_dist,
-                p.min_depth_dispersal,
-                p.min_depth,
-            )
-            self.heading[i] = heading
-            if paid:
-                self.energy[i] -= paid * step_cost
-            if phase == 0:
-                nx, ny = np.float32(xj + 0.5), np.float32(yj + 0.5)
-                if nx != self.x[i] or ny != self.y[i]:
-                    stopped_moved.append((i, self.x[i], self.y[i]))
-                self.x[i], self.y[i] = nx, ny
-                self._end_dispersal(i)
-            else:
-                self.dispersal_phase[i] = phase
-                self._idw_x[i] = xj + 0.5
-                self._idw_y[i] = yj + 0.5
-                self._idw_pending[i] = True
-        if stopped_moved:
-            self._idw_stop_idx = np.array([s[0] for s in stopped_moved], dtype=np.intp)
-            self._idw_stop_x = np.array([s[1] for s in stopped_moved], dtype=np.float32)
-            self._idw_stop_y = np.array([s[2] for s in stopped_moved], dtype=np.float32)
-            self._recompute_cell_indices()
+        phase, xn, yn, heading, paid = dispersal_idw.disperse_many(
+            idx,
+            self.dispersal_phase,
+            self.x,
+            self.y,
+            self.heading,
+            self.dispersal_target_x,
+            self.dispersal_target_y,
+            self._daily_pos_x[:, 1],
+            self._daily_pos_y[:, 1],
+            self._daily_pos_x[:, 8],
+            self._daily_pos_y[:, 8],
+            self._enough_water_ahead,
+            depth,
+            dtc,
+            blocks,
+            p.mean_disp_dist,
+            p.min_depth_dispersal,
+            p.min_depth,
+        )
+        self.heading[idx] = heading
+        charged = paid > 0
+        if charged.any():
+            # float32 minus float32, as the per-animal form (a Python float is a weak scalar)
+            self.energy[idx[charged]] -= (paid[charged] * step_cost).astype(np.float32)
+        xn, yn = xn.astype(np.float32), yn.astype(np.float32)
+        going = phase != 0
+        on = idx[going]
+        self.dispersal_phase[on] = phase[going]
+        self._idw_x[on] = xn[going]
+        self._idw_y[on] = yn[going]
+        self._idw_pending[on] = True
+        off = idx[~going]
+        if off.size:
+            moved = (xn[~going] != self.x[off]) | (yn[~going] != self.y[off])
+            if moved.any():
+                self._idw_stop_idx = off[moved]
+                self._idw_stop_x = self.x[off[moved]].copy()
+                self._idw_stop_y = self.y[off[moved]].copy()
+            self.x[off] = xn[~going]
+            self.y[off] = yn[~going]
+            self._end_dispersal(off)
+            if moved.any():
+                self._recompute_cell_indices()
 
     def _idw_write_step(self) -> None:
         """Replace the heading kernel's fixed dispersal step with the mode's own move."""

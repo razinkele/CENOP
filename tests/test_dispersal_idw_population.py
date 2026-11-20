@@ -249,10 +249,13 @@ def test_stop_with_a_move_eats_at_the_start_of_tick_cell(kattegat, open_cells, m
     place(pop, 0, open_cells[0], 2)
     x0, y0 = float(pop.x[0]), float(pop.y[0])
 
-    def stop_three_cells_east(phase, xj, yj, heading, *rest):
-        return 0, xj + 3.0, yj, heading, 1
+    def stop_three_cells_east(idx, phase, x, y, heading, *rest):
+        n = idx.size
+        zeros = np.zeros(n, dtype=np.int64)
+        f = np.float64
+        return zeros, x[idx].astype(f) + 3.0, y[idx].astype(f), heading[idx].astype(f), zeros + 1
 
-    monkeypatch.setattr(idw, "disperse", stop_three_cells_east)
+    monkeypatch.setattr(idw, "disperse_many", stop_three_cells_east)
     tick(pop)
     assert not pop.is_dispersing[0]
     assert (float(pop._pre_move_x[0]), float(pop._pre_move_y[0])) == (x0, y0)
@@ -260,3 +263,40 @@ def test_stop_with_a_move_eats_at_the_start_of_tick_cell(kattegat, open_cells, m
     x1, y1 = float(pop.x[0]), float(pop.y[0])
     tick(pop)
     assert (float(pop._pre_move_x[0]), float(pop._pre_move_y[0])) == (x1, y1)
+
+
+def test_disperse_many_equals_a_loop_over_disperse(kattegat, open_cells):
+    """The compiled batch form returns exactly what the per-animal calls return."""
+    pop = make_pop(kattegat, count=8)
+    for i, cell in enumerate(open_cells):
+        place(pop, i, cell, 1 + i % 2, heading=40.0 * i)
+    pop._enough_water_ahead[3] = False
+    idx = np.arange(8)
+    depth, dtc, blocks = pop._get_idw_grids()
+    p = pop.params
+    ph, x, y, hd, paid = idw.disperse_many(
+        idx, pop.dispersal_phase, pop.x, pop.y, pop.heading,
+        pop.dispersal_target_x, pop.dispersal_target_y,
+        pop._daily_pos_x[:, 1], pop._daily_pos_y[:, 1],
+        pop._daily_pos_x[:, 8], pop._daily_pos_y[:, 8],
+        pop._enough_water_ahead, depth, dtc, blocks,
+        p.mean_disp_dist, p.min_depth_dispersal, p.min_depth,
+    )  # fmt: skip
+    assert 0 in ph.tolist() and (ph > 0).any()
+    for i in idx:
+        one = idw.disperse(
+            int(pop.dispersal_phase[i]),
+            float(pop.x[i]) - 0.5, float(pop.y[i]) - 0.5, float(pop.heading[i]),
+            float(pop.dispersal_target_x[i]) - 0.5, float(pop.dispersal_target_y[i]) - 0.5,
+            float(pop._daily_pos_x[i, 1]) - 0.5, float(pop._daily_pos_y[i, 1]) - 0.5,
+            float(pop._daily_pos_x[i, 8]) - 0.5, float(pop._daily_pos_y[i, 8]) - 0.5,
+            bool(pop._enough_water_ahead[i]), depth, dtc, blocks,
+            p.mean_disp_dist, p.min_depth_dispersal, p.min_depth,
+        )  # fmt: skip
+        assert (ph[i], x[i], y[i], hd[i], paid[i]) == (
+            one[0],
+            one[1] + 0.5,
+            one[2] + 0.5,
+            one[3],
+            one[4],
+        )

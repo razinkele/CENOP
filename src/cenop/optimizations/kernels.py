@@ -528,17 +528,20 @@ def compute_ve_total_kernel(
         out_ve_total: (n_active,) float64 — output
     """
     mem_size = stored_util.shape[1]
+    # Serial on purpose: with prange the tick was slower (16 against 9 ms at 2000 animals on a
+    # busy machine, 2026-11-20); the work per call is too small to repay waking the threads.
     for ai in range(len(active_indices)):
         agent = active_indices[ai]
         n = min(int(mem_count[agent]), mem_size) - 1  # use n-1 entries
-        if n <= 0:
-            out_ve_total[ai] = 0.0
-            continue
-        ptr = int(mem_ptr[agent])
         total = 0.0
-        for i in range(n):
-            buf_idx = (ptr - 1 - i) % mem_size
-            total += work_mem_table[i] * stored_util[agent, buf_idx]
+        if n > 0:
+            # (ptr - 1 - i) % mem_size, stepped without the division
+            buf_idx = (int(mem_ptr[agent]) - 1) % mem_size
+            for i in range(n):
+                total += work_mem_table[i] * stored_util[agent, buf_idx]
+                buf_idx -= 1
+                if buf_idx < 0:
+                    buf_idx += mem_size
         out_ve_total[ai] = total
 
 
@@ -574,12 +577,15 @@ def compute_attraction_kernel(
         n = min(int(mem_count[agent]), mem_size)
         cx = current_x[agent]
         cy = current_y[agent]
-        ptr = int(mem_ptr[agent])
         vx = 0.0
         vy = 0.0
+        # (ptr - 1 - i) % mem_size, stepped without the division; starts at i = 0
+        buf_idx = (int(mem_ptr[agent]) - 1) % mem_size
         # Skip index 0 (most recent = current position)
         for i in range(1, n):
-            buf_idx = (ptr - 1 - i) % mem_size
+            buf_idx -= 1
+            if buf_idx < 0:
+                buf_idx += mem_size
             util = stored_util[agent, buf_idx]
             if util == 0.0:
                 continue

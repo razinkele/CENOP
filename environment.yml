@@ -1,6 +1,6 @@
 # Conda/micromamba environment for CENOP CI (GitHub Actions).
 # Reproduces the local `shiny` scientific stack; compiled/scientific deps + dev tools come
-# from conda-forge, the Shiny UI stack + jax[cpu] come via pip. The package itself is
+# from conda-forge, the Shiny UI stack comes via pip. The package itself is
 # installed editable (`pip install -e . --no-deps`) in the workflow so `cenop` imports.
 name: cenop-ci
 channels:
@@ -43,5 +43,3 @@ dependencies:
       - plotly>=5.15.0
       - pydantic>=2.0.0
       - tqdm>=4.65.0
-      # JAX (CPU) so the Phase 5 JAX-parity tests run instead of skipping
-      - jax[cpu]>=0.4.0

@@ -1,8 +1,8 @@
 # Backend equivalence & determinism — scope and limits
 
-CENOP has four tick backends: NumPy reference, Numba (production), Cython
-(`tick_cython.pyx`), and JAX (opt-in; deprecated since 2026-11-20, see
-`docs/decisions/2026-11-20-backends.md`). This documents what we test for equivalence
+CENOP has three tick backends: NumPy reference, Numba (production) and Cython
+(`tick_cython.pyx`). A fourth, JAX, was removed after 2.3.0
+(`docs/decisions/2026-11-20-backends.md`). This documents what we test for equivalence
 and why some comparisons are impossible. (Code references use symbol names, not line
 numbers, to avoid rot.)
 
@@ -11,8 +11,8 @@ numbers, to avoid rot.)
 - The population's master stream is `self.rng = np.random.default_rng(random_seed)`.
 - The Numba kernels are seeded from a *derived, separate* stream
   (`_seed_numba_rng(self.rng.integers(0, 2**31))`, called per step), and CRW draws
-  happen *inside* the kernel. JAX is seeded from `random_seed` into its own PRNG.
-- Consequence: the NumPy-fallback, Numba, and JAX paths consume different random
+  happen *inside* the kernel.
+- Consequence: the NumPy-fallback and Numba paths consume different random
   streams in different orders. Even with the same `random_seed`, their stochastic
   trajectories (CRW headings, and everything downstream) diverge. This is a design
   property, not a tolerance issue — no `rtol/atol` makes them match.
@@ -26,7 +26,7 @@ numbers, to avoid rot.)
 
 | Guard | Test | Scope |
 |-------|------|-------|
-| Per-backend determinism | `tests/test_backend_equivalence.py::test_{numba_backend,numpy_fallback,jax_backend}_deterministic` | same seed -> identical full-tick trajectory, within each of NumPy-fallback / Numba / JAX (JAX skips on absence or GPU-OOM) |
+| Per-backend determinism | `tests/test_backend_equivalence.py::test_{numba_backend,numpy_fallback}_deterministic` | same seed -> identical full-tick trajectory, within each of NumPy-fallback / Numba |
 | Cython post-CRW equivalence | `tests/test_backend_equivalence.py::test_cython_postcrw_matches_reference` | single-tick Cython post-CRW vs Numba/NumPy reference on identical CRW. Passing since the v2.2.0 repair (was `xfail(strict)` while the path was broken — see "Cython-backend defects" below) |
 | Cython float64 food grid | `tests/test_backend_equivalence.py::test_cython_food_grid_dtype_no_crash` | a float64 landscape food grid runs a Cython tick without a buffer-dtype `ValueError` |
 | Cython seeded mortality | `tests/test_backend_equivalence.py::test_cython_mortality_uses_seeded_rng` | Cython mortality draws come from the seeded `self.rng`; global `np.random` is untouched |
@@ -62,16 +62,13 @@ otherwise the Cython tests skip.
 ## What we do NOT (and cannot) test
 
 - **Full *stochastic* cross-backend trajectory identity** — impossible per the RNG
-  architecture above (NumPy-fallback / Numba / JAX consume independent streams).
+  architecture above (NumPy-fallback and Numba consume independent streams).
 - **Per-kernel NumPy equivalence for the small fused kernels** — only
   `reflect_boundaries` has a pure NumPy counterpart. `_compute_turn_position` and the
   food/BMR/social kernels dispatch to or inline the kernels, so there is no independent
   NumPy reference without re-deriving the formula; they are covered by behavioral unit
   tests in `tests/test_numba_kernels.py`. (The *Cython* post-CRW stage is different — it
   mirrors a whole NumPy pipeline and IS equivalence-tested above.)
-- **JAX numerical identity to Numba** — JAX runs float32 and uses a different
-  (fixed-iteration batch-rejection) CRW algorithm; only statistical/range properties
-  are meaningful, covered in `tests/test_jax_tick.py`.
 
 ## Adding a new kernel or backend path?
 

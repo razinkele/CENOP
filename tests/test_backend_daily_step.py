@@ -11,9 +11,8 @@ from cenop.parameters.simulation_params import SimulationParameters
 from cenop.physiology import EnergyMode, create_energy_module
 
 
-def _pop(count=8, use_jax=False, energy_mode=None, **kw):
+def _pop(count=8, energy_mode=None, **kw):
     params = SimulationParameters(random_seed=5, porpoise_count=count, **kw)
-    params.use_jax = use_jax
     land = create_homogeneous_landscape(width=100, height=100, food_prob=0.5)
     modules = {}
     if energy_mode is not None:
@@ -38,7 +37,6 @@ class _ForcedRoll:
 
 
 needs_cython = pytest.mark.skipif(not pop_mod._HAS_CYTHON, reason="Cython not built")
-needs_jax = pytest.mark.skipif(not pop_mod._HAS_JAX, reason="JAX not available")
 
 
 class TestDailyMortalityOnTheCythonPath:
@@ -77,18 +75,6 @@ class TestDailyMortalityOnTheCythonPath:
         assert 1 <= pop.death_causes.count("bycatch") <= 25
         assert set(pop.death_causes) == {"bycatch"}
         assert pop.last_step_deaths_bycatch == pop.death_causes.count("bycatch")
-
-
-class TestDailyMortalityOnTheJaxPath:
-    @needs_jax
-    def test_max_age_at_tick_1(self):
-        pop = _pop(use_jax=True)
-        if not pop._use_jax:
-            pytest.skip("JAX path not active")
-        pop.age[0] = pop.params.max_age
-        pop.step()
-        assert not pop.active_mask[0] and pop.active_mask[1:].all()
-        assert pop.last_step_deaths == 1 and pop.last_step_deaths_old_age == 1
 
 
 class TestEnergyModulePath:

@@ -314,21 +314,6 @@ class TestSocialBuffersAndTickCounter:
             pop, "_social_f64_dy"
         ), "_social_f64_dy still exists — dead buffer not removed"
 
-    def test_energy_history_skips_in_jax_mode(self):
-        """_update_energy_history should be a no-op when _use_jax is True."""
-        from cenop.agents.population import PorpoisePopulation
-        from cenop.parameters.simulation_params import SimulationParameters
-
-        params = SimulationParameters(porpoise_count=5)
-        pop = PorpoisePopulation(5, params, landscape=None)
-        pop._use_jax = True
-        mask = pop.active_mask.copy()
-        old_counter = pop._tick_counter
-        pop._update_energy_history(mask)
-        assert (
-            pop._tick_counter == old_counter
-        ), "_tick_counter changed in JAX mode — should have been skipped"
-
 
 class TestSilentFailureLogging:
     """Verify silent failures now produce log messages."""
@@ -370,8 +355,8 @@ class TestSilentFailureLogging:
         assert "center" in caplog.text.lower() or "position" in caplog.text.lower()
 
 
-class TestJaxAndCellDataWarnings:
-    """Verify JAX fallback and CellData None-array access produce warnings."""
+class TestCellDataWarnings:
+    """Verify CellData None-array access produces warnings."""
 
     @pytest.mark.parametrize(
         "getter,default_val,field_name",
@@ -408,20 +393,3 @@ class TestJaxAndCellDataWarnings:
             val = getattr(cd, getter)(5.0, 5.0)
         assert val == pytest.approx(default_val)
         assert caplog.text, f"{getter} should log warning when {field_name} is None"
-
-    def test_is_jax_available_logs_on_runtime_failure(self, caplog, monkeypatch):
-        """JAX runtime failure should log warning, not silently return False."""
-        try:
-            import cenop.optimizations.tick_jax as tjax
-            from cenop.optimizations.tick_jax import is_jax_available
-
-            def raise_oom(n):
-                raise RuntimeError("GPU OOM")
-
-            monkeypatch.setattr(tjax.jnp, "ones", raise_oom)
-            with caplog.at_level(logging.WARNING):
-                result = is_jax_available()
-            assert result is False
-            assert "jax" in caplog.text.lower() or "runtime" in caplog.text.lower()
-        except (ImportError, AttributeError):
-            pytest.skip("JAX not installed")

@@ -3,7 +3,6 @@
 import numpy as np
 import pytest
 
-import cenop.agents.population as popmod
 from cenop.agents.population import PorpoisePopulation
 from cenop.movement import JASMINEPhysicsMovement
 from cenop.parameters.simulation_params import DISPERSAL_MODES, SimulationParameters
@@ -159,21 +158,6 @@ class TestUndirected:
         assert not pop.is_dispersing[0]
         assert pop.heading[0] == h
 
-    def test_refused_on_jax(self):
-        if not popmod._HAS_JAX:  # importable is not enough: a full GPU also disables it
-            pytest.skip("JAX backend not usable")
-        with pytest.raises(ValueError, match="Undirected.*JAX"):
-            _pop(dispersal="Undirected", use_jax=True)
-
-    def test_runs_when_jax_missing(self, monkeypatch):
-        monkeypatch.setattr(popmod, "_HAS_JAX", False)
-        pop = _pop(dispersal="Undirected", use_jax=True)
-        assert pop._use_jax is False
-
-    def test_off_allowed_on_jax(self):
-        pytest.importorskip("jax")
-        _pop(dispersal="off", use_jax=True)
-
 
 def test_dispersal_events_file_records_the_mode():
     from types import SimpleNamespace
@@ -209,12 +193,6 @@ class TestInnerDanishWatersState:
 
     def test_constructs_on_the_default_backend(self):
         assert self._idw()._dispersal_mode == "InnerDanishWaters"
-
-    def test_refused_on_jax(self):
-        if not popmod._HAS_JAX:
-            pytest.skip("JAX backend not usable")
-        with pytest.raises(ValueError, match="InnerDanishWaters.*JAX"):
-            self._idw(use_jax=True)
 
     def test_refused_with_non_crw_movement_module(self):
         params = SimulationParameters(
@@ -285,3 +263,8 @@ class TestInnerDanishWatersState:
         pop._reset_recycled_slots(np.array([1]))
         assert pop.dispersal_phase[1] == 0
         assert (pop._daily_pos_x[1] == 0.5).all() and (pop._daily_pos_y[1] == 0.5).all()
+
+
+def test_use_jax_true_is_refused_since_the_backend_was_removed():
+    with pytest.raises(ValueError, match="JAX backend was removed"):
+        _pop(dispersal="PSM-Type2", use_jax=True)

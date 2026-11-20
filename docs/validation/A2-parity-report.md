@@ -210,8 +210,8 @@ could not have shown a difference of the forbidden size.
 
 - **One landscape.** DEPONS reference runs exist only for its own landscapes. Nothing here
   validates CENOP on Lithuania or CentralBaltic, whose food layers are placeholders.
-- **One backend.** The NumPy/Numba path. The JAX path cannot run InnerDanishWaters, and the
-  fused Cython path is used on homogeneous landscapes only.
+- **One backend.** The NumPy/Numba path. The fused Cython path is used on homogeneous
+  landscapes only, and the JAX backend has since been removed.
 - **No turbines.** DEPONS ships no Kattegat turbine scenario.
 - **Ship reactions are statistically, not draw-for-draw, equivalent.** CENOP draws each
   ship's reaction numbers from its own stream; only rates can match.

@@ -53,20 +53,57 @@ Mean energy at day 150, ship scenario, eight seeds each:
 - **The fix did not cause it.** The two CENOP means differ by 0.04, far inside their spread.
   The verdict changed because CENOP's eight seeds happened to lie closer together in run 4,
   which made the same difference more significant.
-- **The difference is real and specific to ships.** It is not confined to the one
-  checkpoint. CENOP minus DEPONS, mean energy, run 4 (standard errors in brackets):
+- **It is not confined to the one checkpoint.** CENOP minus DEPONS, mean energy, run 4
+  (standard errors in brackets):
 
   | Day | 100 | 110 | 120 | 130 | 140 | 150 | 160 |
   |---|---|---|---|---|---|---|---|
   | Ships | +0.04 (0.8) | +0.10 (3.2) | +0.12 (3.1) | +0.15 (3.5) | +0.10 (2.2) | +0.16 (2.9) | +0.12 (1.6) |
   | Undisturbed, InnerDanishWaters | -0.04 (-0.9) | +0.01 (0.2) | -0.04 (-1.0) | -0.01 (-0.2) | +0.03 (0.4) | +0.04 (0.7) | +0.05 (0.6) |
 
-  From day 110 to day 150, when the population falls from about 870 to about 400, CENOP's
-  animals carry 3-4% more energy than DEPONS's with ships, and the same without ships. The
-  cause is not known. Population, location, age at death and exposure agree, so whatever
-  differs is in how exposed animals gain or spend energy in that period.
+  These days are not independent tests: the same seeds are behind each column.
+- **How strong the evidence is.** Taking each seed's mean energy over days 110-150 and pooling
+  runs 3 and 4 (16 CENOP trajectories against 8 of DEPONS): with ships CENOP is 0.11 higher
+  (4.21 against 4.10, p = 0.006); without ships 0.01 higher (4.12 against 4.11, p = 0.83).
+  The window was chosen after seeing the data, which flatters the first figure. The part that
+  is specific to ships, 0.10, is 1.8 standard errors: suggestive, not established.
+- **What it looks like inside each model.** In DEPONS, ships do not change mean energy in
+  this period (4.10 with, 4.11 without). In CENOP they raise it (4.21 with, 4.12 without,
+  3.3 standard errors).
 - **No band was changed.** Run 3's statement that every metric passes holds for the code and
   the sample of run 3; it does not hold for run 4.
+
+## Looking for the cause (2026-11-20): not found
+
+Scripts: `scripts/investigations/2026-11-20-ship-energy/`. Animals of both models were
+compared in eight ten-day periods between day 20 and day 160 (DEPONS: its 200 tracked animals
+per seed, eight seeds; CENOP: all animals, four seeds).
+
+| Quantity, days 100-160 | DEPONS | CENOP |
+|---|---|---|
+| Share of animal-ticks with ship deterrence | 0.193-0.233 | 0.198-0.232 |
+| Mean deterrence strength when exposed | 0.072-0.076 | 0.072-0.076 |
+| Share of animals dispersing | 0.140-0.194 | 0.150-0.197 |
+| Share of exposed animals dispersing | 0.164-0.259 | 0.179-0.249 |
+| Step length of exposed animals (cells per tick) | 2.04-2.06 | 2.05-2.06 |
+
+The two models agree period by period on how many animals are exposed, how strongly, how
+many are dispersing and how far exposed animals move. So the input to the ship response is
+the same, and the difference is in what follows from it.
+
+Ruled out by reading the DEPONS source and its compiled classes:
+
+- **Deterrence ending dispersal.** Only turbine deterrence does that in DEPONS; CENOP matches.
+- **Ignoring deterrence when stuck.** The rule's constants are all zero in DEPONS 3.2.
+- **Deterrence persisting after exposure.** DEPONS runs with deterrence time 0; the vector is
+  reset every tick, as in CENOP.
+- **A unit error in the deterrence vector.** DEPONS's output file multiplies the logged
+  strength by the cell size (400); the vectors themselves agree.
+- **The heading rule.** Both add the ship vector to the random-walk and memory vectors in
+  the same way, and store the same turn for the next step.
+
+Not checked: food eaten by exposed animals tick by tick (DEPONS does not write it), and the
+direction animals take when exposed (DEPONS's output has no ship positions).
 
 ## The ship scenario: three runs
 

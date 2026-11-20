@@ -631,7 +631,10 @@ class PorpoisePopulation:
             self, mask: np.ndarray, ambient_rl: np.ndarray | None = None
         ) -> tuple[np.ndarray, np.ndarray]:
             """
-            Compute social attraction vectors for active agents.
+            Social attraction for active agents: unit direction times social_weight.
+
+            The length is left to the caller (_social_pull), because the pull enters the
+            heading on the CRW paths and the displacement on the non-CRW path.
 
             Implementation uses a cKDTree-based neighbor lookup (fast C implementation) when
             SciPy is available, otherwise falls back to the previous binning approach.
@@ -852,14 +855,9 @@ class PorpoisePopulation:
                 unit_x[nonzero] = ux_total[nonzero] / norm[nonzero]
                 unit_y[nonzero] = uy_total[nonzero] / norm[nonzero]
 
-                # Step distances for active agents
-                step_dist = (10.0**self.prev_log_mov) / 4.0
-
-                # Apply social weight and step length into pre-allocated output
-                self._social_out_dx[:] = (unit_x * social_weight * step_dist).astype(np.float32)
-                self._social_out_dy[:] = (unit_y * social_weight * step_dist).astype(np.float32)
-                social_dx = self._social_out_dx
-                social_dy = self._social_out_dy
+                # Direction times weight, float64: _social_pull scales it to a length
+                social_dx = unit_x * social_weight
+                social_dy = unit_y * social_weight
 
                 # Zero out inactive slots
                 social_dx[~mask] = 0.0
@@ -874,6 +872,8 @@ class PorpoisePopulation:
                 return social_dx, social_dy
 
             # Fallback: previous binning approach (keeps behavior stable when SciPy not available)
+            social_dx = np.zeros(self.count, dtype=np.float64)
+            social_dy = np.zeros(self.count, dtype=np.float64)
             bin_size = max(1, comm_cells)
             bins = {}
             xs = self.x[active_idx].astype(int)
@@ -956,9 +956,8 @@ class PorpoisePopulation:
                 unit_x = ux / norm
                 unit_y = uy / norm
 
-                step_dist_i = (10.0 ** self.prev_log_mov[idx]) / 4.0
-                social_dx[idx] = unit_x * social_weight * step_dist_i
-                social_dy[idx] = unit_y * social_weight * step_dist_i
+                social_dx[idx] = unit_x * social_weight
+                social_dy[idx] = unit_y * social_weight
 
             return social_dx, social_dy
 
@@ -1123,9 +1122,9 @@ class PorpoisePopulation:
             d_dy = self._zero_f64
             self.deter_strength[mask] = 0.0
 
-        # Social communication & cohesion (add to deterrence for kernel input)
+        # Social communication & cohesion (added to the heading vector, with deterrence)
         if self._comm_enabled:
-            soc_dx, soc_dy = self._compute_social_vectors(mask, ambient_rl)
+            soc_dx, soc_dy = self._social_pull(mask, ambient_rl, "heading")
             d_dx = d_dx + soc_dx  # new array — won't modify originals
             d_dy = d_dy + soc_dy
 
@@ -1188,6 +1187,26 @@ class PorpoisePopulation:
 
         # Update prev_log_mov (Numba kernel updates it inline, NumPy fallback needs this)
         self.prev_log_mov[crw_mask] = self._log_mov[crw_mask]
+
+    def _social_pull(
+        self, mask: np.ndarray, ambient_rl: np.ndarray | None, into: str
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Social attraction scaled for where it is added.
+
+        ``into="heading"`` (CRW paths): social_weight times the length of the random-walk term
+        it is added to, inertia_const + presMov * veTotal (DEPONS crwContrib), so the weight is
+        the social attraction as a fraction of the random walk's pull, whatever the food
+        situation. Needs this tick's _log_mov and _ve_total.
+
+        ``into="displacement"`` (non-CRW module path, deprecated JAX path): social_weight times
+        the step length 10**prev_log_mov / 4 in cells, as float32.
+        """
+        dir_x, dir_y = self._compute_social_vectors(mask, ambient_rl)
+        if into == "heading":
+            crw = self.params.inertia_const + np.power(10.0, self._log_mov) * self._ve_total
+            return dir_x * crw, dir_y * crw
+        step = (10.0**self.prev_log_mov) / 4.0
+        return (dir_x * step).astype(np.float32), (dir_y * step).astype(np.float32)
 
     def _on_crw_path(self) -> bool:
         """True on the DEPONS CRW movement paths: inline, or a DEPONSCRWMovement module."""
@@ -1594,7 +1613,7 @@ class PorpoisePopulation:
             d_dy = d_dy + av.avoidance_dy * av.avoidance_strength
 
         if self._comm_enabled:
-            soc_dx, soc_dy = self._compute_social_vectors(mask, ambient_rl)
+            soc_dx, soc_dy = self._social_pull(mask, ambient_rl, "heading")
             d_dx = d_dx + soc_dx
             d_dy = d_dy + soc_dy
 
@@ -1718,9 +1737,9 @@ class PorpoisePopulation:
         else:
             self.deter_strength[mask] = 0.0
 
-        # Social communication & cohesion (same as DEPONS path)
+        # Social communication & cohesion, added to the displacement on this path
         if self._comm_enabled:
-            soc_dx, soc_dy = self._compute_social_vectors(mask, ambient_rl)
+            soc_dx, soc_dy = self._social_pull(mask, ambient_rl, "displacement")
             self._dx[mask] += soc_dx[mask]
             self._dy[mask] += soc_dy[mask]
 
@@ -3112,9 +3131,9 @@ class PorpoisePopulation:
             d_dy = np.zeros(self.count, dtype=np.float64)
             self.deter_strength[mask] = 0.0
 
-        # Social vectors (cKDTree — stays in Python)
+        # Social vectors (cKDTree — stays in Python); deprecated JAX path keeps the step scale
         if self._comm_enabled:
-            soc_dx, soc_dy = self._compute_social_vectors(mask, ambient_rl)
+            soc_dx, soc_dy = self._social_pull(mask, ambient_rl, "displacement")
         else:
             soc_dx = np.zeros(self.count, dtype=np.float32)
             soc_dy = np.zeros(self.count, dtype=np.float32)

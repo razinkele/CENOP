@@ -256,3 +256,54 @@ class TestSocialBufferPreallocation:
             buf = getattr(pop, attr)
             assert buf.shape == (n,), f"{attr} shape mismatch"
             assert buf.dtype == np.float32, f"{attr} dtype mismatch"
+
+
+class TestSocialPullScale:
+    """The social pull's length: relative to the random walk in the heading, a step otherwise.
+
+    In the heading the random-walk term has length inertia_const + presMov * veTotal (DEPONS
+    crwContrib); the social pull is social_weight times that, so the weight is the social
+    attraction as a fraction of the random walk's pull, whatever the food situation.
+    """
+
+    @staticmethod
+    def _pair(make_params, weight=0.3):
+        from cenop.agents.population import PorpoisePopulation
+
+        params = make_params(comm_enabled=True, comm_range_km=5.0, social_weight=weight, count=2)
+        pop = PorpoisePopulation(2, params)
+        pop.x[:] = np.array([10.0, 15.0], dtype=np.float32)
+        pop.y[:] = np.array([10.0, 10.0], dtype=np.float32)
+        pop.active_mask[:] = True
+        pop._log_mov[:] = 0.6
+        pop._ve_total[:] = np.array([0.2, 0.05], dtype=np.float32)
+        pop.prev_log_mov[:] = 0.8
+        return pop
+
+    def test_heading_pull_is_a_fraction_of_the_random_walk_term(self, make_params):
+        pop = self._pair(make_params, weight=0.3)
+        dx, dy = pop._social_pull(pop.active_mask, None, "heading")
+        crw = pop.params.inertia_const + 10.0**0.6 * pop._ve_total.astype(np.float64)
+        np.testing.assert_allclose(np.hypot(dx, dy), 0.3 * crw, rtol=1e-6)
+        assert dx[0] > 0 and dx[1] < 0  # towards each other
+
+    def test_heading_pull_does_not_depend_on_step_length(self, make_params):
+        pop = self._pair(make_params)
+        a = pop._social_pull(pop.active_mask, None, "heading")
+        pop.prev_log_mov[:] = 0.2
+        b = pop._social_pull(pop.active_mask, None, "heading")
+        np.testing.assert_array_equal(a[0], b[0])
+        np.testing.assert_array_equal(a[1], b[1])
+
+    def test_displacement_pull_is_weight_times_step(self, make_params):
+        """Non-CRW modules add the pull to the displacement, so it stays a step (unchanged)."""
+        pop = self._pair(make_params, weight=0.3)
+        dx, dy = pop._social_pull(pop.active_mask, None, "displacement")
+        assert dx.dtype == np.float32
+        np.testing.assert_allclose(np.hypot(dx, dy), 0.3 * 10.0**0.8 / 4.0, rtol=1e-6)
+
+    def test_weight_below_one_never_outweighs_the_random_walk(self, make_params):
+        pop = self._pair(make_params, weight=0.9)
+        pop._ve_total[:] = 0.0  # no food found: the random walk's pull is inertia_const only
+        dx, dy = pop._social_pull(pop.active_mask, None, "heading")
+        assert (np.hypot(dx, dy) < pop.params.inertia_const).all()

@@ -5,6 +5,15 @@ All notable changes to CENOP-JASMINE are documented in this file.
 ## [Unreleased]
 
 ### Changed
+- **JASMINE social attraction is scaled to the random walk (communication on only).** The
+  social pull was added to the heading as weight x step length, which outweighed the random
+  walk wherever little food had been found: on Kattegat headings reversed on 20% of ticks
+  against 4.4% without communication. It is now weight x the random walk's own pull, so the
+  weight means the same everywhere and a weight below 1 never outweighs the random walk.
+  At the default weight 0.3, reversals are 4.6% and animals still group (41% have another
+  within 1 km, against 21% without communication). The weight is not calibrated against
+  observations. Runs with communication off (the default) are unchanged. Details:
+  `docs/2026-11-20-social-weight.md`.
 - **JASMINE physics and hybrid movement: dispersal ends by the same rule as the default
   movement.** These modules ended `PSM-Type2` dispersal once the straight-line distance from
   the start reached 95% of the target, because they did not track the path length. They now
@@ -473,8 +482,7 @@ results of every earlier version differ. See `docs/validation/A2-parity-report.m
   - **The committed Kattegat baselines are stale** until regenerated.
 
 ### Known issues (found 2026-11-10, not yet fixed)
-- **JASMINE social vector scaling.** When enabled, the social vector overrides the DEPONS random
-  walk under realistic food. It needs rescaling before social behaviour is used in science runs.
+- ~~JASMINE social vector scaling~~ Rescaled after 2.3.0 (see Unreleased); the weight is still uncalibrated.
 - ~~Non-CRW movement modules keep the old dispersal completion~~ Fixed after 2.3.0 (see Unreleased).
 - **JAX backend is about 5x slower per tick on real landscapes after the land-avoidance port**
   (about 70 ms against 13 ms before, at 2000 animals; Numba about 7 ms). JAX is deprecated since

@@ -226,6 +226,11 @@ def create_sidebar():
                 ui.input_slider(
                     "social_weight", "Social Weight", min=0.0, max=1.0, value=0.3, step=0.05
                 ),
+                ui.p(
+                    "Pull towards calling neighbours, as a fraction of the random walk's own "
+                    "pull. Not calibrated against observations.",
+                    class_="text-muted small",
+                ),
             ),
             id="social_comm_accordion",
             open=False,

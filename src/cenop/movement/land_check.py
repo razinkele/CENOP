@@ -15,8 +15,8 @@ and avoidLand (918-985), run after the CRW turn and before heading composition:
    is unchanged since, so its check is not repeated: only the j == 20 and 100-round exits re-run
    it (RNG-free, so results and draws are as DEPONS's unconditional re-check). If it fails
    (beh 5), face the centre of the deepest of the 8 neighbouring cells and set log_mov = 0
-   (presMov = 1). Depth ties go to the first maximum in a fixed neighbour order; DEPONS shuffles
-   getNeighbors (Agent.java 118), a documented deviation that saves an RNG draw.
+   (presMov = 1). A tie for the deepest neighbour is broken uniformly at random, as DEPONS's
+   shuffled getNeighbors does (Agent.java 118); the draw is made only when there is a tie.
 
 Cells use CENOP's lookup: floor of the position, depth indexed [y, x]; NaN reads as -9999
 (DEPONS getDepth). Look-ahead points (the ahead point, every path sample, every escape point)
@@ -44,7 +44,7 @@ except ImportError:  # pragma: no cover - Numba is a hard dependency in practice
 
 _NO_DEPTH = -9999.0
 _DEG = math.pi / 180.0
-# Moore neighbours, in the order beh 5 scans them (first maximum wins)
+# Moore neighbours, in the order beh 5 scans them (a tie for the deepest is broken at random)
 _NB_DX = np.array([-1, 0, 1, -1, 1, -1, 0, 1], dtype=np.int64)
 _NB_DY = np.array([-1, -1, -1, 0, 0, 1, 1, 1], dtype=np.int64)
 
@@ -182,13 +182,29 @@ def _py(
             # beh 5: face the centre of the deepest Moore neighbour, presMov = 1
             cx = int(math.floor(px))
             cy = int(math.floor(py))
+            # DEPONS shuffles the neighbours and keeps the first deepest one
+            # (Agent.getNeighbors), so a tie is broken uniformly at random. Here the tied
+            # neighbours are counted and one random number is drawn only when there is a tie:
+            # runs without ties keep their random stream.
             best = 0
             best_d = _depth_at(depth, cx + _NB_DX[0] + 0.5, cy + _NB_DY[0] + 0.5)
+            n_best = 1
             for k in range(1, 8):
                 d = _depth_at(depth, cx + _NB_DX[k] + 0.5, cy + _NB_DY[k] + 0.5)
                 if d > best_d:
                     best_d = d
                     best = k
+                    n_best = 1
+                elif d == best_d:
+                    n_best += 1
+            if n_best > 1:
+                pick = min(int(np.random.uniform(0.0, 1.0) * n_best), n_best - 1)
+                for k in range(8):
+                    if _depth_at(depth, cx + _NB_DX[k] + 0.5, cy + _NB_DY[k] + 0.5) == best_d:
+                        if pick == 0:
+                            best = k
+                            break
+                        pick -= 1
             tx = cx + _NB_DX[best] + 0.5
             ty = cy + _NB_DY[best] + 0.5
             h = math.atan2(tx - px, ty - py) / _DEG

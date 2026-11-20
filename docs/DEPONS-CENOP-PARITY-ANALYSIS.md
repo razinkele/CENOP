@@ -38,7 +38,7 @@ Quantitative comparison with eight seeds per model, four scenarios including shi
 `docs/validation/A2-parity-report.md` (every metric passes).
 
 Known differences that remain: non-CRW movement modules end dispersal on straight-line
-distance; land-avoidance depth ties use a fixed neighbour order (DEPONS shuffles); four
+distance; four
 dispersal types (PSM-Type1, PSM-Type3 and its two variants) are not selectable. With eight Java and six CENOP seeds, population agrees in every year under
 `InnerDanishWaters` and `PSM-Type2`, and population and mean energy agree through year 1
 with dispersal off; the earlier "energy undershoot" was a sampling artefact. Calf memory (row 3.15) and the

@@ -257,14 +257,66 @@ def test_beh5_deepest_neighbour_sets_presmov_one(run):
     assert a["x"][0] == np.float32(30.5) and a["y"][0] == np.float32(30.5)
 
 
-def test_beh5_first_maximum_wins(run):
+def test_beh5_tie_is_broken_at_random(run):
+    """DEPONS shuffles the neighbours before taking the first deepest one (Agent.getNeighbors)."""
     depth = _grid(depth=-1.0)
     depth[29:32, 29:32] = 0.5
-    depth[30, 29] = 2.0  # (-1, 0): earlier in the neighbour order
-    depth[31, 31] = 2.0  # (+1, +1): later, same depth
-    a = _one()
-    run(a, depth)
-    assert abs(_dh(a["heading"][0], 270.0)) < 1e-3
+    depth[30, 29] = 2.0  # (-1, 0): heading 270
+    depth[31, 31] = 2.0  # (+1, +1): heading 45, same depth
+    west = east = 0
+    for seed in range(200):
+        a = _one()
+        run(a, depth, seed=seed)
+        h = float(a["heading"][0])
+        if abs(_dh(h, 270.0)) < 1e-3:
+            west += 1
+        elif abs(_dh(h, 45.0)) < 1e-3:
+            east += 1
+    assert west + east == 200  # never a shallower neighbour
+    assert 70 <= west <= 130  # both, about equally often (binomial 200, 0.5: 100 +/- 7)
+
+
+def test_beh5_three_way_tie_reaches_every_neighbour(run):
+    depth = _grid(depth=-1.0)
+    depth[29:32, 29:32] = 0.5
+    for dx, dy in ((-1, -1), (1, 0), (0, 1)):
+        depth[30 + dy, 30 + dx] = 2.0
+    seen = set()
+    for seed in range(60):
+        a = _one()
+        run(a, depth, seed=seed)
+        seen.add(round(float(a["heading"][0])) % 360)
+    assert seen == {225, 90, 0}
+
+
+def _pocket_and_turner():
+    """Animal 0 in a shallow pocket (beh 5); animal 1, processed after it, takes a jittered turn."""
+    depth = _grid(depth=-1.0)
+    depth[29:32, 29:32] = 0.5
+    depth[40:57, 2:20] = 30.0
+    depth[48, 10] = -5.0  # land four steps ahead of animal 1
+    return depth
+
+
+def _turn_of_second(run, depth, seed):
+    a = _agents([30.5, 10.5], [30.5, 45.5], [0.0, 0.0], [LOG6, LOG6])
+    run(a, depth, seed=seed)
+    assert a["log_mov"][0] == 0.0 and not a["out_enough"][0]  # animal 0: beh 5
+    assert a["out_enough"][1]
+    return float(a["heading"][1])
+
+
+def test_beh5_unique_deepest_neighbour_takes_no_extra_draw(run):
+    """Seeded results change only where there is a tie: no tie, no draw."""
+    for seed in SEEDS:
+        depth = _pocket_and_turner()
+        depth[29, 31] = 2.0
+        first = _turn_of_second(run, depth, seed)
+        depth[29, 31] = 0.5
+        depth[31, 30] = 0.6  # another unique maximum
+        assert _turn_of_second(run, depth, seed) == first
+        depth[29, 29] = 0.6  # now a tie: one more draw before animal 1's jitter
+        assert _turn_of_second(run, depth, seed) != first
 
 
 def test_beh5_nan_neighbour_is_land(run):
@@ -363,8 +415,12 @@ def test_beh4_twenty_steps_end_the_rounds(run):
         assert a["x"][0] == np.float32(10.5) and a["y"][0] == np.float32(30.5)
         assert not a["out_enough"][0]
         assert a["log_mov"][0] == 0.0
-        # beh 5: deepest neighbours of (10, 30) are all 30 m; first in order is (9, 30)
-        assert abs(_dh(a["heading"][0], 270.0)) < 1e-3
+        # beh 5: the water neighbours of (10, 30) are all 30 m deep, so any of them may be
+        # faced (DEPONS breaks the tie at random); the heading points at a cell centre
+        cx, cy = 10 + round(math.sin(math.radians(a["heading"][0]))), 30 + round(
+            math.cos(math.radians(a["heading"][0]))
+        )
+        assert (cx, cy) != (10, 30) and depth[cy, cx] == 30.0
 
 
 def test_jitter_one_draw_per_round_shared_by_tiers(run):
@@ -665,17 +721,17 @@ def _reference_always_rechecks(
         if not enough:
             cx = int(math.floor(px))
             cy = int(math.floor(py))
-            best = 0
-            best_d = land_check._depth_at(
-                depth, cx + land_check._NB_DX[0] + 0.5, cy + land_check._NB_DY[0] + 0.5
-            )
-            for k in range(1, 8):
-                d = land_check._depth_at(
+            # beh 5 as in the kernel: a tie for the deepest neighbour is broken with one draw
+            ds = [
+                land_check._depth_at(
                     depth, cx + land_check._NB_DX[k] + 0.5, cy + land_check._NB_DY[k] + 0.5
                 )
-                if d > best_d:
-                    best_d = d
-                    best = k
+                for k in range(8)
+            ]
+            tied = [k for k in range(8) if ds[k] == max(ds)]
+            best = tied[0]
+            if len(tied) > 1:
+                best = tied[min(int(np.random.uniform(0.0, 1.0) * len(tied)), len(tied) - 1)]
             tx = cx + land_check._NB_DX[best] + 0.5
             ty = cy + land_check._NB_DY[best] + 0.5
             h = math.atan2(tx - px, ty - py) / land_check._DEG

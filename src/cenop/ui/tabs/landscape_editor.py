@@ -6,7 +6,7 @@ using a shiny-deckgl MapWidget.
 """
 
 from shiny import ui
-from shiny_deckgl import CARTO_POSITRON, MapWidget
+from shiny_deckgl import CARTO_DARK, CARTO_POSITRON, MapWidget
 
 # Module-level widget instance — shared between UI and server
 gis_map = MapWidget(
@@ -19,6 +19,7 @@ gis_map = MapWidget(
         "bearing": 0,
     },
     style=CARTO_POSITRON,
+    dark_style=CARTO_DARK,  # follows the navbar's dark-mode switch
     tooltip={
         "html": "<b>{layerType}</b><br/>Value: {value}",
         "style": {"backgroundColor": "#fff", "color": "#333", "fontSize": "12px"},

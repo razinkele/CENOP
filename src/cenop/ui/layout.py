@@ -49,6 +49,20 @@ CUSTOM_CSS = """
     --accent-slate: #5a6f80;
 }
 
+/* Dark mode (navbar switch, Bootstrap data-bs-theme): the light coastal shell turns dark;
+   the ocean data zones are dark already */
+[data-bs-theme="dark"] {
+    --coastal-bg: #142330;
+    --coastal-sidebar: #101c27;
+    --coastal-text: #c8dce8;
+    --coastal-border: #2a3d50;
+}
+[data-bs-theme="dark"] .help-content .note { background: #3a3110; border-left-color: #c79a00; }
+[data-bs-theme="dark"] .sidebar .btn-outline-secondary {
+    color: var(--accent-cyan-light) !important;
+    border-color: var(--accent-cyan) !important;
+}
+
 /* ─── Navbar ─── */
 .navbar {
     min-height: 0 !important;
@@ -58,6 +72,10 @@ CUSTOM_CSS = """
     border-bottom: 2px solid var(--accent-teal) !important;
 }
 .navbar > .container-fluid { min-height: 0 !important; }
+/* Keep the tabs and the controls on the right (share, dark mode, help) on one line */
+.navbar-nav { align-items: center; flex-wrap: nowrap; }
+.navbar .nav-item .btn-sm { padding: 0.1rem 0.5rem; margin-right: 0.25rem; white-space: nowrap; }
+.navbar bslib-input-dark-mode { margin: 0 0.25rem; }
 .navbar-brand {
     padding-top: 0 !important;
     padding-bottom: 0 !important;
@@ -784,8 +802,16 @@ def create_app_ui():
         disturbance_tab(),
         landscape_editor_tab(),
         export_tab(),
-        # Add help button to the navbar
+        # Navbar controls: share the settings as a link, dark mode, help
         ui.nav_spacer(),
+        ui.nav_control(
+            ui.input_bookmark_button(
+                "Share",
+                class_="btn-sm btn-outline-secondary",
+                title="Get a link that reopens CENOP with the current settings",
+            )
+        ),
+        ui.nav_control(ui.input_dark_mode(id="dark_mode")),
         ui.nav_control(ui.input_action_link("help_btn", "❓ Help", class_="nav-link")),
         sidebar=create_sidebar(),
         title=title_with_logo,
@@ -795,5 +821,6 @@ def create_app_ui():
     )
 
 
-# Export the UI for use in app.py
-app_ui = create_app_ui()
+def app_ui(request):
+    """The UI as a function of the request, as Shiny needs for bookmarks (App in app.py)."""
+    return create_app_ui()

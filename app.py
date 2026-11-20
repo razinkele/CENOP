@@ -4,7 +4,7 @@ CENOP - CETacean Noise-Population Model
 Shiny Application Entry Point
 
 Main entry point for the Python Shiny web interface.
-Visualization design based on DEPONS (Disturbance Effects on the 
+Visualization design based on DEPONS (Disturbance Effects on the
 Harbour Porpoise Population in the North Sea).
 
 This is a minimal entry point that imports the modular UI and server components.
@@ -17,8 +17,8 @@ from pathlib import Path
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)]
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger("CENOP")
 
@@ -36,6 +36,7 @@ from cenop.server.main import server
 # Warm up Numba kernels at startup to avoid first-call compilation latency
 try:
     from cenop.optimizations.kernels import warmup_kernels
+
     warmup_kernels()
     logger.info("Numba kernels warmed up successfully")
 except ImportError:
@@ -43,6 +44,7 @@ except ImportError:
 
 try:
     from cenop.optimizations.numba_helpers import warmup_numba
+
     warmup_numba()
     logger.info("Numba helpers warmed up successfully")
 except ImportError:
@@ -51,10 +53,12 @@ except ImportError:
 # Static files directory for logo and icon
 APP_DIR = Path(__file__).parent / "static"
 
-# Create the Shiny app with static file serving
-app = App(app_ui, server, static_assets=APP_DIR)
+# Create the Shiny app with static file serving. Bookmarks are kept in the URL: the
+# "Share settings" button gives a link that reopens the app with the current inputs.
+app = App(app_ui, server, static_assets=APP_DIR, bookmark_store="url")
 
 
 if __name__ == "__main__":
     from shiny import run_app
+
     run_app(app)

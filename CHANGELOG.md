@@ -4,6 +4,17 @@ All notable changes to CENOP-JASMINE are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Dark mode.** A switch in the navbar turns the light shell (navbar, sidebar) dark; the
+  maps switch to a dark basemap. A basemap the user hid in the legend stays hidden.
+- **Share settings.** A navbar button gives a link that reopens CENOP with the current
+  settings (`App(bookmark_store="url")`). Results are not included, buttons are left out so
+  opening a link never starts a run, and the colour mode stays the viewer's own.
+- **Map redraw after a reconnect.** If the hosting server keeps the session alive while the
+  browser reconnects (Shiny >= 1.8, `session.allow_reconnect`), both maps are redrawn from
+  what the server last sent. Whether the production Shiny Server keeps sessions alive has
+  not been checked; a plain `shiny run` does not.
+
 ### Changed
 - **JASMINE social attraction is scaled to the random walk (communication on only).** The
   social pull was added to the heading as weight x step length, which outweighed the random

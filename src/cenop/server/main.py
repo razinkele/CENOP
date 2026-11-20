@@ -27,6 +27,7 @@ except ImportError as e:
     create_simulation_from_inputs = None
     SimulationRunner = None
 from shiny_deckgl import (
+    CARTO_DARK,
     CARTO_POSITRON,
     bitmap_layer,
     compass_widget,
@@ -48,6 +49,7 @@ from cenop.server.map_layers import (
     build_turbine_pole_layer,
 )
 from cenop.ui.tabs.dashboard import sim_map
+from cenop.ui.tabs.landscape_editor import gis_map
 
 from .renderers.chart_helpers import (
     create_svg_chart,
@@ -543,10 +545,69 @@ def server(input, output, session):
         for lid in ids:
             _legend_choice[lid] = visible
         if layer_id == map_legend.BASEMAP_ID:
-            await sim_map.set_style(session, CARTO_POSITRON if visible else map_legend.BLANK_STYLE)
+            await sim_map.set_style(
+                session, _basemap_style() if visible else map_legend.BLANK_STYLE
+            )
         elif len(ids) > 1:
             # The browser toggled the row's own layer; the followers are the server's job
             await sim_map.set_layer_visibility(session, {lid: visible for lid in ids[1:]})
+
+    def _basemap_style():
+        """The basemap for the current colour mode (navbar dark-mode switch)."""
+        with reactive.isolate():
+            dark = input.dark_mode() == "dark" if "dark_mode" in input else False
+        return CARTO_DARK if dark else CARTO_POSITRON
+
+    @reactive.effect
+    @reactive.event(input[sim_map.dark_mode_input_id])
+    async def _keep_basemap_hidden():
+        """The map swaps basemap on a colour-mode change; keep it hidden if the user hid it."""
+        if _legend_choice.get(map_legend.BASEMAP_ID) is False:
+            await sim_map.set_style(session, map_legend.BLANK_STYLE)
+
+    # --- Reconnect and bookmarks ---
+    # After a dropped connection the browser rejoins this session (Shiny >= 1.8) and the maps
+    # are redrawn from what the server last sent.
+    session.allow_reconnect(True)
+
+    @reactive.effect
+    @reactive.event(input[sim_map.reconnected_input_id])
+    async def _redraw_sim_map():
+        await sim_map.resend_last_update(session)
+
+    @reactive.effect
+    @reactive.event(input[gis_map.reconnected_input_id])
+    async def _redraw_gis_map():
+        await gis_map.resend_last_update(session)
+
+    # "Share settings" stores the inputs in the URL. Buttons are left out (restoring a click
+    # count would replay it, e.g. start a run), and so is the viewer's colour mode.
+    session.bookmark.exclude.extend(
+        [
+            "run_sim",
+            "stop_sim",
+            "reset_sim",
+            "load_landscape",
+            "load_turbines",
+            "gis_load",
+            "help_btn",
+            "dark_mode",
+        ]
+    )
+    sim_map.enable_bookmarking(session, layers=False, style=False)  # camera only
+
+    @session.bookmark.on_bookmarked
+    async def _show_bookmark_url(url: str):
+        await session.bookmark.update_query_string(url)
+        ui.modal_show(
+            ui.modal(
+                ui.p("This link reopens CENOP with the current settings (not the results):"),
+                ui.tags.textarea(url, rows=4, readonly=True, class_="form-control"),
+                title="Share settings",
+                easy_close=True,
+                footer=ui.modal_button("Close"),
+            )
+        )
 
     _porpoise_legend_sent = False
     _noise_legend_sent = False
@@ -1511,7 +1572,7 @@ def server(input, output, session):
             ui.div(
                 style=f"width: {pct}%; height: 24px; background-color: {color}; border-radius: 4px; transition: width 0.3s;"
             ),
-            style="width: 100%; height: 24px; background-color: #e9ecef; border-radius: 4px; overflow: hidden;",
+            style="width: 100%; height: 24px; background-color: var(--coastal-border, #e9ecef); border-radius: 4px; overflow: hidden;",
         )
 
     @render.text

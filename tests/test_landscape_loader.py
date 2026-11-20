@@ -113,12 +113,18 @@ def test_central_baltic_has_data_in_every_layer_on_every_water_cell(central_balt
     assert counts == dict.fromkeys(layers, 0)
 
 
-def test_central_baltic_water_cells_carry_generator_values_not_land_values(central_baltic):
-    """generate_central_baltic.py gives every water cell patches >= 0.3, sediment 1-3, a block
-    id >= 1 and a positive distance to coast; 0 is its land value. The EMODnet bathymetry that
-    later replaced bathy.asc has water where the generator had land (its 2% border band)."""
+def test_central_baltic_layers_are_built_from_public_data(central_baltic):
+    """CentralBaltic rebuilt 2026-11-20 (docs/2026-11-20-baltic-public-data.md): DEPONS-style
+    patches on 1.6% of the water, grain sizes from DEPONS's per-class values, Copernicus salinity,
+    40 km blocks and a positive distance to coast on every water cell."""
     water = central_baltic["depth"] > 0
-    assert (central_baltic["food_prob"][water] >= 0.3).all()
-    assert np.isin(central_baltic["sediment"][water], [1, 2, 3]).all()
+    patches = central_baltic["food_prob"][water]
+    assert np.isin(patches, [0, 1]).all()
+    assert patches.mean() == pytest.approx(0.016, abs=0.001)
+    phi = {7.142, 4.4, 3.155, 2.277, 1.218, 1.495, -8.0}
+    assert set(np.round(np.unique(central_baltic["sediment"][water]), 3)) <= phi
+    sal = central_baltic["salinity"][:, water]
+    assert 0.0 <= sal.min() and sal.max() < 20.0  # near-fresh at river mouths, saltier to the west
+    assert 5.0 < np.median(sal) < 9.0  # Baltic Proper surface water
     assert (central_baltic["blocks"][water] >= 1).all()
     assert (central_baltic["dist_to_coast"][water] > 0).all()

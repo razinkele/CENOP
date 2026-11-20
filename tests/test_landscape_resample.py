@@ -150,12 +150,13 @@ def test_lithuania_run_with_a_wind_farm_uses_the_400_m_grid():
     assert ((pm.x[a] >= 0) & (pm.x[a] < 822) & (pm.y[a] >= 0) & (pm.y[a] < 952)).all()
 
 
-def test_central_baltic_is_coarsened_to_400_m():
+def test_central_baltic_is_resampled_to_400_m():
     if not (DATA_DIR / "CentralBaltic" / "bathy.asc").exists():
         pytest.skip("data/CentralBaltic not checked out (excluded from the CI sparse checkout)")
     data = LandscapeLoader("CentralBaltic", DATA_DIR).load_all()
     meta = data["metadata"]
-    assert (meta.ncols, meta.nrows, meta.cellsize) == (1125, 1150, 400.0)
+    assert (meta.ncols, meta.nrows, meta.cellsize) == (1538, 1692, 400.0)  # from 615 x 677 at 1 km
     water_km2 = (data["depth"] > 0).sum() * 0.16
-    assert water_km2 == pytest.approx(1837473 * 0.0625, rel=0.01)
-    assert data["salinity"].shape == (12, 1150, 1125)
+    assert water_km2 == pytest.approx(201414, rel=0.01)
+    assert data["salinity"].shape == (12, 1692, 1538)
+    assert data["food_prob"].shape == (1692, 1538)  # patches written on the 400 m grid

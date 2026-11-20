@@ -429,9 +429,11 @@ All notable changes to CENOP-JASMINE are documented in this file.
 - **Ships: mean energy 3-4% above DEPONS from day 110 to day 150 (found 2026-11-20).** The
   A2 comparison repeated on the current code (run 4) fails one metric: with ships, mean
   energy at day 150 is 4.29 against 4.14 in DEPONS (2.9 standard errors; the size is inside
-  the 0.25 band). The difference holds across days 110-150 and is absent without ships. The
-  cause is not known. Population, location, age at death and exposure agree
-  (`docs/validation/A2-parity-report.md`).
+  the 0.25 band). Over days 110-150, pooling two CENOP samples, CENOP is 0.11 higher with
+  ships (p = 0.006) and 0.01 higher without; the part specific to ships is 1.8 standard
+  errors, so suggestive only. A search for the cause found none: exposure, deterrence
+  strength, dispersal and step length of exposed animals agree with DEPONS period by period
+  (`docs/validation/A2-parity-report.md`, "Looking for the cause").
 - **JASMINE social vector scaling.** When enabled, the social vector overrides the DEPONS random
   walk under realistic food. It needs rescaling before social behaviour is used in science runs.
 - **Non-CRW movement modules keep the old dispersal completion.** The JASMINE physics and

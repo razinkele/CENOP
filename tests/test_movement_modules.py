@@ -293,6 +293,23 @@ class TestJASMINEPhysicsMovement:
         """Create test environment."""
         return EnvironmentContext.create_homogeneous(10)
 
+    def test_simplified_step_length_varies(self, params, state, environment):
+        """Review finding #17: the step length is redrawn each tick, as in DEPONS."""
+        movement = JASMINEPhysicsMovement(params, rng=np.random.default_rng(3))
+        x = np.full(10, 150.0, dtype=np.float32)
+        y = np.full(10, 150.0, dtype=np.float32)
+        mask = np.ones(10, dtype=bool)
+        steps = []
+        for _ in range(300):
+            result = movement.compute_step(x, y, state, environment, mask)
+            steps.append(result.step_distance.copy())
+            state.heading[:] = result.new_heading
+            state.prev_log_mov[:] = np.log10(np.maximum(result.step_distance * 4.0, 1e-6))
+        steps = np.array(steps)
+        assert steps.std() > 0.3
+        assert np.ptp(steps[-1]) > 0.1
+        assert steps.max() <= 10.0**params.max_mov / 4.0 + 1e-4
+
     def test_compute_step_returns_result(self, movement, state, environment):
         """compute_step should return MovementResult."""
         x = np.random.uniform(100, 200, 10).astype(np.float32)
@@ -540,3 +557,20 @@ class TestSimulationIntegration:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+@pytest.mark.parametrize("mode", [MovementMode.JASMINE_PHYSICS, MovementMode.HYBRID])
+def test_non_crw_modules_follow_the_random_seed(mode):
+    """The physics and hybrid modules draw from the population's seeded generator."""
+    from cenop.agents.population import PorpoisePopulation
+
+    def run():
+        params = SimulationParameters(porpoise_count=20, random_seed=7, communication_enabled=False)
+        module = create_movement_module(params, TimeMode.DEPONS, mode)
+        pop = PorpoisePopulation(20, params, movement_module=module)
+        for _ in range(20):
+            pop.step()
+        return pop.x.copy(), pop.y.copy()
+
+    (x1, y1), (x2, y2) = run(), run()
+    assert np.array_equal(x1, x2) and np.array_equal(y1, y2)

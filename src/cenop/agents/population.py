@@ -1635,6 +1635,12 @@ class PorpoisePopulation:
         else:
             env = EnvironmentContext.create_homogeneous(self.count)
 
+        # Drive the module, and a hybrid selector's two sub-modules, off the seeded generator
+        module = self._movement_module
+        for m in (module, getattr(module, "_depons", None), getattr(module, "_jasmine", None)):
+            if m is not None:
+                m.rng = self.rng
+
         # Sync population → MovementState
         state = self._movement_state
         state.heading[:] = self.heading

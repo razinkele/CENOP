@@ -16,7 +16,8 @@ Commands:         python3 scripts/run_kattegat_reference.py --count 2000 --years
                     --turbines Kattegat-test --out output/kattegat_ref_turbines
                   python3 scripts/run_kattegat_reference.py --count 2000 --years 2 --seed 42 \
                     --ships --out output/kattegat_ref_ships
-                  (the ship run takes about 45 minutes)
+                  (the ship run takes about 20 minutes; 45 before the ship loop was batched
+                  on 2026-11-20, which did not change its output)
 
 SUPERSEDES the baselines of 2026-11-19/20 (code 1cfa8b0 / bbe57bc: undisturbed 2000 -> 96
 (day 360) -> 36 (day 1800), turbines -> 75 and ships -> 71 at day 720). The only model change

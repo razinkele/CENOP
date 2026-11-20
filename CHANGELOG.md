@@ -4,6 +4,15 @@ All notable changes to CENOP-JASMINE are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Runs with ships are about 2.6 times faster, with identical results.** A Kattegat tick
+  with ship traffic takes about 34 ms where it took about 88 ms (2000 animals). The ship
+  deterrence calculation handles all ships in one pass, finds the in-range pairs in
+  compiled code, and no longer fully updates ships that are waiting at a buoy. The
+  two-year ship baseline, rerun on the new code, is byte-identical and took 20 minutes
+  (it took 45 to 55 before). Details:
+  `docs/performance/2026-11-20-ship-loop.md`.
+
 ### Fixed
 - **Land avoidance: a tie for the deepest neighbour is broken at random.** When an animal
   finds no water ahead and faces its deepest neighbouring cell, DEPONS shuffles the

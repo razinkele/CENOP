@@ -67,6 +67,69 @@ if _NUMBA:
     _compute_tl_percell = njit(cache=True)(_compute_tl_percell)
 
 
+def _in_range_pairs_numpy(px, py, cand_ship, cand_porp, sub_x, sub_y, cell_size, min_d, max_d):
+    """In-range (candidate, sub-step) pairs: NumPy form, the reference for the compiled one.
+
+    ``cand_ship[r]`` / ``cand_porp[r]`` name candidate r; ``sub_x`` / ``sub_y`` are the ships'
+    sub-step positions (ships, steps). Returns (row, slot, dist_m, gdx, gdy) for the pairs with
+    ``min_d < dist_m <= max_d``, in candidate order and slot order. ``dist_m`` is floored at 1.
+    """
+    steps = sub_x.shape[1]
+    gdx = px[cand_porp][:, None] - sub_x[cand_ship]
+    gdy = py[cand_porp][:, None] - sub_y[cand_ship]
+    dist_m = np.hypot(gdx * cell_size, gdy * cell_size)
+    np.maximum(dist_m, 1.0, out=dist_m)
+    ir = np.flatnonzero(((dist_m > min_d) & (dist_m <= max_d)).ravel())
+    return ir // steps, ir % steps, dist_m.ravel()[ir], gdx.ravel()[ir], gdy.ravel()[ir]
+
+
+def _in_range_pairs_fill(px, py, cand_ship, cand_porp, sub_x, sub_y, cell_size, min_d, max_d, out_row, out_slot, out_d, out_gdx, out_gdy,):  # fmt: skip
+    """Loop form of _in_range_pairs_numpy: fills the ``out_*`` buffers, returns the count."""
+    steps = sub_x.shape[1]
+    count = 0
+    for r in range(cand_ship.shape[0]):
+        ship = cand_ship[r]
+        x = float(px[cand_porp[r]])
+        y = float(py[cand_porp[r]])
+        for k in range(steps):
+            gdx = x - sub_x[ship, k]
+            gdy = y - sub_y[ship, k]
+            d = math.hypot(gdx * cell_size, gdy * cell_size)
+            if d < 1.0:
+                d = 1.0
+            if d > min_d and d <= max_d:
+                out_row[count] = r
+                out_slot[count] = k
+                out_d[count] = d
+                out_gdx[count] = gdx
+                out_gdy[count] = gdy
+                count += 1
+    return count
+
+
+if _NUMBA:
+    _in_range_pairs_fill = njit(cache=True)(_in_range_pairs_fill)
+
+
+def _in_range_pairs(px, py, cand_ship, cand_porp, sub_x, sub_y, cell_size, min_d, max_d):
+    """In-range (candidate, sub-step) pairs; see _in_range_pairs_numpy for the contract."""
+    if not _NUMBA:
+        return _in_range_pairs_numpy(
+            px, py, cand_ship, cand_porp, sub_x, sub_y, cell_size, min_d, max_d
+        )
+    size = cand_ship.shape[0] * sub_x.shape[1]
+    row = np.empty(size, dtype=np.int64)
+    slot = np.empty(size, dtype=np.int64)
+    d = np.empty(size, dtype=np.float64)
+    gdx = np.empty(size, dtype=np.float64)
+    gdy = np.empty(size, dtype=np.float64)
+    n = _in_range_pairs_fill(
+        px, py, cand_ship, cand_porp, sub_x, sub_y,
+        float(cell_size), float(min_d), float(max_d), row, slot, d, gdx, gdy,
+    )  # fmt: skip
+    return row[:n], slot[:n], d[:n], gdx[:n], gdy[:n]
+
+
 def _reaction_draw_rows(seed: list[int], rows: np.ndarray, steps: int) -> np.ndarray:
     """Rows ``rows`` (ascending) of ``default_rng(SeedSequence(seed)).random((n, steps))``.
 
@@ -260,6 +323,7 @@ class Ship(Agent):
         )
         self._prev_x = self.x
         self._prev_y = self.y
+        self._waiting = False  # see update(): True while waiting at a buoy
 
     def is_active(self, tick: int | None = None) -> bool:
         """Check if ship is present at given tick."""
@@ -290,6 +354,17 @@ class Ship(Agent):
         ``(_prev_x, _prev_y)`` is the ship's position in this tick (its buoy) and ``(x, y)``
         is the end of that sweep; they are equal when there is nothing to sweep to.
         """
+        # A ship that is waiting at a buoy and will still be waiting after this tick changes
+        # nothing but its countdown: position, speed and noise were set when the wait began.
+        # Most ships of a busy ship file are in this state at any time.
+        if (
+            self._waiting
+            and self.ticks_paused > 1
+            and self.tick_start <= current_tick <= self.tick_end
+        ):
+            self.ticks_paused -= 1
+            return
+        self._waiting = False
         self._prev_x, self._prev_y = self.x, self.y
         if current_tick < self.tick_start:
             self._is_active = False
@@ -330,6 +405,7 @@ class Ship(Agent):
                 self.heading = float(np.degrees(np.arctan2(end_x - start_x, end_y - start_y)))
         self._prev_x, self._prev_y = start_x, start_y
         self.x, self.y = end_x, end_y
+        self._waiting = self.ticks_paused > 0
 
     def get_source_level(self) -> float:
         """Get current source level."""
@@ -621,7 +697,6 @@ class ShipManager:
 
         # Per (porpoise, sub-step slot): keep the max-RL ship's vector, then sum slots
         # (DEPONS ShipDeterrence.recordStep + deterrenceVtX/Y).
-        best_rl = np.full((n, STEPS), -np.inf, dtype=np.float64)
         accum_dx = np.zeros((n, STEPS), dtype=np.float64)
         accum_dy = np.zeros((n, STEPS), dtype=np.float64)
 
@@ -634,125 +709,126 @@ class ShipManager:
             and getattr(cell_data, "_sediment", None) is not None
         )
 
-        # Process ships in ascending id order so the result is invariant to the input
-        # ship-list order, including on an exact RL tie (the strict `>` winner test below
-        # keeps the FIRST-processed ship, i.e. the lowest id, on a tie). This preserves
-        # this method's documented order/count invariance -- without sorting, the
-        # per-ship (n, STEPS) reaction streams would make an exact-RL-tie winner (and hence
-        # the stream used) depend on list order.
-        for ship in sorted(active_ships, key=lambda s: int(s.id)):
-            prev_x = getattr(ship, "_prev_x", ship.x)
-            prev_y = getattr(ship, "_prev_y", ship.y)
-            sub_x = prev_x + (ship.x - prev_x) * t_frac  # (STEPS,)
-            sub_y = prev_y + (ship.y - prev_y) * t_frac
+        # All ships are handled in one pass over their (ship, porpoise, sub-step) pairs. The
+        # pairs are laid out ship by ship in ascending id order, porpoise by porpoise, slot by
+        # slot, and every number is computed by the same elementwise operations as a
+        # ship-by-ship loop would use, so the result is the same to the last bit.
+        #
+        # Ascending id order makes the result invariant to the input ship-list order,
+        # including on an exact RL tie: the winner of a (porpoise, slot) is the loudest ship,
+        # and among equally loud ships the lowest id.
+        ships = sorted(active_ships, key=lambda s: int(s.id))
+        n_ships = len(ships)
+        prev_x = np.array([getattr(sh, "_prev_x", sh.x) for sh in ships], dtype=np.float64)
+        prev_y = np.array([getattr(sh, "_prev_y", sh.y) for sh in ships], dtype=np.float64)
+        end_x = np.array([sh.x for sh in ships], dtype=np.float64)
+        end_y = np.array([sh.y for sh in ships], dtype=np.float64)
+        sub_x = prev_x[:, None] + (end_x - prev_x)[:, None] * t_frac[None, :]  # (ships, STEPS)
+        sub_y = prev_y[:, None] + (end_y - prev_y)[:, None] * t_frac[None, :]
 
-            # Pre-cull: any porpoise in range at some slot lies within max_dist of the
-            # swept segment, hence within (max_dist + half segment length) of its midpoint.
-            mid_x = 0.5 * (prev_x + ship.x)
-            mid_y = 0.5 * (prev_y + ship.y)
-            seg_len_m = float(
-                np.hypot((ship.x - prev_x) * cell_size, (ship.y - prev_y) * cell_size)
+        # Pre-cull: any porpoise in range at some slot lies within max_dist of the swept
+        # segment, hence within (max_dist + half segment length) of its midpoint. Squared
+        # distances are compared (no square root); the extra metre keeps the cull a superset
+        # under rounding, and a porpoise kept needlessly has no in-range pair and changes
+        # nothing.
+        mid_x = 0.5 * (prev_x + end_x)
+        mid_y = 0.5 * (prev_y + end_y)
+        seg_len_m = np.hypot((end_x - prev_x) * cell_size, (end_y - prev_y) * cell_size)
+        cand_r = max_dist_m + 0.5 * seg_len_m + 1.0
+        mid_d2 = ((porpoise_x[None, :] - mid_x[:, None]) * cell_size) ** 2
+        mid_d2 += ((porpoise_y[None, :] - mid_y[:, None]) * cell_size) ** 2
+        # ship-major, porpoise ascending
+        cand_ship, cand_porp = np.nonzero(mid_d2 <= (cand_r * cand_r)[:, None])
+        if cand_ship.size == 0:
+            return (total_dx, total_dy)
+
+        # Distances for every (candidate, sub-step) pair. Only in-range pairs can deter.
+        row, slot, d_ir, gdx_ir, gdy_ir = _in_range_pairs(
+            porpoise_x, porpoise_y, cand_ship, cand_porp, sub_x, sub_y,
+            cell_size, min_dist_m, max_dist_m,
+        )  # fmt: skip
+        if row.size == 0:
+            return (total_dx, total_dy)
+        pair_ship = cand_ship[row]
+        pair_porp = cand_porp[row]
+
+        # WestonFlux environment at the SHIP's sub-position, as DEPONS
+        # (Ship.calculateReceivedLevelFor(sourceLevel, position, distToShip) reads depth,
+        # sediment and salinity at `position`, the interpolated ship position): one lookup
+        # per ship sub-step, indexed by the in-range pairs' ship and slot.
+        if weston:
+            pos_s = np.column_stack((sub_x.ravel(), sub_y.ravel()))
+            at = pair_ship * STEPS + slot
+            depths_ir = cell_data.get_depths_vectorized(pos_s)[at]
+            grains_ir = cell_data.get_sediments_vectorized(pos_s)[at]
+            sal_ir = cell_data.get_salinities_vectorized(pos_s, month)[at]
+        else:
+            depths_ir = grains_ir = sal_ir = None
+        source_level = np.array([sh.noise.get_source_level() for sh in ships], dtype=np.float64)
+        rl_ir = _ship_received_level_from_env(
+            source_level[pair_ship], d_ir, depths_ir, grains_ir, sal_ir, params, weston
+        )
+
+        # A pair at or below the reaction threshold can never win a slot, so it needs no
+        # reaction draw and no vector.
+        audible = rl_ir > tships
+        if not audible.any():
+            return (total_dx, total_dy)
+        if not audible.all():
+            slot = slot[audible]
+            pair_ship = pair_ship[audible]
+            pair_porp = pair_porp[audible]
+            d_ir = d_ir[audible]
+            gdx_ir = gdx_ir[audible]
+            gdy_ir = gdy_ir[audible]
+            rl_ir = rl_ir[audible]
+
+        # Reaction draws: PORPOISE-MAJOR (n, STEPS) stream seeded per
+        # (base_seed, tick, ship.id). Porpoise i's 30 slot-draws are the contiguous block
+        # u_all[i, :], so they depend ONLY on the global porpoise index i, not on the total
+        # count n -> invariant to ship order AND porpoise count/membership. Only the rows of
+        # the porpoises with an audible pair are generated (_reaction_draw_rows gives the
+        # same values as the full matrix). Only the marginal Bernoulli RATE matches DEPONS
+        # (its global draw order is unreproducible under SoA).
+        if _force_u is None:
+            u_ir = np.empty(rl_ir.size, dtype=np.float64)
+            starts = np.searchsorted(pair_ship, np.arange(n_ships + 1))
+            for k in range(n_ships):
+                lo, hi = int(starts[k]), int(starts[k + 1])
+                if lo == hi:
+                    continue
+                used, inverse = np.unique(pair_porp[lo:hi], return_inverse=True)
+                u_rows = _reaction_draw_rows([base_seed, tick, int(ships[k].id)], used, STEPS)
+                u_ir[lo:hi] = u_rows[inverse, slot[lo:hi]]
+        else:
+            u_ir = np.full(rl_ir.size, float(_force_u), dtype=np.float64)
+
+        # One deterrence model per distinct set of coefficients (normally a single one)
+        vx_ir = np.empty(rl_ir.size, dtype=np.float64)
+        vy_ir = np.empty(rl_ir.size, dtype=np.float64)
+        first_model = vars(ships[0].deterrence_model)
+        model_of = {None: (0, ships[0].deterrence_model)}
+        model_idx = np.zeros(n_ships, dtype=np.int64)
+        for k, sh in enumerate(ships):
+            coefficients = vars(sh.deterrence_model)
+            if coefficients != first_model:
+                key = tuple(sorted(coefficients.items()))
+                model_idx[k] = model_of.setdefault(key, (len(model_of), sh.deterrence_model))[0]
+        for idx, model in model_of.values():
+            sel = slice(None) if len(model_of) == 1 else np.flatnonzero(model_idx[pair_ship] == idx)
+            vx_ir[sel], vy_ir[sel], _, _, _ = model.deterrence_components(
+                rl_ir[sel], d_ir[sel], gdx_ir[sel], gdy_ir[sel], is_day, u_ir[sel], tships
             )
-            cand_r = max_dist_m + 0.5 * seg_len_m
-            mid_d = np.hypot((porpoise_x - mid_x) * cell_size, (porpoise_y - mid_y) * cell_size)
-            cand = np.flatnonzero(mid_d <= cand_r)
-            if cand.size == 0:
-                continue
 
-            source_level = ship.noise.get_source_level()
-            # Reaction draws: PORPOISE-MAJOR (n, STEPS) stream seeded per
-            # (base_seed, tick, ship.id). Porpoise i's 30 slot-draws are the contiguous
-            # block u_all[i, :], so they depend ONLY on the global porpoise index i, not on
-            # the total count n -> invariant to ship order AND porpoise count/membership.
-            # (A (STEPS, n) layout would NOT be count-invariant: C-order interleaves
-            # porpoise i's draws at flat positions i, n+i, 2n+i, ... which shift with n.)
-            # Only the marginal Bernoulli RATE matches DEPONS (global draw order is
-            # unreproducible under SoA).
-            # The draws are generated further down, for the in-range porpoises only
-            # (_reaction_draw_rows gives the same values as the full matrix).
-
-            px_c = porpoise_x[cand]
-            py_c = porpoise_y[cand]
-            m = cand.size
-            # Distances for every (candidate porpoise, sub-step) pair (m, STEPS).
-            gdx = px_c[:, None] - sub_x[None, :]
-            gdy = py_c[:, None] - sub_y[None, :]
-            dist_m = np.hypot(gdx * cell_size, gdy * cell_size)
-            np.maximum(dist_m, 1.0, out=dist_m)
-
-            # Only in-range pairs can deter; the rest are gated out and their RL/vector
-            # would be discarded. Compute the WestonFlux TL and the deterrence kernel for
-            # the in-range pairs ONLY (a candidate near a long swept path is out of range
-            # at the far sub-steps). `ir` indexes the flattened (m, STEPS) grid in C-order,
-            # so the porpoise row of each pair is `ir // STEPS`.
-            in_range = (dist_m > min_dist_m) & (dist_m <= max_dist_m)
-            ir = np.flatnonzero(in_range.ravel())
-            if ir.size == 0:
-                continue
-            rows = ir // STEPS
-            d_ir = dist_m.ravel()[ir]
-            gdx_ir = gdx.ravel()[ir]
-            gdy_ir = gdy.ravel()[ir]
-
-            # WestonFlux environment at the SHIP's sub-position, as DEPONS
-            # (Ship.calculateReceivedLevelFor(sourceLevel, position, distToShip) reads depth,
-            # sediment and salinity at `position`, the interpolated ship position): one lookup
-            # per sub-step, indexed by the in-range pairs' slot.
-            if weston:
-                pos_s = np.column_stack((sub_x, sub_y))
-                slots = ir % STEPS
-                depths_ir = cell_data.get_depths_vectorized(pos_s)[slots]
-                grains_ir = cell_data.get_sediments_vectorized(pos_s)[slots]
-                sal_ir = cell_data.get_salinities_vectorized(pos_s, month)[slots]
-            else:
-                depths_ir = grains_ir = sal_ir = None
-            rl_ir = _ship_received_level_from_env(
-                source_level, d_ir, depths_ir, grains_ir, sal_ir, params, weston
-            )
-
-            # A pair at or below the reaction threshold can never win a slot (the winner
-            # test below needs rl > tships), so it needs no reaction draw and no vector.
-            # Dropping it here leaves the result unchanged: its slot keeps RL = -inf.
-            audible = rl_ir > tships
-            if not audible.any():
-                continue
-            if not audible.all():
-                ir = ir[audible]
-                rows = rows[audible]
-                d_ir = d_ir[audible]
-                gdx_ir = gdx_ir[audible]
-                gdy_ir = gdy_ir[audible]
-                rl_ir = rl_ir[audible]
-
-            if _force_u is None:
-                used_rows, inverse = np.unique(rows, return_inverse=True)
-                u_rows = _reaction_draw_rows(
-                    [base_seed, tick, int(ship.id)], cand[used_rows], STEPS
-                )
-                u_ir = u_rows[inverse, ir % STEPS]  # porpoise-major rows
-            else:
-                u_ir = np.full(ir.size, float(_force_u), dtype=np.float64)
-            vx_ir, vy_ir, _, _, _ = ship.deterrence_model.deterrence_components(
-                rl_ir, d_ir, gdx_ir, gdy_ir, is_day, u_ir, tships
-            )
-
-            # Scatter back onto the (m, STEPS) grid: out-of-range slots keep RL = -inf
-            # (so the `rl > tships` winner test excludes them, exactly as the explicit
-            # in_range mask did) and a zero vector.
-            rl = np.full((m, STEPS), -np.inf, dtype=np.float64)
-            vx = np.zeros((m, STEPS), dtype=np.float64)
-            vy = np.zeros((m, STEPS), dtype=np.float64)
-            rl.ravel()[ir] = rl_ir
-            vx.ravel()[ir] = vx_ir
-            vy.ravel()[ir] = vy_ir
-
-            # Loudest gated ship wins each (porpoise, slot); its vector is 0 if it did not
-            # react. Slots a ship does not win keep the incumbent value.
-            cur_best = best_rl[cand, :]
-            wins = (rl > tships) & (rl > cur_best)
-            best_rl[cand, :] = np.where(wins, rl, cur_best)
-            accum_dx[cand, :] = np.where(wins, vx, accum_dx[cand, :])
-            accum_dy[cand, :] = np.where(wins, vy, accum_dy[cand, :])
+        # Loudest audible ship wins each (porpoise, slot); among equally loud ships the
+        # first in id order. Its vector is 0 if it did not react.
+        key = pair_porp * STEPS + slot
+        order = np.lexsort((np.arange(key.size), -rl_ir, key))
+        first = np.ones(order.size, dtype=bool)
+        first[1:] = key[order[1:]] != key[order[:-1]]
+        win = order[first]
+        accum_dx.ravel()[key[win]] = vx_ir[win]
+        accum_dy.ravel()[key[win]] = vy_ir[win]
 
         total_dx = accum_dx.sum(axis=1)
         total_dy = accum_dy.sum(axis=1)

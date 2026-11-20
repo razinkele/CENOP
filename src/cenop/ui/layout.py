@@ -373,8 +373,8 @@ def create_help_modal():
     <table class="param-table">
         <tr><th>Landscape</th><th>Description</th><th>Available Turbine Scenarios</th></tr>
         <tr><td>Homogeneous</td><td>Uniform test landscape (400x400 cells)</td><td>None</td></tr>
-        <tr><td>Lithuania</td><td>Central Baltic / Lithuanian waters</td><td>Curonian Nord scenarios</td></tr>
-        <tr><td>CentralBaltic</td><td>Baltic Proper, Bornholm to north of Gotland (53.4–60°N); public data: EMODnet depth and seabed, BNSC salinity, SAMBAH food, 2024 AIS ships</td><td>None</td></tr>
+        <tr><td>Lithuania</td><td>South-eastern Baltic, Lithuanian waters (1 km); public data: EMODnet depth and seabed, Copernicus salinity, 2024 AIS ships; food patches with uniform prey</td><td>Curonian Nord scenarios</td></tr>
+        <tr><td>CentralBaltic</td><td>Baltic Proper, Bornholm to north of Gotland (53.4–60°N); public data: EMODnet depth and seabed, Copernicus salinity, 2024 AIS ships; food patches with uniform prey</td><td>None</td></tr>
         <tr><td>Kattegat</td><td>Kattegat / Inner Danish Waters (600x1000 @ 400m)</td><td>None</td></tr>
         <tr><td>NorthSea</td><td>North Sea with real bathymetry (2088x2175 @ 400m)</td><td>Scenarios 1-3</td></tr>
     </table>

@@ -27,14 +27,17 @@ except ImportError as e:
     create_simulation_from_inputs = None
     SimulationRunner = None
 from shiny_deckgl import (
+    CARTO_POSITRON,
     bitmap_layer,
     compass_widget,
     fullscreen_widget,
+    layer_legend_widget,
     scale_widget,
     scatterplot_layer,
     zoom_widget,
 )
 
+from cenop.server import map_legend
 from cenop.server.map_layers import (
     build_grid_bitmap_layer,
     build_noise_construction_layer,
@@ -467,16 +470,41 @@ def server(input, output, session):
     _layer_cache: dict[str, dict] = {}
     _loaded_data_layers: set[str] = set()
 
+    # What the user ticked or unticked in the map legend, by layer id (see map_legend)
+    _legend_choice: dict[str, bool] = {}
+
+    def _empty_bitmap(layer_id: str) -> dict:
+        # image=None, not "": deck.gl would fetch "" (this page) and fail to decode it
+        return bitmap_layer(layer_id, None, [0, 0, 0, 0], visible=False)
+
+    def _shown(layers: list[dict]) -> list[dict]:
+        """Layers with the user's legend choice applied."""
+        choice = map_legend.active_choice(_legend_choice, _loaded_data_layers)
+        return [map_legend.with_choice(layer, choice) for layer in layers]
+
+    def _map_widgets() -> list[dict]:
+        return [
+            zoom_widget(placement="top-right"),
+            compass_widget(placement="top-right"),
+            scale_widget(placement="bottom-left"),
+            fullscreen_widget(placement="top-left"),
+            layer_legend_widget(
+                map_legend.legend_entries(_loaded_data_layers),
+                placement="bottom-right",
+                title="Layers",
+            ),
+        ]
+
     async def _push_all_layers():
         """Combine cached layers and push to MapWidget."""
         layers = [
-            _layer_cache.get("depth-bitmap", bitmap_layer("depth-bitmap", "", [], visible=False)),
+            # Stand-in for the basemap, so the legend has a layer to tick (see map_legend)
+            scatterplot_layer(map_legend.BASEMAP_ID, [], visible=True),
+            _layer_cache.get("depth-bitmap", _empty_bitmap("depth-bitmap")),
             _layer_cache.get(
                 "depth-tooltip", scatterplot_layer("depth-tooltip", [], visible=False)
             ),
-            _layer_cache.get(
-                "foraging-bitmap", bitmap_layer("foraging-bitmap", "", [], visible=False)
-            ),
+            _layer_cache.get("foraging-bitmap", _empty_bitmap("foraging-bitmap")),
             _layer_cache.get(
                 "foraging-tooltip", scatterplot_layer("foraging-tooltip", [], visible=False)
             ),
@@ -487,16 +515,7 @@ def server(input, output, session):
             _layer_cache.get("porpoises", build_porpoise_layer([])),
             _layer_cache.get("porpoise-trails", build_porpoise_trails_layer([])),
         ]
-        await sim_map.update(
-            session,
-            layers=layers,
-            widgets=[
-                zoom_widget(placement="top-right"),
-                compass_widget(placement="top-right"),
-                scale_widget(placement="bottom-left"),
-                fullscreen_widget(placement="top-left"),
-            ],
-        )
+        await sim_map.update(session, layers=_shown(layers), widgets=_map_widgets())
 
     async def _push_dynamic_layers(*layer_ids: str):
         """Partial layer push — only sends specified layers by ID.
@@ -506,113 +525,28 @@ def server(input, output, session):
         """
         layers = [_layer_cache[lid] for lid in layer_ids if lid in _layer_cache]
         if layers:
-            await sim_map.partial_update(session, layers=layers)
+            await sim_map.partial_update(session, layers=_shown(layers))
 
     async def _sync_legend():
-        """Send current legend entries to JS based on loaded layers."""
-        entries = [
-            {
-                "id": "basemap",
-                "label": "Background map",
-                "color": "#b0bec5",
-                "shape": "rect",
-                "checked": True,
-            }
-        ]
+        """Show a legend row for each loaded layer."""
+        await sim_map.set_widgets(session, _map_widgets())
 
-        if "depth-bitmap" in _loaded_data_layers:
-            entries.append(
-                {
-                    "id": "depth-bitmap",
-                    "label": "Bathymetry",
-                    "colors": [
-                        [1, 31, 75],
-                        [3, 56, 108],
-                        [15, 94, 156],
-                        [46, 134, 193],
-                        [86, 180, 233],
-                        [166, 216, 247],
-                    ],
-                    "shape": "rect",
-                    "checked": True,
-                }
-            )
-
-        if "foraging-bitmap" in _loaded_data_layers:
-            foraging_lyr = _layer_cache.get("foraging-bitmap", {})
-            entries.append(
-                {
-                    "id": "foraging-bitmap",
-                    "label": "Foraging",
-                    "colors": [
-                        [8, 48, 20],
-                        [20, 100, 40],
-                        [40, 160, 60],
-                        [80, 200, 80],
-                        [140, 230, 100],
-                        [200, 255, 140],
-                    ],
-                    "shape": "rect",
-                    "checked": foraging_lyr.get("visible") is not False,
-                }
-            )
-
-        if "noise-construction" in _loaded_data_layers:
-            entries.append(
-                {
-                    "id": "noise-construction",
-                    "label": "Construction noise",
-                    "color": "rgba(255,60,60,0.63)",
-                    "shape": "circle",
-                    "checked": True,
-                }
-            )
-
-        if "noise-operational" in _loaded_data_layers:
-            entries.append(
-                {
-                    "id": "noise-operational",
-                    "label": "Operational noise",
-                    "color": "rgba(255,200,60,0.47)",
-                    "shape": "circle",
-                    "checked": True,
-                }
-            )
-
-        if "turbine-poles" in _loaded_data_layers:
-            entries.append(
-                {
-                    "id": "turbine-poles",
-                    "label": "Wind turbines",
-                    "color": "rgb(50,160,240)",
-                    "shape": "rect",
-                    "checked": True,
-                }
-            )
-
-        if "porpoises" in _loaded_data_layers:
-            entries.append(
-                {
-                    "id": "porpoises",
-                    "label": "Porpoises",
-                    "color": "rgb(0,150,255)",
-                    "shape": "circle",
-                    "checked": True,
-                }
-            )
-
-        if "porpoise-trails" in _loaded_data_layers:
-            entries.append(
-                {
-                    "id": "porpoise-trails",
-                    "label": "Porpoise traces",
-                    "color": "rgb(0,150,255)",
-                    "shape": "rect",
-                    "checked": True,
-                }
-            )
-
-        await session.send_custom_message("cenop_legend_update", {"entries": entries})
+    @reactive.effect
+    @reactive.event(input[sim_map.legend_visibility_input_id])
+    async def _legend_toggled():
+        """Keep the user's legend choice, and carry it to the layers that follow the row."""
+        event = input[sim_map.legend_visibility_input_id]()
+        if not event or "layer_id" not in event:
+            return
+        layer_id, visible = str(event["layer_id"]), bool(event.get("visible", True))
+        ids = map_legend.toggled_ids(layer_id)
+        for lid in ids:
+            _legend_choice[lid] = visible
+        if layer_id == map_legend.BASEMAP_ID:
+            await sim_map.set_style(session, CARTO_POSITRON if visible else map_legend.BLANK_STYLE)
+        elif len(ids) > 1:
+            # The browser toggled the row's own layer; the followers are the server's job
+            await sim_map.set_layer_visibility(session, {lid: visible for lid in ids[1:]})
 
     _porpoise_legend_sent = False
     _noise_legend_sent = False
@@ -1685,7 +1619,7 @@ def server(input, output, session):
         """Rebuild depth bitmap when landscape is loaded."""
         loaded_name = state.landscape_loaded_name()
         if not loaded_name:
-            _layer_cache["depth-bitmap"] = bitmap_layer("depth-bitmap", "", [], visible=False)
+            _layer_cache["depth-bitmap"] = _empty_bitmap("depth-bitmap")
             _layer_cache["depth-tooltip"] = scatterplot_layer("depth-tooltip", [], visible=False)
             _loaded_data_layers.discard("depth-bitmap")
             return
@@ -1703,7 +1637,7 @@ def server(input, output, session):
 
             depth = landscape._depth
             if depth is None:
-                _layer_cache["depth-bitmap"] = bitmap_layer("depth-bitmap", "", [], visible=False)
+                _layer_cache["depth-bitmap"] = _empty_bitmap("depth-bitmap")
                 _layer_cache["depth-tooltip"] = scatterplot_layer(
                     "depth-tooltip", [], visible=False
                 )
@@ -1742,7 +1676,7 @@ def server(input, output, session):
         """Rebuild foraging bitmap when landscape is loaded."""
         loaded_name = state.landscape_loaded_name()
         if not loaded_name:
-            _layer_cache["foraging-bitmap"] = bitmap_layer("foraging-bitmap", "", [], visible=False)
+            _layer_cache["foraging-bitmap"] = _empty_bitmap("foraging-bitmap")
             _layer_cache["foraging-tooltip"] = scatterplot_layer(
                 "foraging-tooltip", [], visible=False
             )
@@ -1762,9 +1696,7 @@ def server(input, output, session):
 
             food = landscape._food_prob
             if food is None:
-                _layer_cache["foraging-bitmap"] = bitmap_layer(
-                    "foraging-bitmap", "", [], visible=False
-                )
+                _layer_cache["foraging-bitmap"] = _empty_bitmap("foraging-bitmap")
                 _layer_cache["foraging-tooltip"] = scatterplot_layer(
                     "foraging-tooltip", [], visible=False
                 )
@@ -2318,13 +2250,11 @@ def server(input, output, session):
     # Export
     # =========================================================================
 
-    @render.download(filename="cenop_results.csv")
+    @render.download_button(filename="cenop_results.csv")
     def download_data():
+        # Yield the content: a returned string would be read as the path of a file to send
         history = state.population_history()
-        if history:
-            df = pd.DataFrame(history)
-            return df.to_csv(index=False)
-        return ""
+        yield pd.DataFrame(history).to_csv(index=False) if history else ""
 
     # =========================================================================
     # GIS Landscape Editor

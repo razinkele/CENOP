@@ -34,7 +34,10 @@ dependencies = [
     "shapely>=2.0.0",
     "plotly>=5.15.0",
     "matplotlib>=3.7.0",
-    "shiny>=0.10.0",
+    # shiny-deckgl>=1.16 (the map widget) is not listed: PyPI carries 1.12.0 only; install it
+    # from the `razinka` conda channel. The test suite replaces it with a stand-in (tests/conftest.py).
+    "shiny>=1.9.0",
+    "uvicorn>=0.50",  # older uvicorn drops the connection under Shiny 1.9's concurrent sends
     "shinyswatch>=0.4.0",
     "shinywidgets>=0.2.0",
     "htmltools>=0.5.0",

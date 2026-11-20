@@ -94,6 +94,20 @@ All notable changes to CENOP-JASMINE are documented in this file.
 - Reasons and the options considered: `docs/decisions/2026-11-20-backends.md` (roadmap B1).
   The Cython kernel is kept.
 
+### Changed — UI aligned with Shiny 1.9 and shiny_deckgl 1.16 (2026-11-20)
+- **Map legend.** The dashboard legend is now shiny_deckgl's layer legend widget. The custom
+  JavaScript legend it replaces reached into the map's internals, which changed in
+  shiny_deckgl 1.12: ticking a layer raised an error in the browser and did nothing.
+  Behaviour kept: the background-map toggle, bathymetry and foraging with their tooltip
+  layers, turbines with their blades, and a hidden layer staying hidden while the simulation
+  updates the map (`src/cenop/server/map_legend.py`).
+- **Empty map layers.** Placeholder bitmap layers were sent with an empty image address,
+  which deck.gl 9.4 tried to load: two errors in the browser console on every page load.
+- **CSV download.** Uses `render.download_button` (`render.download` is deprecated in
+  Shiny 1.9).
+- **Dependencies.** `shiny>=1.9.0`, `uvicorn>=0.50`. shiny_deckgl 1.16 is needed for the map
+  but is not declared: PyPI carries 1.12.0 only; it comes from the `razinka` conda channel.
+
 ### Changed — faster tick, same results (roadmap B2, 2026-11-20)
 - Kattegat tick at 2000 animals: 8.50 -> 4.94 ms with `InnerDanishWaters`, 9.59 -> 7.41 ms
   with `PSM-Type2`. Seeded results are bit-identical.

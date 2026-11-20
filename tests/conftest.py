@@ -41,11 +41,24 @@ if "shiny_deckgl" not in sys.modules:
     _shiny_deckgl.icon_layer = _fake_layer
     _shiny_deckgl.grid_layer = _fake_layer
     _shiny_deckgl.scatterplot_layer = _fake_layer
-    _shiny_deckgl.bitmap_layer = _fake_layer
+
+    def _fake_bitmap_layer(layer_id, image, bounds, **kwargs):
+        """Same signature as the real bitmap_layer(id, image, bounds, **kwargs)."""
+        return {
+            "id": layer_id,
+            "image": image,
+            "bounds": bounds,
+            "data": image,
+            "visible": True,
+            **kwargs,
+        }
+
+    _shiny_deckgl.bitmap_layer = _fake_bitmap_layer
     _shiny_deckgl.trips_layer = _fake_layer
 
     # Widget / control helpers used by server code
     _shiny_deckgl.legend_control = MagicMock(name="legend_control")
+    _shiny_deckgl.layer_legend_widget = MagicMock(name="layer_legend_widget")
     _shiny_deckgl.scale_widget = MagicMock(name="scale_widget")
     _shiny_deckgl.zoom_widget = MagicMock(name="zoom_widget")
     _shiny_deckgl.compass_widget = MagicMock(name="compass_widget")
@@ -57,6 +70,8 @@ if "shiny_deckgl" not in sys.modules:
     from htmltools import tags as _html_tags
 
     class _MockMapWidget:
+        legend_visibility_input_id = "mock_map_legend_visibility"
+
         def __init__(self, *args, **kwargs):
             self._update = MagicMock(name="MapWidget.update")
             self._fly_to = MagicMock(name="MapWidget.fly_to")

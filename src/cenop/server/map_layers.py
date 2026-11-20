@@ -507,7 +507,7 @@ def build_grid_bitmap_layer(
 
     if not np.any(valid):
         return [
-            bitmap_layer(f"{layer_id}-bitmap", "", visible=False),
+            bitmap_layer(f"{layer_id}-bitmap", None, [0, 0, 0, 0], visible=False),
             scatterplot_layer(f"{layer_id}-tooltip", [], visible=False),
         ]
 

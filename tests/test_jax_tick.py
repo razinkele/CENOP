@@ -2241,7 +2241,11 @@ def _lc_case(name):
         depth = _lc_corridor()
         a = _lc_agents([30.5], [30.5], [0.0], [_LOG6], mem_size=30)
         _lc_remember(a, 0, [(5.5 + k, 30.5) for k in range(25)], mem_ptr=25)
-        kinds = ["exact"]
+        # beh 5 here meets a tie (every water neighbour is 30 m deep). The default backend
+        # breaks it at random since 2026-11-20, as DEPONS does; the deprecated JAX backend
+        # keeps its fixed order and is not updated (docs/decisions/2026-11-20-backends.md),
+        # so only position, step and the path result are compared.
+        kinds = ["tied"]
     elif name == "beh4_own_position_is_noop":
         depth = _lc_grid(depth=-5.0)
         depth[30:40, 30] = 30.0
@@ -2365,6 +2369,8 @@ class TestJaxDeponsLandCheck:
             for i, kind in enumerate(kinds):
                 tn = _turn(nh[i], a["heading"][i])
                 tj = _turn(jh[i], a["heading"][i])
+                if kind == "tied":
+                    continue
                 if kind == "exact":
                     assert tj == pytest.approx(tn, abs=1e-3), (case, seed, i)
                 else:

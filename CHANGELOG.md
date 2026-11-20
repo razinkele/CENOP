@@ -4,6 +4,15 @@ All notable changes to CENOP-JASMINE are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Land avoidance: a tie for the deepest neighbour is broken at random.** When an animal
+  finds no water ahead and faces its deepest neighbouring cell, DEPONS shuffles the
+  neighbours first, so equally deep cells are chosen at random; CENOP always took the same
+  one. A random number is drawn only when there is a tie. On Kattegat the fallback fired
+  3,650 times in 60 days (2000 animals) and never met a tie, so seeded results are unchanged
+  there (all four 30-day state hashes identical). Landscapes with flat areas next to land
+  can differ. The deprecated JAX backend keeps the fixed order.
+
 ## [2.3.0] - 2026-11-20
 
 CENOP checked against runs of DEPONS 3.2 for the first time. The comparison found and fixed
@@ -452,9 +461,10 @@ results of every earlier version differ. See `docs/validation/A2-parity-report.m
 - **JAX backend is about 5x slower per tick on real landscapes after the land-avoidance port**
   (about 70 ms against 13 ms before, at 2000 animals; Numba about 7 ms). JAX is deprecated since
   2026-11-20 (see Deprecated above), so this will not be fixed.
-- **Known deviations from DEPONS introduced by the land-avoidance port:** beh-5 depth ties use a
-  fixed neighbour order (DEPONS shuffles); look-ahead points are reflected at the grid edge as in
-  DEPONS's BouncyBorders, but beh-5 neighbours outside the grid read as land.
+- **Known deviation from DEPONS in land avoidance:** look-ahead points are reflected at the
+  grid edge as in DEPONS's BouncyBorders, but the deepest-neighbour fallback reads neighbours
+  outside the grid as land (DEPONS leaves them out). The two differ only when every
+  neighbour inside the grid is land. (The tie order was fixed after 2.3.0, see Unreleased.)
 - **Lithuania and CentralBaltic have placeholder food layers.** Food is present on every
   water cell (Kattegat has food patches on 1.6% of cells). On the 400 m grid each of the
   6.25 new cells carries the food value of its 1 km cell, so food per km2 is 6.25 times

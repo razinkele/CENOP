@@ -697,7 +697,7 @@ def create_help_modal():
         <li><strong>Age Distribution</strong> - Histogram of porpoise ages (0-30 years)</li>
         <li><strong>Energy Distribution</strong> - Histogram of energy levels</li>
         <li><strong>Landscape Energy</strong> - Total food availability over time</li>
-        <li><strong>Average Movement</strong> - Daily movement distances</li>
+        <li><strong>Average Movement</strong> - Mean straight-line distance moved per day (km)</li>
         <li><strong>Vital Statistics</strong> - Summary table of population metrics</li>
     </ul>
 

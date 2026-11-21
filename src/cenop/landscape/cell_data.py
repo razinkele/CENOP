@@ -199,6 +199,13 @@ class CellData:
         i, j = self._get_indices(x, y)
         return float(self._food_prob[i, j])
 
+    def total_food(self) -> float:
+        """Total food on the landscape: the sum of the current food on all cells."""
+        self._ensure_loaded()
+        if self._food_value is None:
+            return 0.0
+        return float(np.sum(self._food_value))
+
     def get_food_level(self, x: float, y: float) -> float:
         """Get current food level at position."""
         self._ensure_loaded()

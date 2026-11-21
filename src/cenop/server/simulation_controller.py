@@ -300,9 +300,39 @@ class SimulationRunner:
         self.last_pop = simulation.state.population
         self.update_count = 0
         self.ticks_per_update = 48  # Default to 48 ticks (1 day) per update
+        # Positions at the previous update, for the mean distance moved per day
+        self._prev_positions = None
         logger.debug(
             "SimulationRunner.__init__: last_pop=%d, max_ticks=%d", self.last_pop, self.max_ticks
         )
+
+    def _landscape_food_and_movement(self) -> tuple[float, float | None]:
+        """Total food on the landscape, and the mean straight-line distance (km) moved per day
+        since the previous update by animals alive at both (None at the first update)."""
+        pm = getattr(self.sim, "population_manager", None)
+        cell_data = getattr(self.sim, "_cell_data", None)
+        food = cell_data.total_food() if hasattr(cell_data, "total_food") else 0.0
+        if pm is None:
+            return food, None
+        cell_km = getattr(getattr(cell_data, "metadata", None), "cellsize", 400.0) / 1000.0
+        tick = self.sim.state.tick
+        movement = None
+        if self._prev_positions is not None:
+            px, py, pid, palive, ptick = self._prev_positions
+            n = min(len(px), pm.count)
+            both = palive[:n] & pm.active_mask[:n] & (pm.ids[:n] == pid[:n])
+            days = (tick - ptick) / 48.0
+            if both.any() and days > 0:
+                d = np.hypot(pm.x[:n][both] - px[:n][both], pm.y[:n][both] - py[:n][both])
+                movement = float(np.mean(d)) * cell_km / days
+        self._prev_positions = (
+            pm.x.copy(),
+            pm.y.copy(),
+            pm.ids.copy(),
+            pm.active_mask.copy(),
+            tick,
+        )
+        return food, movement
 
     def set_ticks_per_update(self, ticks: int):
         """Set the number of ticks to advance per update (1-48)."""
@@ -385,11 +415,15 @@ class SimulationRunner:
                 avg_food_eaten = pm.avg_food_gained * 48
                 avg_energy_expended = pm.avg_energy_cost * 48
 
+        landscape_food, movement_km_per_day = self._landscape_food_and_movement()
+
         # Create energy history entry
         energy_entry = {
             "day": self.sim.state.day,
             "avg_food_eaten": avg_food_eaten,
             "avg_energy_expended": avg_energy_expended,
+            "landscape_food": landscape_food,
+            "movement_km_per_day": movement_km_per_day,
         }
         self.energy_history.append(energy_entry)
 

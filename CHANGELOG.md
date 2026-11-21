@@ -156,6 +156,13 @@ All notable changes to CENOP-JASMINE are documented in this file.
   seed. A seed argument now replaces `params.random_seed` on a copy of the parameters. Runs
   that set both to the same value (the Kattegat reference runs) and the app (which sets only
   `random_seed`) are unchanged.
+- **Population tab: two charts showed something other than their titles.** "Landscape Energy
+  Level" plotted food eaten per porpoise (titled "Average Porpoise Energy Level") and "Average
+  Porpoise Movement" plotted the number of dispersing porpoises (already on the Disturbance
+  tab). They now show the total food on the landscape (`CellData.total_food()`) and the mean
+  straight-line distance moved per day by animals alive at both updates (from the second day;
+  Kattegat, 300 animals: about 9-11.5 km per day). The runner's daily entry carries both
+  (`landscape_food`, `movement_km_per_day`).
 - **Documentation brought in line with the code.** `docs/API.md` documented classes, methods
   and parameters that do not exist (e.g. `EnergyBudget`, `JASMINEEnergy`, `DisturbanceMemory`,
   `SimulationConfig`, `run_batch`, `OutputWriter.finalize`) and wrong signatures and defaults;

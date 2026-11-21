@@ -270,8 +270,8 @@ The interactive map shows:
 |---------------|-------------|
 | **Age Distribution** | Histogram of ages (0-30 years) |
 | **Energy Distribution** | Histogram of energy levels (0-20 units) |
-| **Landscape Energy Level** | Average food eaten per porpoise per day (the chart is labelled "Average Porpoise Energy Level") |
-| **Average Porpoise Movement** | Number of dispersing porpoises over time (not a movement distance) |
+| **Landscape Energy Level** | Total food on the landscape over time |
+| **Average Porpoise Movement** | Mean straight-line distance moved per day (km), from the second day |
 | **Vital Statistics** | Current tick, day, year, population, total births and deaths, mean age, mean energy and mothers with calves |
 
 ### Disturbance Tab
@@ -393,7 +393,7 @@ The disturbance is remembered at the animal's own cell. Habituation is not imple
 - `population`: Total living porpoises
 - `lact_calf`: Lactating females with calves
 - `births`, `deaths`: Cumulative counts (from net population change, see [Reading the Numbers](#reading-the-numbers))
-- `energy_entry`: Average food eaten and energy expended per porpoise per day (stored as a dictionary)
+- `energy_entry`: Average food eaten and energy expended per porpoise per day, total food on the landscape (`landscape_food`) and the mean distance moved per day (`movement_km_per_day`, km; none at the first update)
 - `dispersal_entry`: Dispersing and energy-declining counts (stored as a dictionary)
 - `deterred_count`: Porpoises deterred during the update
 

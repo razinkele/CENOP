@@ -2092,25 +2092,25 @@ def server(input, output, session):
 
     @render.ui
     def landscape_energy_plot():
-        """Landscape energy level over time - uses avg porpoise energy as proxy."""
+        """Landscape energy level over time: total food on the landscape."""
         try:
             history = state.energy_history()
             if not history:
                 return no_data_placeholder("Run simulation to see energy trends.")
 
             df = pd.DataFrame(history)
-            if "avg_food_eaten" not in df.columns:
+            if "landscape_food" not in df.columns:
                 return no_data_placeholder("No landscape energy data.")
 
             return create_time_series_chart(
                 df=df,
                 x_col="day",
-                y_cols=["avg_food_eaten"],
+                y_cols=["landscape_food"],
                 colors=["blue"],
-                names=["Avg Porpoise Energy"],
-                title="Average Porpoise Energy Level",
+                names=["Food on the landscape"],
+                title="Total Food on the Landscape",
                 x_title="Day",
-                y_title="Energy",
+                y_title="Food (DEPONS units)",
                 height=300,
             )
         except (ValueError, TypeError, IndexError, KeyError) as e:
@@ -2119,25 +2119,28 @@ def server(input, output, session):
 
     @render.ui
     def movement_plot():
-        """Average porpoise movement chart - uses dispersal data."""
+        """Average porpoise movement: mean straight-line distance moved per day."""
         try:
-            history = state.dispersal_history()
+            history = state.energy_history()
             if not history:
                 return no_data_placeholder("Run simulation to see movement data.")
 
             df = pd.DataFrame(history)
-            if "dispersing_count" not in df.columns:
+            if "movement_km_per_day" not in df.columns:
                 return no_data_placeholder("No movement data available.")
+            df = df.dropna(subset=["movement_km_per_day"])
+            if df.empty:
+                return no_data_placeholder("Movement data appear after the second day.")
 
             return create_time_series_chart(
                 df=df,
                 x_col="day",
-                y_cols=["dispersing_count"],
+                y_cols=["movement_km_per_day"],
                 colors=["blue"],
-                names=["Dispersing Porpoises"],
-                title="Porpoise Dispersal Activity",
+                names=["Mean distance per day"],
+                title="Average Porpoise Movement",
                 x_title="Day",
-                y_title="Count",
+                y_title="km per day (straight line)",
                 height=300,
             )
         except (ValueError, TypeError, IndexError, KeyError) as e:

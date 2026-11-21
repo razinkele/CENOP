@@ -101,6 +101,19 @@ All notable changes to CENOP-JASMINE are documented in this file.
   The same run now completes three years (676 animals at day 1,080). New slow-tier test: a
   full-JASMINE Kattegat run past the first growth. Found by the CENOP improvement review of
   2026-11-21.
+- **JASMINE settings: two now work, eight are labelled as unused.** None of the ten JASMINE
+  inputs in the Settings tab reached the model, which reads other parameter names. Memory
+  decay rate and avoidance radius now set `memory_decay_rate` and `avoidance_radius` (same
+  defaults, so default runs are unchanged). The physics inputs (body mass, drag, thrust,
+  current weight), BMR scale, activity cost, disturbance cost and avoidance strength have no
+  counterpart in the model yet; their tooltips and the help say so. The README, help and
+  Settings tab no longer describe physics-based movement as working (JASMINE movement is a
+  simplified walk; the physics integrator is not wired in), describe behavioural states as
+  labels that set activity costs, and expand JASMINE as JASCO's Animal Simulation Model
+  Including Noise Exposure. The avoidance radius is labelled in memory cells of 2 km (the
+  default 20 reaches 40 km; it said grid cells). DEPONS-mode runs do not read the two wired
+  settings (byte-identical with them changed). From the CENOP improvement review of
+  2026-11-21, which counted four unused settings.
 - **Chart legends no longer cover the lines.** The legend sat inside the top-right corner of
   the plot area, over any line running high (for example "Energy falling 3+ days" on the
   dispersal chart). It is now a horizontal row above the plot area, under the title, on

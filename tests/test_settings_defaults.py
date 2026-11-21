@@ -152,3 +152,15 @@ def test_dispersal_dropdown_offers_the_four_modes():
     assert DISPERSAL_MODES == ("off", "PSM-Type2", "Undirected", "InnerDanishWaters")
     assert "Kattegat only" in TOOLTIPS["dispersal"]
     assert "not available yet" not in TOOLTIPS["dispersal"]
+
+
+def test_jasmine_memory_settings_reach_the_memory_module():
+    """The Settings tab's memory inputs set the parameters the memory module reads."""
+    from cenop.server.simulation_controller import create_simulation_from_inputs
+
+    inp = _make_mock_input(0.03, 0.03)
+    inp.jasmine_memory_decay_rate = lambda: 0.004
+    inp.jasmine_avoidance_radius = lambda: 7.0
+    sim = create_simulation_from_inputs(inp)
+    assert sim.params.memory_decay_rate == pytest.approx(0.004)
+    assert sim.params.avoidance_radius == pytest.approx(7.0)

@@ -340,8 +340,9 @@ def create_help_modal():
     <p><strong>CENOP-JASMINE</strong> (CETacean Noise-Population Model with JASMINE Extensions) is a Python translation
     of the DEPONS 3.2 model for simulating how harbour porpoise population dynamics are affected by disturbances
     from offshore wind farm construction and ship noise.</p>
-    <p>The <strong>JASMINE</strong> (Just Another Simulation Model In Nature Environments) extension adds research-grade
-    features including physics-based movement, dynamic energy budgets, and learned avoidance behaviors.</p>
+    <p>The <strong>JASMINE</strong> (JASCO's Animal Simulation Model Including Noise Exposure) extension
+    adds experimental, uncalibrated features: behavioural states, an energy budget in physical units and learned
+    avoidance. See the changelog's known issues before using its results.</p>
     <p>The simulation engine uses a <strong>Structure-of-Arrays (SoA)</strong> architecture with
     <strong>Numba JIT-compiled kernels</strong> for hot-path operations (boundary reflection, CRW movement,
     food consumption, energy costs, social vector accumulation), achieving sub-millisecond per-kernel
@@ -351,7 +352,7 @@ def create_help_modal():
     <table class="param-table">
         <tr><th>Mode</th><th>Description</th><th>Use Case</th></tr>
         <tr><td><strong>DEPONS</strong></td><td>Regulatory-compatible empirical models aligned with DEPONS 3.2 algorithms</td><td>Environmental impact assessments</td></tr>
-        <tr><td><strong>JASMINE</strong></td><td>Physics-based movement, Dynamic Energy Budget (DEB), learned avoidance</td><td>Research and hypothesis testing</td></tr>
+        <tr><td><strong>JASMINE</strong></td><td>Behavioural states, energy budget, learned avoidance (experimental, uncalibrated)</td><td>Research and hypothesis testing</td></tr>
     </table>
     <div class="tip">
         <strong>Tip:</strong> Select simulation mode from the "Simulation Mode" dropdown in the sidebar.
@@ -643,14 +644,15 @@ def create_help_modal():
     <p>When JASMINE mode is selected, the following advanced features are enabled:</p>
 
     <h3>Behavioral State Machine</h3>
-    <p>Five behavioral states with configurable transitions:</p>
+    <p>Five behavioural states. The state labels each animal and sets its activity cost in the JASMINE
+    energy budget; it does not change how the animal moves.</p>
     <table class="param-table">
-        <tr><th>State</th><th>Description</th><th>Movement</th></tr>
-        <tr><td>FORAGING</td><td>Searching for/consuming food</td><td>DEPONS CRW</td></tr>
-        <tr><td>TRAVELING</td><td>Directed movement between areas</td><td>Physics-based</td></tr>
-        <tr><td>RESTING</td><td>Low activity energy recovery</td><td>Physics-based</td></tr>
-        <tr><td>DISPERSING</td><td>Memory-driven dispersal to new areas</td><td>PSM-based</td></tr>
-        <tr><td>DISTURBED</td><td>Response to disturbance events</td><td>Avoidance</td></tr>
+        <tr><th>State</th><th>Assigned when</th><th>Activity cost</th></tr>
+        <tr><td>FORAGING</td><td>Default</td><td>x1.0</td></tr>
+        <tr><td>TRAVELING</td><td>Step longer than 2 cells per tick</td><td>x1.5</td></tr>
+        <tr><td>RESTING</td><td>Energy below 30% of the maximum</td><td>x0.6</td></tr>
+        <tr><td>DISPERSING</td><td>The model is dispersing the animal</td><td>x1.2</td></tr>
+        <tr><td>DISTURBED</td><td>Deterred; until a day without deterrence</td><td>x2.0</td></tr>
     </table>
 
     <h3>Dynamic Energy Budget (DEB)</h3>
@@ -672,7 +674,10 @@ def create_help_modal():
         <tr><td>Habituation Rate</td><td>0.05</td><td>Rate of habituation per exposure</td></tr>
     </table>
 
-    <h3>Physics-Based Movement</h3>
+    <h3>Physics-Based Movement (not used yet)</h3>
+    <p>The physics integrator is not wired in: JASMINE movement is a simplified walk with DEPONS step lengths and
+    random turns, without food memory or dispersal steering. The parameters below, and Body Mass, BMR Scale,
+    Activity Cost and Disturbance Cost above, are not read by the model yet.</p>
     <table class="param-table">
         <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
         <tr><td>Drag Coefficient</td><td>0.01</td><td>Hydrodynamic drag</td></tr>
@@ -755,8 +760,8 @@ def create_help_modal():
             CRW rejection sampling with heading composition, PSM-Type2 dispersal with energy-based stop,
             and deterrence with raw displacement vectors and WestonFlux/JOMOPANS ship noise.
             502+ automated tests verify parameter defaults, formula outputs, and population stability.</li>
-        <li><strong>JASMINE mode</strong> &mdash; Research-grade, designed for exploring advanced behavioral hypotheses
-            (physics-based movement, DEB, learned avoidance, habituation)</li>
+        <li><strong>JASMINE mode</strong> &mdash; Experimental and not calibrated (behavioural states, energy budget,
+            learned avoidance, habituation); see the changelog's known issues</li>
     </ul>
 
     <h2>References</h2>

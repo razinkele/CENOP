@@ -93,6 +93,10 @@ All notable changes to CENOP-JASMINE are documented in this file.
   `docs/performance/2026-11-20-ship-loop.md`.
 
 ### Fixed
+- **Chart legends no longer cover the lines.** The legend sat inside the top-right corner of
+  the plot area, over any line running high (for example "Energy falling 3+ days" on the
+  dispersal chart). It is now a horizontal row above the plot area, under the title, on
+  every Plotly chart with more than one line; charts with one line keep their compact layout.
 - **"Plotly is not defined" in the browser console (Population and Disturbance tabs).** Every
   Plotly chart carried its own `<script src=...plotly...>`; Shiny inserted the chart and ran
   its drawing code before that download had finished, and Plotly hashed its 4.6 MB bundle on

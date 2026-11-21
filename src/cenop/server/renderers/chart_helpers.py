@@ -45,12 +45,17 @@ def _apply_depons_layout(
     Returns:
         Styled figure
     """
+    # Horizontal legend in its own row above the plot area, under the title: inside the
+    # plot it covered the lines near the top. Plotly shows a legend only for 2+ traces, and
+    # only those charts get the taller top margin.
+    has_legend = show_legend and len(fig.data) > 1
     legend_config = (
         dict(
-            yanchor="top",
-            y=0.99,
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
             xanchor="right",
-            x=0.99,
+            x=1.0,
             font=dict(color=DEPONS_COLORS["text"], size=11),
             bgcolor="rgba(0,0,0,0)",
         )
@@ -59,12 +64,18 @@ def _apply_depons_layout(
     )
 
     fig.update_layout(
-        title=dict(text=title, font=dict(color=DEPONS_COLORS["text"], size=13)),
+        title=dict(
+            text=title,
+            font=dict(color=DEPONS_COLORS["text"], size=13),
+            yref="container",
+            y=0.98,
+            yanchor="top",
+        ),
         xaxis_title=dict(text=x_title, font=dict(color=DEPONS_COLORS["muted"])),
         yaxis_title=dict(text=y_title, font=dict(color=DEPONS_COLORS["muted"])),
         height=height,
         legend=legend_config,
-        margin=dict(l=50, r=20, t=40, b=40),
+        margin=dict(l=50, r=20, t=64 if has_legend else 40, b=40),
         plot_bgcolor=DEPONS_COLORS["background"],
         paper_bgcolor=DEPONS_COLORS["background"],
     )

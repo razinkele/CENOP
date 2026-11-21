@@ -1536,9 +1536,13 @@ class PorpoisePopulation:
             self.deter_strength[mask] = 0.0
 
         if self._avoidance_result is not None:
+            # Learned avoidance as a fraction (its strength, at most 0.8) of the random walk's
+            # pull, DEPONS crwContrib, as the social pull: a fixed pull set the heading wherever
+            # the walk's weight was small (little food found) and drew animals off their food
             av = self._avoidance_result
-            d_dx = d_dx + av.avoidance_dx * av.avoidance_strength
-            d_dy = d_dy + av.avoidance_dy * av.avoidance_strength
+            crw = self.params.inertia_const + np.power(10.0, self._log_mov) * self._ve_total
+            d_dx = d_dx + av.avoidance_dx * av.avoidance_strength * crw
+            d_dy = d_dy + av.avoidance_dy * av.avoidance_strength * crw
 
         if self._comm_enabled:
             soc_dx, soc_dy = self._social_pull(mask, ambient_rl, "heading")

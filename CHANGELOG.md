@@ -62,6 +62,15 @@ All notable changes to CENOP-JASMINE are documented in this file.
   only one compared with DEPONS. The code is in git history up to `v2.3.0`.
 
 ### Changed
+- **Learned avoidance is a fraction of the random walk's pull on the DEPONS walk.** The JASMINE
+  memory's avoidance pull was added to the heading at a fixed size (up to 0.8). Where the
+  random walk's weight (DEPONS crwContrib) was small, after an animal had found little food,
+  the pull set the heading and drew animals off their food. It is now the avoidance strength
+  times crwContrib, as the social pull. Kattegat, 500 animals, ships, 60 days, JASMINE mode:
+  498 alive and mean energy 10.68 (was 438 and 7.47; 499 and 10.50 without the memory);
+  deterred animal-ticks 14.7% (was 11.6%; 15.2% without). Of the levers tried, this was the
+  one that mattered: remembering the animal's own cell instead gave 448 and 7.79, a 5-cell
+  radius 465 and 9.36, a 2-cell radius 482 and 10.06. DEPONS mode is unchanged.
 - **JASMINE mode now runs DEPONS movement and the DEPONS energy budget by default.** The JASMINE
   movement (a simplified walk; the physics integrator is not wired in) and the JASMINE energy
   budget are uncalibrated: with them, Kattegat (500 animals, seed 11, no ships) keeps 499
@@ -678,16 +687,14 @@ results of every earlier version differ. See `docs/validation/A2-parity-report.m
   strength + 0.02 x speed). Reproduce with
   `scripts/investigations/2026-11-21-jasmine-ships/jasmine_ships_split.py`.
 - **Learned avoidance (JASMINE disturbance memory) remembers the wrong place and is
-  uncalibrated** (found 2026-11-21). The remembered disturbance cell is the animal's position
-  minus five times its own last step, not the source: on Kattegat with ships it lies a median
-  5.5 km from the nearest deterring ship while the animal itself was 5.1 km away. Memories
-  within 40 km (20 memory cells of 2 km) with a half-life of about 14 days give 76% of
-  animals (60-day average) a constant avoidance pull (mean 0.026; ship deterrence 0.062 when deterred). JASMINE
-  mode (DEPONS movement and energy), Kattegat, 500 animals, ships, 60 days: 438 alive and mean
-  energy 7.47 with the memory, 499 and 10.50 without; deterred animal-ticks 11.6% against
-  15.2%. Habituation is not implemented. Reproduce with
+  uncalibrated** (found 2026-11-21; its energy cost was fixed the same day, see Changed). The
+  remembered disturbance cell is the animal's position minus five times its own last step, not
+  the source: on Kattegat with ships it lies a median 5.5 km from the nearest deterring ship
+  while the animal itself was 5.1 km away (remembering the animal's own cell changes little).
+  Memories within 40 km (20 memory cells of 2 km) with a half-life of about 14 days reach most
+  animals (83% avoiding at any time on Kattegat with ships, 60-day average); the radius and
+  decay have no calibration. Habituation is not implemented. Reproduce with
   `scripts/investigations/2026-11-21-learned-avoidance/avoid_study.py`.
-
 
 ## [2.2.0] - 2026-07-10
 

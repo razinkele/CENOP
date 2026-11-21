@@ -91,7 +91,6 @@ class SimulationParameters:
     # normal for 24-72 h at 2.6 km), within 5 km (Graham et al. 2019: 50% response 1.3-7.4 km)
     memory_decay_rate: float = 0.016  # Per-tick memory decay rate
     avoidance_radius: float = 2.5  # Memory cells (5 grid cells, 2 km) for avoidance: 5 km
-    habituation_enabled: bool = True  # Not used yet: habituation is not implemented
 
     # === Disturbance Sources ===
     turbines: str = "off"

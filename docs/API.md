@@ -496,15 +496,12 @@ class DisturbanceMemory:
         - Grid-based memory storage
         - Exponential memory decay
         - Learned avoidance behavior
-        - Habituation to repeated exposure
     """
 
     def __init__(
         self,
         grid_shape: Tuple[int, int],
-        decay_rate: float = 0.001,
-        habituation_enabled: bool = True,
-        habituation_rate: float = 0.05
+        decay_rate: float = 0.016,
     ):
         """
         Initialize disturbance memory.
@@ -512,8 +509,6 @@ class DisturbanceMemory:
         Args:
             grid_shape: (rows, cols) of memory grid
             decay_rate: Per-tick memory decay rate
-            habituation_enabled: Enable habituation
-            habituation_rate: Rate of habituation per exposure
         """
 
     def record_disturbance(
@@ -561,16 +556,6 @@ class DisturbanceMemory:
     def decay(self):
         """Apply per-tick memory decay."""
 
-    def get_habituation_factor(self, x: int, y: int) -> float:
-        """
-        Get habituation factor at location.
-
-        Args:
-            x, y: Grid coordinates
-
-        Returns:
-            Habituation factor (0-1, lower = more habituated)
-        """
 ```
 
 ---
@@ -909,10 +894,8 @@ class SimulationParameters:
     jasmine_disturbance_cost: float = 1.5
 
     # JASMINE Memory
-    memory_decay_rate: float = 0.001
-    avoidance_radius: float = 20.0
-    habituation_enabled: bool = True
-    habituation_rate: float = 0.05
+    memory_decay_rate: float = 0.016  # a full memory fades in about 3 days
+    avoidance_radius: float = 2.5     # memory cells of 2 km: 5 km
 ```
 
 ---
@@ -962,8 +945,7 @@ params = SimulationParameters(
 
     # Custom JASMINE parameters
     jasmine_bmr_scale=1.2,      # 20% higher metabolism
-    memory_decay_rate=0.001,    # Slow memory decay
-    habituation_enabled=True,   # Enable habituation
+    memory_decay_rate=0.008,    # Slower memory decay than the default 0.016
     jasmine_thermal_model=True  # Temperature-dependent costs
 )
 
@@ -1061,8 +1043,8 @@ print(tm.is_daytime)  # Uses per-DOY sunrise/sunset from CSV
   - Added JASMINE simulation mode
   - Hybrid behavioral FSM (5 states)
   - Dynamic Energy Budget with body mass scaling
-  - Disturbance memory with learned avoidance
-  - Habituation to repeated disturbance
+  - Disturbance memory with learned avoidance (habituation was listed but never implemented;
+    the setting was removed after 2.3.0)
   - Physics-based movement option
   - Dual-mode configuration (DEPONS/JASMINE)
 

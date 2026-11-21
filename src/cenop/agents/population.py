@@ -2090,13 +2090,19 @@ class PorpoisePopulation:
         valid = self._last_disturbance_tick >= 0
         time_since[valid] = self._global_tick - self._last_disturbance_tick[valid]
 
-        # Count PSM memory cells per agent
+        # Count PSM memory cells, only for agents that could start dispersing: every FSM mode
+        # uses the count only together with energy declining for t_disp days and not
+        # dispersing. Counting all agents copied each agent's whole memory grid every tick
+        # (100,000 cells per agent on CentralBaltic).
         memory_cells = np.zeros(self.count, dtype=np.int32)
-        active_idx = np.where(mask)[0]
-        if len(active_idx) > 0:
-            memory_cells[active_idx] = np.count_nonzero(
-                self.psm_buffer[active_idx, :, :, 0], axis=(1, 2)
-            ).astype(np.int32)
+        could_disperse = (
+            mask & (self.days_declining_energy >= self.params.t_disp) & ~self.is_dispersing
+        )
+        idx = np.flatnonzero(could_disperse)
+        if idx.size > 0:
+            memory_cells[idx] = np.count_nonzero(self.psm_buffer[idx, :, :, 0], axis=(1, 2)).astype(
+                np.int32
+            )
 
         context = BehaviorContext(
             deterrence_magnitude=self.deter_strength,

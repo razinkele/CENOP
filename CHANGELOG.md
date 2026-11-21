@@ -58,6 +58,18 @@ All notable changes to CENOP-JASMINE are documented in this file.
   only one compared with DEPONS. The code is in git history up to `v2.3.0`.
 
 ### Changed
+- **The app runs 2.7-4.6 times faster with ships on the Baltic landscapes.** The app always
+  runs the behaviour state machine (it feeds the behaviour-state display), and every tick it
+  counted each animal's spatial-memory cells by copying the animal's whole memory grid:
+  100,000 cells per animal on CentralBaltic. The count is used only to decide whether an
+  animal whose energy has declined for t_disp days may start dispersing, so it is now taken
+  only for those animals. In practice no animal ever qualifies (see Known issues: the
+  declining-days counter the state machine reads is never incremented), so the count was
+  never needed; a new test pins the decision for when it is. State fingerprints of app-style
+  runs are unchanged (Kattegat 20 days and CentralBaltic 3 days, 300-500 animals, ships).
+  With 300 animals and ships the app went from 23 to 105 simulated days in 90 s on
+  CentralBaltic (4.6x) and from 71 to 192 on Lithuania (2.7x). Scripts and the batch runner
+  run without the state machine and were not affected.
 - **JASMINE social attraction is scaled to the random walk (communication on only).** The
   social pull was added to the heading as weight x step length, which outweighed the random
   walk wherever little food had been found: on Kattegat headings reversed on 20% of ticks
@@ -562,6 +574,13 @@ results of every earlier version differ. See `docs/validation/A2-parity-report.m
 - Refreshed stale docs: `docs/backend-equivalence.md` (Cython repaired, not broken),
   `docs/validation-suite-status.md` (CI exists; default-branch and 60-day caveats),
   `CLAUDE.md` (CI and test counts)
+- **The behaviour state machine never enters DISPERSING** (found 2026-11-21). It starts
+  dispersal on `days_declining_energy`, a counter nothing increments (the model's own
+  dispersal trigger reads the daily energy history instead). In DEPONS mode the state machine
+  only feeds the app's behaviour-state display, so dispersing animals show as foraging or
+  disturbed there; in JASMINE mode the state also sets activity costs, so the dispersing
+  cost is never applied.
+
 
 ## [2.2.0] - 2026-07-10
 

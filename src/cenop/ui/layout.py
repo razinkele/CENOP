@@ -7,6 +7,7 @@ import shinyswatch
 from shiny import ui
 from shiny_deckgl import head_includes
 
+from .plotly_head import plotly_head
 from .sidebar import create_sidebar
 from .tabs.dashboard import dashboard_tab
 from .tabs.disturbance import disturbance_tab
@@ -816,7 +817,7 @@ def create_app_ui():
         sidebar=create_sidebar(),
         title=title_with_logo,
         theme=shinyswatch.theme.flatly,
-        header=ui.TagList(ui.tags.style(CUSTOM_CSS)),
+        header=ui.TagList(plotly_head(), ui.tags.style(CUSTOM_CSS)),
         fillable=True,
     )
 

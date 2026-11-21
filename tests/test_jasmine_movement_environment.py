@@ -36,5 +36,6 @@ def test_kattegat_uses_depons_fixed_salinity_for_jasmine_steps():
     assert _mean_step("Kattegat") < 3.0
 
 
-def test_other_landscapes_use_the_map_salinity():
-    assert _mean_step("Lithuania") > 6.0
+def test_map_salinity_landscapes_use_the_map():
+    # North Sea: the map (the Baltic landscapes are fixed like Kattegat, test_movement_salinity)
+    assert _mean_step("NorthSea") > 6.0

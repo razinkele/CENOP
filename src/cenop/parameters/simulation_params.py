@@ -11,6 +11,25 @@ from dataclasses import dataclass
 
 DISPERSAL_MODES: tuple[str, ...] = ("off", "PSM-Type2", "Undirected", "InnerDanishWaters")
 
+# Salinity in the CRW movement (step length and turning angle). The DEPONS movement model was
+# fitted to porpoises tagged in the eastern North Sea and is not valid at much lower salinity,
+# so DEPONS moves with a fixed salinity on Kattegat (Porpoise.java KATTEGAT_SALINITY; TRACE 3.2
+# section 3.2.2). CENOP does the same on its Baltic landscapes (surface salinity about 7).
+MOVEMENT_SALINITY_MODES: tuple[str, ...] = ("auto", "map", "fixed")
+FIXED_MOVEMENT_SALINITY = 34.069105813295
+FIXED_SALINITY_LANDSCAPES: tuple[str, ...] = ("Kattegat", "Lithuania", "CentralBaltic")
+
+
+def fixed_movement_salinity(mode: str, landscape: str) -> float | None:
+    """Salinity the CRW movement uses instead of the landscape map, or None for the map.
+
+    "auto": fixed on Kattegat (as DEPONS) and the Baltic landscapes, the map elsewhere;
+    "map": the map everywhere; "fixed": fixed everywhere.
+    """
+    if mode == "fixed" or (mode == "auto" and landscape in FIXED_SALINITY_LANDSCAPES):
+        return FIXED_MOVEMENT_SALINITY
+    return None
+
 
 @dataclass
 class SimulationParameters:
@@ -77,6 +96,9 @@ class SimulationParameters:
     # === Behavioral FSM ===
     disturbance_recovery_ticks: int = 48  # Ticks to recover from DISTURBED state
     min_memory_cells: int = 50  # Minimum visited cells before dispersal
+
+    # Salinity in the CRW movement: "auto", "map" or "fixed" (see MOVEMENT_SALINITY_MODES)
+    movement_salinity: str = "auto"
 
     # === Dispersal ===
     dispersal: str = "PSM-Type2"
@@ -255,6 +277,11 @@ class SimulationParameters:
         if self.dispersal not in DISPERSAL_MODES:
             raise ValueError(
                 f"unknown dispersal {self.dispersal!r}; use one of: {', '.join(DISPERSAL_MODES)}"
+            )
+        if self.movement_salinity not in MOVEMENT_SALINITY_MODES:
+            raise ValueError(
+                f"unknown movement_salinity {self.movement_salinity!r}; use one of: "
+                + ", ".join(MOVEMENT_SALINITY_MODES)
             )
         if self.dispersal == "InnerDanishWaters" and self.landscape != "Kattegat":
             # DEPONS hard-codes Kattegat geography into this mode (cell coordinates, the

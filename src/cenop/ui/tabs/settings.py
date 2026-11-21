@@ -29,6 +29,7 @@ TOOLTIPS = {
     "param_b2": "Effect of salinity on turning angle. Higher = more turning in high salinity. DEPONS default: 0.93",
     "param_b3": "Intercept for turning angle model. DEPONS default: -14.0",
     # Dispersal settings
+    "movement_salinity": "Salinity used in the movement model (step length and turning). The DEPONS movement model was fitted to porpoises tagged in the North Sea and is not valid at much lower salinity, so DEPONS fixes it at 34.07 on Kattegat. Auto: fixed on Kattegat, Lithuania and CentralBaltic, the landscape map elsewhere. Landscape map: map salinity everywhere (DEPONS's behaviour outside Kattegat; Baltic salinity of about 7 gives steps about 5 times longer). Fixed: 34.07 everywhere. Sound propagation always uses the map.",
     "dispersal": "Dispersal behavior type: 'off' = no dispersal, 'PSM-Type2' = memory-based with heading dampening, 'Undirected' = random target, undamped turns. 'InnerDanishWaters' = DEPONS Kattegat mode (block targets, coast following); Kattegat only.",
     "tdisp": "Number of consecutive days of declining energy that triggers dispersal behavior. DEPONS default: 3 days.",
     # PSM parameters
@@ -344,6 +345,29 @@ def _movement_settings_panel():
                     class_="mb-2",
                 ),
                 width=1 / 4,
+            ),
+            ui.div(
+                ui.tags.label(
+                    "Movement salinity ",
+                    ui.tags.span(
+                        "ⓘ",
+                        title=TOOLTIPS["movement_salinity"],
+                        style="cursor: help; color: #0d7377;",
+                    ),
+                    **{"for": "movement_salinity"},
+                ),
+                ui.input_select(
+                    "movement_salinity",
+                    None,
+                    choices={
+                        "auto": "Auto: fixed 34.07 on Kattegat and the Baltic landscapes",
+                        "map": "Landscape map",
+                        "fixed": "Fixed 34.07 everywhere",
+                    },
+                    selected="auto",
+                ),
+                class_="mb-2",
+                style="max-width: 32rem;",
             ),
         ),
     )

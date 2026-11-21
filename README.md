@@ -320,8 +320,8 @@ sim = build_simulation(params)  # builds the subsystem modules the mode selects,
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `memory_decay_rate` | 0.001 | Memory decay per tick |
-| `avoidance_radius` | 20.0 | Memory cells considered for avoidance |
+| `memory_decay_rate` | 0.016 | Memory decay per tick (a full memory fades in about 3 days) |
+| `avoidance_radius` | 2.5 | Memory cells (2 km) considered for avoidance: 5 km |
 | `habituation_enabled` | True | Not used yet: habituation is not implemented |
 | `jasmine_disturbance_cost_mult` | 1.0 | Multiplier on the JASMINE disturbance energy cost |
 

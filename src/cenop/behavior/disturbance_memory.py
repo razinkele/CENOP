@@ -260,11 +260,13 @@ class JASMINEMemoryModule(DisturbanceMemoryModule):
     MEMORY_CELL_SIZE = 5  # Grid cells per memory cell (2km for 400m cells)
 
     # Decay parameters
-    DEFAULT_DECAY_RATE = 0.001  # Per-tick decay (slow decay over ~1000 ticks)
-    DEFAULT_DECAY_HALF_LIFE = 720  # ~15 days (720 ticks) for 50% decay
+    # Calibrated 2026-11-21 against recovery after pile driving (see SimulationParameters
+    # memory_decay_rate / avoidance_radius): a full memory falls below the threshold in ~3 days
+    DEFAULT_DECAY_RATE = 0.016  # Per-tick decay (half-life about 43 ticks, 21 h)
+    MAX_MEMORY_STRENGTH = 1.0  # Stored response is capped at 1
 
     # Avoidance parameters
-    AVOIDANCE_RADIUS = 20  # Memory cells to consider for avoidance
+    AVOIDANCE_RADIUS = 2.5  # Memory cells to consider for avoidance (5 km)
     AVOIDANCE_THRESHOLD = 0.1  # Minimum memory strength to trigger avoidance
     MAX_AVOIDANCE_STRENGTH = 0.8  # Maximum avoidance influence on movement
 
@@ -336,9 +338,13 @@ class JASMINEMemoryModule(DisturbanceMemoryModule):
             # Convert to memory cell
             cell_id = self._position_to_cell(dist_x, dist_y)
 
-            # Update memory grid (max of current and new)
+            # Update memory grid (max of current and new), as a response between 0 and 1:
+            # deterrence strengths run to about 60 for pile driving, which kept memories above
+            # the avoidance threshold for months
             current = state.memory_grids[idx].get(cell_id, 0.0)
-            state.memory_grids[idx][cell_id] = max(current, intensity)
+            state.memory_grids[idx][cell_id] = max(
+                current, min(intensity, self.MAX_MEMORY_STRENGTH)
+            )
 
             # Update statistics
             state.total_disturbance_exposure[idx] += intensity

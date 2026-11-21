@@ -217,3 +217,4 @@ output/**/Dispersal.txt
 # Track A1 DEPONS-Java harness: artifact cache and run outputs (never commit)
 .depons-cache/
 output/depons_java/
+output/memory-recovery/

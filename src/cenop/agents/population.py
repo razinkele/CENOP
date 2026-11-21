@@ -235,6 +235,7 @@ class PorpoisePopulation:
 
         # Dispersal state
         self.is_dispersing = np.zeros(count, dtype=bool)
+        # Reset as DEPONS deactivate() does; not counted (dispersal starts from _energy_history)
         self.days_declining_energy = np.zeros(count, dtype=np.int16)
         self.dispersal_target_x = np.zeros(count, dtype=np.float32)
         self.dispersal_target_y = np.zeros(count, dtype=np.float32)
@@ -1411,17 +1412,6 @@ class PorpoisePopulation:
         self._dy[pend] = self._idw_y[pend] - self.y[pend]
         self._step_dist[pend] = np.hypot(self._dx[pend], self._dy[pend])
 
-    def _dispersal_complete_mask(self) -> np.ndarray:
-        """Path-length completion flag for the behaviour FSM (labels only).
-
-        InnerDanishWaters has no completion rule, so it never reports one.
-        """
-        if self._dispersal_mode == "InnerDanishWaters":
-            return np.zeros(self.count, dtype=bool)
-        return (self.dispersal_distance_traveled >= self.dispersal_target_distance) & (
-            self.is_dispersing
-        )
-
     def _apply_dispersal_heading(self, mask: np.ndarray) -> None:
         """Apply the dispersal turn for the active mode.
 
@@ -2090,29 +2080,12 @@ class PorpoisePopulation:
         valid = self._last_disturbance_tick >= 0
         time_since[valid] = self._global_tick - self._last_disturbance_tick[valid]
 
-        # Count PSM memory cells, only for agents that could start dispersing: every FSM mode
-        # uses the count only together with energy declining for t_disp days and not
-        # dispersing. Counting all agents copied each agent's whole memory grid every tick
-        # (100,000 cells per agent on CentralBaltic).
-        memory_cells = np.zeros(self.count, dtype=np.int32)
-        could_disperse = (
-            mask & (self.days_declining_energy >= self.params.t_disp) & ~self.is_dispersing
-        )
-        idx = np.flatnonzero(could_disperse)
-        if idx.size > 0:
-            memory_cells[idx] = np.count_nonzero(self.psm_buffer[idx, :, :, 0], axis=(1, 2)).astype(
-                np.int32
-            )
-
         context = BehaviorContext(
             deterrence_magnitude=self.deter_strength,
             time_since_disturbance=time_since,
             current_energy=self.energy / 20.0,
-            energy_declining_days=self.days_declining_energy.astype(np.int32),
             current_speed=self._step_dist,
-            memory_cell_count=memory_cells,
             is_dispersing=self.is_dispersing,
-            dispersal_complete=self._dispersal_complete_mask(),
         )
 
         self._behavior_fsm.update_states(self._behavior_state, context, mask)

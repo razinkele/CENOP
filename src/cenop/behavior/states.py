@@ -75,18 +75,13 @@ class BehaviorContext:
     deterrence_magnitude: np.ndarray  # Current deterrence strength
     time_since_disturbance: np.ndarray  # Ticks since last disturbance
     current_energy: np.ndarray  # Current energy level
-    energy_declining_days: np.ndarray  # Days of declining energy
     current_speed: np.ndarray  # Current movement speed
-    memory_cell_count: np.ndarray  # PSM memory cell count
-    is_dispersing: np.ndarray  # Currently dispersing flag
-    dispersal_complete: np.ndarray  # Dispersal target reached
+    is_dispersing: np.ndarray  # Dispersing in the model (the state follows it)
 
     # Configuration parameters with defaults
     energy_threshold_low: float = 0.3  # Low energy threshold
     energy_threshold_high: float = 0.7  # High energy threshold
     speed_threshold: float = 2.0  # Speed threshold for traveling
-    min_memory_cells: int = 50  # Minimum cells for PSM activation
-    t_disp: int = 3  # Days before dispersal triggers
     recovery_ticks: int = 48  # Ticks to recover from disturbance
 
     @classmethod
@@ -96,11 +91,8 @@ class BehaviorContext:
             deterrence_magnitude=np.zeros(count, dtype=np.float32),
             time_since_disturbance=np.full(count, 9999, dtype=np.int32),
             current_energy=np.full(count, 0.5, dtype=np.float32),
-            energy_declining_days=np.zeros(count, dtype=np.int32),
             current_speed=np.zeros(count, dtype=np.float32),
-            memory_cell_count=np.zeros(count, dtype=np.int32),
             is_dispersing=np.zeros(count, dtype=bool),
-            dispersal_complete=np.zeros(count, dtype=bool),
         )
 
 

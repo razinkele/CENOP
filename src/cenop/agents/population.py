@@ -1498,20 +1498,7 @@ class PorpoisePopulation:
         crw_mask = mask & ~self.is_dispersing
 
         # 1. Environment at current cells (identical to inline, incl. Kattegat override)
-        if self.landscape is not None:
-            np.copyto(
-                self._depths,
-                self.landscape.get_depths_vectorized(None, xi=self._cell_xi, yi=self._cell_yi),
-            )
-            np.copyto(
-                self._salinity_vals,
-                self.landscape.get_salinities_vectorized(None, xi=self._cell_xi, yi=self._cell_yi),
-            )
-            if getattr(self.landscape, "landscape_name", "") == "Kattegat":
-                self._salinity_vals[:] = 34.069105813295
-        else:
-            self._depths.fill(30.0)
-            self._salinity_vals.fill(30.0)
+        self._environment_at_cells()
 
         # 2. Reference memory FIRST: computes veTotal/vt from the pre-store buffer and stores
         #    the current (not-yet-moved) position. It is RNG-free and reads neither heading
@@ -1605,6 +1592,24 @@ class PorpoisePopulation:
         self.prev_angle[crw_mask] = total_turn[crw_mask]
         self.prev_log_mov[crw_mask] = self._log_mov[crw_mask]
 
+    def _environment_at_cells(self) -> None:
+        """Depth and salinity at each animal's current cell into _depths/_salinity_vals, with
+        DEPONS's fixed salinity on Kattegat (Porpoise.java:339-345, 423-427)."""
+        if self.landscape is not None:
+            np.copyto(
+                self._depths,
+                self.landscape.get_depths_vectorized(None, xi=self._cell_xi, yi=self._cell_yi),
+            )
+            np.copyto(
+                self._salinity_vals,
+                self.landscape.get_salinities_vectorized(None, xi=self._cell_xi, yi=self._cell_yi),
+            )
+            if getattr(self.landscape, "landscape_name", "") == "Kattegat":
+                self._salinity_vals[:] = 34.069105813295
+        else:
+            self._depths.fill(30.0)
+            self._salinity_vals.fill(30.0)
+
     def _update_movement_module_generic(
         self,
         mask: np.ndarray,
@@ -1619,11 +1624,11 @@ class PorpoisePopulation:
         """
         from cenop.movement.base import EnvironmentContext
 
-        # Build environment context
-        if self.landscape is not None:
-            env = EnvironmentContext.from_landscape(self.landscape, self.x, self.y)
-        else:
-            env = EnvironmentContext.create_homogeneous(self.count)
+        # Environment at the current cells, as the CRW paths use it: this month's salinity, and
+        # DEPONS's fixed salinity on Kattegat (Porpoise.java:423-427), which the step-length
+        # draw of the JASMINE fallback needs to reproduce DEPONS step lengths
+        self._environment_at_cells()
+        env = EnvironmentContext(depth=self._depths, salinity=self._salinity_vals)
 
         # Drive the module, and a hybrid selector's two sub-modules, off the seeded generator
         module = self._movement_module

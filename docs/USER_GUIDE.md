@@ -485,7 +485,7 @@ with OutputWriter(config) as writer:
 - Dispersal (PSM-Type2 with SSLogis heading and energy-based stop, Undirected, InnerDanishWaters)
 - Deterrence (raw displacement vectors, Weston flux TL, JOMOPANS source levels)
 
-The feature-by-feature comparison is in `docs/DEPONS-CENOP-PARITY-ANALYSIS.md`. Runs on the Kattegat landscape were compared with DEPONS 3.2 runs (eight seeds per model, four scenarios including ships) in `docs/validation/A2-parity-report.md`. The test suite has about 1,270 fast tests and 11 slow validation tests.
+The feature-by-feature comparison is in `docs/DEPONS-CENOP-PARITY-ANALYSIS.md`. Runs on the Kattegat landscape were compared with DEPONS 3.2 runs (eight seeds per model, four scenarios including ships) in `docs/validation/A2-parity-report.md`. The test suite has about 1,250 fast tests and 13 slow validation tests.
 
 **JASMINE Mode** is experimental and designed for:
 - Exploring behavioural hypotheses

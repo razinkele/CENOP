@@ -130,22 +130,22 @@ def calculate_deterrence_distance(
         distance = 10 ** ((source_level - response_threshold) / beta_hat)
         return min(distance, max_distance)
 
-    # With absorption, use iterative approach
-    # Binary search for distance
+    # With absorption: transmission loss grows with distance, so bisect the crossing
+    def excess(r: float) -> float:
+        return calculate_received_level(source_level, r, alpha_hat, beta_hat) - response_threshold
+
+    if excess(1.0) <= 0:
+        return 0.0
+    if excess(max_distance) > 0:
+        return max_distance
     low, high = 1.0, max_distance
-
-    for _ in range(50):  # Max iterations
+    for _ in range(80):
         mid = (low + high) / 2
-        rl = calculate_received_level(source_level, mid, alpha_hat, beta_hat)
-
-        if abs(rl - response_threshold) < 0.1:
-            return mid
-        elif rl > response_threshold:
+        if excess(mid) > 0:
             low = mid
         else:
             high = mid
-
-    return (low + high) / 2
+    return low
 
 
 @dataclass

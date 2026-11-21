@@ -62,3 +62,16 @@ def test_map_phase_follows_the_model_rule():
     assert turbine_phase_at(0, 144, 96) == "construction"  # was operational (96 > 3 days)
     assert turbine_phase_at(960, 1104, 959) == "planned"
     assert turbine_phase_at(960, 1104, 1104) == "operational"  # end tick: piling stopped
+
+
+def test_calculate_deterrence_distance_finds_the_crossing_with_absorption():
+    """It stopped within 0.1 dB of the threshold (~250 m at 48 km) and returned ~1 m for a
+    source that never reaches the threshold; deterrence_radius_m now uses it."""
+    from cenop.behavior.sound import calculate_deterrence_distance, calculate_received_level
+
+    a, b = 0.00027, 14.72
+    r = calculate_deterrence_distance(234.0, 152.0, alpha_hat=a, beta_hat=b, max_distance=1e6)
+    assert calculate_received_level(234.0, r - 5.0, a, b) > 152.0
+    assert calculate_received_level(234.0, r + 5.0, a, b) < 152.0
+    assert calculate_deterrence_distance(152.0001, 152.0, alpha_hat=0.001, beta_hat=b) == 0.0
+    assert calculate_deterrence_distance(234.0, 152.0, a, b, max_distance=10_000.0) == 10_000.0

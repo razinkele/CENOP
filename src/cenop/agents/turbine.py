@@ -19,6 +19,7 @@ import numpy as np
 from cenop.agents.base import Agent
 from cenop.behavior.sound import (
     TurbineNoise,
+    calculate_deterrence_distance,
     calculate_deterrence_vector,
     calculate_received_level,
     response_probability_from_rl,
@@ -46,24 +47,13 @@ def deterrence_radius_m(source_level: float, params: SimulationParameters) -> fl
     falls to deter_threshold, capped at deter_max_distance: the same rule as
     Turbine.should_deter. Zero when the source is below the threshold even at 1 m.
     """
-    max_r = float(params.deter_max_distance) * 1000.0
-
-    def excess(r: float) -> float:
-        tl = params.beta_hat * np.log10(r) + params.alpha_hat * r
-        return source_level - tl - params.deter_threshold
-
-    if excess(1.0) <= 0:
-        return 0.0
-    if excess(max_r) > 0:
-        return max_r
-    lo, hi = 1.0, max_r  # transmission loss grows with distance: bisect the crossing
-    for _ in range(80):
-        mid = 0.5 * (lo + hi)
-        if excess(mid) > 0:
-            lo = mid
-        else:
-            hi = mid
-    return lo
+    return calculate_deterrence_distance(
+        source_level,
+        params.deter_threshold,
+        alpha_hat=params.alpha_hat,
+        beta_hat=params.beta_hat,
+        max_distance=float(params.deter_max_distance) * 1000.0,
+    )
 
 
 @dataclass

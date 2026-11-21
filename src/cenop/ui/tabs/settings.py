@@ -44,7 +44,7 @@ TOOLTIPS = {
     # JASMINE Mode settings
     "time_mode_override": "Override time subsystem: None = follow main mode, DEPONS = fixed 30-min ticks, JASMINE = variable timesteps with events.",
     "movement_mode_override": "Movement: None = the DEPONS CRW in both modes. JASMINE = experimental simplified walk (DEPONS step lengths, small random turns, no food memory or dispersal steering; the physics integrator is not wired in yet).",
-    "fsm_mode_override": "Override behavior FSM: None = follow main mode, DEPONS = simple state machine, JASMINE = utility-based decisions.",
+    "fsm_mode_override": "Behaviour states: None = follow main mode, DEPONS = foraging, dispersing and disturbed, JASMINE = also traveling and resting (speed and energy). States label animals and set activity costs in the JASMINE energy budget; they do not change movement.",
     "energy_mode_override": "Energy: None = the DEPONS energy budget in both modes. JASMINE = experimental energy budget in physical units, not calibrated (almost no mortality without disturbance, more deaths with ships; see the changelog's known issues).",
     "memory_mode_override": "Override memory subsystem: None = follow main mode, DEPONS = no disturbance memory, JASMINE = learned avoidance.",
     # JASMINE Physics parameters

@@ -54,3 +54,17 @@ def test_build_simulation_gives_code_the_modules_the_app_uses():
     assert isinstance(pm._movement_module, DEPONSCRWMovement)
     assert type(pm._memory_module).__name__.startswith("JASMINE")
     assert pm._behavior_fsm is not None
+
+
+def test_fsm_mode_override_selects_the_state_machine():
+    from cenop.behavior.hybrid_fsm import FSMMode
+    from cenop.server.simulation_controller import build_simulation
+
+    def fsm(**kw):
+        p = SimulationParameters(landscape="Homogeneous", porpoise_count=5, **kw)
+        return build_simulation(p).population_manager._behavior_fsm.mode
+
+    assert fsm(simulation_mode="DEPONS", fsm_mode="JASMINE") == FSMMode.JASMINE  # was DEPONS
+    assert fsm(simulation_mode="JASMINE", fsm_mode="DEPONS") == FSMMode.DEPONS
+    assert fsm(simulation_mode="DEPONS") == FSMMode.DEPONS
+    assert fsm(simulation_mode="JASMINE") == FSMMode.JASMINE

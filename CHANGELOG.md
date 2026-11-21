@@ -149,6 +149,10 @@ All notable changes to CENOP-JASMINE are documented in this file.
   `docs/performance/2026-11-20-ship-loop.md`.
 
 ### Fixed
+- **The Behavior FSM Mode override works.** `build_simulation` took the state machine's rules
+  from the time mode and only logged `fsm_mode`, so the Settings select had no effect. It now
+  passes the effective FSM mode (the override, else `simulation_mode`). Default runs are
+  byte-identical in both modes; the tooltip now says what the two rule sets do.
 - **Births and deaths over a run are counted once each.** `Simulation.total_births` and
   `total_deaths` (used by the batch runner) summed the daily history records, which hold
   month-to-date counts, so an event was counted once for every remaining day of its month (a

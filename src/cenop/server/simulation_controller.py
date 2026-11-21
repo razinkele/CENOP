@@ -114,7 +114,7 @@ def build_simulation(params: SimulationParameters, landscape: CellData | None = 
         movement_module=create_movement_module(
             params, effective_time_mode, effective_movement_mode
         ),
-        behavior_fsm=create_behavior_fsm(params, effective_time_mode),
+        behavior_fsm=create_behavior_fsm(params, effective_time_mode, effective_fsm_mode),
         energy_module=create_energy_module(params, effective_energy_mode),
         memory_module=create_memory_module(params, effective_memory_mode),
     )

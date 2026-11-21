@@ -354,7 +354,7 @@ These parameters apply when JASMINE mode (or the matching subsystem override) is
 |---------|---------|-------------|
 | Movement Mode | Default (DEPONS) | JASMINE = experimental simplified walk (DEPONS step lengths, small random turns, no food memory or dispersal steering) |
 | Energy Mode | Default (DEPONS) | JASMINE = experimental energy budget in physical units, not calibrated |
-| Time Mode, Behavior FSM Mode, Memory Mode | Follow main mode | Memory Mode JASMINE = learned avoidance, DEPONS = no disturbance memory |
+| Time Mode, Behavior FSM Mode, Memory Mode | Follow main mode | Behavior FSM Mode JASMINE adds traveling and resting states; Memory Mode JASMINE = learned avoidance, DEPONS = no disturbance memory |
 
 #### Learned Avoidance
 

@@ -364,7 +364,7 @@ class HybridBehaviorFSM:
 
 
 def create_behavior_fsm(params: SimulationParameters, time_mode: TimeMode = TimeMode.DEPONS) -> HybridBehaviorFSM:
-    """Factory used by build_simulation; the FSM mode follows the time mode."""
+    """Factory used by build_simulation, which passes the effective FSM mode (fsm_mode override, else simulation_mode)."""
 ```
 
 ##### `BehaviorState`
@@ -842,7 +842,7 @@ class SimulationParameters:
     energy_mode: str | None = None   # None = DEPONS in both modes; "JASMINE" = JASMINE budget
     time_mode: str | None = None     # None = follow simulation_mode
     memory_mode: str | None = None   # None = follow simulation_mode
-    fsm_mode: str | None = None      # Only logged: the FSM mode follows the time mode
+    fsm_mode: str | None = None      # Behaviour-state rules (None = follow simulation_mode)
 
     # Disturbance
     turbines: str = "off"            # or a wind-farm scenario in data/wind-farms

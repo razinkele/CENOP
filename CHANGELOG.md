@@ -765,16 +765,17 @@ results of every earlier version differ. See `docs/validation/A2-parity-report.m
   `docs/validation-suite-status.md` (CI exists; default-branch and 60-day caveats),
   `CLAUDE.md` (CI and test counts)
 - ~~The behaviour state machine never enters DISPERSING~~ Fixed 2026-11-21 (see Unreleased).
-- **The JASMINE energy budget loses animals with ships** (found 2026-11-21; much smaller since
-  the Kattegat salinity fix; JASMINE mode uses the DEPONS energy budget unless
-  `energy_mode="JASMINE"`). Kattegat, 500 animals, 60 days, seed 7, JASMINE movement and
-  energy: 455 alive with ships against 499 without (72 before the salinity fix, when JASMINE
-  steps were 3.3 times too long); with the DEPONS energy budget and ships, 493. DISTURBED is
-  sticky: any deterrence above 0.01 makes an animal DISTURBED until a day passes without
-  deterrence, so 85-89% of animals are DISTURBED while 1-15% are deterred at that moment, and
-  DISTURBED doubles the JASMINE activity cost; with recovery as soon as deterrence stops, 459
-  survive. The JASMINE energy module also charges every deterred tick (0.1 x deterrence
-  strength + 0.02 x speed). Reproduce with
+- **The JASMINE energy budget loses animals with ships** (found 2026-11-21; JASMINE mode uses
+  the DEPONS energy budget unless `energy_mode="JASMINE"`). Kattegat, 500 animals, 60 days,
+  JASMINE movement and energy: 441, 451, 456 and 441 alive with ships (seeds 7-10) against 499
+  without (seed 7); with the DEPONS energy budget and ships, 497 (seed 7). Re-measured
+  2026-11-21 after the learned-avoidance and default changes (recorded before: 455 and 493;
+  72 before the Kattegat salinity fix, when JASMINE steps were 3.3 times too long). DISTURBED
+  is sticky: any deterrence above 0.01 makes an animal DISTURBED until a day passes without
+  deterrence, so 85-91% of animals are DISTURBED while 1-14% are deterred at that moment, and
+  DISTURBED doubles the JASMINE activity cost; with recovery as soon as deterrence stops, 455
+  survive, and 444 with DEPONS movement as well (seed 7). The JASMINE energy module also
+  charges every deterred tick (0.1 x deterrence strength + 0.02 x speed). Reproduce with
   `scripts/investigations/2026-11-21-jasmine-ships/jasmine_ships_split.py`.
 - ~~Learned avoidance (JASMINE disturbance memory) remembers the wrong place~~ Fixed 2026-11-21 (see Unreleased).
 

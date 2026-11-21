@@ -8,14 +8,15 @@ share deterred at that moment, at days 10, 30 and 60.
 python3 scripts/investigations/2026-11-21-jasmine-ships/jasmine_ships_split.py LABEL [key=value ...]
 
 key=value pairs go to SimulationParameters (ships=yes switches ships on). JASMINE movement
-and energy are selected unless overridden (they are opt-in since 2026-11-21). Alive at day 60
-after the Kattegat salinity fix (2026-11-21; before it, with steps 3.3 times too long: 497,
-72, 498, 134, 376):
+and energy are selected unless overridden (they are opt-in since 2026-11-21). Alive at day 60,
+re-measured 2026-11-21 at b7cf39c (after the learned-avoidance and default changes; just after
+the Kattegat salinity fix: 499, 455, 493, 459, 376; before it, with steps 3.3 times too long:
+497, 72, 498, 134, 376):
     (none)                                                         499
-    ships=yes                                                      455
-    ships=yes energy_mode=DEPONS                                   493
-    ships=yes disturbance_recovery_ticks=0                         459
-    ships=yes disturbance_recovery_ticks=0 movement_mode=DEPONS    376
+    ships=yes                                                      441
+    ships=yes energy_mode=DEPONS                                   497
+    ships=yes disturbance_recovery_ticks=0                         455
+    ships=yes disturbance_recovery_ticks=0 movement_mode=DEPONS    444
 """
 
 import sys

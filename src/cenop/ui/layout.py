@@ -352,7 +352,7 @@ def create_help_modal():
     <table class="param-table">
         <tr><th>Mode</th><th>Description</th><th>Use Case</th></tr>
         <tr><td><strong>DEPONS</strong></td><td>Regulatory-compatible empirical models aligned with DEPONS 3.2 algorithms</td><td>Environmental impact assessments</td></tr>
-        <tr><td><strong>JASMINE</strong></td><td>Behavioural states, energy budget, learned avoidance (experimental, uncalibrated)</td><td>Research and hypothesis testing</td></tr>
+        <tr><td><strong>JASMINE</strong></td><td>DEPONS movement and energy plus learned avoidance and behaviour states (experimental)</td><td>Research and hypothesis testing</td></tr>
     </table>
     <div class="tip">
         <strong>Tip:</strong> Select simulation mode from the "Simulation Mode" dropdown in the sidebar.
@@ -647,7 +647,10 @@ def create_help_modal():
     instead of clipping, matching the DEPONS&nbsp;3.2 Java implementation.</p>
 
     <h2>JASMINE Mode Features</h2>
-    <p>When JASMINE mode is selected, the following advanced features are enabled:</p>
+    <p>JASMINE mode runs DEPONS movement and the DEPONS energy budget, adding learned avoidance and
+    behaviour states (habituation is not implemented). The JASMINE movement and energy budget described
+    below are experimental and run only when chosen under Model Settings &rarr; JASMINE &rarr; Subsystem Mode
+    Overrides.</p>
 
     <h3>Behavioral State Machine</h3>
     <p>Five behavioural states. The state labels each animal and sets its activity cost in the JASMINE
@@ -676,8 +679,7 @@ def create_help_modal():
         <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
         <tr><td>Memory Decay Rate</td><td>0.001</td><td>Per-tick memory decay</td></tr>
         <tr><td>Avoidance Radius</td><td>20 cells</td><td>Influence radius for avoidance</td></tr>
-        <tr><td>Habituation</td><td>On</td><td>Enable habituation to repeated disturbance</td></tr>
-        <tr><td>Habituation Rate</td><td>0.05</td><td>Rate of habituation per exposure</td></tr>
+        <tr><td>Habituation</td><td>&mdash;</td><td>Not implemented yet</td></tr>
     </table>
 
     <h3>Physics-Based Movement (not used yet)</h3>
@@ -735,7 +737,6 @@ def create_help_modal():
         <li><strong>WestonFlux TL</strong> &mdash; Physics-based transmission loss for ship noise propagation</li>
         <li><strong>JOMOPANS SPL</strong> &mdash; Calibrated ship source levels (13 vessel classes)</li>
         <li><strong>Learned Avoidance</strong> (JASMINE) &mdash; Porpoises remember disturbance zones</li>
-        <li><strong>Habituation</strong> (JASMINE) &mdash; Reduced response to repeated exposure</li>
     </ul>
 
     <h2>Performance</h2>
@@ -767,7 +768,7 @@ def create_help_modal():
             and deterrence with raw displacement vectors and WestonFlux/JOMOPANS ship noise.
             502+ automated tests verify parameter defaults, formula outputs, and population stability.</li>
         <li><strong>JASMINE mode</strong> &mdash; Experimental and not calibrated (behavioural states, energy budget,
-            learned avoidance, habituation); see the changelog's known issues</li>
+            learned avoidance); see the changelog's known issues</li>
     </ul>
 
     <h2>References</h2>

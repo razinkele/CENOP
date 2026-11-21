@@ -87,7 +87,7 @@ class SimulationParameters:
     jasmine_avoidance_radius: float = 20.0  # Avoidance influence radius (cells)
     memory_decay_rate: float = 0.001  # Per-tick memory decay rate
     avoidance_radius: float = 20.0  # Memory cells for avoidance radius
-    habituation_enabled: bool = True  # Enable disturbance habituation
+    habituation_enabled: bool = True  # Not used yet: habituation is not implemented
 
     # === Disturbance Sources ===
     turbines: str = "off"
@@ -353,16 +353,20 @@ class SimulationParameters:
         return self.time_mode or self.simulation_mode
 
     def get_effective_movement_mode(self) -> str:
-        """Get effective movement mode (subsystem override or global)."""
-        return self.movement_mode or self.simulation_mode
+        """Movement mode: the override, else DEPONS in both modes. The JASMINE movement (a
+        simplified walk; the physics integrator is not wired in) is experimental and only
+        runs when asked for (movement_mode="JASMINE")."""
+        return self.movement_mode or "DEPONS"
 
     def get_effective_fsm_mode(self) -> str:
         """Get effective FSM mode (subsystem override or global)."""
         return self.fsm_mode or self.simulation_mode
 
     def get_effective_energy_mode(self) -> str:
-        """Get effective energy mode (subsystem override or global)."""
-        return self.energy_mode or self.simulation_mode
+        """Energy mode: the override, else DEPONS in both modes. The JASMINE energy budget is
+        uncalibrated (almost no mortality without disturbance, more deaths with ships; see the
+        changelog's known issues) and only runs when asked for (energy_mode="JASMINE")."""
+        return self.energy_mode or "DEPONS"
 
     def get_effective_memory_mode(self) -> str:
         """Get effective memory mode (subsystem override or global)."""

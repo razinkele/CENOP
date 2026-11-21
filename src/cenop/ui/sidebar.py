@@ -59,7 +59,7 @@ SIDEBAR_TOOLTIPS = {
     "landscape": "Geographic area for the simulation. Each landscape has specific bathymetry, food availability, and compatible turbine scenarios.",
     "turbines": "Wind turbine scenario to simulate. Construction scenarios include pile-driving noise that deters porpoises.",
     "sim_speed": "Controls simulation speed. 1% = slow (0.3s per day), 100% = maximum speed (no delay between steps).",
-    "simulation_mode": "DEPONS = regulatory-compatible empirical models (validated against DEPONS 3.0). JASMINE = research-grade physics and DEB models with learned behaviors.",
+    "simulation_mode": "DEPONS = regulatory-compatible model aligned with DEPONS 3.2. JASMINE = DEPONS movement and energy plus learned avoidance of remembered disturbances and behaviour states (experimental). The JASMINE movement and energy budget are experimental options under Model Settings > JASMINE.",
 }
 
 

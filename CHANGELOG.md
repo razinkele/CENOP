@@ -5,6 +5,10 @@ All notable changes to CENOP-JASMINE are documented in this file.
 ## [Unreleased]
 
 ### Added
+- **`build_simulation(params, landscape=None)`** in `cenop.server.simulation_controller`: the
+  Simulation with the subsystem modules the parameters select, as the app builds it.
+  `Simulation(params)` alone runs DEPONS without modules, so `simulation_mode="JASMINE"` set
+  in code did nothing; the README example now uses `build_simulation`.
 - **CentralBaltic rebuilt from public data (it was misplaced).** The old landscape, a
   placeholder since the first commit, carried a grid origin about 400 km south of its data:
   its download script stored latitude-longitude depths under an EPSG:3035 header without
@@ -58,6 +62,16 @@ All notable changes to CENOP-JASMINE are documented in this file.
   only one compared with DEPONS. The code is in git history up to `v2.3.0`.
 
 ### Changed
+- **JASMINE mode now runs DEPONS movement and the DEPONS energy budget by default.** The JASMINE
+  movement (a simplified walk; the physics integrator is not wired in) and the JASMINE energy
+  budget are uncalibrated: with them, Kattegat (500 animals, seed 11, no ships) keeps 499
+  animals at day 360 where DEPONS movement and energy keep 195. They now run only when chosen (`movement_mode="JASMINE"`, `energy_mode="JASMINE"`, or the Subsystem
+  Mode Overrides in the Settings tab). JASMINE mode is DEPONS plus learned avoidance and
+  behaviour states. Without disturbance JASMINE mode now gives the DEPONS population (195 at
+  day 360); learned avoidance acts on the DEPONS walk (Kattegat with ships, 20 days: 68% of
+  animals avoiding a remembered disturbance at any time on average). Habituation, listed as a JASMINE
+  feature, is not implemented (its constants and `habituation_enabled` are not read); the
+  README and help now say so. DEPONS mode is unchanged (app-style run byte-identical).
 - **Movement on the Baltic landscapes uses a fixed salinity, as DEPONS does on Kattegat.** The
   DEPONS movement model (step length and turning angle depend on salinity) was fitted to
   porpoises tagged in the eastern North Sea, and DEPONS moves with a fixed 34.07 on Kattegat
@@ -652,20 +666,28 @@ results of every earlier version differ. See `docs/validation/A2-parity-report.m
   `docs/validation-suite-status.md` (CI exists; default-branch and 60-day caveats),
   `CLAUDE.md` (CI and test counts)
 - ~~The behaviour state machine never enters DISPERSING~~ Fixed 2026-11-21 (see Unreleased).
-- **JASMINE mode with ships kills most animals** (found 2026-11-21, not fixed: how strongly
-  disturbance should cost energy in JASMINE is a research choice). Kattegat, 500 animals,
-  60 days, seed 7: 72 alive with ships against 497 without (DEPONS mode with ships: 488 of
-  500 alive at day 90). Two causes:
-  - DISTURBED is sticky. Any deterrence above 0.01 makes an animal DISTURBED, and it recovers
-    only after a full day (`disturbance_recovery_ticks`, 48) without deterrence, so 95-96% of
-    animals are DISTURBED while 2-9% are deterred at that moment. The JASMINE energy module
-    doubles the activity cost in DISTURBED (`ACTIVITY_MULTIPLIERS`). With recovery as soon as
-    deterrence stops (`disturbance_recovery_ticks=0`), 134 survive.
-  - The JASMINE energy module adds a cost for every deterred tick (0.1 x deterrence strength
-    + 0.02 x speed, `energy_budget.py`), and JASMINE movement adds to it: with immediate
-    recovery and DEPONS movement 376 survive. With the DEPONS energy module and ships, 498.
-  Units were checked (speed in m/s from cells per tick). Reproduce with
+- **The JASMINE energy budget loses animals with ships** (found 2026-11-21; much smaller since
+  the Kattegat salinity fix; JASMINE mode uses the DEPONS energy budget unless
+  `energy_mode="JASMINE"`). Kattegat, 500 animals, 60 days, seed 7, JASMINE movement and
+  energy: 455 alive with ships against 499 without (72 before the salinity fix, when JASMINE
+  steps were 3.3 times too long); with the DEPONS energy budget and ships, 493. DISTURBED is
+  sticky: any deterrence above 0.01 makes an animal DISTURBED until a day passes without
+  deterrence, so 85-89% of animals are DISTURBED while 1-15% are deterred at that moment, and
+  DISTURBED doubles the JASMINE activity cost; with recovery as soon as deterrence stops, 459
+  survive. The JASMINE energy module also charges every deterred tick (0.1 x deterrence
+  strength + 0.02 x speed). Reproduce with
   `scripts/investigations/2026-11-21-jasmine-ships/jasmine_ships_split.py`.
+- **Learned avoidance (JASMINE disturbance memory) remembers the wrong place and is
+  uncalibrated** (found 2026-11-21). The remembered disturbance cell is the animal's position
+  minus five times its own last step, not the source: on Kattegat with ships it lies a median
+  5.5 km from the nearest deterring ship while the animal itself was 5.1 km away. Memories
+  within 40 km (20 memory cells of 2 km) with a half-life of about 14 days give 76% of
+  animals (60-day average) a constant avoidance pull (mean 0.026; ship deterrence 0.062 when deterred). JASMINE
+  mode (DEPONS movement and energy), Kattegat, 500 animals, ships, 60 days: 438 alive and mean
+  energy 7.47 with the memory, 499 and 10.50 without; deterred animal-ticks 11.6% against
+  15.2%. Habituation is not implemented. Reproduce with
+  `scripts/investigations/2026-11-21-learned-avoidance/avoid_study.py`.
+
 
 ## [2.2.0] - 2026-07-10
 

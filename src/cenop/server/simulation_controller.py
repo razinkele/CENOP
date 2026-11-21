@@ -173,6 +173,7 @@ def create_simulation_from_inputs(input) -> Simulation:
             input.weston_flux_percell() if hasattr(input, "weston_flux_percell") else True
         ),
         dispersal=input.dispersal(),
+        movement_salinity=_safe_input(input, "movement_salinity", "auto"),
         random_seed=seed_value if seed_value > 0 else None,
         # JASMINE Mode Selection
         simulation_mode=simulation_mode,

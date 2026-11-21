@@ -164,3 +164,11 @@ def test_jasmine_memory_settings_reach_the_memory_module():
     sim = create_simulation_from_inputs(inp)
     assert sim.params.memory_decay_rate == pytest.approx(0.004)
     assert sim.params.avoidance_radius == pytest.approx(7.0)
+
+
+def test_movement_salinity_setting_reaches_the_parameters():
+    from cenop.server.simulation_controller import create_simulation_from_inputs
+
+    inp = _make_mock_input(0.03, 0.03)
+    inp.movement_salinity = lambda: "map"
+    assert create_simulation_from_inputs(inp).params.movement_salinity == "map"

@@ -79,6 +79,26 @@ included); the main sea body grows from 71,979 to 79,143 km2. Distance to coast,
 squares; previously one block), salinity, sediment, food patches and ships were rebuilt on the
 new water mask.
 
+## Movement salinity (2026-11-21)
+
+The DEPONS movement model draws step lengths and turning angles that depend on salinity
+(`log10(step) = 0.35 prev + 0.0005 depth - 0.02 salinity + N(1.25, 0.15)`), fitted to
+porpoises tagged in the eastern North Sea, where the map salinity is 31-35. DEPONS moves with
+a fixed 34.07 on Kattegat because the model is not valid at much lower salinity (TRACE 3.2,
+section 3.2.2). With the Baltic map salinity (about 7) the draws sat near the maximum: mean
+steps of 10 cells (4 km) per 30 minutes against 2 on Kattegat and the North Sea, and about 60%
+of draws near the cap. Movement on Lithuania and CentralBaltic now uses the fixed value too
+(`movement_salinity="auto"`; `"map"` restores the map). Sound propagation still uses the map.
+
+| 2000 animals, ships, 60 days | Mean step (cells) | Deterred animal-ticks | Mean energy, day 60 |
+|---|---|---|---|
+| Lithuania, map salinity | 10.1 | 3.5% | 9.89 |
+| Lithuania, fixed (default) | 2.3 | 3.3% | 9.30 |
+| CentralBaltic, map salinity | 10.1 | 5.5% | 11.41 |
+| CentralBaltic, fixed (default) | 2.3 | 5.1% | 10.82 |
+
+Results quoted elsewhere in this note were computed with the map salinity.
+
 ## Licence of the SAMBAH data: not cleared
 
 The SAMBAH data record (Swedish National Data Service) names no licence; HELCOM's copy of the

@@ -19,7 +19,7 @@ from cenop.movement.crw_core import compose_movement, generate_crw_angle_step
 from cenop.movement.land_check import HAS_NUMBA as _LAND_CHECK_NUMBA
 from cenop.movement.land_check import depons_land_check as _depons_land_check_kernel
 from cenop.parameters.demography import AGE_DISTRIBUTION_FREQUENCY
-from cenop.parameters.simulation_params import SimulationParameters
+from cenop.parameters.simulation_params import SimulationParameters, fixed_movement_salinity
 
 logger = logging.getLogger("cenop.agents.population")
 
@@ -993,23 +993,7 @@ class PorpoisePopulation:
 
         # === Get environmental variables from landscape ===
         # DEPONS CRW uses depth and salinity to modulate movement
-        if self.landscape is not None:
-            np.copyto(
-                self._depths,
-                self.landscape.get_depths_vectorized(None, xi=self._cell_xi, yi=self._cell_yi),
-            )
-            np.copyto(
-                self._salinity_vals,
-                self.landscape.get_salinities_vectorized(None, xi=self._cell_xi, yi=self._cell_yi),
-            )
-            # Kattegat salinity override (Java Porpoise.java:339-345)
-            landscape_name = getattr(self.landscape, "landscape_name", "")
-            if landscape_name == "Kattegat":
-                self._salinity_vals[:] = 34.069105813295
-        else:
-            # Default values when no landscape (homogeneous case)
-            self._depths.fill(30.0)  # Default depth
-            self._salinity_vals.fill(30.0)  # Default salinity
+        self._environment_at_cells()
 
         # === Calculate Turning Angle + Step Length (Full DEPONS CRW) ===
         if _HAS_KERNELS:
@@ -1593,8 +1577,10 @@ class PorpoisePopulation:
         self.prev_log_mov[crw_mask] = self._log_mov[crw_mask]
 
     def _environment_at_cells(self) -> None:
-        """Depth and salinity at each animal's current cell into _depths/_salinity_vals, with
-        DEPONS's fixed salinity on Kattegat (Porpoise.java:339-345, 423-427)."""
+        """Depth and salinity at each animal's current cell into _depths/_salinity_vals, the
+        movement's environment. Salinity is fixed where the DEPONS movement model would be
+        extrapolated: Kattegat as in DEPONS (Porpoise.java:339-345, 423-427) and the Baltic
+        landscapes (params.movement_salinity, see fixed_movement_salinity)."""
         if self.landscape is not None:
             np.copyto(
                 self._depths,
@@ -1604,8 +1590,12 @@ class PorpoisePopulation:
                 self._salinity_vals,
                 self.landscape.get_salinities_vectorized(None, xi=self._cell_xi, yi=self._cell_yi),
             )
-            if getattr(self.landscape, "landscape_name", "") == "Kattegat":
-                self._salinity_vals[:] = 34.069105813295
+            fixed = fixed_movement_salinity(
+                getattr(self.params, "movement_salinity", "auto"),
+                getattr(self.landscape, "landscape_name", ""),
+            )
+            if fixed is not None:
+                self._salinity_vals[:] = fixed
         else:
             self._depths.fill(30.0)
             self._salinity_vals.fill(30.0)

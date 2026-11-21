@@ -58,6 +58,19 @@ All notable changes to CENOP-JASMINE are documented in this file.
   only one compared with DEPONS. The code is in git history up to `v2.3.0`.
 
 ### Changed
+- **Movement on the Baltic landscapes uses a fixed salinity, as DEPONS does on Kattegat.** The
+  DEPONS movement model (step length and turning angle depend on salinity) was fitted to
+  porpoises tagged in the eastern North Sea, and DEPONS moves with a fixed 34.07 on Kattegat
+  because the model is not valid at much lower salinity (TRACE 3.2 section 3.2.2). On
+  Lithuania and CentralBaltic the map salinity (about 7) put most step-length draws near the
+  maximum: steps of about 4 km per 30 minutes, five times Kattegat's. New parameter
+  `movement_salinity` (Settings, Movement): "auto" (default) fixes it on Kattegat, Lithuania
+  and CentralBaltic and uses the map elsewhere; "map" uses the map everywhere (DEPONS outside
+  Kattegat); "fixed" uses 34.07 everywhere. Sound propagation always uses the map. Kattegat,
+  North Sea and app-style DEPONS runs are byte-identical. 2000 animals, ships, 60 days:
+  Lithuania mean step 10.1 -> 2.3 cells, deterred animal-ticks 3.5% -> 3.3%, mean energy at
+  day 60 9.89 -> 9.30; CentralBaltic 10.1 -> 2.3 cells, 5.5% -> 5.1%, 11.41 -> 10.82.
+  Lithuania and CentralBaltic results change.
 - **The app runs 2.7-4.6 times faster with ships on the Baltic landscapes.** The app always
   runs the behaviour state machine (scripts and the batch runner do not), and every tick it
   counted each animal's spatial-memory cells by copying the animal's whole memory grid:

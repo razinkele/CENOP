@@ -438,6 +438,12 @@ def create_help_modal():
     In the Kattegat calibration (<code>b2&nbsp;=&nbsp;0.93</code>), high salinity strongly increases
     turning angle variability. Salinity gradients (e.g., the Baltic&ndash;North Sea transition)
     act as natural habitat boundaries that porpoises tend not to cross.</p>
+    <p><strong>Fixed salinity on Kattegat and the Baltic landscapes:</strong> the movement model was
+    fitted to porpoises tagged in the North Sea (salinity 31&ndash;35) and is not valid at much lower
+    salinity, so DEPONS moves with a fixed 34.07 on Kattegat. CENOP does the same on Lithuania and
+    CentralBaltic, where surface salinity is about 7 and the map value would make steps about five
+    times longer (Settings &rarr; Movement &rarr; Movement salinity; sound propagation always uses
+    the map).</p>
     <p><strong>Files:</strong> <code>salinity01.asc</code> through <code>salinity12.asc</code>
     (one per calendar month) &nbsp;|&nbsp; <strong>Units:</strong> PSU (Practical Salinity Units) &nbsp;|&nbsp;
     <strong>Colour scheme:</strong> blue gradient &nbsp;|&nbsp;

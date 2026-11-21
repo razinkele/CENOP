@@ -350,6 +350,7 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 | E4 | Age-stratified mortality | `population.py` | Juvenile/adult/elderly mortality rates |
 | E5 | JAX JIT full-tick | `jax_kernels.py`, `tick_jax.py` | GPU-ready alternative tick implementation |
 | E6 | Shiny web dashboard | `server/`, `ui/` | Interactive simulation control and visualization |
+| E7 | Fixed movement salinity on the Baltic landscapes | `simulation_params.py` (`movement_salinity`), `population.py` | DEPONS moves with salinity 34.07 on Kattegat only (TRACE 3.2 section 3.2.2: the movement model, fitted to North Sea tags, is not valid at much lower salinity). With `movement_salinity="auto"` (default) CENOP also fixes it on Lithuania and CentralBaltic (surface salinity about 7); `"map"` reproduces DEPONS outside Kattegat. Kattegat and North Sea results unchanged. |
 
 ---
 

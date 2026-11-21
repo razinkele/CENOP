@@ -93,6 +93,14 @@ All notable changes to CENOP-JASMINE are documented in this file.
   `docs/performance/2026-11-20-ship-loop.md`.
 
 ### Fixed
+- **Dispersal chart: the second line was always 0.** It plotted "Max Declining Days", a value
+  hard-coded to 0. The line now shows how many live animals meet the dispersal trigger's
+  energy condition: daily mean energy dropping for at least t_disp days in a row ("Energy
+  falling 3+ days"), next to the number dispersing. On Kattegat (500 animals) it runs at
+  100-150 against 20-40 dispersing: DEPONS also ends a dispersal on the day it starts when
+  today's energy is above the minimum of the previous seven days (Porpoise.java:1089-1119).
+  `get_dispersal_stats()` reports `declining_count`, and `max_declining_days` is now computed
+  (the longest current run; at most 9, as the energy history holds 10 days).
 - **Behaviour states follow the model's dispersal (JASMINE energy; per-animal table).** The
   behaviour state machine started DISPERSING on a declining-energy counter that nothing
   increments, so no animal was ever in DISPERSING. It now mirrors the model: an animal the

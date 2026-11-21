@@ -50,7 +50,6 @@ def _make_mock_input(param_rS: float, param_rR: float) -> SimpleNamespace:
         ships_enabled=False,
         weston_flux_percell=False,
         dispersal="off",
-        tracked_porpoise_count=1,
         tdisp=3,
         psm_log=0.6,
         psm_tol=5.0,
@@ -172,3 +171,16 @@ def test_movement_salinity_setting_reaches_the_parameters():
     inp = _make_mock_input(0.03, 0.03)
     inp.movement_salinity = lambda: "map"
     assert create_simulation_from_inputs(inp).params.movement_salinity == "map"
+
+
+def test_settings_the_model_never_read_are_gone():
+    """Tracked Porpoises (DEPONS's per-animal report, not ported) and the age-mortality rates
+    (not in DEPONS 3.2; mortality is starvation, bycatch and maximum age) did nothing."""
+    from dataclasses import fields
+
+    from cenop.parameters.simulation_params import SimulationParameters
+    from cenop.ui.tabs.settings import settings_tab
+
+    gone = {"tracked_porpoise_count", "mortality_juvenile", "mortality_adult", "mortality_elderly"}
+    assert not gone & {f.name for f in fields(SimulationParameters)}
+    assert "tracked_porpoise_count" not in str(settings_tab())

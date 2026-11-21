@@ -247,7 +247,8 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 | 9.23 | Agent architecture | Repast `Agent` objects | SoA NumPy arrays (`Population`) | **INTENTIONAL_DIVERGENCE** | Vectorized for performance |
 | 9.24 | Spatial partitioning | `Block` objects | cKDTree / vectorized queries | **INTENTIONAL_DIVERGENCE** | |
 | 9.25 | Death age tracking | Age distribution histogram | `death_ages`/`death_days`/`death_causes` lists | **MATCH** | Per-death recording with age, day, cause |
-| 9.26 | Age-stratified mortality | Not in DEPONS 3.2 | Parameters `mortality_juvenile/adult/elderly` (0.15/0.05/0.15) exist but are never read | **UNUSED** | Checked 2026-11-21: mortality is DEPONS's (starvation, bycatch, maximum age) |
+| 9.26 | Age-stratified mortality | Not in DEPONS 3.2 | None (the unread parameters `mortality_juvenile/adult/elderly` were removed 2026-11-21) | **MATCH** | Mortality is DEPONS's: starvation, bycatch, maximum age |
+| 9.27 | Tracked porpoises | `trackedPorpoiseCount`, `AddTrackedPorpoisesTask` (N random animals reported per tick by `RandomPorpoiseReportProxy`, optional start positions in `trackedporpoise.txt`) | Not ported; the unread `tracked_porpoise_count` setting was removed 2026-11-21 | **NOT PORTED** | Outputs are population-level; compare CENOP population means only with Java population output, not with its tracked animals |
 
 ---
 

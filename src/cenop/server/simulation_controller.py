@@ -240,7 +240,6 @@ def create_simulation_from_inputs(input) -> Simulation:
         memory_decay_rate=jasmine_memory_decay_rate,
         avoidance_radius=jasmine_avoidance_radius,
         # Advanced Parameters
-        tracked_porpoise_count=input.tracked_porpoise_count(),
         t_disp=input.tdisp(),
         psm_log=input.psm_log(),
         psm_dist_mean=psm_dist_mean,

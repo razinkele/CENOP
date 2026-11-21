@@ -10,7 +10,6 @@ from cenop.parameters.simulation_params import DISPERSAL_MODES
 TOOLTIPS = {
     # Basic settings
     "random_seed": "Set a specific random seed for reproducible simulations. Use 0 for automatic random seed each run.",
-    "tracked_porpoise_count": "Number of individual porpoises to track in detail for movement analysis and debugging.",
     "ships_enabled": "Enable/disable ship traffic in the simulation. Ships create underwater noise that can disturb porpoises.",
     "weston_flux_percell": (
         "Use physics-based Weston Flux transmission loss for ship noise. "
@@ -173,19 +172,6 @@ def _basic_settings_panel():
                         **{"for": "random_seed"},
                     ),
                     ui.input_numeric("random_seed", None, value=0, min=0),
-                    class_="mb-3",
-                ),
-                ui.div(
-                    ui.tags.label(
-                        "Tracked Porpoises ",
-                        ui.tags.span(
-                            "ⓘ",
-                            title=TOOLTIPS["tracked_porpoise_count"],
-                            style="cursor: help; color: #0d7377;",
-                        ),
-                        **{"for": "tracked_porpoise_count"},
-                    ),
-                    ui.input_numeric("tracked_porpoise_count", None, value=1, min=0, max=100),
                     class_="mb-3",
                 ),
                 ui.p(

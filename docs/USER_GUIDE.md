@@ -306,7 +306,6 @@ Births and deaths are counted from the net change in population between updates,
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | Random Seed | 0 | Reproducibility seed (0 = random each run) |
-| Tracked Porpoises | 1 | Not used by the model or the app's outputs yet |
 | Ship Traffic Enabled | Off | Enable vessel noise disturbance; Lithuania, CentralBaltic, Kattegat and NorthSea have their own ship files, Homogeneous uses a sample |
 | Weston Flux TL | On | Shown when ship traffic is on: physics-based transmission loss using depth, sediment and salinity at the ship's position; off = simple spreading-loss formula |
 | Annual Bycatch Probability | 0.0 | Annual probability of fishing net mortality (0-1) |

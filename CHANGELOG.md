@@ -56,6 +56,11 @@ All notable changes to CENOP-JASMINE are documented in this file.
   not been checked; a plain `shiny run` does not.
 
 ### Removed
+- **Settings the model never read:** Tracked Porpoises (`tracked_porpoise_count`; DEPONS
+  uses it for a per-animal report that CENOP never ported, now recorded in the parity doc)
+  and the age-mortality rates `mortality_juvenile`, `mortality_adult`, `mortality_elderly`
+  (not in DEPONS 3.2; mortality is starvation, bycatch and maximum age). A population test
+  that added the unused 5% adult rate now uses `bycatch_prob`.
 - **`habituation_enabled` and the habituation constants.** Habituation was listed as a JASMINE
   feature but never implemented: the setting and `HABITUATION_RATE` / `MIN_RESPONSE` were
   never read. Code that passes `habituation_enabled` to `SimulationParameters` now fails. If

@@ -46,11 +46,6 @@ class TestPhysiologyParameters:
         assert params.m_mort_prob_const == 1.0, "M_MORT_PROB_CONST should be 1.0"
         assert params.x_survival_const == 0.4, "xSurvivalProbConst should be 0.4"
 
-        # Age-based mortality
-        assert params.mortality_juvenile == 0.15, "Juvenile mortality should be 15%/year"
-        assert params.mortality_adult == 0.05, "Adult mortality should be 5%/year"
-        assert params.mortality_elderly == 0.15, "Elderly mortality should be 15%/year"
-
     def test_reproduction_parameters(self):
         """Verify reproduction parameters match DEPONS defaults."""
         params = SimulationParameters()
@@ -538,8 +533,9 @@ class TestPopulationStabilitySmoke:
         )
         annual_starvation_mort = 1.0 - yearly_surv_starvation
 
-        # Natural adult mortality
-        annual_natural_mort = params.mortality_adult  # 0.05
+        # Other annual mortality: bycatch (DEPONS 3.2 has no age-based mortality besides the
+        # maximum age)
+        annual_natural_mort = params.bycatch_prob
 
         # Total annual mortality (independent probabilities)
         total_annual_mort = 1.0 - (1.0 - annual_starvation_mort) * (1.0 - annual_natural_mort)

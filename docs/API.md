@@ -899,7 +899,7 @@ class SimulationParameters:
 
 `get_effective_movement_mode()` and `get_effective_energy_mode()` return the override or `"DEPONS"`; `get_effective_time_mode()`, `get_effective_fsm_mode()` and `get_effective_memory_mode()` return the override or `simulation_mode`. Invalid `dispersal` or `movement_salinity` values, and `InnerDanishWaters` on a landscape other than Kattegat, raise a `ValueError`.
 
-Accepted but not read by the model: `jasmine_mass_kg`, `jasmine_drag_coeff`, `jasmine_max_thrust`, `jasmine_current_weight`, `jasmine_bmr_scale`, `jasmine_activity_cost`, `jasmine_disturbance_cost`, `jasmine_avoidance_strength`, the copies `jasmine_memory_decay_rate` and `jasmine_avoidance_radius` (the app copies their inputs to `memory_decay_rate` and `avoidance_radius`), and `mortality_juvenile`, `mortality_adult`, `mortality_elderly`.
+Accepted but not read by the model: `jasmine_mass_kg`, `jasmine_drag_coeff`, `jasmine_max_thrust`, `jasmine_current_weight`, `jasmine_bmr_scale`, `jasmine_activity_cost`, `jasmine_disturbance_cost`, `jasmine_avoidance_strength`, and the copies `jasmine_memory_decay_rate` and `jasmine_avoidance_radius` (the app copies their inputs to `memory_decay_rate` and `avoidance_radius`).
 
 ---
 

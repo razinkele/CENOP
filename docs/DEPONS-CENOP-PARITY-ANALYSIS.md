@@ -247,7 +247,7 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 | 9.23 | Agent architecture | Repast `Agent` objects | SoA NumPy arrays (`Population`) | **INTENTIONAL_DIVERGENCE** | Vectorized for performance |
 | 9.24 | Spatial partitioning | `Block` objects | cKDTree / vectorized queries | **INTENTIONAL_DIVERGENCE** | |
 | 9.25 | Death age tracking | Age distribution histogram | `death_ages`/`death_days`/`death_causes` lists | **MATCH** | Per-death recording with age, day, cause |
-| 9.26 | Age-stratified mortality | Not in DEPONS 3.2 | 0.15/0.05/0.15 (juv/adult/elderly) | **EXTENSION** | |
+| 9.26 | Age-stratified mortality | Not in DEPONS 3.2 | Parameters `mortality_juvenile/adult/elderly` (0.15/0.05/0.15) exist but are never read | **UNUSED** | Checked 2026-11-21: mortality is DEPONS's (starvation, bycatch, maximum age) |
 
 ---
 
@@ -344,11 +344,11 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 
 | # | Extension | Module | Description |
 |---|-----------|--------|-------------|
-| E1 | JASMINE FSM states | `hybrid_fsm.py` | TRAVELING, RESTING states (speed/energy-based) |
-| E2 | JASMINE energy model | `energy_budget.py` | DEB body-mass scaling, thermoregulation, activity costs |
-| E3 | Disturbance memory | `disturbance_memory.py` | Spatial memory of disturbance zones with decay |
-| E4 | Age-stratified mortality | `population.py` | Juvenile/adult/elderly mortality rates |
-| E5 | JAX JIT full-tick | `jax_kernels.py`, `tick_jax.py` | GPU-ready alternative tick implementation |
+| E1 | JASMINE behaviour states | `hybrid_fsm.py` | Labels (FORAGING, TRAVELING, RESTING, DISPERSING, DISTURBED) that set activity costs in the JASMINE energy budget; they do not change movement |
+| E2 | JASMINE energy model | `energy_budget.py` | Energy budget in physical units; uncalibrated, runs only with `energy_mode="JASMINE"` (JASMINE mode uses the DEPONS energy budget by default) |
+| E3 | Disturbance memory | `disturbance_memory.py` | Learned avoidance of places where an animal was deterred: fades in about 3 days, within 5 km (calibrated 2026-11-21 against recovery after pile driving) |
+| E4 | ~~Age-stratified mortality~~ | `simulation_params.py` | Parameters only; the model does not read them (see 9.26) |
+| E5 | ~~JAX JIT full-tick~~ | | Removed after 2.3.0 (`docs/decisions/2026-11-20-backends.md`) |
 | E6 | Shiny web dashboard | `server/`, `ui/` | Interactive simulation control and visualization |
 | E7 | Fixed movement salinity on the Baltic landscapes | `simulation_params.py` (`movement_salinity`), `population.py` | DEPONS moves with salinity 34.07 on Kattegat only (TRACE 3.2 section 3.2.2: the movement model, fitted to North Sea tags, is not valid at much lower salinity). With `movement_salinity="auto"` (default) CENOP also fixes it on Lithuania and CentralBaltic (surface salinity about 7); `"map"` reproduces DEPONS outside Kattegat. Kattegat and North Sea results unchanged. |
 
@@ -366,9 +366,12 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 | Food Dynamics | 7 | 0 | 0 | 0 |
 | Landscape & Grid | 7 | 2 | 0 | 0 |
 | Deterrence & Sound | 12 | 1 | 0 | 1 |
-| Lifecycle & Scheduling | 21 | 3 | 0 | 1 |
+| Lifecycle & Scheduling | 21 | 3 | 0 | 0 |
 | Parameters | 34 | 0 | 0 | 0 |
-| **TOTALS** | **136** | **13** | **0** | **4** |
+| **TOTALS** | **136** | **13** | **0** | **3** |
+
+Row 9.26 (age-stratified mortality) was counted as an extension until 2026-11-21; its
+parameters are not read by the model, so it is now marked UNUSED.
 
 **Overall parity: 136 MATCH + 13 intentional divergences out of 153 features = ~100% functional equivalence (all gaps closed)**
 

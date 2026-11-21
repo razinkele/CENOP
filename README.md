@@ -51,21 +51,24 @@ The JASMINE (JASCO's Animal Simulation Model Including Noise Exposure) extension
 
 ### Performance
 
-**DEPONS 3.2 Parity:** 136 features verified MATCH + 13 intentional divergences + 4 CENOP extensions = 100% functional equivalence ([full analysis](docs/DEPONS-CENOP-PARITY-ANALYSIS.md))
+**DEPONS 3.2 Parity:** 136 features verified MATCH + 13 intentional divergences, plus CENOP extensions (JASMINE mode, fixed movement salinity on the Baltic landscapes) ([full analysis](docs/DEPONS-CENOP-PARITY-ANALYSIS.md))
 
-**Tick Performance (N=500, homogeneous 200×200 grid):**
+**Tick time** (Kattegat, no ships or turbines, NumPy/Numba path; `docs/performance/2026-11-20-tick-profile.md`):
 
-| Mode | ms/tick | ticks/s | 30-year sim |
-|------|---------|---------|-------------|
-| **DEPONS (comm OFF)** | **1.05** | 952 | ~9 min |
-| **JASMINE (comm ON)** | **1.88** | 532 | ~16 min |
-| Java DEPONS 3.2 | 0.80 | 1,258 | ~7 min |
+| Run | ms/tick |
+|-----|---------|
+| 500 animals, PSM-Type2 dispersal | 2.26 |
+| 2000 animals, PSM-Type2 dispersal | 7.41 |
+| 2000 animals, InnerDanishWaters dispersal | 4.94 |
 
-**Numba Kernels:** 12 `@njit` kernels including `crw_angle_step`, `heading_position_reflect` (fused), `social_sound` (fused), `eat_food`, `depons_bmr_cost`, `compute_ve_total`, `compute_attraction`, `reflect_boundaries`, `regrow_food`
+With ship traffic (2000 animals, 5,148 ships) a tick takes about 34 ms
+(`docs/performance/2026-11-20-ship-loop.md`). The ratio to DEPONS-Java is not known: the June 2026
+Java figure was not re-measured after the November parity fixes. Hot paths are compiled with Numba
+(`src/cenop/optimizations/kernels.py`).
 
 **Optimizations:** Pre-allocated buffers (RefMemWorkspace ~1.5MB/tick saved), vectorized land avoidance, cached cell indices, fused heading+position+reflect kernel, social sound fusion, dtype ping-pong elimination
 
-- About 1,270 fast tests and 11 slow validation tests (unit, integration, backend equivalence, DEPONS parity)
+- About 1,270 fast tests and 12 slow validation tests (unit, integration, backend equivalence, DEPONS parity)
 - Checked against runs of DEPONS 3.2 on the Kattegat landscape: `docs/validation/A2-parity-report.md`
 
 ## Installation
@@ -105,10 +108,10 @@ Then open your browser to http://localhost:8000
 ## Running Tests
 
 ```bash
-# Fast suite (810 tests; slow multi-year tests auto-deselected via addopts)
+# Fast suite (about 1,270 tests; slow tests auto-deselected via addopts)
 python3 -m pytest tests/ -q
 
-# Slow validation tier (11 multi-year DEPONS/physiology tests, ~5 min)
+# Slow validation tier (12 multi-year and full-run tests, ~4 min)
 python3 -m pytest tests/ -m slow -q
 
 # Everything
@@ -278,9 +281,9 @@ CENOP/
 │           ├── disturbance.py  # Disturbance impacts
 │           ├── landscape_editor.py  # Spatial data viewer
 │           └── export.py       # Results download
-└── tests/                      # Test suite (516+ tests)
+└── tests/                      # Test suite (about 1,270 fast + 12 slow tests)
     ├── conftest.py             # Fixtures, Numba/coverage compatibility
-    ├── test_numba_kernels.py   # Numba kernel tests (25 tests)
+    ├── test_numba_kernels.py   # Numba kernel tests (40 tests)
     ├── test_integration.py     # Full simulation integration tests
     ├── test_depons_*.py        # DEPONS algorithm validation
     ├── test_energy_budget.py   # Energy system tests
@@ -328,8 +331,8 @@ The physics and energy settings in the app's Settings tab (`jasmine_mass_kg`, `j
 
 ## Validation
 
-- **DEPONS mode:** Full algorithmic parity with DEPONS 3.2 verified across 153 features — 136 MATCH, 13 intentional divergences (vectorization, proportional food sharing, explicit FSM), 4 CENOP extensions (JASMINE states, DEB energy, disturbance memory, age-stratified mortality). See [Parity Analysis](docs/DEPONS-CENOP-PARITY-ANALYSIS.md).
-- **Performance:** 1.05 ms/tick in DEPONS mode (1.3× Java), optimized via Numba kernel fusion and allocation elimination. See [Performance Plans](docs/superpowers/plans/).
+- **DEPONS mode:** Full algorithmic parity with DEPONS 3.2 verified across 153 features — 136 MATCH, 13 intentional divergences (vectorization, proportional food sharing, explicit FSM), and CENOP extensions (JASMINE behaviour states, JASMINE energy budget, disturbance memory; the age-stratified mortality parameters exist but are not used). See [Parity Analysis](docs/DEPONS-CENOP-PARITY-ANALYSIS.md).
+- **Performance:** see Tick time above; the ratio to DEPONS-Java is not known (not re-measured since June 2026).
 - **JASMINE mode:** Experimental, not calibrated or validated against empirical data; see the known issues in the [changelog](CHANGELOG.md)
 
 ## License

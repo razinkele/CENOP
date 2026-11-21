@@ -1,5 +1,8 @@
 # Proposed Fixes & Optimizations — CENOP (CENOP-JASMINE branch)
 
+> **Historical review** (early 2026; test counts and line numbers are from then). The items
+> were worked through or superseded; see CHANGELOG.md for the current state.
+
 > **Codebase**: ~18 500 lines of Python across `src/cenop/` (42 modules)
 > **Test suite**: 320 passed, 1 skipped, 1 warning (~3 m 38 s)
 > **Runtime**: Python 3.13.11 in micromamba `shiny` environment (`/opt/micromamba/envs/shiny`)

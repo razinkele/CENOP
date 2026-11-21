@@ -149,6 +149,16 @@ All notable changes to CENOP-JASMINE are documented in this file.
   `docs/performance/2026-11-20-ship-loop.md`.
 
 ### Fixed
+- **Documentation brought in line with the code.** `docs/API.md` documented classes, methods
+  and parameters that do not exist (e.g. `EnergyBudget`, `JASMINEEnergy`, `DisturbanceMemory`,
+  `SimulationConfig`, `run_batch`, `OutputWriter.finalize`) and wrong signatures and defaults;
+  it now matches the code, and its examples run (JASMINE through `build_simulation`).
+  `docs/USER_GUIDE.md` now matches the app (defaults, landscapes, controls such as Share, dark
+  mode and Movement salinity; JASMINE as it works). README, in-app help and the parity analysis
+  no longer claim an age-stratified mortality extension (its parameters are not read), a
+  JAX backend, a 1.3x-Java speed, rejection of non-400 m grids, Weston flux off by default,
+  six parallel kernels or old test counts; performance figures now come from
+  `docs/performance/`. Old planning documents are marked historical.
 - **Learned avoidance remembers where the animal was disturbed.** The remembered cell was the
   animal's position minus five times its own last step, which put it on the animal's track
   (on Kattegat with ships a median 5.5 km from the nearest deterring ship, while the animal

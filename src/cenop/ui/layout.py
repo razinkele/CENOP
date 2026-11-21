@@ -361,7 +361,7 @@ def create_help_modal():
     <h2>Quick Start</h2>
     <ol>
         <li><strong>Select Simulation Mode</strong> - Choose DEPONS (Regulatory) or JASMINE (Research)</li>
-        <li><strong>Set Initial Population</strong> - Enter the number of porpoises (default: 1000)</li>
+        <li><strong>Set Initial Population</strong> - Enter the number of porpoises (default: 100)</li>
         <li><strong>Set Simulation Years</strong> - How long to run (1-100 years)</li>
         <li><strong>Select Landscape</strong> - Choose the geographical area</li>
         <li><strong>Click "Load Landscape"</strong> - Load bathymetry and food distribution</li>
@@ -384,9 +384,9 @@ def create_help_modal():
     <h2>Landscape Layers</h2>
     <p>The <strong>Landscape</strong> tab provides a spatial viewer for all environmental data layers loaded from
     ASCII grid files (<code>.asc</code>). Each cell in the grid represents a 400m &times; 400m area.
-    This cell size is <strong>mandatory</strong> &mdash; DEPONS requires all landscape grids to use exactly 400&nbsp;m
-    resolution (<code>REQUIRED_CELL_SIZE = 400</code> in DEPONS). The <code>cellsize</code> header in each
-    ASC file is validated at load time; grids with a different resolution will be rejected.
+    The model runs on this cell size, as DEPONS does (<code>REQUIRED_CELL_SIZE = 400</code> in DEPONS).
+    Landscapes stored on another grid (Lithuania and CentralBaltic use 1&nbsp;km cells) are resampled to
+    400&nbsp;m when they are loaded; the files themselves are unchanged.
     Movement distances, coordinate conversions, and the persistent spatial memory system all assume
     400&nbsp;m cells.</p>
     <p>All layers are rendered as <strong>full-resolution bitmap overlays</strong> (one pixel per grid cell,
@@ -408,7 +408,7 @@ def create_help_modal():
     <p class="small text-muted">* When the <strong>Weston Flux TL</strong> toggle is enabled in
     Settings &gt; Basic, sediment grain size is read per-cell from the landscape grid and fed into
     the physics-based WestonFlux transmission loss model for ship noise. Depth and salinity are
-    also read per-cell. When the toggle is off (default), ship noise uses a simpler
+    also read per-cell. The toggle is on by default; when it is off, ship noise uses a simpler
     &alpha;/&beta; spreading-loss formula and the sediment grid is loaded for visualisation only.</p>
 
     <h3>Bathymetry (Depth) &mdash; <span style="color: var(--accent-green);">Active</span></h3>
@@ -739,22 +739,23 @@ def create_help_modal():
     </ul>
 
     <h2>Performance</h2>
-    <p>CENOP uses <strong>10 Numba JIT-compiled kernels</strong> for simulation hot paths, all achieving
-    sub-millisecond performance for populations of 500+ agents. Overall: <strong>3.27&nbsp;ms/tick</strong>
-    for 500 porpoises on Kattegat (1.68&times; cumulative speedup).</p>
+    <p>CENOP compiles its simulation hot paths with Numba. On Kattegat without ships or turbines a tick takes
+    about 2.3&nbsp;ms with 500 porpoises and 7.4&nbsp;ms with 2000 (PSM-Type2 dispersal); with ship traffic about
+    34&nbsp;ms with 2000 porpoises (measurements of 2026-11-20 in <code>docs/performance/</code>).</p>
     <ul>
-        <li><code>reflect_boundaries_kernel</code> &mdash; boundary reflection (<code>prange</code>)</li>
+        <li><code>reflect_boundaries_kernel</code> &mdash; boundary reflection</li>
         <li><code>crw_angle_step_kernel</code> &mdash; CRW angle and step length with rejection sampling</li>
-        <li><code>turn_position_kernel</code> &mdash; position update (<code>prange</code>)</li>
+        <li><code>turn_position_kernel</code> &mdash; position update</li>
         <li><code>eat_food_kernel</code> &mdash; food consumption with pre-allocated demand grid</li>
-        <li><code>depons_bmr_cost_kernel</code> &mdash; basal metabolic cost (<code>prange</code>)</li>
+        <li><code>depons_bmr_cost_kernel</code> &mdash; basal metabolic cost</li>
         <li><code>social_accumulate_kernel</code> &mdash; social vector accumulation</li>
         <li><code>seed_numba_rng</code> &mdash; per-thread RNG seeding</li>
         <li><code>regrow_food_kernel</code> &mdash; logistic food regrowth (<code>prange</code>)</li>
-        <li><code>compute_ve_total_kernel</code> &mdash; reference memory expected value (<code>prange</code>)</li>
-        <li><code>compute_attraction_kernel</code> &mdash; reference memory attraction vector (<code>prange</code>)</li>
+        <li><code>compute_ve_total_kernel</code> &mdash; reference memory expected value</li>
+        <li><code>compute_attraction_kernel</code> &mdash; reference memory attraction vector</li>
     </ul>
-    <p>Six kernels run in parallel using <code>prange</code>. WestonFlux transmission loss
+    <p>Food regrowth runs in parallel (<code>prange</code>); the reference-memory kernels were tried in parallel
+    and were slower, so they run serially. WestonFlux transmission loss
     (6 physics functions) is also <code>@njit</code> compiled. Additional optimisations include
     pre-allocated float64 buffers, a reusable <code>RefMemWorkspace</code>,
     land avoidance limited to blocked agents only, and cached mortality parameters.</p>
@@ -765,7 +766,8 @@ def create_help_modal():
             pregnancy FSM, logistic food regrowth with MaxEnt, reference memory with circular buffers,
             CRW rejection sampling with heading composition, PSM-Type2 dispersal with energy-based stop,
             and deterrence with raw displacement vectors and WestonFlux/JOMOPANS ship noise.
-            502+ automated tests verify parameter defaults, formula outputs, and population stability.</li>
+            About 1,270 automated tests and 12 slow validation tests check parameter defaults, formula outputs
+            and population behaviour.</li>
         <li><strong>JASMINE mode</strong> &mdash; Experimental and not calibrated (behavioural states, energy budget,
             learned avoidance); see the changelog's known issues</li>
     </ul>
@@ -786,7 +788,7 @@ def create_help_modal():
     <h2>Contact</h2>
     <p>For questions and support, contact the arturas.razinkovas-baziukas@ku.lt.</p>
 
-    <p class="text-muted small mt-4">CENOP-JASMINE Version 2.0 | Python Shiny Implementation | 2024-2026</p>
+    <p class="text-muted small mt-4">CENOP-JASMINE Version 2.3 | Python Shiny Implementation | 2024-2026</p>
 </div>
             """),
             style="max-height: 70vh; overflow-y: auto; padding: 20px;",

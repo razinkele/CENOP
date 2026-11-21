@@ -2170,12 +2170,15 @@ def server(input, output, session):
                 return no_data_placeholder("No dispersal data yet. Run simulation to see results.")
 
             df = pd.DataFrame(history)
+            if "declining_count" not in df.columns:
+                df["declining_count"] = 0
+            t_disp = int(df["t_disp"].iloc[-1]) if "t_disp" in df.columns else 3
             return create_time_series_chart(
                 df=df,
                 x_col="day",
-                y_cols=["dispersing_count", "max_declining_days"],
+                y_cols=["dispersing_count", "declining_count"],
                 colors=["blue", "orange"],
-                names=["Dispersing Porpoises", "Max Declining Days"],
+                names=["Dispersing Porpoises", f"Energy falling {t_disp}+ days"],
                 title="Porpoise Dispersal Behavior",
                 x_title="Day",
                 y_title="Count",

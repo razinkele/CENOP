@@ -398,6 +398,8 @@ class SimulationRunner:
                     "dispersing_count": disp_stats.get("dispersing_count", 0),
                     "total_active": disp_stats.get("total_active", 0),
                     "max_declining_days": disp_stats.get("max_declining_days", 0),
+                    "declining_count": disp_stats.get("declining_count", 0),
+                    "t_disp": int(getattr(self.sim.params, "t_disp", 3)),
                 }
             # Get deterrence count — use cumulative _was_deterred flag
             # (deter_strength is overwritten every tick, so short-lived turbine

@@ -3694,6 +3694,14 @@ class PorpoisePopulation:
         """Get PSM instance for a specific porpoise."""
         return self._psm_instances[idx]
 
+    def _declining_days(self) -> np.ndarray:
+        """Days in a row each animal's daily mean energy has strictly dropped, counted from the
+        newest day as _check_dispersal_trigger counts them (dispersal starts at t_disp). At most
+        the history length - 1."""
+        h = self._energy_history
+        drops = h[:, :-1] < h[:, 1:]
+        return np.where(drops.all(axis=1), drops.shape[1], np.argmin(drops, axis=1))
+
     def get_dispersal_stats(self) -> dict[str, Any]:
         """Get statistics about dispersal behavior."""
         active = self.active_mask
@@ -3706,11 +3714,14 @@ class PorpoisePopulation:
             counts = np.count_nonzero(self.psm_buffer[active, :, :, 0], axis=(1, 2))
             avg_cells = float(np.mean(counts))
 
+        declining = self._declining_days()
         return {
             "dispersing_count": int(np.sum(self.is_dispersing & active)),
             "total_active": int(np.sum(active)),
             "avg_psm_cells": avg_cells,
-            "max_declining_days": 0,  # Simplified out of model array for now
+            "max_declining_days": int(declining[active].max()) if active.any() else 0,
+            # Animals meeting the dispersal trigger's energy condition today
+            "declining_count": int(np.sum(active & (declining >= self.params.t_disp))),
         }
 
     # === Land Avoidance Helper Methods ===

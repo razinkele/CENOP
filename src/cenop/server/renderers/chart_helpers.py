@@ -124,7 +124,8 @@ def create_time_series_chart(
 
     _apply_depons_layout(fig, title, height, x_title, y_title)
 
-    return ui.HTML(fig.to_html(include_plotlyjs="cdn", full_html=False))
+    # plotly.js is loaded once in the page head (cenop.ui.plotly_head)
+    return ui.HTML(fig.to_html(include_plotlyjs=False, full_html=False))
 
 
 def create_histogram_chart(
@@ -191,7 +192,8 @@ def create_histogram_chart(
         linecolor="rgba(255,255,255,0.1)",
     )
 
-    return ui.HTML(fig.to_html(include_plotlyjs="cdn", full_html=False))
+    # plotly.js is loaded once in the page head (cenop.ui.plotly_head)
+    return ui.HTML(fig.to_html(include_plotlyjs=False, full_html=False))
 
 
 def create_svg_chart(

@@ -93,6 +93,13 @@ All notable changes to CENOP-JASMINE are documented in this file.
   `docs/performance/2026-11-20-ship-loop.md`.
 
 ### Fixed
+- **"Plotly is not defined" in the browser console (Population and Disturbance tabs).** Every
+  Plotly chart carried its own `<script src=...plotly...>`; Shiny inserted the chart and ran
+  its drawing code before that download had finished, and Plotly hashed its 4.6 MB bundle on
+  every render to build the tag. plotly.js is now loaded once in the page head
+  (`cenop.ui.plotly_head`, same CDN file and integrity hash as Plotly's own tag) and the
+  charts are built without it. Checked in a headless browser: no console errors on any tab,
+  all nine Plotly charts drawn.
 - **Dispersal chart: the second line was always 0.** It plotted "Max Declining Days", a value
   hard-coded to 0. The line now shows how many live animals meet the dispersal trigger's
   energy condition: daily mean energy dropping for at least t_disp days in a row ("Energy

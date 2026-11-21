@@ -609,7 +609,20 @@ results of every earlier version differ. See `docs/validation/A2-parity-report.m
   `docs/validation-suite-status.md` (CI exists; default-branch and 60-day caveats),
   `CLAUDE.md` (CI and test counts)
 - ~~The behaviour state machine never enters DISPERSING~~ Fixed 2026-11-21 (see Unreleased).
-
+- **JASMINE mode with ships kills most animals** (found 2026-11-21, not fixed: how strongly
+  disturbance should cost energy in JASMINE is a research choice). Kattegat, 500 animals,
+  60 days, seed 7: 72 alive with ships against 497 without (DEPONS mode with ships: 488 of
+  500 alive at day 90). Two causes:
+  - DISTURBED is sticky. Any deterrence above 0.01 makes an animal DISTURBED, and it recovers
+    only after a full day (`disturbance_recovery_ticks`, 48) without deterrence, so 95-96% of
+    animals are DISTURBED while 2-9% are deterred at that moment. The JASMINE energy module
+    doubles the activity cost in DISTURBED (`ACTIVITY_MULTIPLIERS`). With recovery as soon as
+    deterrence stops (`disturbance_recovery_ticks=0`), 134 survive.
+  - The JASMINE energy module adds a cost for every deterred tick (0.1 x deterrence strength
+    + 0.02 x speed, `energy_budget.py`), and JASMINE movement adds to it: with immediate
+    recovery and DEPONS movement 376 survive. With the DEPONS energy module and ships, 498.
+  Units were checked (speed in m/s from cells per tick). Reproduce with
+  `scripts/investigations/2026-11-21-jasmine-ships/jasmine_ships_split.py`.
 
 ## [2.2.0] - 2026-07-10
 

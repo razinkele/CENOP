@@ -93,6 +93,15 @@ All notable changes to CENOP-JASMINE are documented in this file.
   `docs/performance/2026-11-20-ship-loop.md`.
 
 ### Fixed
+- **JASMINE movement on Kattegat: steps were three times too long.** JASMINE movement draws
+  its step lengths with the DEPONS step model, but read salinity from the map (about 16 on
+  Kattegat) where DEPONS moves with a fixed 34.07 on Kattegat (Porpoise.java:423-427), and
+  the salinity term is strong. It now uses the same cell environment as the CRW paths
+  (current month, Kattegat override). Kattegat, 500 animals, seed 11: mean step 2.07 cells
+  (was 6.74; DEPONS mode 2.11); net displacement in 30 days 112 km (was 147; DEPONS mode 49,
+  the rest of the gap is JASMINE's small random turns and missing food memory). JASMINE
+  results change; DEPONS mode is unchanged (app-style DEPONS run byte-identical). On other
+  landscapes both paths already used the map salinity.
 - **Chart legends no longer cover the lines.** The legend sat inside the top-right corner of
   the plot area, over any line running high (for example "Energy falling 3+ days" on the
   dispersal chart). It is now a horizontal row above the plot area, under the title, on

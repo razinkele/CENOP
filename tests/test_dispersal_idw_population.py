@@ -172,13 +172,6 @@ class TestTick:
         tick(pop)
         assert pop.is_dispersing[0]
 
-    def test_never_reported_complete_to_the_fsm(self, kattegat, open_cells):
-        pop = make_pop(kattegat)
-        place(pop, 0, open_cells[0], 1)
-        pop.dispersal_target_distance[0] = 10.0
-        pop.dispersal_distance_traveled[0] = 500.0
-        assert not pop._dispersal_complete_mask().any()
-
     def test_deterrence_and_recovery_clear_the_phase(self, kattegat, open_cells):
         pop = make_pop(kattegat)
         place(pop, 0, open_cells[0], 1)
@@ -189,15 +182,6 @@ class TestTick:
         pop._global_tick = 48
         pop._update_dispersal(pop.active_mask)
         assert not pop.is_dispersing[:2].any() and not pop.dispersal_phase[:2].any()
-
-
-def test_psm_complete_mask_unchanged_for_other_modes():
-    params = SimulationParameters(random_seed=1, communication_enabled=False)
-    pop = PorpoisePopulation(4, params)
-    pop.is_dispersing[0] = True
-    pop.dispersal_target_distance[0] = 10.0
-    pop.dispersal_distance_traveled[0] = 500.0
-    assert pop._dispersal_complete_mask().tolist() == [True, False, False, False]
 
 
 def test_thirty_days_on_kattegat(kattegat):

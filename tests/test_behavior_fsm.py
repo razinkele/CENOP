@@ -214,34 +214,32 @@ class TestDEPONSTransitions:
         assert np.all(state_vector.state == BehaviorState.DISTURBED.value)
 
     def test_foraging_to_dispersing(self, fsm, state_vector, context, mask):
-        """Energy decline should trigger DISPERSING."""
-        context.energy_declining_days[:] = 5  # > t_disp (3)
-        context.memory_cell_count[:] = 100  # > min_memory_cells (50)
+        """An animal the model has dispersing shows as DISPERSING."""
+        context.is_dispersing[:10] = True
 
         fsm.update_states(state_vector, context, mask)
 
-        # All should be DISPERSING
-        assert np.all(state_vector.state == BehaviorState.DISPERSING.value)
+        assert np.all(state_vector.state[:10] == BehaviorState.DISPERSING.value)
+        assert np.all(state_vector.state[10:] == BehaviorState.FORAGING.value)
 
-    def test_dispersing_needs_memory(self, fsm, state_vector, context, mask):
-        """DISPERSING requires minimum memory cells."""
-        context.energy_declining_days[:] = 5
-        context.memory_cell_count[:] = 10  # < min_memory_cells
+    def test_deterred_dispersing_animal_shows_disturbed(self, fsm, state_vector, context, mask):
+        """Disturbance has priority over dispersal."""
+        context.is_dispersing[:] = True
+        context.deterrence_magnitude[:] = 0.5
 
         fsm.update_states(state_vector, context, mask)
 
-        # All should remain FORAGING
-        assert np.all(state_vector.state == BehaviorState.FORAGING.value)
+        assert np.all(state_vector.state == BehaviorState.DISTURBED.value)
 
     def test_dispersing_to_foraging(self, fsm, state_vector, context, mask):
-        """Dispersal completion should return to FORAGING."""
+        """When the model ends the dispersal the animal returns to FORAGING."""
         state_vector.state[:] = BehaviorState.DISPERSING.value
-        context.dispersal_complete[:] = True
+        context.is_dispersing[:5] = True
 
         fsm.update_states(state_vector, context, mask)
 
-        # All should be FORAGING
-        assert np.all(state_vector.state == BehaviorState.FORAGING.value)
+        assert np.all(state_vector.state[:5] == BehaviorState.DISPERSING.value)
+        assert np.all(state_vector.state[5:] == BehaviorState.FORAGING.value)
 
 
 class TestJASMINETransitions:
@@ -294,6 +292,29 @@ class TestJASMINETransitions:
         """High energy should exit RESTING state."""
         state_vector.state[:] = BehaviorState.RESTING.value
         context.current_energy[:] = 0.8  # > energy_threshold_high (0.7)
+
+        fsm.update_states(state_vector, context, mask)
+
+        assert np.all(state_vector.state == BehaviorState.FORAGING.value)
+
+    def test_dispersal_has_priority_over_traveling_and_resting(
+        self, fsm, state_vector, context, mask
+    ):
+        """A dispersing animal shows DISPERSING whatever its speed or energy."""
+        state_vector.state[:10] = BehaviorState.RESTING.value
+        state_vector.state[10:] = BehaviorState.TRAVELING.value
+        context.current_energy[:] = 0.2
+        context.current_speed[:] = 3.0
+        context.is_dispersing[:] = True
+
+        fsm.update_states(state_vector, context, mask)
+
+        assert np.all(state_vector.state == BehaviorState.DISPERSING.value)
+
+    def test_dispersing_to_foraging(self, fsm, state_vector, context, mask):
+        """When the model ends the dispersal the animal returns to FORAGING."""
+        state_vector.state[:] = BehaviorState.DISPERSING.value
+        context.current_energy[:] = 0.5
 
         fsm.update_states(state_vector, context, mask)
 

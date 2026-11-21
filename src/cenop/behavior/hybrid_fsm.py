@@ -48,9 +48,12 @@ class HybridBehaviorFSM:
     -----------------------
     DEPONS Mode (simple):
         FORAGING -> DISTURBED:    deterrence > threshold
-        FORAGING -> DISPERSING:   energy declining for t_disp days
         DISTURBED -> FORAGING:    no deterrence for recovery_ticks
-        DISPERSING -> FORAGING:   dispersal target reached
+        any -> DISPERSING:        the model is dispersing the animal (not while DISTURBED)
+        DISPERSING -> FORAGING:   the model ended the dispersal
+
+        The population starts and ends dispersal (DEPONS rules, daily energy history); the
+        state only follows it.
 
     JASMINE Mode (enhanced):
         All DEPONS transitions plus:
@@ -98,9 +101,7 @@ class HybridBehaviorFSM:
             self.mode = FSMMode.JASMINE
 
         # Extract parameters
-        self.t_disp = params.t_disp
         self.recovery_ticks = params.disturbance_recovery_ticks
-        self.min_memory_cells = params.min_memory_cells
 
         # Statistics
         self._stats: dict[str, int] = {
@@ -157,8 +158,8 @@ class HybridBehaviorFSM:
         DEPONS FSM Rules:
         1. Any state + deterrence > threshold -> DISTURBED
         2. DISTURBED + no deterrence for recovery_ticks -> FORAGING
-        3. FORAGING + energy_declining >= t_disp + memory >= 50 -> DISPERSING
-        4. DISPERSING + target reached -> FORAGING
+        3. Dispersing in the model (and not DISTURBED) -> DISPERSING
+        4. DISPERSING + the model ended the dispersal -> FORAGING
         """
         count = len(state_vector.state)
         old_states = state_vector.state.copy()
@@ -180,23 +181,8 @@ class HybridBehaviorFSM:
         state_vector.state[recovered] = BehaviorState.FORAGING.value
         state_vector.state_duration[recovered] = 0
 
-        # === Rule 3: FORAGING -> DISPERSING ===
-        # Energy declining for t_disp days and sufficient memory
-        currently_foraging = mask & (state_vector.state == BehaviorState.FORAGING.value)
-        energy_declining = context.energy_declining_days >= self.t_disp
-        sufficient_memory = context.memory_cell_count >= self.min_memory_cells
-        start_dispersal = (
-            currently_foraging & energy_declining & sufficient_memory & ~context.is_dispersing
-        )
-        state_vector.state[start_dispersal] = BehaviorState.DISPERSING.value
-        state_vector.state_duration[start_dispersal] = 0
-
-        # === Rule 4: DISPERSING -> FORAGING ===
-        # Dispersal target reached
-        currently_dispersing = mask & (state_vector.state == BehaviorState.DISPERSING.value)
-        dispersal_done = currently_dispersing & context.dispersal_complete
-        state_vector.state[dispersal_done] = BehaviorState.FORAGING.value
-        state_vector.state_duration[dispersal_done] = 0
+        # === Rules 3 and 4: follow the model's dispersal ===
+        self._follow_dispersal(state_vector, context, mask)
 
         # Track changes
         changed = state_vector.state != old_states
@@ -243,11 +229,9 @@ class HybridBehaviorFSM:
         state_vector.state[recovered & ~high_speed] = BehaviorState.FORAGING.value
         state_vector.state_duration[recovered] = 0
 
-        # Rule 3: DISPERSING transitions (same as DEPONS)
-        currently_dispersing = mask & (state_vector.state == BehaviorState.DISPERSING.value)
-        dispersal_done = currently_dispersing & context.dispersal_complete
-        state_vector.state[dispersal_done] = BehaviorState.FORAGING.value
-        state_vector.state_duration[dispersal_done] = 0
+        # Rule 3: follow the model's dispersal (same as DEPONS); before the energy and speed
+        # rules, so a dispersing animal is never TRAVELING or RESTING
+        self._follow_dispersal(state_vector, context, mask)
 
         # === JASMINE-specific rules ===
 
@@ -263,17 +247,6 @@ class HybridBehaviorFSM:
         to_resting_from_foraging = currently_foraging & low_energy & ~fast_moving
         state_vector.state[to_resting_from_foraging] = BehaviorState.RESTING.value
         state_vector.state_duration[to_resting_from_foraging] = 0
-
-        # Rule 6: FORAGING -> DISPERSING (energy declining)
-        # Re-read currently_foraging after Rule 5 to exclude agents now RESTING
-        still_foraging = mask & (state_vector.state == BehaviorState.FORAGING.value)
-        energy_declining = context.energy_declining_days >= self.t_disp
-        sufficient_memory = context.memory_cell_count >= self.min_memory_cells
-        start_dispersal = (
-            still_foraging & energy_declining & sufficient_memory & ~context.is_dispersing
-        )
-        state_vector.state[start_dispersal] = BehaviorState.DISPERSING.value
-        state_vector.state_duration[start_dispersal] = 0
 
         # Rule 7: TRAVELING -> FORAGING (slow down)
         currently_traveling = mask & (state_vector.state == BehaviorState.TRAVELING.value)
@@ -299,6 +272,28 @@ class HybridBehaviorFSM:
         self._update_stats(old_states, state_vector.state, changed)
 
         return changed
+
+    @staticmethod
+    def _follow_dispersal(
+        state_vector: BehaviorStateVector,
+        context: BehaviorContext,
+        mask: np.ndarray,
+    ) -> None:
+        """DISPERSING while the model disperses the animal (DISTURBED keeps priority), back to
+        FORAGING when the model ends the dispersal."""
+        state = state_vector.state
+        dispersing = BehaviorState.DISPERSING.value
+        start = (
+            mask
+            & context.is_dispersing
+            & (state != BehaviorState.DISTURBED.value)
+            & (state != dispersing)
+        )
+        state[start] = dispersing
+        state_vector.state_duration[start] = 0
+        done = mask & (state == dispersing) & ~context.is_dispersing
+        state[done] = BehaviorState.FORAGING.value
+        state_vector.state_duration[done] = 0
 
     def _update_hybrid(
         self,

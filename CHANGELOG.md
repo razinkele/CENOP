@@ -59,14 +59,13 @@ All notable changes to CENOP-JASMINE are documented in this file.
 
 ### Changed
 - **The app runs 2.7-4.6 times faster with ships on the Baltic landscapes.** The app always
-  runs the behaviour state machine (it feeds the behaviour-state display), and every tick it
+  runs the behaviour state machine (scripts and the batch runner do not), and every tick it
   counted each animal's spatial-memory cells by copying the animal's whole memory grid:
-  100,000 cells per animal on CentralBaltic. The count is used only to decide whether an
-  animal whose energy has declined for t_disp days may start dispersing, so it is now taken
-  only for those animals. In practice no animal ever qualifies (see Known issues: the
-  declining-days counter the state machine reads is never incremented), so the count was
-  never needed; a new test pins the decision for when it is. State fingerprints of app-style
-  runs are unchanged (Kattegat 20 days and CentralBaltic 3 days, 300-500 animals, ships).
+  100,000 cells per animal on CentralBaltic, for a dispersal rule that could never fire
+  (its declining-days counter is never incremented). The count is gone: the state machine
+  now follows the model's own dispersal (see Fixed). State fingerprints of app-style runs
+  were unchanged by the speed-up (Kattegat 20 days and CentralBaltic 3 days, 300-500
+  animals, ships).
   With 300 animals and ships the app went from 23 to 105 simulated days in 90 s on
   CentralBaltic (4.6x) and from 71 to 192 on Lithuania (2.7x). Scripts and the batch runner
   run without the state machine and were not affected.
@@ -94,6 +93,22 @@ All notable changes to CENOP-JASMINE are documented in this file.
   `docs/performance/2026-11-20-ship-loop.md`.
 
 ### Fixed
+- **Behaviour states follow the model's dispersal (JASMINE energy; per-animal table).** The
+  behaviour state machine started DISPERSING on a declining-energy counter that nothing
+  increments, so no animal was ever in DISPERSING. It now mirrors the model: an animal the
+  population is dispersing is DISPERSING (DISTURBED keeps priority), and returns to FORAGING
+  when the population ends the dispersal. The app shows no behaviour states (its map and
+  dispersal charts use the model's own dispersing flag); the states reach only
+  `Simulation.agents_df["behavioral_state"]` and, in JASMINE mode, the energy costs.
+  DEPONS mode: model unchanged (Kattegat 30 days, 500 animals, ships: model state identical).
+  Of 7,544 dispersing animal-ticks, 826 are now DISPERSING (none before), 6,595 DISTURBED
+  (priority) and 123 FORAGING: the step on which dispersal starts, because the state is
+  updated before the end-of-step dispersal check. JASMINE mode: a dispersing animal now
+  carries the DISPERSING activity multiplier (x1.2) instead of the one its speed or energy
+  gave it. On Kattegat (60 days, 500 animals, no ships) 97% of dispersing animal-ticks were
+  TRAVELING (x1.5) and 3% RESTING (x0.6) before, so for most the cost is lower. One seeded
+  run: 497 alive, mean energy 11.26, against 499 and 11.42; not an effect size. The unused
+  context fields (declining days, memory cell count, dispersal complete) are removed.
 - **Land avoidance: a tie for the deepest neighbour is broken at random.** When an animal
   finds no water ahead and faces its deepest neighbouring cell, DEPONS shuffles the
   neighbours first, so equally deep cells are chosen at random; CENOP always took the same
@@ -574,12 +589,7 @@ results of every earlier version differ. See `docs/validation/A2-parity-report.m
 - Refreshed stale docs: `docs/backend-equivalence.md` (Cython repaired, not broken),
   `docs/validation-suite-status.md` (CI exists; default-branch and 60-day caveats),
   `CLAUDE.md` (CI and test counts)
-- **The behaviour state machine never enters DISPERSING** (found 2026-11-21). It starts
-  dispersal on `days_declining_energy`, a counter nothing increments (the model's own
-  dispersal trigger reads the daily energy history instead). In DEPONS mode the state machine
-  only feeds the app's behaviour-state display, so dispersing animals show as foraging or
-  disturbed there; in JASMINE mode the state also sets activity costs, so the dispersing
-  cost is never applied.
+- ~~The behaviour state machine never enters DISPERSING~~ Fixed 2026-11-21 (see Unreleased).
 
 
 ## [2.2.0] - 2026-07-10

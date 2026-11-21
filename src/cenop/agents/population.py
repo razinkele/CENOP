@@ -2865,6 +2865,15 @@ class PorpoisePopulation:
                     merge(v, f, depth + 1)
 
         merge(self, fresh, 0)
+        # The memory module's avoidance result, cached at the end of a tick for the next
+        # movement step, is None in the fresh population, so merge() skips it: extend it here,
+        # with no avoidance for the new slots.
+        av = self._avoidance_result
+        if av is not None:
+            for name, v in list(vars(av).items()):
+                if isinstance(v, np.ndarray) and v.shape[:1] == (old,):
+                    pad = np.zeros((extra,) + v.shape[1:], dtype=v.dtype)
+                    setattr(av, name, np.concatenate([v, pad]))
         self.count = old + extra
         self._active_idx = np.flatnonzero(self.active_mask)
         logger.info(

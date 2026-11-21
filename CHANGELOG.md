@@ -93,6 +93,14 @@ All notable changes to CENOP-JASMINE are documented in this file.
   `docs/performance/2026-11-20-ship-loop.md`.
 
 ### Fixed
+- **Full JASMINE mode crashed when the population first outgrew its arrays.** With the
+  JASMINE memory module on, the avoidance result cached for the next movement step kept the
+  old array length when the arrays grew for newborn calves, and the next step failed with a
+  broadcast error (Kattegat, 500 animals, seed 11: day 376, 625 against 500). The cached
+  result now grows with the arrays (no avoidance for the new slots, unchanged for the rest).
+  The same run now completes three years (676 animals at day 1,080). New slow-tier test: a
+  full-JASMINE Kattegat run past the first growth. Found by the CENOP improvement review of
+  2026-11-21.
 - **Chart legends no longer cover the lines.** The legend sat inside the top-right corner of
   the plot area, over any line running high (for example "Energy falling 3+ days" on the
   dispersal chart). It is now a horizontal row above the plot area, under the title, on

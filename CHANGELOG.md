@@ -149,6 +149,13 @@ All notable changes to CENOP-JASMINE are documented in this file.
   `docs/performance/2026-11-20-ship-loop.md`.
 
 ### Fixed
+- **Batch replicates now get their own random seed.** `Simulation(params, seed=...)` used the
+  seed only for ship reactions; the population drew from `params.random_seed`. `BatchRunner`
+  seeds each replicate this way, so replicates with a fixed `random_seed` repeated the same
+  run (without ships) and replicates without one could not be reproduced from their recorded
+  seed. A seed argument now replaces `params.random_seed` on a copy of the parameters. Runs
+  that set both to the same value (the Kattegat reference runs) and the app (which sets only
+  `random_seed`) are unchanged.
 - **Documentation brought in line with the code.** `docs/API.md` documented classes, methods
   and parameters that do not exist (e.g. `EnergyBudget`, `JASMINEEnergy`, `DisturbanceMemory`,
   `SimulationConfig`, `run_batch`, `OutputWriter.finalize`) and wrong signatures and defaults;

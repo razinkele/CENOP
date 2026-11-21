@@ -10,6 +10,7 @@ JASMINE mode (flexible timestep, event-driven) via the TimeManager.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import os
 from dataclasses import dataclass
@@ -112,7 +113,8 @@ class Simulation:
         Args:
             params: Simulation parameters configuration
             cell_data: Pre-loaded landscape data (optional)
-            seed: Random seed for reproducibility
+            seed: Random seed for the whole run; when given it replaces params.random_seed
+                (on a copy of params), which seeds the population
             time_manager: Pre-configured TimeManager (optional)
             time_mode: Time mode if creating new TimeManager (default: DEPONS)
             movement_module: Optional movement module for modular movement system
@@ -120,6 +122,10 @@ class Simulation:
             energy_module: Optional energy module for DEB calculations
             memory_module: Optional disturbance memory module for learned avoidance
         """
+        # A seed argument seeds the whole run: the population reads params.random_seed, so a
+        # different seed goes into a copy of params (BatchRunner seeds replicates this way)
+        if seed is not None and seed != params.random_seed:
+            params = dataclasses.replace(params, random_seed=seed)
         self.params = params
         self.state = SimulationState()
 

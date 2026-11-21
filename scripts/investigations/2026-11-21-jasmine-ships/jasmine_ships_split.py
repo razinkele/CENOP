@@ -7,12 +7,14 @@ share deterred at that moment, at days 10, 30 and 60.
 
 python3 scripts/investigations/2026-11-21-jasmine-ships/jasmine_ships_split.py LABEL [key=value ...]
 
-key=value pairs go to SimulationParameters (ships=yes switches ships on). The variants of
-2026-11-21 (CENOP 4d8fd3d), alive at day 60:
-    (none)                                                         497
-    ships=yes                                                       72
-    ships=yes energy_mode=DEPONS                                   498
-    ships=yes disturbance_recovery_ticks=0                         134
+key=value pairs go to SimulationParameters (ships=yes switches ships on). JASMINE movement
+and energy are selected unless overridden (they are opt-in since 2026-11-21). Alive at day 60
+after the Kattegat salinity fix (2026-11-21; before it, with steps 3.3 times too long: 497,
+72, 498, 134, 376):
+    (none)                                                         499
+    ships=yes                                                      455
+    ships=yes energy_mode=DEPONS                                   493
+    ships=yes disturbance_recovery_ticks=0                         459
     ships=yes disturbance_recovery_ticks=0 movement_mode=DEPONS    376
 """
 
@@ -39,7 +41,8 @@ params = SimulationParameters(
     ships_enabled=ships,
     turbines="off",
     simulation_mode="JASMINE",
-    **over,
+    # The JASMINE movement and energy are opt-in since 2026-11-21; select them unless overridden
+    **{"movement_mode": "JASMINE", "energy_mode": "JASMINE", **over},
 )
 tm = sc._get_time_mode(params.get_effective_time_mode())
 sim = Simulation(

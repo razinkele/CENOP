@@ -43,9 +43,9 @@ TOOLTIPS = {
     "param_rU": "Food replenishment rate. How fast depleted food patches recover. DEPONS default: 0.1",
     # JASMINE Mode settings
     "time_mode_override": "Override time subsystem: None = follow main mode, DEPONS = fixed 30-min ticks, JASMINE = variable timesteps with events.",
-    "movement_mode_override": "Override movement subsystem: None = follow main mode, DEPONS = empirical CRW, JASMINE = a simplified walk (DEPONS step lengths, random turns; the physics integrator is not wired in yet).",
+    "movement_mode_override": "Movement: None = the DEPONS CRW in both modes. JASMINE = experimental simplified walk (DEPONS step lengths, small random turns, no food memory or dispersal steering; the physics integrator is not wired in yet).",
     "fsm_mode_override": "Override behavior FSM: None = follow main mode, DEPONS = simple state machine, JASMINE = utility-based decisions.",
-    "energy_mode_override": "Override energy subsystem: None = follow main mode, DEPONS = simple tracking, JASMINE = full DEB model.",
+    "energy_mode_override": "Energy: None = the DEPONS energy budget in both modes. JASMINE = experimental energy budget in physical units, not calibrated (almost no mortality without disturbance, more deaths with ships; see the changelog's known issues).",
     "memory_mode_override": "Override memory subsystem: None = follow main mode, DEPONS = no disturbance memory, JASMINE = learned avoidance.",
     # JASMINE Physics parameters
     "jasmine_mass_kg": "Body mass in kg for physics calculations. Default: 50 kg (adult porpoise). Not used yet: the model does not read this setting.",
@@ -518,10 +518,11 @@ def _jasmine_settings_panel():
             ui.p(
                 ui.tags.strong("JASMINE Mode Settings"),
                 " - These parameters are only active when JASMINE mode is selected in the sidebar. "
-                "JASMINE is experimental and uncalibrated: behaviour states, an energy budget in "
-                "physical units and learned avoidance (see Known issues in the changelog). Of the "
-                "JASMINE parameters below, only the memory decay rate and avoidance radius are "
-                "read by the model; the others are not used yet.",
+                "JASMINE mode runs DEPONS movement and energy with JASMINE's learned avoidance "
+                "and behaviour states (experimental). The JASMINE movement and energy "
+                "budget run only when selected below (uncalibrated; see Known issues in the "
+                "changelog). Of the JASMINE parameters below, only the memory decay rate and "
+                "avoidance radius are read by the model; the others are not used yet.",
                 class_="alert alert-info",
             ),
         ),
@@ -564,7 +565,7 @@ def _jasmine_settings_panel():
                     ui.input_select(
                         "movement_mode_override",
                         None,
-                        choices={"": "Follow main mode", "DEPONS": "DEPONS", "JASMINE": "JASMINE"},
+                        choices={"": "Default (DEPONS)", "DEPONS": "DEPONS", "JASMINE": "JASMINE"},
                         selected="",
                     ),
                     class_="mb-2",
@@ -600,7 +601,7 @@ def _jasmine_settings_panel():
                     ui.input_select(
                         "energy_mode_override",
                         None,
-                        choices={"": "Follow main mode", "DEPONS": "DEPONS", "JASMINE": "JASMINE"},
+                        choices={"": "Default (DEPONS)", "DEPONS": "DEPONS", "JASMINE": "JASMINE"},
                         selected="",
                     ),
                     class_="mb-2",

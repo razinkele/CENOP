@@ -79,6 +79,47 @@ def _get_memory_mode(mode_str: str) -> MemoryMode:
     return MemoryMode.DEPONS
 
 
+def build_simulation(params: SimulationParameters, landscape: CellData | None = None) -> Simulation:
+    """A Simulation with the subsystem modules that ``params`` selects, as the app builds it.
+
+    ``Simulation(params)`` on its own runs the DEPONS model without modules; use this to run
+    JASMINE mode (or any subsystem override) from code. The landscape is loaded from
+    ``params.landscape`` unless one is given.
+    """
+    if landscape is None:
+        landscape = (
+            create_homogeneous_landscape() if params.is_homogeneous else CellData(params.landscape)
+        )
+
+    # Determine effective modes for each subsystem
+    effective_time_mode = _get_time_mode(params.get_effective_time_mode())
+    effective_movement_mode = _get_movement_mode(params.get_effective_movement_mode())
+    effective_fsm_mode = _get_fsm_mode(params.get_effective_fsm_mode())
+    effective_energy_mode = _get_energy_mode(params.get_effective_energy_mode())
+    effective_memory_mode = _get_memory_mode(params.get_effective_memory_mode())
+
+    logger.info(
+        "Simulation modes: time=%s, movement=%s, fsm=%s, energy=%s, memory=%s",
+        effective_time_mode.name,
+        effective_movement_mode.name,
+        effective_fsm_mode.name,
+        effective_energy_mode.name,
+        effective_memory_mode.name,
+    )
+
+    return Simulation(
+        params,
+        cell_data=landscape,
+        time_mode=effective_time_mode,
+        movement_module=create_movement_module(
+            params, effective_time_mode, effective_movement_mode
+        ),
+        behavior_fsm=create_behavior_fsm(params, effective_time_mode),
+        energy_module=create_energy_module(params, effective_energy_mode),
+        memory_module=create_memory_module(params, effective_memory_mode),
+    )
+
+
 def create_simulation_from_inputs(input) -> Simulation:
     """
     Create a new simulation instance from Shiny input values.
@@ -230,44 +271,7 @@ def create_simulation_from_inputs(input) -> Simulation:
         social_weight=_safe_float(lambda: input.social_weight(), 0.3),
     )
 
-    # Create landscape
-    if params.is_homogeneous:
-        landscape = create_homogeneous_landscape()
-    else:
-        landscape = CellData(params.landscape)
-
-    # Determine effective modes for each subsystem
-    effective_time_mode = _get_time_mode(params.get_effective_time_mode())
-    effective_movement_mode = _get_movement_mode(params.get_effective_movement_mode())
-    effective_fsm_mode = _get_fsm_mode(params.get_effective_fsm_mode())
-    effective_energy_mode = _get_energy_mode(params.get_effective_energy_mode())
-    effective_memory_mode = _get_memory_mode(params.get_effective_memory_mode())
-
-    logger.info(
-        "Simulation modes: time=%s, movement=%s, fsm=%s, energy=%s, memory=%s",
-        effective_time_mode.name,
-        effective_movement_mode.name,
-        effective_fsm_mode.name,
-        effective_energy_mode.name,
-        effective_memory_mode.name,
-    )
-
-    # Create modules based on effective modes
-    movement_module = create_movement_module(params, effective_time_mode, effective_movement_mode)
-    behavior_fsm = create_behavior_fsm(params, effective_time_mode)
-    energy_module = create_energy_module(params, effective_energy_mode)
-    memory_module = create_memory_module(params, effective_memory_mode)
-
-    # Create simulation with all modules
-    sim = Simulation(
-        params,
-        cell_data=landscape,
-        time_mode=effective_time_mode,
-        movement_module=movement_module,
-        behavior_fsm=behavior_fsm,
-        energy_module=energy_module,
-        memory_module=memory_module,
-    )
+    sim = build_simulation(params)
     logger.info(
         "Simulation created: %d porpoises, %d years, mode=%s",
         params.porpoise_count,

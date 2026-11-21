@@ -8,12 +8,12 @@
 
 CENOP is a Python translation of the DEPONS (Disturbance Effects of POrpoises in the North Sea) agent-based model, algorithmically aligned with DEPONS 3.2 (136/153 features verified at full parity — see [Parity Analysis](docs/DEPONS-CENOP-PARITY-ANALYSIS.md)). It simulates how harbour porpoise population dynamics are affected by disturbances from offshore wind farm construction and ship noise.
 
-The JASMINE (JASCO's Animal Simulation Model Including Noise Exposure) extension adds experimental, uncalibrated research features: behavioural states, an energy budget in physical units, and learned avoidance. See the known issues in the [changelog](CHANGELOG.md) before using its results.
+The JASMINE (JASCO's Animal Simulation Model Including Noise Exposure) extension adds experimental research features on top of DEPONS movement and energy: learned avoidance of remembered disturbances and behavioural states. Its own movement and energy budget are uncalibrated options (see the known issues in the [changelog](CHANGELOG.md)).
 
 ## Simulation Modes
 
 - **DEPONS Mode (Default):** Regulatory-compatible empirical models aligned with DEPONS 3.2 algorithms (pregnancy FSM, dispersal, deterrence, reference memory, CRW rejection sampling)
-- **JASMINE Mode (Research, experimental):** Behavioural states, an energy budget in physical units, and learned avoidance; not calibrated
+- **JASMINE Mode (Research, experimental):** DEPONS movement and energy plus learned avoidance and behavioural states; the JASMINE movement and energy budget run only with `movement_mode="JASMINE"` / `energy_mode="JASMINE"`
 
 ## Features
 
@@ -46,7 +46,7 @@ The JASMINE (JASCO's Animal Simulation Model Including Noise Exposure) extension
 ### JASMINE Extensions
 - **Behavioral State Machine:** FORAGING, TRAVELING, RESTING, DISPERSING, and DISTURBED labels; the label sets the activity cost in the JASMINE energy budget, not the movement
 - **Energy Budget:** Metabolism, activity and thermal costs in physical units; not calibrated (body mass is fixed, water temperature is 10 °C unless a landscape supplies it)
-- **Disturbance Memory:** Spatial memory with learned avoidance and habituation
+- **Disturbance Memory:** Spatial memory of disturbances with learned avoidance; uncalibrated (see the known issues); habituation is not implemented
 - **Movement:** A simplified walk (DEPONS step lengths, random turns, no food memory or dispersal steering); a physics integrator (drag, thrust, currents) exists but is not wired in
 
 ### Performance
@@ -232,7 +232,7 @@ CENOP/
 │   │   ├── psm.py              # Persistent spatial memory (food)
 │   │   ├── ref_mem.py          # Reference memory (vectorized attraction)
 │   │   ├── dispersal.py        # All 8 DEPONS dispersal types (Off, PSM 1-3, randdir, randdist, IDW, Undirected)
-│   │   ├── disturbance_memory.py  # Learned avoidance with habituation
+│   │   ├── disturbance_memory.py  # Learned avoidance (disturbance memory)
 │   │   ├── sound.py            # Sound/disturbance event handling
 │   │   ├── jomopans_spl.py     # 13-class JOMOPANS ship source levels
 │   │   └── weston_flux.py      # Physics-based transmission loss
@@ -298,20 +298,23 @@ CENOP/
 
 **Via Code:**
 ```python
-from cenop import Simulation, SimulationParameters
+from cenop import SimulationParameters
+from cenop.server.simulation_controller import build_simulation
 
 params = SimulationParameters(
     porpoise_count=1000,
     sim_years=5,
+    landscape="Kattegat",
     simulation_mode="JASMINE",  # or "DEPONS"
-    # Optional subsystem overrides:
-    energy_mode="JASMINE",      # Use DEB energy budget
-    memory_mode="JASMINE",      # Use learned avoidance
-    fsm_mode="JASMINE",         # Use enhanced behavioral FSM
+    # Optional, experimental subsystem overrides (default: DEPONS movement and energy):
+    # movement_mode="JASMINE",  # simplified walk instead of the DEPONS CRW
+    # energy_mode="JASMINE",    # uncalibrated energy budget in physical units
 )
 
-sim = Simulation(params)
+sim = build_simulation(params)  # builds the subsystem modules the mode selects, as the app does
 ```
+
+`Simulation(params)` on its own runs the DEPONS model without the JASMINE modules.
 
 ### JASMINE-Specific Parameters
 
@@ -319,7 +322,7 @@ sim = Simulation(params)
 |-----------|---------|-------------|
 | `memory_decay_rate` | 0.001 | Memory decay per tick |
 | `avoidance_radius` | 20.0 | Memory cells considered for avoidance |
-| `habituation_enabled` | True | Enable habituation to disturbance |
+| `habituation_enabled` | True | Not used yet: habituation is not implemented |
 | `jasmine_disturbance_cost_mult` | 1.0 | Multiplier on the JASMINE disturbance energy cost |
 
 The physics and energy settings in the app's Settings tab (`jasmine_mass_kg`, `jasmine_drag_coeff`, `jasmine_max_thrust`, `jasmine_current_weight`, `jasmine_bmr_scale`, `jasmine_activity_cost`, `jasmine_disturbance_cost`, `jasmine_avoidance_strength`) are not read by the model yet.

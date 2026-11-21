@@ -159,6 +159,9 @@ class Simulation:
 
         # History for plotting
         self._history: list[dict[str, Any]] = []
+        # Births and deaths over the whole run (state.births/deaths are month-to-date)
+        self._births_total = 0
+        self._deaths_total = 0
 
         # Max ticks from TimeManager (for backward compatibility)
         self.max_ticks = self.time_manager.max_ticks
@@ -617,8 +620,12 @@ class Simulation:
         rather than from the net population delta. See Finding #11.
         """
         pm = self.population_manager
-        self.state.births += int(getattr(pm, "last_step_births", 0))
-        self.state.deaths += int(getattr(pm, "last_step_deaths", 0))
+        births = int(getattr(pm, "last_step_births", 0))
+        deaths = int(getattr(pm, "last_step_deaths", 0))
+        self._births_total += births
+        self._deaths_total += deaths
+        self.state.births += births
+        self.state.deaths += deaths
         self.state.deaths_starvation += int(getattr(pm, "last_step_deaths_starvation", 0))
         self.state.deaths_old_age += int(getattr(pm, "last_step_deaths_old_age", 0))
         self.state.deaths_bycatch += int(getattr(pm, "last_step_deaths_bycatch", 0))
@@ -822,10 +829,14 @@ class Simulation:
 
     @property
     def total_births(self) -> int:
-        """Get total births across all history."""
-        return sum(h.get("births", 0) for h in self._history)
+        """Births (weaned calves added to the population) over the whole run.
+
+        The daily history records hold month-to-date counts, so summing them counted an event
+        once for every remaining day of its month.
+        """
+        return self._births_total
 
     @property
     def total_deaths(self) -> int:
-        """Get total deaths across all history."""
-        return sum(h.get("deaths", 0) for h in self._history)
+        """Deaths (starvation, old age, bycatch) over the whole run."""
+        return self._deaths_total

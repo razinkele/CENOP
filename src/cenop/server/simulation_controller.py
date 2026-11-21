@@ -387,22 +387,20 @@ class SimulationRunner:
                 1 for p in self.sim._porpoises if hasattr(p, "with_lact_calf") and p.with_lact_calf
             )
 
-        # Track births and deaths
-        if current_pop < self.last_pop:
-            inc = self.last_pop - current_pop
-            self.total_deaths += inc
-            if inc > max(1000, self.sim.population_size * 2):
-                logger.warning(
-                    "Large deaths increment: %d at tick %d, pop=%d", inc, self.tick, current_pop
-                )
-        if current_pop > self.last_pop:
-            inc = current_pop - self.last_pop
-            self.total_births += inc
-            if inc > max(1000, self.sim.population_size * 2):
-                logger.warning(
-                    "Large births increment: %d at tick %d, pop=%d", inc, self.tick, current_pop
-                )
-
+        # Births and deaths over the run, as the simulation counts them (the net daily change
+        # in population cancelled births against deaths on the same day)
+        new_births = self.sim.total_births - self.total_births
+        new_deaths = self.sim.total_deaths - self.total_deaths
+        if max(new_births, new_deaths) > max(1000, self.sim.population_size * 2):
+            logger.warning(
+                "Large births/deaths increment: +%d/+%d at tick %d, pop=%d",
+                new_births,
+                new_deaths,
+                self.tick,
+                current_pop,
+            )
+        self.total_births = self.sim.total_births
+        self.total_deaths = self.sim.total_deaths
         self.last_pop = current_pop
 
         # Calculate energy statistics from population manager's per-step metrics

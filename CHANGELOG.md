@@ -149,6 +149,15 @@ All notable changes to CENOP-JASMINE are documented in this file.
   `docs/performance/2026-11-20-ship-loop.md`.
 
 ### Fixed
+- **Births and deaths over a run are counted once each.** `Simulation.total_births` and
+  `total_deaths` (used by the batch runner) summed the daily history records, which hold
+  month-to-date counts, so an event was counted once for every remaining day of its month (a
+  run of 200 animals reported 118 births and 968 deaths while the population fell by 49). The
+  app's runner counted the net daily population change, so births and deaths on the same day
+  cancelled (11 births in the same run). Both now use run totals that the simulation keeps
+  per step: births are weaned calves added to the population, deaths all removals, and births
+  minus deaths equals the population change (slow-tier test). The month-to-date history and
+  the output files are unchanged.
 - **Batch replicates now get their own random seed.** `Simulation(params, seed=...)` used the
   seed only for ship reactions; the population drew from `params.random_seed`. `BatchRunner`
   seeds each replicate this way, so replicates with a fixed `random_seed` repeated the same

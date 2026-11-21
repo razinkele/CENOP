@@ -79,6 +79,13 @@ def main() -> None:
     ap.add_argument("--block-km", type=float, default=40.0)
     ap.add_argument("--tile-deg", type=float, default=1.5)
     ap.add_argument("--tiles-dir", required=True)
+    ap.add_argument(
+        "--fill-gaps-of",
+        default=None,
+        metavar="BATHY_ASC",
+        help="keep this existing bathy.asc (its grid and every water cell) and add only the "
+        "cells it lacks where EMODnet has water",
+    )
     args = ap.parse_args()
 
     import rasterio
@@ -104,6 +111,12 @@ def main() -> None:
             paths.append(p)
             print(f"tile {p.name}: {p.stat().st_size / 1e6:.1f} MB")
 
+    existing = None
+    if args.fill_gaps_of:
+        with open(args.fill_gaps_of) as fh:
+            head = dict(next(fh).split() for _ in range(6))
+        head = {k.lower(): float(v) for k, v in head.items()}
+        existing = np.loadtxt(args.fill_gaps_of, skiprows=6)  # row 0 is north
     # Target grid: the box's EPSG:3035 envelope, snapped outwards to whole cells
     t = Transformer.from_crs("EPSG:4326", "EPSG:3035", always_xy=True)
     edge_lon = np.r_[
@@ -117,6 +130,9 @@ def main() -> None:
     c = args.cellsize
     xll, yll = math.floor(ex.min() / c) * c, math.floor(ey.min() / c) * c
     w, h = math.ceil((ex.max() - xll) / c), math.ceil((ey.max() - yll) / c)
+    if existing is not None:
+        xll, yll, c = head["xllcorner"], head["yllcorner"], head["cellsize"]
+        w, h = int(head["ncols"]), int(head["nrows"])
 
     srcs = [rasterio.open(p) for p in paths]
     mosaic, mosaic_tr = merge(srcs, nodata=np.nan)
@@ -135,8 +151,16 @@ def main() -> None:
     for s in srcs:
         s.close()
 
-    water = np.isfinite(elev) & (elev < 0)
+    # Water is where the depth survives being written with two decimals (a depth under 5 mm
+    # would be written as 0.00, which the model reads as land)
+    water = np.isfinite(elev) & (elev <= -0.005)
     depth = np.where(water, -elev, NODATA)
+    if existing is not None:
+        had = existing > 0
+        added = water & ~had
+        depth = np.where(had, existing, depth)
+        water = had | added
+        print(f"kept {had.sum()} water cells, added {added.sum()} from EMODnet")
     dist = np.where(water, ndimage.distance_transform_edt(water) * c, NODATA)
     nb = int(round(args.block_km * 1000 / c))
     rows, cols = np.indices((h, w))

@@ -11,10 +11,12 @@ Scripts: `scripts/build_food_layers.py`, `scripts/fetch_ais_huetten.py`,
 here with uniform prey (0.38592 in every month). The SAMBAH-derived prey maps below are kept
 outside the repository until their licence is cleared (see "Licence of the SAMBAH data");
 `scripts/build_food_layers.py` rebuilds them from the SAMBAH download in minutes. The results
-quoted in this section were computed with the SAMBAH maps.
+quoted in this section were computed with the SAMBAH maps on the water mask before the sea gaps
+were filled (see "Lithuania: sea gaps filled").
 
 **Method (DEPONS 3.2 TRACE 2.6).** Food patches are single 400 m cells chosen at random,
-1.6% of the water (7,344 cells, seed 0). Monthly prey maps come from seasonal maps of relative
+1.6% of the water (8,382 cells since the sea gaps were filled on 2026-11-21; 7,344 before;
+seed 0). Monthly prey maps come from seasonal maps of relative
 porpoise distribution, interpolated per cell with a + b sin(x) + c cos(x) and scaled to a mean
 of 0.38592 over the water. Fitting DEPONS's own Kattegat April, July and October maps this way
 reproduces its January to November maps within 0.0005 (its December map differs; correlation
@@ -46,14 +48,14 @@ food it stayed at the 19.9 cap.
 2025, figshare, CC BY 4.0). Danish Maritime Authority AIS reaches these waters only on some
 days, and EMODnet, EMSA and HELCOM publish densities, not tracks.
 
-**Method.** 15 days, 12-27 August 2024, positions inside the landscape and on its water (58%
-of them; harbours, the lagoon and the sea areas the landscape has no depth for are left out,
-where a ship would emit nothing). Every passage of every ship becomes a route sampled at
+**Method.** 15 days, 12-27 August 2024, positions inside the landscape and on its water (67%
+of them after the sea gaps were filled, see below; Klaipeda harbour and its channel, narrower
+than a 1 km cell, are left out, where a ship would emit nothing). Every passage of every ship becomes a route sampled at
 30-minute ticks, placed in time by its first-buoy pause and padded to a 721-tick cycle, the
 encoding of DEPONS's Kattegat file. Passages are split at gaps over 2 hours; moored ships and
 passages under one hour are dropped.
 
-**Result.** 3,069 passages of 1,136 vessels. Median speed while moving 9.9 knots. AIS type codes
+**Result.** 3,469 passages of 1,201 vessels. AIS type codes
 become JOMOPANS classes: cargo (70-79) becomes Bulker, since AIS does not separate bulk,
 container and vehicle carriers; passenger ships include ferries and cruise ships. Lengths are
 known for 1,621 passages from Danish AIS static records; the rest get the median length of
@@ -62,6 +64,20 @@ are deterred by ships (Kattegat: 19%, with denser traffic through narrower strai
 
 **Limits.** One summer fortnight (the source has no winter); aisstream.io's own terms were not
 checked; the class mapping cannot tell cargo ship types apart.
+
+## Lithuania: sea gaps filled (2026-11-21)
+
+12.4% of the sea in the Lithuania box (10,409 km2) had no depth, so the model treated it as
+land: a strip along the whole northern edge (57.0-57.5 N, about 5,400 km2), parts of the Gulf
+of Gdansk and of the Curonian Lagoon, and 240 scattered holes. 873 water cells bordered this
+missing sea, an artificial shore across open water, and ship noise stopped at it. Where the
+landscape had depths they agree with EMODnet's (median difference 0.23 m, 91% of cells within
+1 m, largest 11 m), so the gaps were filled from the
+same EMODnet DTM (`scripts/build_baltic_bathymetry.py --fill-gaps-of`), keeping every earlier
+water cell. The Curonian Lagoon stays a separate water body (1,754 km2 now, its Russian part
+included); the main sea body grows from 71,979 to 79,143 km2. Distance to coast, blocks (now 40 km
+squares; previously one block), salinity, sediment, food patches and ships were rebuilt on the
+new water mask.
 
 ## Licence of the SAMBAH data: not cleared
 

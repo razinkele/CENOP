@@ -103,7 +103,7 @@ class TestLoader:
         assert (meta.ncols, meta.nrows, meta.cellsize) == (822, 952, 400.0)
         assert (meta.xllcorner, meta.yllcorner) == (4754000.0, 3482000.0)
         water_km2 = (data["depth"] > 0).sum() * 0.16
-        assert water_km2 == pytest.approx(73464.0, rel=0.01)  # 73,464 water cells of 1 km2
+        assert water_km2 == pytest.approx(83873.0, rel=0.01)  # 83,873 water cells of 1 km2
         dtc = data["dist_to_coast"][data["depth"] > 0]
         assert dtc.min() == 400.0 and dtc.max() > 50_000
 

@@ -1,5 +1,14 @@
 Environment layers written 2026-11-20
 
+bathy.asc: the earlier Lithuania depths (on the cells both have, median difference from the
+  EMODnet DTM 0.23 m, 91% within 1 m, largest 11 m) with the 10,409 sea cells they lacked (12.4% of the sea in the box: a strip
+  along the northern edge, parts of the Gulf of Gdansk and of the Curonian Lagoon, scattered
+  holes) filled from the EMODnet DTM (scripts/build_baltic_bathymetry.py --fill-gaps-of,
+  2026-11-21). Every earlier water cell is kept; the Curonian Lagoon is still a separate water
+  body (1,754 km2). EMODnet Bathymetry Consortium, EMODnet Digital Bathymetry (DTM), CC BY 4.0.
+disttocoast.asc: recomputed, Euclidean distance to the nearest non-water cell (m).
+blocks.asc: 40 km squares numbered over the grid (68 on water; previously one block, 0).
+
 salinity01-12.asc: scripts/fetch_copernicus_salinity.py + scripts/build_baltic_environment.py.
   Copernicus Marine BALTICSEA_MULTIYEAR_PHY_003_011 (dataset cmems_mod_bal_phy_my_P1M-m, version
   202303), sea water salinity at the top level (0.5 m), monthly means for 2021: the product and

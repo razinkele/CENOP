@@ -18,6 +18,15 @@ All notable changes to CENOP-JASMINE are documented in this file.
   2024 AIS. 117 MB instead of 842 MB. Results on CentralBaltic change entirely. The scripts
   that built the old grid are removed; `scripts/build_baltic_bathymetry.py` and
   `scripts/build_baltic_environment.py` replace them.
+- **Lithuania: sea gaps filled.** 12.4% of the sea in the Lithuania box (10,409 km2: a strip
+  along the northern edge, parts of the Gulf of Gdansk and of the Curonian Lagoon, scattered
+  holes) had no depth and acted as land, an artificial shore across open water. Filled from
+  the same EMODnet DTM the landscape's depths came from, keeping every earlier water cell; the
+  lagoon stays separate. Blocks are now 40 km squares (previously one block; only the map
+  editor shows them, InnerDanishWaters dispersal is Kattegat-only). Lithuania results change.
+- **CentralBaltic: 13 near-zero depth cells set to land.** Depths under 5 mm were written as
+  0.00; the model read them as land, but distance to coast counted them as water. Distance to
+  coast recomputed (76 cells change, by up to 592 m); the water mask is unchanged.
 - **Lithuania: real salinity and sediment.** Its salinity was random around 7.5 and its
   sediment one value everywhere. Now Copernicus monthly surface salinity for 2021 (the
   product DEPONS used; up to 7.9, near-fresh in the lagoon) and EMODnet Geology grain size,
@@ -26,7 +35,7 @@ All notable changes to CENOP-JASMINE are documented in this file.
 - **Lithuania: food patches and ship traffic from public data.** Food: DEPONS-style random
   patches (1.6% of the water, single 400 m cells) in place of food on every water cell; the
   prey level is uniform (the DEPONS mean, 0.38592) until monthly maps from the SAMBAH porpoise
-  distribution can be published (see Known issues). Ships: 3,069 passages over 15 days of
+  distribution can be published (see Known issues). Ships: 3,469 passages over 15 days of
   August 2024 from public raw AIS (aisstream.io via figshare, CC BY 4.0), encoded like DEPONS's
   Kattegat file. Tools:
   `scripts/build_food_layers.py`, `scripts/fetch_ais_huetten.py`,

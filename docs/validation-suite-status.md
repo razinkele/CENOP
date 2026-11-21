@@ -6,7 +6,7 @@ demographic behavior (population stability, mortality, reproduction, energy, age
 
 ## CI coverage — nightly job, plus a local run before releases
 
-The 11 slow tests are marked `@pytest.mark.slow` and are **deselected by default** so
+The 12 slow tests are marked `@pytest.mark.slow` and are **deselected by default** so
 day-to-day iteration on the fast suite stays quick. They run automatically only in the
 dedicated GitHub Actions workflow `.github/workflows/slow.yml`: nightly at 03:00 UTC and
 on manual dispatch (Actions → "Slow validation tier" → Run workflow). The fast-suite
@@ -19,7 +19,7 @@ workflow (`ci.yml`) does **not** run them.
 > Check the Actions tab and re-enable the workflow if it has been paused. Run
 > `pytest tests/ -m slow` locally before every release/merge of model-behavior changes.
 
-## The 11 slow tests
+## The 12 slow tests
 
 **`tests/test_validation.py`** (6 tests):
 - `TestPopulationDynamicsValidation::test_population_stability_one_year`
@@ -35,6 +35,10 @@ workflow (`ci.yml`) does **not** run them.
 - `TestDEPONSTrajectoryComparison::test_annual_mortality_rate`
 - `TestDEPONSTrajectoryComparison::test_energy_dynamics_over_year`
 - `TestDEPONSTrajectoryComparison::test_female_reproduction_rate`
+
+**`tests/test_population_growth_jasmine.py`** (1 test, added 2026-11-21):
+- `test_full_jasmine_run_survives_the_first_array_growth` (all JASMINE modules on Kattegat past
+  the first births that outgrow the population arrays, about 30 s)
 
 ## How to run
 

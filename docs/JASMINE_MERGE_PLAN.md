@@ -1,5 +1,8 @@
 # JASMINE-CENOP Merge Plan
 
+> **Historical planning document** (written before the JASMINE merge). It does not describe
+> the current code; see CHANGELOG.md, README.md and docs/API.md for that.
+
 ## Executive Summary
 
 This document outlines the implementation plan for merging JASMINE-MB capabilities into CENOP while **preserving DEPONS 3.0 reproducibility for regulatory use**. The merge starts with the Time Manager as the foundational component.

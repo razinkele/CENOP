@@ -669,7 +669,7 @@ def create_help_modal():
         <tr><td>Body Mass</td><td>50.0 kg</td><td>Adult porpoise body mass</td></tr>
         <tr><td>BMR Scale</td><td>1.0</td><td>Basal metabolic rate multiplier</td></tr>
         <tr><td>Activity Cost</td><td>2.0</td><td>Activity cost multiplier</td></tr>
-        <tr><td>Thermal Model</td><td>On</td><td>Temperature-dependent metabolism</td></tr>
+        <tr><td>Thermal Model</td><td>On</td><td>Extra cost below 5 °C or above 20 °C water. No landscape has a temperature layer, so water is 10 °C everywhere and this cost is zero</td></tr>
         <tr><td>Disturbance Cost</td><td>1.5</td><td>Energy cost during disturbance</td></tr>
     </table>
 

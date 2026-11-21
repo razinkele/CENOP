@@ -50,7 +50,7 @@ The JASMINE (JASCO's Animal Simulation Model Including Noise Exposure) extension
 #### JASMINE Extensions (Research Mode, experimental)
 - **Learned avoidance**: porpoises remember where they were disturbed and steer away from those places
 - **Behaviour states**: five states (FORAGING, TRAVELING, RESTING, DISPERSING, DISTURBED) that label each animal and set its activity cost in the JASMINE energy budget; they do not change movement and are not shown in the app
-- **JASMINE energy budget** (optional, uncalibrated): metabolism, activity and thermal costs in physical units
+- **JASMINE energy budget** (optional, uncalibrated): metabolism and activity costs in physical units. Its thermal cost applies below 5 °C or above 20 °C, but no landscape has a temperature layer (water is 10 °C everywhere), so it is zero
 - **JASMINE movement** (optional): a simplified walk; the physics integrator (drag, thrust, currents) exists but is not wired in
 
 ---

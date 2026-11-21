@@ -43,3 +43,11 @@ def test_defaults_fade_a_full_memory_below_the_threshold_in_about_three_days():
     assert 2.5 * 48 <= ticks <= 3.5 * 48
     assert p.jasmine_memory_decay_rate == p.memory_decay_rate
     assert p.jasmine_avoidance_radius == p.avoidance_radius
+
+
+def test_habituation_is_gone_rather_than_a_dead_setting():
+    import pytest
+
+    with pytest.raises(TypeError):
+        SimulationParameters(habituation_enabled=True)
+    assert not hasattr(JASMINEMemoryModule, "HABITUATION_RATE")

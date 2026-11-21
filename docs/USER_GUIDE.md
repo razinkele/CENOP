@@ -54,7 +54,6 @@ The JASMINE (Just Another Simulation Model In Nature Environments) extension add
 - **Behavioral State Machine**: Five behavioral states (FORAGING, TRAVELING, RESTING, DISPERSING, DISTURBED) with configurable transitions
 - **Dynamic Energy Budget (DEB)**: Body mass-dependent metabolism, activity costs, thermoregulation, and disturbance energy impacts
 - **Disturbance Memory**: Spatial memory with learned avoidance of disturbance zones
-- **Habituation**: Reduced response to repeated disturbance exposure
 - **Physics-Based Movement**: Hydrodynamic drag, thrust-based propulsion, and ocean current advection
 
 ---
@@ -78,7 +77,6 @@ CENOP-JASMINE supports two simulation modes:
 - Physics-based movement and bioenergetics
 - Dynamic Energy Budget with body mass scaling
 - Learned avoidance with spatial memory
-- Habituation to repeated disturbance
 - Enhanced behavioral state machine
 - Suitable for research and hypothesis testing
 
@@ -359,10 +357,8 @@ These parameters are only active when JASMINE mode is selected.
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | Memory Mode | JASMINE | Memory type (None or JASMINE) |
-| Memory Decay Rate | 0.001 | Per-tick memory decay |
-| Avoidance Radius | 20 | Influence radius in grid cells |
-| Habituation | On | Enable habituation to repeated disturbance |
-| Habituation Rate | 0.05 | Rate of habituation per exposure |
+| Memory Decay Rate | 0.016 | Per-tick memory decay (a full memory fades in about 3 days) |
+| Avoidance Radius | 2.5 | Influence radius in memory cells of 2 km (5 km) |
 
 #### Physics-Based Movement
 

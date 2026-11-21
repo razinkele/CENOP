@@ -56,6 +56,12 @@ All notable changes to CENOP-JASMINE are documented in this file.
   not been checked; a plain `shiny run` does not.
 
 ### Removed
+- **`habituation_enabled` and the habituation constants.** Habituation was listed as a JASMINE
+  feature but never implemented: the setting and `HABITUATION_RATE` / `MIN_RESPONSE` were
+  never read. Code that passes `habituation_enabled` to `SimulationParameters` now fails. If
+  habituation is wanted, a published target is the decline of porpoise responses over one
+  construction, from a 50% response distance of 7.4 km at the first pile location to 1.3 km
+  at the last (Graham et al. 2019, doi:10.1098/rsos.190335).
 - **The JAX backend.** Deprecated in 2.3.0, now removed: its kernels, the JAX branch of the
   tick, its tests and `jax[cpu]` in the CI environment. `use_jax=True` raises a `ValueError`
   with an explanation. The default NumPy/Numba backend was faster on real landscapes and the
@@ -705,7 +711,7 @@ results of every earlier version differ. See `docs/validation/A2-parity-report.m
   remembered disturbance cell is the animal's position minus five times its own last step, not
   the source: on Kattegat with ships it lies a median 5.5 km from the nearest deterring ship
   while the animal itself was 5.1 km away (remembering the animal's own cell changes results
-  within seed noise). Habituation is not implemented.
+  within seed noise).
 
 ## [2.2.0] - 2026-07-10
 

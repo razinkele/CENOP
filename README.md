@@ -46,7 +46,7 @@ The JASMINE (JASCO's Animal Simulation Model Including Noise Exposure) extension
 ### JASMINE Extensions
 - **Behavioral State Machine:** FORAGING, TRAVELING, RESTING, DISPERSING, and DISTURBED labels; the label sets the activity cost in the JASMINE energy budget, not the movement
 - **Energy Budget:** Metabolism, activity and thermal costs in physical units; not calibrated (body mass is fixed, water temperature is 10 °C unless a landscape supplies it)
-- **Disturbance Memory:** Spatial memory of disturbances with learned avoidance; uncalibrated (see the known issues); habituation is not implemented
+- **Disturbance Memory:** Spatial memory of disturbances with learned avoidance, calibrated to observed porpoise recovery after pile driving (fades in about 3 days, within 5 km); habituation is not implemented
 - **Movement:** A simplified walk (DEPONS step lengths, random turns, no food memory or dispersal steering); a physics integrator (drag, thrust, currents) exists but is not wired in
 
 ### Performance
@@ -322,7 +322,6 @@ sim = build_simulation(params)  # builds the subsystem modules the mode selects,
 |-----------|---------|-------------|
 | `memory_decay_rate` | 0.016 | Memory decay per tick (a full memory fades in about 3 days) |
 | `avoidance_radius` | 2.5 | Memory cells (2 km) considered for avoidance: 5 km |
-| `habituation_enabled` | True | Not used yet: habituation is not implemented |
 | `jasmine_disturbance_cost_mult` | 1.0 | Multiplier on the JASMINE disturbance energy cost |
 
 The physics and energy settings in the app's Settings tab (`jasmine_mass_kg`, `jasmine_drag_coeff`, `jasmine_max_thrust`, `jasmine_current_weight`, `jasmine_bmr_scale`, `jasmine_activity_cost`, `jasmine_disturbance_cost`, `jasmine_avoidance_strength`) are not read by the model yet.

@@ -253,7 +253,6 @@ class JASMINEMemoryModule(DisturbanceMemoryModule):
     - Spatial memory grid for disturbance zones
     - Configurable memory decay (exponential)
     - Avoidance behavior based on remembered disturbances
-    - Habituation (reduced response to repeated exposure)
     """
 
     # Memory grid parameters (same as PSM for consistency)
@@ -270,17 +269,12 @@ class JASMINEMemoryModule(DisturbanceMemoryModule):
     AVOIDANCE_THRESHOLD = 0.1  # Minimum memory strength to trigger avoidance
     MAX_AVOIDANCE_STRENGTH = 0.8  # Maximum avoidance influence on movement
 
-    # Habituation parameters
-    HABITUATION_RATE = 0.05  # Rate of habituation per exposure
-    MIN_RESPONSE = 0.2  # Minimum response after habituation
-
     def __init__(self, params: SimulationParameters):
         super().__init__(params)
 
         # Extract parameters
         self.decay_rate = params.memory_decay_rate
         self.avoidance_radius = params.avoidance_radius
-        self.habituation_enabled = params.habituation_enabled
 
         # Grid dimensions (will be set on first use)
         self._cells_per_row = 0

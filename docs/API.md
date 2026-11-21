@@ -363,7 +363,11 @@ class HybridBehaviorFSM:
         """Update states in place; returns a boolean array of agents that changed state."""
 
 
-def create_behavior_fsm(params: SimulationParameters, time_mode: TimeMode = TimeMode.DEPONS) -> HybridBehaviorFSM:
+def create_behavior_fsm(
+    params: SimulationParameters,
+    time_mode: TimeMode = TimeMode.DEPONS,
+    fsm_mode: FSMMode | None = None,  # None infers the rules from time_mode
+) -> HybridBehaviorFSM:
     """Factory used by build_simulation, which passes the effective FSM mode (fsm_mode override, else simulation_mode)."""
 ```
 

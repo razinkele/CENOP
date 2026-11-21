@@ -777,6 +777,13 @@ results of every earlier version differ. See `docs/validation/A2-parity-report.m
   survive, and 444 with DEPONS movement as well (seed 7). The JASMINE energy module also
   charges every deterred tick (0.1 x deterrence strength + 0.02 x speed). Reproduce with
   `scripts/investigations/2026-11-21-jasmine-ships/jasmine_ships_split.py`.
+- **JASMINE energy: body condition never changes** (found 2026-11-21; only with
+  `energy_mode="JASMINE"`). The population runs the JASMINE budget in two phases and never
+  calls `JASMINEEnergyModule.apply_result`, so body condition stays 0.5 and food intake
+  efficiency (0.8 x body condition) 0.4 for every animal. Updating it as `apply_result` does
+  (energy / 20) adds a feedback, low energy giving lower intake efficiency, that makes the
+  die-off with ships larger: 328, 343, 344, 327 alive at day 60 instead of 441, 451, 456, 441
+  (Kattegat, 500 animals, seeds 7-10). Held back for a decision on the JASMINE energy budget.
 - ~~Learned avoidance (JASMINE disturbance memory) remembers the wrong place~~ Fixed 2026-11-21 (see Unreleased).
 
 ## [2.2.0] - 2026-07-10

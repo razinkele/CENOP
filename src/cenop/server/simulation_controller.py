@@ -194,6 +194,9 @@ def create_simulation_from_inputs(input) -> Simulation:
         jasmine_memory_decay_rate=jasmine_memory_decay_rate,
         jasmine_avoidance_strength=jasmine_avoidance_strength,
         jasmine_avoidance_radius=jasmine_avoidance_radius,
+        # ...under the names the memory module reads (the jasmine_* copies are not read)
+        memory_decay_rate=jasmine_memory_decay_rate,
+        avoidance_radius=jasmine_avoidance_radius,
         # Advanced Parameters
         tracked_porpoise_count=input.tracked_porpoise_count(),
         t_disp=input.tdisp(),

@@ -8,12 +8,12 @@
 
 CENOP is a Python translation of the DEPONS (Disturbance Effects of POrpoises in the North Sea) agent-based model, algorithmically aligned with DEPONS 3.2 (136/153 features verified at full parity — see [Parity Analysis](docs/DEPONS-CENOP-PARITY-ANALYSIS.md)). It simulates how harbour porpoise population dynamics are affected by disturbances from offshore wind farm construction and ship noise.
 
-The JASMINE (Just Another Simulation Model In Nature Environments) extension adds research-grade physics-based movement, dynamic energy budgets, and learned avoidance behaviors.
+The JASMINE (JASCO's Animal Simulation Model Including Noise Exposure) extension adds experimental, uncalibrated research features: behavioural states, an energy budget in physical units, and learned avoidance. See the known issues in the [changelog](CHANGELOG.md) before using its results.
 
 ## Simulation Modes
 
 - **DEPONS Mode (Default):** Regulatory-compatible empirical models aligned with DEPONS 3.2 algorithms (pregnancy FSM, dispersal, deterrence, reference memory, CRW rejection sampling)
-- **JASMINE Mode (Research):** Physics-based movement, Dynamic Energy Budget (DEB), and learned animal behaviors
+- **JASMINE Mode (Research, experimental):** Behavioural states, an energy budget in physical units, and learned avoidance; not calibrated
 
 ## Features
 
@@ -44,10 +44,10 @@ The JASMINE (Just Another Simulation Model In Nature Environments) extension add
 - Comprehensive in-app help documentation
 
 ### JASMINE Extensions
-- **Behavioral State Machine:** FORAGING, TRAVELING, RESTING, DISPERSING, and DISTURBED states
-- **Dynamic Energy Budget:** Body mass-dependent metabolism, activity costs, thermoregulation
+- **Behavioral State Machine:** FORAGING, TRAVELING, RESTING, DISPERSING, and DISTURBED labels; the label sets the activity cost in the JASMINE energy budget, not the movement
+- **Energy Budget:** Metabolism, activity and thermal costs in physical units; not calibrated (body mass is fixed, water temperature is 10 °C unless a landscape supplies it)
 - **Disturbance Memory:** Spatial memory with learned avoidance and habituation
-- **Physics-Based Movement:** Hydrodynamic drag, thrust-based propulsion, and ocean current advection
+- **Movement:** A simplified walk (DEPONS step lengths, random turns, no food memory or dispersal steering); a physics integrator (drag, thrust, currents) exists but is not wired in
 
 ### Performance
 
@@ -317,17 +317,18 @@ sim = Simulation(params)
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `jasmine_mass_kg` | 50.0 | Body mass (kg) |
-| `jasmine_drag_coeff` | 0.01 | Hydrodynamic drag coefficient |
-| `jasmine_bmr_scale` | 1.0 | Basal metabolic rate scale factor |
 | `memory_decay_rate` | 0.001 | Memory decay per tick |
+| `avoidance_radius` | 20.0 | Memory cells considered for avoidance |
 | `habituation_enabled` | True | Enable habituation to disturbance |
+| `jasmine_disturbance_cost_mult` | 1.0 | Multiplier on the JASMINE disturbance energy cost |
+
+The physics and energy settings in the app's Settings tab (`jasmine_mass_kg`, `jasmine_drag_coeff`, `jasmine_max_thrust`, `jasmine_current_weight`, `jasmine_bmr_scale`, `jasmine_activity_cost`, `jasmine_disturbance_cost`, `jasmine_avoidance_strength`) are not read by the model yet.
 
 ## Validation
 
 - **DEPONS mode:** Full algorithmic parity with DEPONS 3.2 verified across 153 features — 136 MATCH, 13 intentional divergences (vectorization, proportional food sharing, explicit FSM), 4 CENOP extensions (JASMINE states, DEB energy, disturbance memory, age-stratified mortality). See [Parity Analysis](docs/DEPONS-CENOP-PARITY-ANALYSIS.md).
 - **Performance:** 1.05 ms/tick in DEPONS mode (1.3× Java), optimized via Numba kernel fusion and allocation elimination. See [Performance Plans](docs/superpowers/plans/).
-- **JASMINE mode:** Research-grade, designed for exploring advanced behavioral hypotheses (not yet validated against empirical data)
+- **JASMINE mode:** Experimental, not calibrated or validated against empirical data; see the known issues in the [changelog](CHANGELOG.md)
 
 ## License
 

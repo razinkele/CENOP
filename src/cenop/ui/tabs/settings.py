@@ -42,23 +42,23 @@ TOOLTIPS = {
     "param_rU": "Food replenishment rate. How fast depleted food patches recover. DEPONS default: 0.1",
     # JASMINE Mode settings
     "time_mode_override": "Override time subsystem: None = follow main mode, DEPONS = fixed 30-min ticks, JASMINE = variable timesteps with events.",
-    "movement_mode_override": "Override movement subsystem: None = follow main mode, DEPONS = empirical CRW, JASMINE = physics-based with velocity.",
+    "movement_mode_override": "Override movement subsystem: None = follow main mode, DEPONS = empirical CRW, JASMINE = a simplified walk (DEPONS step lengths, random turns; the physics integrator is not wired in yet).",
     "fsm_mode_override": "Override behavior FSM: None = follow main mode, DEPONS = simple state machine, JASMINE = utility-based decisions.",
     "energy_mode_override": "Override energy subsystem: None = follow main mode, DEPONS = simple tracking, JASMINE = full DEB model.",
     "memory_mode_override": "Override memory subsystem: None = follow main mode, DEPONS = no disturbance memory, JASMINE = learned avoidance.",
     # JASMINE Physics parameters
-    "jasmine_mass_kg": "Body mass in kg for physics calculations. Affects inertia and acceleration. Default: 50 kg (adult porpoise).",
-    "jasmine_drag_coeff": "Hydrodynamic drag coefficient. Higher = more resistance. Default: 0.01",
-    "jasmine_max_thrust": "Maximum thrust force in Newtons. Limits acceleration. Default: 100 N",
-    "jasmine_current_weight": "Weight of ocean current advection (0-1). 0 = ignore currents, 1 = fully advected. Default: 0.5",
+    "jasmine_mass_kg": "Body mass in kg for physics calculations. Default: 50 kg (adult porpoise). Not used yet: the model does not read this setting.",
+    "jasmine_drag_coeff": "Hydrodynamic drag coefficient. Default: 0.01. Not used yet: the model does not read this setting.",
+    "jasmine_max_thrust": "Maximum thrust force in Newtons. Default: 100 N. Not used yet: the model does not read this setting.",
+    "jasmine_current_weight": "Weight of ocean current advection (0-1). Default: 0.5. Not used yet: the model does not read this setting.",
     # JASMINE DEB parameters
-    "jasmine_bmr_scale": "Basal metabolic rate scale factor. 1.0 = standard, >1 = higher base costs. Default: 1.0",
-    "jasmine_activity_cost": "Activity cost multiplier. Higher = more energy used during active movement. Default: 2.0",
-    "jasmine_disturbance_cost": "Extra energy cost during disturbance. Multiplier on base costs. Default: 1.5",
+    "jasmine_bmr_scale": "Basal metabolic rate scale factor. Default: 1.0. Not used yet: the model does not read this setting.",
+    "jasmine_activity_cost": "Activity cost multiplier. Default: 2.0. Not used yet: the model does not read this setting.",
+    "jasmine_disturbance_cost": "Extra energy cost during disturbance. Default: 1.5. Not used yet: the model does not read this setting.",
     # JASMINE Memory parameters
     "jasmine_memory_decay_rate": "Memory decay rate per tick. Lower = longer memory retention. Default: 0.001",
-    "jasmine_avoidance_strength": "Maximum learned avoidance strength (0-1). Higher = stronger aversion. Default: 0.8",
-    "jasmine_avoidance_radius": "Avoidance influence radius in grid cells. Larger = wider effect. Default: 20 cells",
+    "jasmine_avoidance_strength": "Maximum learned avoidance strength (0-1). Default: 0.8. Not used yet: the model does not read this setting.",
+    "jasmine_avoidance_radius": "How far remembered disturbances are avoided, in memory cells of 5 grid cells (2 km on 400 m cells). Default: 20 memory cells (40 km).",
 }
 
 
@@ -494,8 +494,10 @@ def _jasmine_settings_panel():
             ui.p(
                 ui.tags.strong("JASMINE Mode Settings"),
                 " - These parameters are only active when JASMINE mode is selected in the sidebar. "
-                "JASMINE provides physics-based movement, Dynamic Energy Budget (DEB) modeling, "
-                "and learned avoidance behavior.",
+                "JASMINE is experimental and uncalibrated: behaviour states, an energy budget in "
+                "physical units and learned avoidance (see Known issues in the changelog). Of the "
+                "JASMINE parameters below, only the memory decay rate and avoidance radius are "
+                "read by the model; the others are not used yet.",
                 class_="alert alert-info",
             ),
         ),
@@ -602,7 +604,7 @@ def _jasmine_settings_panel():
             ui.card(
                 ui.card_header("Physics Parameters"),
                 ui.p(
-                    "Parameters for JASMINE physics-based movement model.",
+                    "Not used yet: the physics movement integrator is not wired in.",
                     class_="text-muted small mb-3",
                 ),
                 ui.div(
@@ -766,7 +768,7 @@ def _jasmine_settings_panel():
                 ),
                 ui.div(
                     ui.tags.label(
-                        "Avoidance Radius (cells) ",
+                        "Avoidance Radius (2 km memory cells) ",
                         ui.tags.span(
                             "ⓘ",
                             title=TOOLTIPS["jasmine_avoidance_radius"],

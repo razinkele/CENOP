@@ -82,11 +82,15 @@ class SimulationParameters:
     jasmine_disturbance_cost_mult: float = 1.0  # Disturbance energy cost multiplier
 
     # === JASMINE Memory Parameters (when memory_mode=JASMINE) ===
-    jasmine_memory_decay_rate: float = 0.001  # Memory decay per tick
+    jasmine_memory_decay_rate: float = 0.016  # Memory decay per tick (copied to memory_decay_rate)
     jasmine_avoidance_strength: float = 0.8  # Max learned avoidance strength
-    jasmine_avoidance_radius: float = 20.0  # Avoidance influence radius (cells)
-    memory_decay_rate: float = 0.001  # Per-tick memory decay rate
-    avoidance_radius: float = 20.0  # Memory cells for avoidance radius
+    jasmine_avoidance_radius: float = 2.5  # Avoidance radius, 2 km memory cells (copied)
+    # Learned avoidance (JASMINE memory), calibrated 2026-11-21 so that numbers near a pile
+    # driving site recover close to DEPONS's calibrated recovery: a full-strength memory (1)
+    # falls below the 0.1 avoidance threshold in about 3 days (Brandt et al. 2011: activity below
+    # normal for 24-72 h at 2.6 km), within 5 km (Graham et al. 2019: 50% response 1.3-7.4 km)
+    memory_decay_rate: float = 0.016  # Per-tick memory decay rate
+    avoidance_radius: float = 2.5  # Memory cells (5 grid cells, 2 km) for avoidance: 5 km
     habituation_enabled: bool = True  # Not used yet: habituation is not implemented
 
     # === Disturbance Sources ===

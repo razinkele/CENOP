@@ -62,6 +62,20 @@ All notable changes to CENOP-JASMINE are documented in this file.
   only one compared with DEPONS. The code is in git history up to `v2.3.0`.
 
 ### Changed
+- **Learned avoidance calibrated to observed recovery after pile driving.** The JASMINE memory
+  stored the raw deterrence strength (pile driving reaches about 60) and faded by 0.1% per
+  tick, so a turbine memory stayed above the 0.1 avoidance threshold for about two months,
+  within 40 km. It now stores a response capped at 1, fades by 1.6% per tick (a full memory
+  drops below the threshold in about 3 days) and acts within 5 km (`avoidance_radius` 2.5
+  memory cells). Targets: porpoise acoustic activity stayed below normal for 24-72 h at 2.6 km
+  after piling (Brandt et al. 2011, doi:10.3354/meps08888); 50% response distances of 1.3-7.4
+  km (Graham et al. 2019, doi:10.1098/rsos.190335); and DEPONS's own deterrence, calibrated to
+  post-piling recovery at the Gemini wind farm (TRACE 3.2), which the memory should not
+  outweigh. Test farm on Kattegat (11 piles of 3 h every 2 days, 2000 animals, seeds 1-3),
+  animals within 5 km as a ratio to the same run without turbines: 12-24 h after a pile 0.42
+  (DEPONS mode 0.56, old memory 0.03); 1-3 days after the last pile 0.48 (0.53, 0.03); 7-30
+  days after 0.95 (0.91, 0.30). Radii of 10 and 20 km kept numbers 30-50% lower for 1-3 days.
+  Reproduce with `scripts/investigations/2026-11-21-learned-avoidance/recovery_study.py`.
 - **Learned avoidance is a fraction of the random walk's pull on the DEPONS walk.** The JASMINE
   memory's avoidance pull was added to the heading at a fixed size (up to 0.8). Where the
   random walk's weight (DEPONS crwContrib) was small, after an animal had found little food,
@@ -686,15 +700,12 @@ results of every earlier version differ. See `docs/validation/A2-parity-report.m
   survive. The JASMINE energy module also charges every deterred tick (0.1 x deterrence
   strength + 0.02 x speed). Reproduce with
   `scripts/investigations/2026-11-21-jasmine-ships/jasmine_ships_split.py`.
-- **Learned avoidance (JASMINE disturbance memory) remembers the wrong place and is
-  uncalibrated** (found 2026-11-21; its energy cost was fixed the same day, see Changed). The
+- **Learned avoidance (JASMINE disturbance memory) remembers the wrong place** (found
+  2026-11-21; its energy cost, range and fading were fixed the same day, see Changed). The
   remembered disturbance cell is the animal's position minus five times its own last step, not
   the source: on Kattegat with ships it lies a median 5.5 km from the nearest deterring ship
-  while the animal itself was 5.1 km away (remembering the animal's own cell changes little).
-  Memories within 40 km (20 memory cells of 2 km) with a half-life of about 14 days reach most
-  animals (83% avoiding at any time on Kattegat with ships, 60-day average); the radius and
-  decay have no calibration. Habituation is not implemented. Reproduce with
-  `scripts/investigations/2026-11-21-learned-avoidance/avoid_study.py`.
+  while the animal itself was 5.1 km away (remembering the animal's own cell changes results
+  within seed noise). Habituation is not implemented.
 
 ## [2.2.0] - 2026-07-10
 

@@ -57,9 +57,9 @@ TOOLTIPS = {
     "jasmine_activity_cost": "Activity cost multiplier. Default: 2.0. Not used yet: the model does not read this setting.",
     "jasmine_disturbance_cost": "Extra energy cost during disturbance. Default: 1.5. Not used yet: the model does not read this setting.",
     # JASMINE Memory parameters
-    "jasmine_memory_decay_rate": "Memory decay rate per tick. Lower = longer memory retention. Default: 0.001",
+    "jasmine_memory_decay_rate": "Memory decay per 30-minute tick. Default 0.016: a full-strength memory falls below the avoidance threshold in about 3 days (porpoise activity near pile driving stays below normal for 24-72 h, Brandt et al. 2011). Lower = longer memory.",
     "jasmine_avoidance_strength": "Maximum learned avoidance strength (0-1). Default: 0.8. Not used yet: the model does not read this setting.",
-    "jasmine_avoidance_radius": "How far remembered disturbances are avoided, in memory cells of 5 grid cells (2 km on 400 m cells). Default: 20 memory cells (40 km).",
+    "jasmine_avoidance_radius": "How far remembered disturbances are avoided, in memory cells of 5 grid cells (2 km on 400 m cells). Default 2.5 memory cells (5 km), within the 50% response distances to pile driving of 1.3-7.4 km (Graham et al. 2019).",
 }
 
 
@@ -769,10 +769,10 @@ def _jasmine_settings_panel():
                     ui.input_numeric(
                         "jasmine_memory_decay_rate",
                         None,
-                        value=0.001,
+                        value=0.016,
                         min=0.0001,
-                        max=0.01,
-                        step=0.0001,
+                        max=0.1,
+                        step=0.001,
                     ),
                     class_="mb-2",
                 ),
@@ -802,7 +802,7 @@ def _jasmine_settings_panel():
                         **{"for": "jasmine_avoidance_radius"},
                     ),
                     ui.input_numeric(
-                        "jasmine_avoidance_radius", None, value=20.0, min=5.0, max=50.0, step=1.0
+                        "jasmine_avoidance_radius", None, value=2.5, min=0.5, max=50.0, step=0.5
                     ),
                     class_="mb-2",
                 ),

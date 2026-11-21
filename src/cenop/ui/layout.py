@@ -677,8 +677,8 @@ def create_help_modal():
     <h3>Disturbance Memory</h3>
     <table class="param-table">
         <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
-        <tr><td>Memory Decay Rate</td><td>0.001</td><td>Per-tick memory decay</td></tr>
-        <tr><td>Avoidance Radius</td><td>20 cells</td><td>Influence radius for avoidance</td></tr>
+        <tr><td>Memory Decay Rate</td><td>0.016</td><td>Per-tick decay; a full memory fades in about 3 days</td></tr>
+        <tr><td>Avoidance Radius</td><td>2.5 memory cells (5 km)</td><td>Influence radius for avoidance</td></tr>
         <tr><td>Habituation</td><td>&mdash;</td><td>Not implemented yet</td></tr>
     </table>
 

@@ -220,9 +220,10 @@ class TestJASMINEMemoryModule:
         # Add disturbance memory at position (50, 50)
         state.memory_grids[0][10] = 0.8  # Strong memory
 
-        # Agent at position close to remembered disturbance
-        agent_x = np.array([45.0] + [100.0] * 19, dtype=np.float32)
-        agent_y = np.array([45.0] + [100.0] * 19, dtype=np.float32)
+        # Agent close to the remembered cell (cell 10 is centred at about (52.5, 2.5) grid cells;
+        # the default radius is 2.5 memory cells, 12.5 grid cells)
+        agent_x = np.array([50.0] + [100.0] * 19, dtype=np.float32)
+        agent_y = np.array([5.0] + [100.0] * 19, dtype=np.float32)
 
         result = module.compute_avoidance(state, agent_x, agent_y, mask)
 

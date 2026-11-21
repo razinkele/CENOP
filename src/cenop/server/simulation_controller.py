@@ -200,9 +200,9 @@ def create_simulation_from_inputs(input) -> Simulation:
     jasmine_bmr_scale = _safe_float(input.jasmine_bmr_scale, 1.0)
     jasmine_activity_cost = _safe_float(input.jasmine_activity_cost, 2.0)
     jasmine_disturbance_cost = _safe_float(input.jasmine_disturbance_cost, 1.5)
-    jasmine_memory_decay_rate = _safe_float(input.jasmine_memory_decay_rate, 0.001)
+    jasmine_memory_decay_rate = _safe_float(input.jasmine_memory_decay_rate, 0.016)
     jasmine_avoidance_strength = _safe_float(input.jasmine_avoidance_strength, 0.8)
-    jasmine_avoidance_radius = _safe_float(input.jasmine_avoidance_radius, 20.0)
+    jasmine_avoidance_radius = _safe_float(input.jasmine_avoidance_radius, 2.5)
 
     params = SimulationParameters(
         porpoise_count=porpoise_count_val,

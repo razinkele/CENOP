@@ -56,6 +56,19 @@ All notable changes to CENOP-JASMINE are documented in this file.
   not been checked; a plain `shiny run` does not.
 
 ### Removed
+- **Code no simulation used:** `cenop.behavior.dispersal` (per-animal ports of eight DEPONS
+  dispersal classes; the model disperses in `agents/population.py`, and PSM-Type1 and the
+  PSM-Type3 variants are not offered by DEPONS 3.2 either), `psm.PSMDispersalType2`,
+  `sound.SoundPropagationParams` (defaults the model never read: beta 20, threshold 152.9) and
+  `sound.Hydrophone` (DEPONS hydrophone output, never created). The parity doc now marks
+  hydrophones and tracked porpoises as not ported, the four dispersal classes as not offered,
+  the PSM-Type3 stop rule as matched through Undirected, and its summary is recounted from the
+  rows (it claimed no gaps while rows still said GAP).
+- **Settings the model never read:** Tracked Porpoises (`tracked_porpoise_count`; DEPONS
+  uses it for a per-animal report that CENOP never ported, now recorded in the parity doc)
+  and the age-mortality rates `mortality_juvenile`, `mortality_adult`, `mortality_elderly`
+  (not in DEPONS 3.2; mortality is starvation, bycatch and maximum age). A population test
+  that added the unused 5% adult rate now uses `bycatch_prob`.
 - **`habituation_enabled` and the habituation constants.** Habituation was listed as a JASMINE
   feature but never implemented: the setting and `HABITUATION_RATE` / `MIN_RESPONSE` were
   never read. Code that passes `habituation_enabled` to `SimulationParameters` now fails. If
@@ -149,6 +162,30 @@ All notable changes to CENOP-JASMINE are documented in this file.
   `docs/performance/2026-11-20-ship-loop.md`.
 
 ### Fixed
+- **Map noise circles show the model's deterrence range, at the right times.** The circles
+  used a 158 dB threshold with 20 log10(r) spreading instead of the model's 152 dB,
+  `beta_hat`/`alpha_hat` transmission loss and maximum distance (234 dB pile: 48 km, was
+  6.3 km), and operating turbines got 500 m circles although 145 dB never reaches the
+  threshold. The map also compared the turbine file's `start`/`end` (days) with the tick, so
+  piling showed only for the first few ticks, and files with `tick.start`/`tick.end` read as
+  0. The map now reads turbines with the model's loader and uses its phase rule; the radius
+  comes from `deterrence_radius_m` (new, in `cenop.agents.turbine`; on Kattegat the farthest
+  deterred animal was 49.6 km and the nearest undeterred 47.7 km for a 48.3 km radius). The
+  Turbine info panel uses the same radius and the model's defaults. The bathymetry legend now
+  shows the map's viridis colours (was a blue ramp).
+- **The Behavior FSM Mode override works.** `build_simulation` took the state machine's rules
+  from the time mode and only logged `fsm_mode`, so the Settings select had no effect. It now
+  passes the effective FSM mode (the override, else `simulation_mode`). Default runs are
+  byte-identical in both modes; the tooltip now says what the two rule sets do.
+- **Births and deaths over a run are counted once each.** `Simulation.total_births` and
+  `total_deaths` (used by the batch runner) summed the daily history records, which hold
+  month-to-date counts, so an event was counted once for every remaining day of its month (a
+  run of 200 animals reported 118 births and 968 deaths while the population fell by 49). The
+  app's runner counted the net daily population change, so births and deaths on the same day
+  cancelled (11 births in the same run). Both now use run totals that the simulation keeps
+  per step: births are weaned calves added to the population, deaths all removals, and births
+  minus deaths equals the population change (slow-tier test). The month-to-date history and
+  the output files are unchanged.
 - **Batch replicates now get their own random seed.** `Simulation(params, seed=...)` used the
   seed only for ship reactions; the population drew from `params.random_seed`. `BatchRunner`
   seeds each replicate this way, so replicates with a fixed `random_seed` repeated the same
@@ -728,17 +765,25 @@ results of every earlier version differ. See `docs/validation/A2-parity-report.m
   `docs/validation-suite-status.md` (CI exists; default-branch and 60-day caveats),
   `CLAUDE.md` (CI and test counts)
 - ~~The behaviour state machine never enters DISPERSING~~ Fixed 2026-11-21 (see Unreleased).
-- **The JASMINE energy budget loses animals with ships** (found 2026-11-21; much smaller since
-  the Kattegat salinity fix; JASMINE mode uses the DEPONS energy budget unless
-  `energy_mode="JASMINE"`). Kattegat, 500 animals, 60 days, seed 7, JASMINE movement and
-  energy: 455 alive with ships against 499 without (72 before the salinity fix, when JASMINE
-  steps were 3.3 times too long); with the DEPONS energy budget and ships, 493. DISTURBED is
-  sticky: any deterrence above 0.01 makes an animal DISTURBED until a day passes without
-  deterrence, so 85-89% of animals are DISTURBED while 1-15% are deterred at that moment, and
-  DISTURBED doubles the JASMINE activity cost; with recovery as soon as deterrence stops, 459
-  survive. The JASMINE energy module also charges every deterred tick (0.1 x deterrence
-  strength + 0.02 x speed). Reproduce with
+- **The JASMINE energy budget loses animals with ships** (found 2026-11-21; JASMINE mode uses
+  the DEPONS energy budget unless `energy_mode="JASMINE"`). Kattegat, 500 animals, 60 days,
+  JASMINE movement and energy: 441, 451, 456 and 441 alive with ships (seeds 7-10) against 499
+  without (seed 7); with the DEPONS energy budget and ships, 497 (seed 7). Re-measured
+  2026-11-21 after the learned-avoidance and default changes (recorded before: 455 and 493;
+  72 before the Kattegat salinity fix, when JASMINE steps were 3.3 times too long). DISTURBED
+  is sticky: any deterrence above 0.01 makes an animal DISTURBED until a day passes without
+  deterrence, so 85-91% of animals are DISTURBED while 1-14% are deterred at that moment, and
+  DISTURBED doubles the JASMINE activity cost; with recovery as soon as deterrence stops, 455
+  survive, and 444 with DEPONS movement as well (seed 7). The JASMINE energy module also
+  charges every deterred tick (0.1 x deterrence strength + 0.02 x speed). Reproduce with
   `scripts/investigations/2026-11-21-jasmine-ships/jasmine_ships_split.py`.
+- **JASMINE energy: body condition never changes** (found 2026-11-21; only with
+  `energy_mode="JASMINE"`). The population runs the JASMINE budget in two phases and never
+  calls `JASMINEEnergyModule.apply_result`, so body condition stays 0.5 and food intake
+  efficiency (0.8 x body condition) 0.4 for every animal. Updating it as `apply_result` does
+  (energy / 20) adds a feedback, low energy giving lower intake efficiency, that makes the
+  die-off with ships larger: 328, 343, 344, 327 alive at day 60 instead of 441, 451, 456, 441
+  (Kattegat, 500 animals, seeds 7-10). Held back for a decision on the JASMINE energy budget.
 - ~~Learned avoidance (JASMINE disturbance memory) remembers the wrong place~~ Fixed 2026-11-21 (see Unreleased).
 
 ## [2.2.0] - 2026-07-10

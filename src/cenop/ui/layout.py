@@ -576,7 +576,6 @@ def create_help_modal():
     <table class="param-table">
         <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
         <tr><td>Random Seed</td><td>0 (auto)</td><td>Seed for reproducibility (0 = random each run)</td></tr>
-        <tr><td>Tracked Porpoises</td><td>1</td><td>Number of individuals to track in detail</td></tr>
         <tr><td>Ship Traffic</td><td>Off</td><td>Enable/disable vessel noise disturbance</td></tr>
         <tr><td>Bycatch Probability</td><td>0.0</td><td>Annual probability of fishing net mortality</td></tr>
     </table>
@@ -670,7 +669,7 @@ def create_help_modal():
         <tr><td>Body Mass</td><td>50.0 kg</td><td>Adult porpoise body mass</td></tr>
         <tr><td>BMR Scale</td><td>1.0</td><td>Basal metabolic rate multiplier</td></tr>
         <tr><td>Activity Cost</td><td>2.0</td><td>Activity cost multiplier</td></tr>
-        <tr><td>Thermal Model</td><td>On</td><td>Temperature-dependent metabolism</td></tr>
+        <tr><td>Thermal Model</td><td>On</td><td>Extra cost below 5 °C or above 20 °C water. No landscape has a temperature layer, so water is 10 °C everywhere and this cost is zero</td></tr>
         <tr><td>Disturbance Cost</td><td>1.5</td><td>Energy cost during disturbance</td></tr>
     </table>
 

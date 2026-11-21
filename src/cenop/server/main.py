@@ -38,6 +38,7 @@ from shiny_deckgl import (
     zoom_widget,
 )
 
+from cenop.parameters.simulation_params import SimulationParameters
 from cenop.server import map_legend
 from cenop.server.map_layers import (
     build_grid_bitmap_layer,
@@ -47,6 +48,8 @@ from cenop.server.map_layers import (
     build_porpoise_trails_layer,
     build_turbine_blade_layer,
     build_turbine_pole_layer,
+    turbine_phase_at,
+    turbines_for_map,
 )
 from cenop.ui.tabs.dashboard import sim_map
 from cenop.ui.tabs.landscape_editor import gis_map
@@ -1831,10 +1834,6 @@ def server(input, output, session):
                 logger.warning(f"Turbine file not found: {turbine_file}")
                 return
 
-            import pandas as pd_local
-
-            df = pd_local.read_csv(turbine_file, sep=r"\s+")
-
             from cenop.ui.sidebar import LANDSCAPE_CRS
 
             source_crs = LANDSCAPE_CRS.get(landscape_name, "EPSG:3035")
@@ -1844,27 +1843,7 @@ def server(input, output, session):
                 logger.error("pyproj not available for coordinate transform: %s", e)
                 return
 
-            turbine_data = []
-            for _, row in df.iterrows():
-                x = float(row.get("x", row.iloc[0]))
-                y = float(row.get("y", row.iloc[1]))
-                lon, lat = transformer.transform(x, y)
-                impact = float(row.get("impact", 234))
-                start = int(row.get("start", 0))
-                end = int(row.get("end", 0))
-                turbine_data.append(
-                    {
-                        "position": [lon, lat],
-                        "impact": impact,
-                        "start": start,
-                        "end": end,
-                        "radius": 600,
-                        "phase": "planned",
-                        "color": [255, 100, 50, 220],
-                        "layerType": "Turbine",
-                        "info": f"Impact: {impact} dB",
-                    }
-                )
+            turbine_data = turbines_for_map(turbine_file, transformer)
 
             state.turbine_count.set(len(turbine_data))
             _layer_cache["_turbine_data_raw"] = turbine_data
@@ -1893,11 +1872,7 @@ def server(input, output, session):
             current_tick = sim.state.tick
             updated = []
             for t in raw:
-                phase = "planned"
-                if t["start"] <= current_tick <= t["end"]:
-                    phase = "construction"
-                elif current_tick > t["end"] and t["end"] > 0:
-                    phase = "operational"
+                phase = turbine_phase_at(t["start"], t["end"], current_tick)
                 updated.append({**t, "phase": phase})
 
             _layer_cache["_turbine_data_raw"] = updated
@@ -1922,6 +1897,14 @@ def server(input, output, session):
 
         sim = state.simulation()
         current_tick = sim.state.tick if sim else 0
+        # Circles show the model's deterrence range: deter_threshold, beta_hat/alpha_hat
+        # transmission loss and deter_max_distance (Turbine.should_deter)
+        from cenop.agents.turbine import deterrence_radius_m
+        from cenop.behavior.sound import TurbineNoise
+
+        noise_params = sim.params if sim else SimulationParameters()
+        sl_operation = TurbineNoise().source_level_operation
+        radius_operation = deterrence_radius_m(sl_operation, noise_params)
 
         construction_noise = []
         operational_noise = []
@@ -1932,24 +1915,26 @@ def server(input, output, session):
             impact = t.get("impact", 234)
             pos = t["position"]
 
-            if start <= current_tick <= end:
-                threshold = 158
-                radius = 10 ** ((impact - threshold) / 20)
+            phase = turbine_phase_at(start, end, current_tick)
+            if phase == "construction":
+                radius = deterrence_radius_m(impact, noise_params)
                 construction_noise.append(
                     {
                         "position": pos,
                         "radius": radius,
                         "layerType": "Noise",
-                        "info": f"Construction: {impact} dB, radius: {radius:.0f}m",
+                        "info": f"Construction: {impact} dB, deters out to {radius / 1000:.1f} km",
                     }
                 )
-            elif current_tick > end and end > 0:
+            elif phase == "operational" and radius_operation > 0:
+                # Operating turbines (145 dB) stay below the deterrence threshold: no circle
                 operational_noise.append(
                     {
                         "position": pos,
-                        "radius": 500,
+                        "radius": radius_operation,
                         "layerType": "Noise",
-                        "info": "Operational: 145 dB, radius: 500m",
+                        "info": f"Operational: {sl_operation:.0f} dB, deters out to "
+                        f"{radius_operation / 1000:.1f} km",
                     }
                 )
 
@@ -2235,16 +2220,12 @@ def server(input, output, session):
             history = state.population_history()
 
             # --- Noise Model Parameters ---
-            if sim is not None:
-                p = sim.params
-            else:
-                p = None
-
-            beta = getattr(p, "beta_hat", 20.0) if p else 20.0
-            alpha = getattr(p, "alpha_hat", 0.0) if p else 0.0
-            threshold = getattr(p, "deter_threshold", 158.0) if p else 158.0
-            coeff = getattr(p, "deter_coeff", 0.07) if p else 0.07
-            max_dist = getattr(p, "deter_max_distance", 1000.0) if p else 1000.0
+            p = sim.params if sim is not None else SimulationParameters()
+            beta = p.beta_hat
+            alpha = p.alpha_hat
+            threshold = p.deter_threshold
+            coeff = p.deter_coeff
+            max_dist = p.deter_max_distance
 
             # --- Turbine Info ---
             loaded_safe = html.escape(str(loaded)) if loaded else ""
@@ -2255,8 +2236,11 @@ def server(input, output, session):
                 if n_total > 0:
                     impacts = [t.impact for t in tm.turbines]
                     sl_min, sl_max = min(impacts), max(impacts)
-                    # Deterrence radius at threshold
-                    radius_m = 10 ** ((sl_max - threshold) / beta) if beta > 0 else 0
+                    # Deterrence radius at threshold (the model's rule, incl. absorption and
+                    # the maximum distance)
+                    from cenop.agents.turbine import deterrence_radius_m
+
+                    radius_m = deterrence_radius_m(sl_max, p)
                     sl_str = f"{sl_min:.0f}" if sl_min == sl_max else f"{sl_min:.0f}-{sl_max:.0f}"
                     turbine_info = (
                         f'<tr><td style="padding:2px 8px;"><b>Turbines</b></td>'

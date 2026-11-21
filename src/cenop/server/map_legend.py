@@ -17,13 +17,15 @@ from __future__ import annotations
 BASEMAP_ID = "basemap"
 BLANK_STYLE = {"version": 8, "sources": {}, "layers": []}
 
+# The depth layer is drawn with map_layers.GIS_COLOR_SCHEMES["viridis"] (shallow pale yellow
+# to deep purple); the legend must use the same stops (tests/test_turbine_noise_radius.py)
 _BATHYMETRY_RAMP = [
-    [1, 31, 75],
-    [3, 56, 108],
-    [15, 94, 156],
-    [46, 134, 193],
-    [86, 180, 233],
-    [166, 216, 247],
+    [255, 255, 217],
+    [253, 231, 37],
+    [94, 201, 98],
+    [33, 145, 140],
+    [59, 82, 139],
+    [68, 1, 84],
 ]
 _FORAGING_RAMP = [
     [8, 48, 20],

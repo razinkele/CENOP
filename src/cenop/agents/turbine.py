@@ -19,6 +19,7 @@ import numpy as np
 from cenop.agents.base import Agent
 from cenop.behavior.sound import (
     TurbineNoise,
+    calculate_deterrence_distance,
     calculate_deterrence_vector,
     calculate_received_level,
     response_probability_from_rl,
@@ -37,6 +38,22 @@ class TurbinePhase(str, Enum):
     PLANNED = "planned"
     CONSTRUCTION = "construction"
     OPERATION = "operation"
+
+
+def deterrence_radius_m(source_level: float, params: SimulationParameters) -> float:
+    """Distance (m) out to which a source of ``source_level`` dB deters porpoises.
+
+    The distance where the received level, source_level - (beta_hat log10(r) + alpha_hat r),
+    falls to deter_threshold, capped at deter_max_distance: the same rule as
+    Turbine.should_deter. Zero when the source is below the threshold even at 1 m.
+    """
+    return calculate_deterrence_distance(
+        source_level,
+        params.deter_threshold,
+        alpha_hat=params.alpha_hat,
+        beta_hat=params.beta_hat,
+        max_distance=float(params.deter_max_distance) * 1000.0,
+    )
 
 
 @dataclass

@@ -63,6 +63,8 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 | **INTENTIONAL_DIVERGENCE** | Different implementation, same semantics (vectorization, architecture) |
 | **GAP** | Missing in CENOP — functionality not ported |
 | **EXTENSION** | CENOP adds functionality not in DEPONS 3.2 (JASMINE mode) |
+| **NOT PORTED** | In DEPONS 3.2 but not in CENOP (output-only features) |
+| **NOT OFFERED** | A DEPONS class that DEPONS 3.2 itself does not offer as an option; not ported |
 
 ---
 
@@ -108,20 +110,20 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 |---|---------|------------|--------------|--------|---------|
 | 3.1 | PSM cell structure | `PersistentSpatialMemory.java` | `psm.py` | **MATCH** | 5-cell (2km) grid; sparse dict; `foodObtained/ticksSpent` |
 | 3.2 | PSM cell number calculation | `Math.floor(x/MEM_CELL_SIZE)` | `int(x) // mem_cell_size` | **MATCH** | Identical formula |
-| 3.3 | PSM-Type1 dispersal | `DispersalPSMType1.java` | `dispersal.py` PSMType1 | **GAP** | Class exists in `behavior/dispersal.py` but is not selectable: `DISPERSAL_MODES` has `off`, `PSM-Type2`, `Undirected`, `InnerDanishWaters` (2026-11-18) |
-| 3.4 | PSM-Type2 heading formula | `DispersalPSMType2.java:68-87` | `dispersal.py:266-308` | **MATCH** | Ported line by line 2026-11-11 (D1-D14) in `agents/population.py`; `angleDelta = U(-maxAngle,+maxAngle) * SSLogis(3*distPerc - 1.5)` |
+| 3.3 | PSM-Type1 dispersal | `DispersalPSMType1.java` | Not ported | **NOT OFFERED** | Not offered by DEPONS 3.2 either (its parameters.xml lists off, PSM-Type2, Undirected, InnerDanishWaters); the unused per-animal class in `behavior/dispersal.py` was removed 2026-11-21 |
+| 3.4 | PSM-Type2 heading formula | `DispersalPSMType2.java:68-87` | `agents/population.py` | **MATCH** | Ported line by line 2026-11-11 (D1-D14) in `agents/population.py`; `angleDelta = U(-maxAngle,+maxAngle) * SSLogis(3*distPerc - 1.5)` |
 | 3.5 | PSM-Type2 target distance | `super.calc() * 0.95` | `target_distance *= 0.95` | **MATCH** | 95% of Euclidean distance |
-| 3.6 | PSM-Type3 heading formula | `DispersalPSMType3.java:65-78` | `dispersal.py:354-388` | **GAP** | Class exists in `behavior/dispersal.py` but is not selectable: `DISPERSAL_MODES` has `off`, `PSM-Type2`, `Undirected`, `InnerDanishWaters` (2026-11-18) |
-| 3.7 | PSM-Type3 stop condition | Distance from START ≥ target | Distance from START ≥ target | **GAP** | Class exists in `behavior/dispersal.py` but is not selectable: `DISPERSAL_MODES` has `off`, `PSM-Type2`, `Undirected`, `InnerDanishWaters` (2026-11-18) |
-| 3.8 | PSM-Type3 cost function | `energyExpect - cost(distance*Q1)` | `energy * exp(-dist*q1)`, q1=0.02 | **GAP** | Class exists in `behavior/dispersal.py` but is not selectable: `DISPERSAL_MODES` has `off`, `PSM-Type2`, `Undirected`, `InnerDanishWaters` (2026-11-18) |
+| 3.6 | PSM-Type3 heading formula | `DispersalPSMType3.java:65-78` | Not ported | **NOT OFFERED** | Not offered by DEPONS 3.2 either (its parameters.xml lists off, PSM-Type2, Undirected, InnerDanishWaters); the unused per-animal class in `behavior/dispersal.py` was removed 2026-11-21 |
+| 3.7 | PSM-Type3 stop condition | Distance from START >= target (`DispersalPSMType3.java:82-83`, inherited by `UndirectedDispersal`) | Same rule for the Undirected mode (`agents/population.py`, `_disperse_step`) | **MATCH** | Undirected is the only offered mode that uses it; PSM-Type3 itself is not offered by DEPONS 3.2 |
+| 3.8 | PSM-Type3 cost function | `energyExpect - cost(distance*Q1)` | Not ported | **NOT OFFERED** | Not offered by DEPONS 3.2 either (its parameters.xml lists off, PSM-Type2, Undirected, InnerDanishWaters); the unused per-animal class in `behavior/dispersal.py` was removed 2026-11-21 |
 | 3.9 | SSLogis function | `phi1 / (1 + exp((phi2-x)/phi3))` | Identical | **MATCH** | phi1=1, phi2=0, phi3=psm_log(0.6) |
 | 3.10 | Dispersal trigger | Energy declining ≥ t_disp days + ≥50 PSM cells | Same conditions | **MATCH** | Both check energy trend + memory size |
-| 3.11 | PSM-Type3-randdir | `DispersalPSMType3randdir.java` | `PSMType3RanddirDispersal` | **GAP** | Class exists in `behavior/dispersal.py` but is not selectable: `DISPERSAL_MODES` has `off`, `PSM-Type2`, `Undirected`, `InnerDanishWaters` (2026-11-18) |
-| 3.12 | PSM-Type3-randdist | `DispersalPSMType3randdist.java` | `PSMType3RanddistDispersal` | **GAP** | Class exists in `behavior/dispersal.py` but is not selectable: `DISPERSAL_MODES` has `off`, `PSM-Type2`, `Undirected`, `InnerDanishWaters` (2026-11-18) |
+| 3.11 | PSM-Type3-randdir | `DispersalPSMType3randdir.java` | Not ported | **NOT OFFERED** | Not offered by DEPONS 3.2 either (its parameters.xml lists off, PSM-Type2, Undirected, InnerDanishWaters); the unused per-animal class in `behavior/dispersal.py` was removed 2026-11-21 |
+| 3.12 | PSM-Type3-randdist | `DispersalPSMType3randdist.java` | Not ported | **NOT OFFERED** | Not offered by DEPONS 3.2 either (its parameters.xml lists off, PSM-Type2, Undirected, InnerDanishWaters); the unused per-animal class in `behavior/dispersal.py` was removed 2026-11-21 |
 | 3.13 | Undirected dispersal | `UndirectedDispersal.java` | `UndirectedDispersal` | **MATCH** | Wired 2026-11-18 (`agents/population.py`); refused on the JAX path |
 | 3.14 | InnerDanishWaters dispersal | `InnerDanishWatersDispersal.java` | `InnerDanishWatersDispersal` | **MATCH** | Scalar port in `agents/dispersal_idw.py`, wired 2026-11-18, Kattegat only; replayed against Java's tracked animal with zero mismatches over 2,461 dispersing ticks |
 | 3.15 | Calf PSM inheritance | `calfHasPSM()`/`calfInheritsPsmDist()` | `copy_for_calf()` | **MATCH** | Fixed 2026-11-19: sparse calf memory filled while the mother nurses (PSM-Type2), mother's preferred distance inherited (PSM types, off), new draw otherwise |
-| 3.16 | Dispersal types coverage | 8 types (Off, T1-T3, T3randdir, T3randdist, IDW, Undirected) | All 8 types | **GAP** | 4 of 8 selectable: Off, PSM-Type2, Undirected, InnerDanishWaters, the same four DEPONS 3.2 offers in `parameters.xml` |
+| 3.16 | Dispersal types coverage | 8 classes; `parameters.xml` offers 4 (off, PSM-Type2, Undirected, InnerDanishWaters) | The same 4 | **MATCH** | The other four classes are not offered by DEPONS 3.2 (rows 3.3, 3.6, 3.8, 3.11, 3.12) |
 
 ---
 
@@ -209,7 +211,7 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 | 8.8 | JOMOPANS echo SPL | `JomopansEchoSPL.java` | `jomopans_spl.py` | **MATCH** | Line-for-line port; all 13 vessel classes |
 | 8.9 | Weston flux propagation | `WestonFlux.java` | `weston_flux.py` with `@njit` | **MATCH** | Full shallow-water physics model ported |
 | 8.10 | Vessel classes | 13 enum values | 13 + 2 aliases (CARGO, CHEMICAL_TANKER) | **MATCH** | |
-| 8.11 | Hydrophone monitoring | `Hydrophone.java` (max RL per tick) | `Hydrophone` class in sound.py | **MATCH** | Tracks loudest source per tick with reset |
+| 8.11 | Hydrophone monitoring | `Hydrophone.java` (max RL per tick), `HydrophoneLoader` (`data/<landscape>/hydrophones.csv`) | Not ported | **NOT PORTED** | No CENOP landscape has a hydrophones file; a `Hydrophone` class that no simulation created was removed 2026-11-21 |
 | 8.12 | Deterrence impact radius | Dynamic: `10^((SL-RT)/20)` | Fixed `deter_max_distance` (50km) | **INTENTIONAL_DIVERGENCE** | Functionally equivalent for typical params |
 | 8.13 | Disturbance memory (DEPONS) | Stateless (no persistent memory) | `DEPONSMemoryModule` (no-op) | **MATCH** | |
 | 8.14 | Disturbance memory (JASMINE) | N/A | Spatial memory + decay + avoidance | **EXTENSION** | |
@@ -247,7 +249,8 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 | 9.23 | Agent architecture | Repast `Agent` objects | SoA NumPy arrays (`Population`) | **INTENTIONAL_DIVERGENCE** | Vectorized for performance |
 | 9.24 | Spatial partitioning | `Block` objects | cKDTree / vectorized queries | **INTENTIONAL_DIVERGENCE** | |
 | 9.25 | Death age tracking | Age distribution histogram | `death_ages`/`death_days`/`death_causes` lists | **MATCH** | Per-death recording with age, day, cause |
-| 9.26 | Age-stratified mortality | Not in DEPONS 3.2 | Parameters `mortality_juvenile/adult/elderly` (0.15/0.05/0.15) exist but are never read | **UNUSED** | Checked 2026-11-21: mortality is DEPONS's (starvation, bycatch, maximum age) |
+| 9.26 | Age-stratified mortality | Not in DEPONS 3.2 | None (the unread parameters `mortality_juvenile/adult/elderly` were removed 2026-11-21) | **MATCH** | Mortality is DEPONS's: starvation, bycatch, maximum age |
+| 9.27 | Tracked porpoises | `trackedPorpoiseCount`, `AddTrackedPorpoisesTask` (N random animals reported per tick by `RandomPorpoiseReportProxy`, optional start positions in `trackedporpoise.txt`) | Not ported; the unread `tracked_porpoise_count` setting was removed 2026-11-21 | **NOT PORTED** | Outputs are population-level; compare CENOP population means only with Java population output, not with its tracked animals |
 
 ---
 
@@ -317,7 +320,7 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 
 | # | Gap | Impact | Recommendation |
 |---|-----|--------|----------------|
-| ~~G9~~ | ~~Hydrophone monitoring~~ | ~~Visualization-only~~ | **FIXED** — `Hydrophone` class in sound.py |
+| G9 | Hydrophone monitoring | Output only (no effect on animals) | **OPEN** — not ported (the unwired class was removed 2026-11-21) |
 | ~~G10~~ | ~~Death age distribution tracking~~ | ~~Stats reporting~~ | **FIXED** — `death_ages`/`death_days`/`death_causes` lists |
 | ~~G11~~ | ~~Daily energy consumption tracking~~ | ~~Fine-grained reporting~~ | **FIXED** — `energy_consumed_daily` array + daily rollover |
 
@@ -356,24 +359,25 @@ CENOP Python achieves **~90% functional parity** with DEPONS 3.2 Java for standa
 
 ## 14. Summary Statistics
 
-| Category | MATCH | INTENTIONAL_DIVERGENCE | GAP | EXTENSION |
-|----------|-------|----------------------|-----|-----------|
-| Movement & CRW | 13 | 2 | 0 | 0 |
-| Reference Memory | 6 | 2 | 0 | 0 |
-| Dispersal & PSM | 16 | 0 | 0 | 0 |
-| Behavioral FSM | 5 | 0 | 0 | 1 |
-| Physiology & Energy | 15 | 3 | 0 | 1 |
-| Food Dynamics | 7 | 0 | 0 | 0 |
-| Landscape & Grid | 7 | 2 | 0 | 0 |
-| Deterrence & Sound | 12 | 1 | 0 | 1 |
-| Lifecycle & Scheduling | 21 | 3 | 0 | 0 |
-| Parameters | 34 | 0 | 0 | 0 |
-| **TOTALS** | **136** | **13** | **0** | **3** |
+| Category | MATCH | INTENTIONAL_DIVERGENCE | EXTENSION | NOT PORTED | NOT OFFERED | GAP |
+|----------|-------|----------------------|-----------|------------|-------------|-----|
+| Movement & CRW | 12 | 2 | 0 | 0 | 0 | 0 |
+| Reference Memory | 6 | 2 | 0 | 0 | 0 | 0 |
+| Dispersal & PSM | 11 | 0 | 0 | 0 | 5 | 0 |
+| Behavioral FSM | 6 | 0 | 1 | 0 | 0 | 0 |
+| Physiology & Energy | 16 | 3 | 0 | 0 | 0 | 0 |
+| Food Dynamics | 7 | 0 | 0 | 0 | 0 | 0 |
+| Landscape & Grid | 7 | 2 | 0 | 0 | 0 | 0 |
+| Deterrence & Sound | 12 | 1 | 1 | 1 | 0 | 0 |
+| Lifecycle & Scheduling | 23 | 3 | 0 | 1 | 0 | 0 |
+| Parameters | 35 | 0 | 0 | 0 | 0 | 0 |
+| **TOTALS** | **135** | **13** | **2** | **2** | **5** | **0** |
 
-Row 9.26 (age-stratified mortality) was counted as an extension until 2026-11-21; its
-parameters are not read by the model, so it is now marked UNUSED.
+Recounted from the rows on 2026-11-21. Not ported: tracked-porpoise reports (9.27) and
+hydrophones (8.11), both output-only. Not offered: five rows for the four dispersal classes
+(PSM-Type1, PSM-Type3 and its two variants) that DEPONS 3.2 does not offer either.
 
-**Overall parity: 136 MATCH + 13 intentional divergences out of 153 features = ~100% functional equivalence (all gaps closed)**
+**Overall parity: 135 MATCH + 13 intentional divergences out of 157 features; no gaps in what DEPONS 3.2 offers apart from two output-only features**
 
 ---
 

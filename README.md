@@ -68,7 +68,7 @@ Java figure was not re-measured after the November parity fixes. Hot paths are c
 
 **Optimizations:** Pre-allocated buffers (RefMemWorkspace ~1.5MB/tick saved), vectorized land avoidance, cached cell indices, fused heading+position+reflect kernel, social sound fusion, dtype ping-pong elimination
 
-- About 1,270 fast tests and 12 slow validation tests (unit, integration, backend equivalence, DEPONS parity)
+- About 1,250 fast tests and 13 slow validation tests (unit, integration, backend equivalence, DEPONS parity)
 - Checked against runs of DEPONS 3.2 on the Kattegat landscape: `docs/validation/A2-parity-report.md`
 
 ## Installation
@@ -281,7 +281,7 @@ CENOP/
 │           ├── disturbance.py  # Disturbance impacts
 │           ├── landscape_editor.py  # Spatial data viewer
 │           └── export.py       # Results download
-└── tests/                      # Test suite (about 1,270 fast + 12 slow tests)
+└── tests/                      # Test suite (about 1,250 fast + 13 slow tests)
     ├── conftest.py             # Fixtures, Numba/coverage compatibility
     ├── test_numba_kernels.py   # Numba kernel tests (40 tests)
     ├── test_integration.py     # Full simulation integration tests

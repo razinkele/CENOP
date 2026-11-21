@@ -1,6 +1,5 @@
 """Behavior modules for movement, memory, sound, and state machines."""
 
-from cenop.behavior.dispersal import DispersalBehavior, DispersalType
 from cenop.behavior.disturbance_memory import (
     AvoidanceResult,
     DEPONSMemoryModule,
@@ -17,7 +16,7 @@ from cenop.behavior.hybrid_fsm import (
     create_behavior_fsm,
 )
 from cenop.behavior.memory import RefMem
-from cenop.behavior.psm import MemCellData, PersistentSpatialMemory, PSMDispersalType2
+from cenop.behavior.psm import MemCellData, PersistentSpatialMemory
 from cenop.behavior.sound import (
     ShipDeterrenceModel,
     ShipNoise,
@@ -37,9 +36,6 @@ from cenop.behavior.states import (
 __all__ = [
     # Memory
     "RefMem",
-    # Dispersal
-    "DispersalType",
-    "DispersalBehavior",
     # Sound/Deterrence
     "calculate_received_level",
     "calculate_transmission_loss",
@@ -49,7 +45,6 @@ __all__ = [
     "ShipDeterrenceModel",
     # PSM
     "PersistentSpatialMemory",
-    "PSMDispersalType2",
     "MemCellData",
     # Behavioral States
     "BehaviorState",

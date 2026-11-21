@@ -45,7 +45,6 @@ class SimulationParameters:
     # Largest number of animals the population may grow to; 0 = no limit (DEPONS).
     # Each animal costs about 320 KB of memory. Calves weaned at the limit are dropped.
     max_population: int = 0
-    tracked_porpoise_count: int = 1
     sim_years: int = 50
     landscape: str = "Lithuania"
     debug: int = 0
@@ -247,10 +246,6 @@ class SimulationParameters:
     # Starvation mortality formula: yearlySurvProb = 1 - (m_mort_prob_const * exp(-energy * x_survival_const))
     m_mort_prob_const: float = 1.0  # M_MORT_PROB_CONST in DEPONS SimulationConstants (DEPONS 3.2)
     x_survival_const: float = 0.4  # xSurvivalProbConst / beta in DEPONS parameters.xml (DEPONS 3.2)
-    # Age-dependent annual mortality rates
-    mortality_juvenile: float = 0.15  # Annual mortality for age < 1 year
-    mortality_adult: float = 0.05  # Annual mortality for 1 <= age <= 20
-    mortality_elderly: float = 0.15  # Annual mortality for age > 20
     # Bycatch
     bycatch_prob: float = 0.0  # Annual bycatch probability
 

@@ -424,6 +424,7 @@ class HybridBehaviorFSM:
 def create_behavior_fsm(
     params: SimulationParameters,
     time_mode: TimeMode = TimeMode.DEPONS,
+    fsm_mode: FSMMode | None = None,
 ) -> HybridBehaviorFSM:
     """
     Factory function to create appropriate behavior FSM.
@@ -431,8 +432,9 @@ def create_behavior_fsm(
     Args:
         params: Simulation parameters
         time_mode: TimeMode from TimeManager
+        fsm_mode: FSM rules to use; None infers them from time_mode
 
     Returns:
         Configured HybridBehaviorFSM instance
     """
-    return HybridBehaviorFSM(params, time_mode)
+    return HybridBehaviorFSM(params, time_mode, fsm_mode)

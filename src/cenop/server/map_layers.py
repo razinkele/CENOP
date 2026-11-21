@@ -278,6 +278,42 @@ def build_noise_operational_layer(noise_points: list) -> dict:
     )
 
 
+def turbines_for_map(turbine_file: str, transformer) -> list[dict]:
+    """Turbines of ``turbine_file`` for the map, read by the model's own loader.
+
+    Start and end come back in ticks: a 'start/end' header means days and 'tick.start/tick.end'
+    means ticks (Turbine.load_from_file). ``transformer`` maps file coordinates to lon/lat.
+    """
+    from cenop.agents.turbine import Turbine
+
+    turbine_data = []
+    for t in Turbine.load_from_file(turbine_file, cell_size=1.0):  # x, y = file coordinates
+        lon, lat = transformer.transform(t.x, t.y)
+        turbine_data.append(
+            {
+                "position": [lon, lat],
+                "impact": t.impact,
+                "start": t.start_tick,
+                "end": t.end_tick,
+                "radius": 600,
+                "phase": "planned",
+                "color": [255, 100, 50, 220],
+                "layerType": "Turbine",
+                "info": f"Impact: {t.impact:g} dB",
+            }
+        )
+    return turbine_data
+
+
+def turbine_phase_at(start_tick: int, end_tick: int, tick: int) -> str:
+    """Phase shown on the map, by the model's rule (Turbine.update_phase)."""
+    if tick < start_tick:
+        return "planned"
+    if tick < end_tick:
+        return "construction"
+    return "operational"
+
+
 def build_turbine_pole_layer(turbine_data: list) -> dict:
     """Build turbine pole icon layer."""
     if not turbine_data:

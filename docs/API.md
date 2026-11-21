@@ -363,8 +363,12 @@ class HybridBehaviorFSM:
         """Update states in place; returns a boolean array of agents that changed state."""
 
 
-def create_behavior_fsm(params: SimulationParameters, time_mode: TimeMode = TimeMode.DEPONS) -> HybridBehaviorFSM:
-    """Factory used by build_simulation; the FSM mode follows the time mode."""
+def create_behavior_fsm(
+    params: SimulationParameters,
+    time_mode: TimeMode = TimeMode.DEPONS,
+    fsm_mode: FSMMode | None = None,  # None infers the rules from time_mode
+) -> HybridBehaviorFSM:
+    """Factory used by build_simulation, which passes the effective FSM mode (fsm_mode override, else simulation_mode)."""
 ```
 
 ##### `BehaviorState`
@@ -515,7 +519,7 @@ Dispersal moves porpoises away from areas where their energy has declined. The m
 - `Undirected` — random target, full +/- `psm_angle` turn, stops on straight-line distance
 - `InnerDanishWaters` — block-based navigation (60 blocks of 40 km, 2 phases); Kattegat landscape only
 
-Any other value raises a `ValueError`. `src/cenop/behavior/dispersal.py` holds per-animal translations of eight DEPONS dispersal classes (`DispersalType`, including PSM-Type1 and the PSM-Type3 variants); the simulation does not use them.
+Any other value raises a `ValueError`. PSM-Type1 and the PSM-Type3 variants are not offered by DEPONS 3.2 either and are not ported.
 
 ---
 
@@ -547,35 +551,6 @@ class ShipDeterrenceModel:
 
     def deterrence_components(self, rl, dist_m, grid_dx, grid_dy, is_day, u_draw, tships):
         """Vectorized per-porpoise deterrence for one ship: returns (vx, vy, prob, mag, react)."""
-```
-
-##### `Hydrophone`
-
-Passive acoustic monitoring station (translates `Hydrophone.java`). The simulation does not create hydrophones.
-
-```python
-from cenop.behavior.sound import Hydrophone
-
-h = Hydrophone(name="H1", x=100.0, y=200.0)
-h.receive_sound_level("Ship-A", ship_utm_x=500000, ship_utm_y=6000000,
-                      source_level=170.0, received_level=145.0)
-print(h.received_level)  # 145.0
-h.reset()  # Call at end of each tick
-```
-
-##### `SoundPropagationParams`
-
-```python
-@dataclass
-class SoundPropagationParams:
-    """Standalone defaults; the simulation does not read this class. It uses
-    SimulationParameters (alpha_hat=0.00027, beta_hat=14.72, deter_threshold=152.0,
-    deter_max_distance=1000.0)."""
-    alpha_hat: float = 0.0                 # Absorption coefficient
-    beta_hat: float = 20.0                 # Spreading loss factor
-    response_threshold: float = 152.9      # Minimum received level (dB re 1 µPa)
-    max_deter_distance: float = 50.0       # km
-    min_deter_distance_ships: float = 0.1  # km
 ```
 
 ---
@@ -842,7 +817,7 @@ class SimulationParameters:
     energy_mode: str | None = None   # None = DEPONS in both modes; "JASMINE" = JASMINE budget
     time_mode: str | None = None     # None = follow simulation_mode
     memory_mode: str | None = None   # None = follow simulation_mode
-    fsm_mode: str | None = None      # Only logged: the FSM mode follows the time mode
+    fsm_mode: str | None = None      # Behaviour-state rules (None = follow simulation_mode)
 
     # Disturbance
     turbines: str = "off"            # or a wind-farm scenario in data/wind-farms
@@ -899,7 +874,7 @@ class SimulationParameters:
 
 `get_effective_movement_mode()` and `get_effective_energy_mode()` return the override or `"DEPONS"`; `get_effective_time_mode()`, `get_effective_fsm_mode()` and `get_effective_memory_mode()` return the override or `simulation_mode`. Invalid `dispersal` or `movement_salinity` values, and `InnerDanishWaters` on a landscape other than Kattegat, raise a `ValueError`.
 
-Accepted but not read by the model: `jasmine_mass_kg`, `jasmine_drag_coeff`, `jasmine_max_thrust`, `jasmine_current_weight`, `jasmine_bmr_scale`, `jasmine_activity_cost`, `jasmine_disturbance_cost`, `jasmine_avoidance_strength`, the copies `jasmine_memory_decay_rate` and `jasmine_avoidance_radius` (the app copies their inputs to `memory_decay_rate` and `avoidance_radius`), and `mortality_juvenile`, `mortality_adult`, `mortality_elderly`.
+Accepted but not read by the model: `jasmine_mass_kg`, `jasmine_drag_coeff`, `jasmine_max_thrust`, `jasmine_current_weight`, `jasmine_bmr_scale`, `jasmine_activity_cost`, `jasmine_disturbance_cost`, `jasmine_avoidance_strength`, and the copies `jasmine_memory_decay_rate` and `jasmine_avoidance_radius` (the app copies their inputs to `memory_decay_rate` and `avoidance_radius`).
 
 ---
 

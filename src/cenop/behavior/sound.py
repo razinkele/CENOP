@@ -25,24 +25,6 @@ class NoiseSourceType(Enum):
     SHIP = "ship"
 
 
-@dataclass
-class SoundPropagationParams:
-    """Parameters for sound propagation calculations."""
-
-    # Sound propagation
-    alpha_hat: float = 0.0  # Absorption coefficient (dB/km)
-    beta_hat: float = 20.0  # Spreading loss factor (spherical = 20)
-
-    # Deterrence thresholds
-    response_threshold: float = 152.9  # RT: minimum level to cause response (dB re 1 µPa)
-
-    # Maximum deterrence distance
-    max_deter_distance: float = 50.0  # km
-
-    # Ship-specific
-    min_deter_distance_ships: float = 0.1  # km (100m minimum)
-
-
 def calculate_transmission_loss(
     distance_m: float | np.ndarray, alpha_hat: float = 0.0, beta_hat: float = 20.0
 ) -> float | np.ndarray:
@@ -148,22 +130,22 @@ def calculate_deterrence_distance(
         distance = 10 ** ((source_level - response_threshold) / beta_hat)
         return min(distance, max_distance)
 
-    # With absorption, use iterative approach
-    # Binary search for distance
+    # With absorption: transmission loss grows with distance, so bisect the crossing
+    def excess(r: float) -> float:
+        return calculate_received_level(source_level, r, alpha_hat, beta_hat) - response_threshold
+
+    if excess(1.0) <= 0:
+        return 0.0
+    if excess(max_distance) > 0:
+        return max_distance
     low, high = 1.0, max_distance
-
-    for _ in range(50):  # Max iterations
+    for _ in range(80):
         mid = (low + high) / 2
-        rl = calculate_received_level(source_level, mid, alpha_hat, beta_hat)
-
-        if abs(rl - response_threshold) < 0.1:
-            return mid
-        elif rl > response_threshold:
+        if excess(mid) > 0:
             low = mid
         else:
             high = mid
-
-    return (low + high) / 2
+    return low
 
 
 @dataclass
@@ -479,88 +461,3 @@ def combine_rls(rl_arrays: list | np.ndarray) -> np.ndarray:
         return arr.copy()
     # If shape (n_sources, N) take max across sources
     return np.max(arr, axis=0)
-
-
-@dataclass
-class HydrophoneRecord:
-    """Record of loudest sound received in a tick."""
-
-    ship_name: str = ""
-    ship_utm_x: float = -1.0
-    ship_utm_y: float = -1.0
-    received_level: float = 0.0
-    source_level: float = 0.0
-
-
-class Hydrophone:
-    """
-    Passive acoustic monitoring station.
-
-    Tracks the loudest sound received per tick from ships/turbines.
-    Translates from: Hydrophone.java
-
-    Each tick, ships report their sound level to each hydrophone.
-    The hydrophone keeps only the loudest source. At the end of the tick
-    the record can be queried and then reset for the next tick.
-
-    Args:
-        name: Hydrophone identifier
-        x: Grid x position
-        y: Grid y position
-        utm_x: UTM x coordinate (for reporting)
-        utm_y: UTM y coordinate (for reporting)
-    """
-
-    def __init__(
-        self,
-        name: str,
-        x: float,
-        y: float,
-        utm_x: float = 0.0,
-        utm_y: float = 0.0,
-    ):
-        self.name = name
-        self.x = x
-        self.y = y
-        self.utm_x = utm_x
-        self.utm_y = utm_y
-        self._record = HydrophoneRecord()
-
-    def receive_sound_level(
-        self,
-        ship_name: str,
-        ship_utm_x: float,
-        ship_utm_y: float,
-        source_level: float,
-        received_level: float,
-    ) -> None:
-        """
-        Report a sound level to this hydrophone.
-
-        Only keeps the record if it is louder than the current max.
-        """
-        if received_level > self._record.received_level:
-            self._record = HydrophoneRecord(
-                ship_name=ship_name,
-                ship_utm_x=ship_utm_x,
-                ship_utm_y=ship_utm_y,
-                received_level=received_level,
-                source_level=source_level,
-            )
-
-    def reset(self) -> None:
-        """Reset sound level record for next tick."""
-        self._record = HydrophoneRecord()
-
-    @property
-    def record(self) -> HydrophoneRecord:
-        """Current tick's loudest sound record."""
-        return self._record
-
-    @property
-    def received_level(self) -> float:
-        return self._record.received_level
-
-    @property
-    def source_level(self) -> float:
-        return self._record.source_level

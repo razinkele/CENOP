@@ -114,7 +114,7 @@ def build_simulation(params: SimulationParameters, landscape: CellData | None = 
         movement_module=create_movement_module(
             params, effective_time_mode, effective_movement_mode
         ),
-        behavior_fsm=create_behavior_fsm(params, effective_time_mode),
+        behavior_fsm=create_behavior_fsm(params, effective_time_mode, effective_fsm_mode),
         energy_module=create_energy_module(params, effective_energy_mode),
         memory_module=create_memory_module(params, effective_memory_mode),
     )
@@ -240,7 +240,6 @@ def create_simulation_from_inputs(input) -> Simulation:
         memory_decay_rate=jasmine_memory_decay_rate,
         avoidance_radius=jasmine_avoidance_radius,
         # Advanced Parameters
-        tracked_porpoise_count=input.tracked_porpoise_count(),
         t_disp=input.tdisp(),
         psm_log=input.psm_log(),
         psm_dist_mean=psm_dist_mean,
@@ -387,22 +386,20 @@ class SimulationRunner:
                 1 for p in self.sim._porpoises if hasattr(p, "with_lact_calf") and p.with_lact_calf
             )
 
-        # Track births and deaths
-        if current_pop < self.last_pop:
-            inc = self.last_pop - current_pop
-            self.total_deaths += inc
-            if inc > max(1000, self.sim.population_size * 2):
-                logger.warning(
-                    "Large deaths increment: %d at tick %d, pop=%d", inc, self.tick, current_pop
-                )
-        if current_pop > self.last_pop:
-            inc = current_pop - self.last_pop
-            self.total_births += inc
-            if inc > max(1000, self.sim.population_size * 2):
-                logger.warning(
-                    "Large births increment: %d at tick %d, pop=%d", inc, self.tick, current_pop
-                )
-
+        # Births and deaths over the run, as the simulation counts them (the net daily change
+        # in population cancelled births against deaths on the same day)
+        new_births = self.sim.total_births - self.total_births
+        new_deaths = self.sim.total_deaths - self.total_deaths
+        if max(new_births, new_deaths) > max(1000, self.sim.population_size * 2):
+            logger.warning(
+                "Large births/deaths increment: +%d/+%d at tick %d, pop=%d",
+                new_births,
+                new_deaths,
+                self.tick,
+                current_pop,
+            )
+        self.total_births = self.sim.total_births
+        self.total_deaths = self.sim.total_deaths
         self.last_pop = current_pop
 
         # Calculate energy statistics from population manager's per-step metrics

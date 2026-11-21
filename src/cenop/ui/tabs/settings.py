@@ -10,7 +10,6 @@ from cenop.parameters.simulation_params import DISPERSAL_MODES
 TOOLTIPS = {
     # Basic settings
     "random_seed": "Set a specific random seed for reproducible simulations. Use 0 for automatic random seed each run.",
-    "tracked_porpoise_count": "Number of individual porpoises to track in detail for movement analysis and debugging.",
     "ships_enabled": "Enable/disable ship traffic in the simulation. Ships create underwater noise that can disturb porpoises.",
     "weston_flux_percell": (
         "Use physics-based Weston Flux transmission loss for ship noise. "
@@ -44,7 +43,7 @@ TOOLTIPS = {
     # JASMINE Mode settings
     "time_mode_override": "Override time subsystem: None = follow main mode, DEPONS = fixed 30-min ticks, JASMINE = variable timesteps with events.",
     "movement_mode_override": "Movement: None = the DEPONS CRW in both modes. JASMINE = experimental simplified walk (DEPONS step lengths, small random turns, no food memory or dispersal steering; the physics integrator is not wired in yet).",
-    "fsm_mode_override": "Override behavior FSM: None = follow main mode, DEPONS = simple state machine, JASMINE = utility-based decisions.",
+    "fsm_mode_override": "Behaviour states: None = follow main mode, DEPONS = foraging, dispersing and disturbed, JASMINE = also traveling and resting (speed and energy). States label animals and set activity costs in the JASMINE energy budget; they do not change movement.",
     "energy_mode_override": "Energy: None = the DEPONS energy budget in both modes. JASMINE = experimental energy budget in physical units, not calibrated (almost no mortality without disturbance, more deaths with ships; see the changelog's known issues).",
     "memory_mode_override": "Override memory subsystem: None = follow main mode, DEPONS = no disturbance memory, JASMINE = learned avoidance.",
     # JASMINE Physics parameters
@@ -173,19 +172,6 @@ def _basic_settings_panel():
                         **{"for": "random_seed"},
                     ),
                     ui.input_numeric("random_seed", None, value=0, min=0),
-                    class_="mb-3",
-                ),
-                ui.div(
-                    ui.tags.label(
-                        "Tracked Porpoises ",
-                        ui.tags.span(
-                            "ⓘ",
-                            title=TOOLTIPS["tracked_porpoise_count"],
-                            style="cursor: help; color: #0d7377;",
-                        ),
-                        **{"for": "tracked_porpoise_count"},
-                    ),
-                    ui.input_numeric("tracked_porpoise_count", None, value=1, min=0, max=100),
                     class_="mb-3",
                 ),
                 ui.p(

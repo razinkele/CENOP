@@ -50,7 +50,7 @@ The JASMINE (JASCO's Animal Simulation Model Including Noise Exposure) extension
 #### JASMINE Extensions (Research Mode, experimental)
 - **Learned avoidance**: porpoises remember where they were disturbed and steer away from those places
 - **Behaviour states**: five states (FORAGING, TRAVELING, RESTING, DISPERSING, DISTURBED) that label each animal and set its activity cost in the JASMINE energy budget; they do not change movement and are not shown in the app
-- **JASMINE energy budget** (optional, uncalibrated): metabolism, activity and thermal costs in physical units
+- **JASMINE energy budget** (optional, uncalibrated): metabolism and activity costs in physical units. Its thermal cost applies below 5 °C or above 20 °C, but no landscape has a temperature layer (water is 10 °C everywhere), so it is zero
 - **JASMINE movement** (optional): a simplified walk; the physics integrator (drag, thrust, currents) exists but is not wired in
 
 ---
@@ -244,8 +244,8 @@ The interactive map shows:
 
 - **Porpoises** (up to 1000 displayed), coloured by age: green under 2 years, blue 2-12 years, grey 12 years and older; red while dispersing
 - **Wind turbines**: grey before a run (planned); during a run red while being piled and blue once operating
-- **Red circles**: approximate noise zones around turbines being piled (drawn for display only; the model computes received levels itself)
-- **Yellow circles**: operating turbines
+- **Red circles**: how far turbines being piled deter porpoises, by the model's own rule (received level above the 152 dB threshold, with the model's transmission loss, capped at the maximum deterrence distance)
+- **Yellow circles**: operating turbines, only if their noise reaches the threshold (at the default 145 dB it does not, so none are drawn)
 - **Bathymetry**: water depth, yellow (shallow) to purple (deep)
 - **Foraging**: food patches, green shading
 
@@ -306,7 +306,6 @@ Births and deaths are counted from the net change in population between updates,
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | Random Seed | 0 | Reproducibility seed (0 = random each run) |
-| Tracked Porpoises | 1 | Not used by the model or the app's outputs yet |
 | Ship Traffic Enabled | Off | Enable vessel noise disturbance; Lithuania, CentralBaltic, Kattegat and NorthSea have their own ship files, Homogeneous uses a sample |
 | Weston Flux TL | On | Shown when ship traffic is on: physics-based transmission loss using depth, sediment and salinity at the ship's position; off = simple spreading-loss formula |
 | Annual Bycatch Probability | 0.0 | Annual probability of fishing net mortality (0-1) |
@@ -354,7 +353,7 @@ These parameters apply when JASMINE mode (or the matching subsystem override) is
 |---------|---------|-------------|
 | Movement Mode | Default (DEPONS) | JASMINE = experimental simplified walk (DEPONS step lengths, small random turns, no food memory or dispersal steering) |
 | Energy Mode | Default (DEPONS) | JASMINE = experimental energy budget in physical units, not calibrated |
-| Time Mode, Behavior FSM Mode, Memory Mode | Follow main mode | Memory Mode JASMINE = learned avoidance, DEPONS = no disturbance memory |
+| Time Mode, Behavior FSM Mode, Memory Mode | Follow main mode | Behavior FSM Mode JASMINE adds traveling and resting states; Memory Mode JASMINE = learned avoidance, DEPONS = no disturbance memory |
 
 #### Learned Avoidance
 
@@ -486,7 +485,7 @@ with OutputWriter(config) as writer:
 - Dispersal (PSM-Type2 with SSLogis heading and energy-based stop, Undirected, InnerDanishWaters)
 - Deterrence (raw displacement vectors, Weston flux TL, JOMOPANS source levels)
 
-The feature-by-feature comparison is in `docs/DEPONS-CENOP-PARITY-ANALYSIS.md`. Runs on the Kattegat landscape were compared with DEPONS 3.2 runs (eight seeds per model, four scenarios including ships) in `docs/validation/A2-parity-report.md`. The test suite has about 1,270 fast tests and 11 slow validation tests.
+The feature-by-feature comparison is in `docs/DEPONS-CENOP-PARITY-ANALYSIS.md`. Runs on the Kattegat landscape were compared with DEPONS 3.2 runs (eight seeds per model, four scenarios including ships) in `docs/validation/A2-parity-report.md`. The test suite has about 1,250 fast tests and 13 slow validation tests.
 
 **JASMINE Mode** is experimental and designed for:
 - Exploring behavioural hypotheses

@@ -135,28 +135,6 @@ class TestRefMem:
         assert best == (30.0, 40.0)
 
 
-class TestDispersal:
-    """Test dispersal behavior."""
-
-    def test_dispersal_types(self):
-        """Test dispersal type creation."""
-        from cenop.behavior.dispersal import (
-            DispersalType,
-            create_dispersal_behavior,
-        )
-
-        for dtype in DispersalType:
-            behavior = create_dispersal_behavior(dtype)
-            assert behavior is not None
-
-    def test_no_dispersal(self):
-        """Test disabled dispersal."""
-        from cenop.behavior.dispersal import DispersalType, create_dispersal_behavior
-
-        behavior = create_dispersal_behavior(DispersalType.OFF)
-        assert not behavior.should_start_dispersal(10, 5.0)
-
-
 class TestSimulation:
     """Test full simulation."""
 

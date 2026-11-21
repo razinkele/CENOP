@@ -846,30 +846,6 @@ class TestModuleUnitCoverage:
         assert key1 == key3, "Same location should have same cell key"
         assert key1 == key2, "Close locations should map to same memory cell"
 
-    def test_dispersal_heading_calculation(self):
-        """Verify dispersal heading aims towards target."""
-        from cenop.behavior.psm import PersistentSpatialMemory, PSMDispersalType2
-
-        psm = PersistentSpatialMemory(world_width=100, world_height=100)
-        dispersal = PSMDispersalType2(psm=psm)
-
-        # Set up dispersal towards northeast
-        dispersal._target_x = 80.0
-        dispersal._target_y = 80.0
-        dispersal._is_dispersing = True
-        dispersal._distance_traveled = 0.0
-        dispersal._target_distance = 50.0 * 400.0  # 50 cells * 400m
-
-        # Calculate heading from (50, 50) to (80, 80) - should be ~45 degrees
-        new_heading = dispersal.calculate_new_heading(current_x=50.0, current_y=50.0)
-
-        # Heading can be negative (arctan2 returns -180 to 180), normalize to 0-360
-        normalized = new_heading % 360
-
-        # New heading should be a valid number
-        assert np.isfinite(normalized), f"Heading should be finite: {new_heading}"
-        assert 0 <= normalized < 360, f"Normalized heading should be 0-360: {normalized}"
-
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])

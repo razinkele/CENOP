@@ -56,6 +56,14 @@ All notable changes to CENOP-JASMINE are documented in this file.
   not been checked; a plain `shiny run` does not.
 
 ### Removed
+- **Code no simulation used:** `cenop.behavior.dispersal` (per-animal ports of eight DEPONS
+  dispersal classes; the model disperses in `agents/population.py`, and PSM-Type1 and the
+  PSM-Type3 variants are not offered by DEPONS 3.2 either), `psm.PSMDispersalType2`,
+  `sound.SoundPropagationParams` (defaults the model never read: beta 20, threshold 152.9) and
+  `sound.Hydrophone` (DEPONS hydrophone output, never created). The parity doc now marks
+  hydrophones and tracked porpoises as not ported, the four dispersal classes as not offered,
+  the PSM-Type3 stop rule as matched through Undirected, and its summary is recounted from the
+  rows (it claimed no gaps while rows still said GAP).
 - **Settings the model never read:** Tracked Porpoises (`tracked_porpoise_count`; DEPONS
   uses it for a per-animal report that CENOP never ported, now recorded in the parity doc)
   and the age-mortality rates `mortality_juvenile`, `mortality_adult`, `mortality_elderly`

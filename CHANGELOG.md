@@ -149,6 +149,15 @@ All notable changes to CENOP-JASMINE are documented in this file.
   `docs/performance/2026-11-20-ship-loop.md`.
 
 ### Fixed
+- **Learned avoidance remembers where the animal was disturbed.** The remembered cell was the
+  animal's position minus five times its own last step, which put it on the animal's track
+  (on Kattegat with ships a median 5.5 km from the nearest deterring ship, while the animal
+  itself was 5.1 km away). It is now the animal's own cell: the source is not well defined
+  for moving ships or several sources summed. With all three memory changes of 2026-11-21
+  (calibration, no habituation setting, own cell), animals within 5 km of the Kattegat test
+  farm as a ratio to the run without turbines: 12-24 h after a pile 0.48 (DEPONS mode 0.56),
+  1-3 days after the last pile 0.45 (0.53), 7-30 days after 0.97 (0.91); with ships (6 seeds)
+  deterred animal-ticks 15.6% with and without the memory, mean energy 10.52 against 10.64.
 - **Full JASMINE mode crashed when the population first outgrew its arrays.** With the
   JASMINE memory module on, the avoidance result cached for the next movement step kept the
   old array length when the arrays grew for newborn calves, and the next step failed with a
@@ -706,12 +715,7 @@ results of every earlier version differ. See `docs/validation/A2-parity-report.m
   survive. The JASMINE energy module also charges every deterred tick (0.1 x deterrence
   strength + 0.02 x speed). Reproduce with
   `scripts/investigations/2026-11-21-jasmine-ships/jasmine_ships_split.py`.
-- **Learned avoidance (JASMINE disturbance memory) remembers the wrong place** (found
-  2026-11-21; its energy cost, range and fading were fixed the same day, see Changed). The
-  remembered disturbance cell is the animal's position minus five times its own last step, not
-  the source: on Kattegat with ships it lies a median 5.5 km from the nearest deterring ship
-  while the animal itself was 5.1 km away (remembering the animal's own cell changes results
-  within seed noise).
+- ~~Learned avoidance (JASMINE disturbance memory) remembers the wrong place~~ Fixed 2026-11-21 (see Unreleased).
 
 ## [2.2.0] - 2026-07-10
 

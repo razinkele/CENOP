@@ -51,3 +51,22 @@ def test_habituation_is_gone_rather_than_a_dead_setting():
     with pytest.raises(TypeError):
         SimulationParameters(habituation_enabled=True)
     assert not hasattr(JASMINEMemoryModule, "HABITUATION_RATE")
+
+
+def test_a_deterred_animal_remembers_the_cell_it_is_in():
+    from cenop.agents.population import PorpoisePopulation
+    from cenop.landscape.cell_data import create_homogeneous_landscape
+
+    params = SimulationParameters(random_seed=2, porpoise_count=3, simulation_mode="JASMINE")
+    land = create_homogeneous_landscape(width=300, height=300, food_prob=0.5)
+    pop = PorpoisePopulation(
+        3, params, land, memory_module=create_memory_module(params, MemoryMode.JASMINE)
+    )
+    pop.x[:] = [100.0, 150.0, 200.0]
+    pop.y[:] = [100.0, 150.0, 200.0]
+    pop._dx[:] = [3.0, 0.0, 0.0]  # just moved 3 cells east; five steps back would be x = 85
+    pop._dy[:] = 0.0
+    pop.deter_strength[:] = [0.5, 0.0, 0.0]
+    pop._update_disturbance_memory(pop.active_mask)
+    cell = pop._memory_module._position_to_cell(100.0, 100.0)
+    assert list(pop._memory_state.memory_grids[0]) == [cell]

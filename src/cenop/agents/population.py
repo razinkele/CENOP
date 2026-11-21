@@ -2140,24 +2140,15 @@ class PorpoisePopulation:
 
         is_disturbed = self.deter_strength > 0.01
 
-        # Approximate disturbance source position from deterrence vector direction
-        # Disturbance is "behind" the deterrence push — opposite direction
-        det_mag = self.deter_strength + 1e-6
-        disturbance_x = self.x.copy()
-        disturbance_y = self.y.copy()
-
-        # If we have deterrence dx/dy stored from movement, use them
-        # Otherwise approximate from deter_strength alone (use agent position)
-        disturbed_mask = is_disturbed & mask
-        if disturbed_mask.any():
-            disturbance_x[disturbed_mask] = self.x[disturbed_mask] - self._dx[disturbed_mask] * 5.0
-            disturbance_y[disturbed_mask] = self.y[disturbed_mask] - self._dy[disturbed_mask] * 5.0
-
+        # The animal remembers the place where it was disturbed: its own cell. The source is
+        # not well defined (moving ships, several sources summed into one deterrence vector);
+        # the earlier "five own steps back" put the memory on the animal's track, no closer
+        # to the source than the animal itself.
         context = DisturbanceMemoryContext(
             is_disturbed=is_disturbed,
             disturbance_intensity=self.deter_strength,
-            disturbance_x=disturbance_x,
-            disturbance_y=disturbance_y,
+            disturbance_x=self.x,
+            disturbance_y=self.y,
             agent_x=self.x,
             agent_y=self.y,
             current_tick=self._global_tick,

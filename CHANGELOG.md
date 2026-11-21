@@ -149,6 +149,17 @@ All notable changes to CENOP-JASMINE are documented in this file.
   `docs/performance/2026-11-20-ship-loop.md`.
 
 ### Fixed
+- **Map noise circles show the model's deterrence range, at the right times.** The circles
+  used a 158 dB threshold with 20 log10(r) spreading instead of the model's 152 dB,
+  `beta_hat`/`alpha_hat` transmission loss and maximum distance (234 dB pile: 48 km, was
+  6.3 km), and operating turbines got 500 m circles although 145 dB never reaches the
+  threshold. The map also compared the turbine file's `start`/`end` (days) with the tick, so
+  piling showed only for the first few ticks, and files with `tick.start`/`tick.end` read as
+  0. The map now reads turbines with the model's loader and uses its phase rule; the radius
+  comes from `deterrence_radius_m` (new, in `cenop.agents.turbine`; on Kattegat the farthest
+  deterred animal was 49.6 km and the nearest undeterred 47.7 km for a 48.3 km radius). The
+  Turbine info panel uses the same radius and the model's defaults. The bathymetry legend now
+  shows the map's viridis colours (was a blue ramp).
 - **The Behavior FSM Mode override works.** `build_simulation` took the state machine's rules
   from the time mode and only logged `fsm_mode`, so the Settings select had no effect. It now
   passes the effective FSM mode (the override, else `simulation_mode`). Default runs are

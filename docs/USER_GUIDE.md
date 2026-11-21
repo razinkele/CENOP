@@ -244,8 +244,8 @@ The interactive map shows:
 
 - **Porpoises** (up to 1000 displayed), coloured by age: green under 2 years, blue 2-12 years, grey 12 years and older; red while dispersing
 - **Wind turbines**: grey before a run (planned); during a run red while being piled and blue once operating
-- **Red circles**: approximate noise zones around turbines being piled (drawn for display only; the model computes received levels itself)
-- **Yellow circles**: operating turbines
+- **Red circles**: how far turbines being piled deter porpoises, by the model's own rule (received level above the 152 dB threshold, with the model's transmission loss, capped at the maximum deterrence distance)
+- **Yellow circles**: operating turbines, only if their noise reaches the threshold (at the default 145 dB it does not, so none are drawn)
 - **Bathymetry**: water depth, yellow (shallow) to purple (deep)
 - **Foraging**: food patches, green shading
 

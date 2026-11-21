@@ -39,6 +39,33 @@ class TurbinePhase(str, Enum):
     OPERATION = "operation"
 
 
+def deterrence_radius_m(source_level: float, params: SimulationParameters) -> float:
+    """Distance (m) out to which a source of ``source_level`` dB deters porpoises.
+
+    The distance where the received level, source_level - (beta_hat log10(r) + alpha_hat r),
+    falls to deter_threshold, capped at deter_max_distance: the same rule as
+    Turbine.should_deter. Zero when the source is below the threshold even at 1 m.
+    """
+    max_r = float(params.deter_max_distance) * 1000.0
+
+    def excess(r: float) -> float:
+        tl = params.beta_hat * np.log10(r) + params.alpha_hat * r
+        return source_level - tl - params.deter_threshold
+
+    if excess(1.0) <= 0:
+        return 0.0
+    if excess(max_r) > 0:
+        return max_r
+    lo, hi = 1.0, max_r  # transmission loss grows with distance: bisect the crossing
+    for _ in range(80):
+        mid = 0.5 * (lo + hi)
+        if excess(mid) > 0:
+            lo = mid
+        else:
+            hi = mid
+    return lo
+
+
 @dataclass
 class Turbine(Agent):
     """
